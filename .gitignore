@@ -1,0 +1,94 @@
+# Based on GitHub's standard templates (github.com/github/gitignore): VisualStudio, Go, Node, Unity, Java, Windows, macOS,
+# VisualStudioCode, JetBrains - trimmed to what this repository produces.
+# Intentionally NOT ignored: *.jar (prebuilt Forge bridge in src/TCGCustomCards/Assets/) and *.zip (BepInEx package in
+# third_party/) - both are committed on purpose.
+
+# ---- Release output
+/dist/
+
+# ---- .NET / Visual Studio (the mod)
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.pdb
+# (The template's [Dd]ebug/ and [Rr]elease/ are left out: build output is already under bin/ and obj/, and the mod has a
+# src/TCGCustomCards/Debug/ source folder.)
+TestResults/
+*.nupkg
+project.lock.json
+*.binlog
+
+# ---- Go (TCG Studio backend)
+*.exe
+*.exe~
+*.test
+*.out
+go.work
+go.work.sum
+
+# ---- Wails (TCG Studio)
+studio/build/bin/
+studio/frontend/dist/
+studio/frontend/package.json.md5
+# Installer payload is filled by tools/package.ps1; only its README is committed.
+studio/internal/installer/payload/*
+!studio/internal/installer/payload/README.txt
+
+# ---- Node (TCG Studio frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.eslintcache
+*.tsbuildinfo
+.vite/
+
+# ---- Unity (shaders/ project only - these patterns would hit the mod's own .csproj elsewhere)
+/shaders/[Ll]ibrary/
+/shaders/[Tt]emp/
+/shaders/[Ll]ogs/
+/shaders/[Bb]uild/
+/shaders/[Bb]uilds/
+/shaders/[Oo]bj/
+/shaders/[Uu]ser[Ss]ettings/
+/shaders/[Mm]emoryCaptures/
+/shaders/*.csproj
+/shaders/*.sln
+/shaders/*.pidb
+/shaders/*.unityproj
+/shaders/ProjectSettings/boot.config
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+crashlytics-build.properties
+
+# ---- Java (Forge bridge build output)
+/forge-bridge/out/
+*.class
+hs_err_pid*
+
+# ---- Editors
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# ---- OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*
+
+# ---- Logs & temp
+*.log
+*.tmp
+*.bak

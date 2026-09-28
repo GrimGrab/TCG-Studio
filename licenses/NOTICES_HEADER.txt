@@ -1,0 +1,53 @@
+TCG Studio and TCG Custom Cards: third-party notices and disclaimers
+=====================================================================
+
+TCG Studio (the app) and TCG Custom Cards (the BepInEx mod it installs into TCG Card Shop Simulator) are a free fan project
+by GrimGrab. They are free to download and use. No feature is sold or held back for supporters; tips are optional.
+
+DISCLAIMERS
+-----------
+- Not affiliated with, approved or endorsed by OPNeon Games (TCG Card Shop Simulator), Wizards of the Coast, Scryfall, or the
+  Forge project. All trademarks belong to their owners.
+- Magic: The Gathering, its card names, text and images are property of Wizards of the Coast LLC. TCG Studio and TCG Custom
+  Cards are unofficial and not approved, endorsed or sponsored by Wizards of the Coast.
+  No Magic: The Gathering card data or images are included in these downloads. When you import a set, TCG Studio downloads
+  the card data and images from the Scryfall API (https://scryfall.com/docs/api) onto your own computer.
+- TCG Card Shop Simulator: no game files or game code are included. The mod runs inside your own copy of the game.
+
+WHAT IS INCLUDED IN THE DOWNLOAD
+--------------------------------
+1. Forge bridge (tcgcc-forge-bridge.jar), part of this project.
+   License: GNU General Public License v3.0 (it links against Forge, which is GPL-3.0). Full text below.
+   Source code: the file "tcgcc-forge-bridge-source.zip" attached to each release at
+   https://github.com/GrimGrab/TCG-Studio/releases (the same source the jar in that release was built from).
+
+2. BepInEx 5.4.23.5 (x64) mod loader, installed into the game by TCG Studio's Setup screen.
+   https://github.com/BepInEx/BepInEx. License: MIT. It includes:
+   - HarmonyX (0Harmony.dll, HarmonyXInterop.dll). MIT. https://github.com/BepInEx/HarmonyX
+   - MonoMod (MonoMod.RuntimeDetour.dll, MonoMod.Utils.dll). MIT. https://github.com/MonoMod/MonoMod
+   - Mono.Cecil (Mono.Cecil*.dll). MIT. https://github.com/jbevain/cecil
+   - UnityDoorstop 4.5.0 (winhttp.dll, doorstop_config.ini). GNU Lesser General Public License v2.1.
+     Source code: https://github.com/NeighTools/UnityDoorstop (tag v4.5.0).
+
+3. BepInEx.ConfigurationManager v18.3 (the F1 settings window in game).
+   License: GNU Lesser General Public License v3.0 (which adds to the GPL v3.0; both texts below).
+   Source code: https://github.com/BepInEx/BepInEx.ConfigurationManager (tag v18.3).
+
+4. Libraries built into TCG Studio.exe:
+   - The Go standard library. BSD-3-Clause. https://go.dev
+   - Svelte (the app's user interface). MIT. https://github.com/sveltejs/svelte
+   - Go modules (license in brackets; full texts below):
+{{GO_MODULES}}
+
+DOWNLOADED ON YOUR COMPUTER, NOT INCLUDED
+-----------------------------------------
+TCG Studio's Setup screen can download these from their official sources when you choose "Install MTG mode":
+- Forge 2.0.14 (Magic: The Gathering rules engine). GNU General Public License v3.0.
+  https://github.com/Card-Forge/forge/releases/tag/forge-2.0.14
+- Eclipse Temurin Java runtime 21. GNU General Public License v2.0 with the Classpath Exception. https://adoptium.net
+
+Card data and images from Scryfall are subject to Scryfall's terms (https://scryfall.com/docs/api) and belong to their
+owners (Wizards of the Coast and the card artists).
+
+FULL LICENSE TEXTS
+==================

@@ -1,0 +1,190 @@
+﻿{
+    "schemaVersion":  1,
+    "id":  "test-framed",
+    "name":  "Test: Framed",
+    "renderMode":  "Framed",
+    "frameTemplate":  "Tetramon",
+    "cards":  [
+                  {
+                      "id":  "ember-drake",
+                      "name":  "Ember Drake",
+                      "rarity":  "Common",
+                      "image":  "images/art1.png",
+                      "artist":  "Placeholder",
+                      "description":  "Framed test card.",
+                      "price":  {
+                                    "base":  0.20
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      30,
+                                                      0,
+                                                      0,
+                                                      10
+                                                  ],
+                                   "element":  "Fire"
+                               }
+                  },
+                  {
+                      "id":  "moss-golem",
+                      "name":  "Moss Golem",
+                      "rarity":  "Common",
+                      "image":  "images/art2.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  0.20
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      35,
+                                                      5,
+                                                      0
+                                                  ],
+                                   "element":  "Earth"
+                               }
+                  },
+                  {
+                      "id":  "tide-sprite",
+                      "name":  "Tide Sprite",
+                      "rarity":  "Rare",
+                      "image":  "images/art3.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  1.00
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      5,
+                                                      40,
+                                                      5
+                                                  ],
+                                   "element":  "Water",
+                                   "effect":  {
+                                                  "playEffectQueueDataList":  [
+                                                                                  {
+                                                                                      "playEffectType":  "BoostCardActiveElement",
+                                                                                      "playEffectTypeSecondary":  "None",
+                                                                                      "countList":  [
+                                                                                                        10
+                                                                                                    ]
+                                                                                  }
+                                                                              ]
+                                              }
+                               },
+                      "description":  "When played: +10 attack in this lane."
+                  },
+                  {
+                      "id":  "void-wisp",
+                      "name":  "Void Wisp",
+                      "rarity":  "Epic",
+                      "image":  "images/art4.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  4.00
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      10,
+                                                      10,
+                                                      10,
+                                                      30
+                                                  ],
+                                   "element":  "Wind"
+                               }
+                  },
+                  {
+                      "id":  "sun-lion",
+                      "name":  "Sun Lion",
+                      "rarity":  "Legendary",
+                      "image":  "images/art5.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  15.00
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      60,
+                                                      20,
+                                                      0,
+                                                      0
+                                                  ],
+                                   "element":  "Fire",
+                                   "effect":  {
+                                                  "playEffectQueueDataList":  [
+                                                                                  {
+                                                                                      "playEffectType":  "DrawCard",
+                                                                                      "playEffectTypeSecondary":  "None",
+                                                                                      "countList":  [
+                                                                                                        1
+                                                                                                    ]
+                                                                                  }
+                                                                              ]
+                                              }
+                               },
+                      "description":  "When played: draw 1 card."
+                  },
+                  {
+                      "id":  "jade-serpent",
+                      "name":  "Jade Serpent",
+                      "rarity":  "Rare",
+                      "image":  "images/art6.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  1.50
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      45,
+                                                      10,
+                                                      0
+                                                  ],
+                                   "element":  "Earth",
+                                   "evolvesFrom":  "moss-golem"
+                               }
+                  }
+              ],
+    "packs":  [
+                  {
+                      "id":  "booster",
+                      "name":  "Framed Booster",
+                      "foilChance":  15,
+                      "packCost":  3,
+                      "slots":  [
+                                    {
+                                        "count":  5,
+                                        "weights":  {
+                                                        "Common":  1
+                                                    }
+                                    },
+                                    {
+                                        "count":  1,
+                                        "weights":  {
+                                                        "Rare":  80,
+                                                        "Epic":  20
+                                                    }
+                                    },
+                                    {
+                                        "count":  1,
+                                        "weights":  {
+                                                        "Legendary":  15,
+                                                        "Rare":  50,
+                                                        "Epic":  35
+                                                    }
+                                    }
+                                ],
+                      "license":  {
+                                      "packPrice":  150,
+                                      "boxPrice":  300,
+                                      "packLevel":  2,
+                                      "boxLevel":  3
+                                  },
+                      "packTexture":  "images/pack_texture.png",
+                      "packIcon":  "images/pack_icon.png",
+                      "boxTexture":  "images/box_texture.png",
+                      "boxIcon":  "images/box_icon.png"
+                  }
+              ]
+}

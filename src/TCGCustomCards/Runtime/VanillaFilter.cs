@@ -1,0 +1,112 @@
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+namespace TCGCustomCards.Runtime
+{
+    /// <summary>
+    /// Custom-only mode. Hiding filters what the game offers; it never deletes anything, and turning it back on restores vanilla.
+    ///  • Packs hidden: vanilla card packs/boxes leave the restock lists, customer demand, worker/auto-opener pack list and play-table prizes.
+    ///  • Accessories hidden (per kind: deck boxes, playmats, sleeves, dice, comics, collection books, battle decks): the vanilla items of that kind
+    ///    leave the restock lists, the deck picker, play tables and customer demand.
+    ///  • Cards hidden: vanilla sets leave the binder and set pickers, screens default to a custom set, trade customers bring custom cards.
+    /// Each requires at least one custom set/pack/accessory, otherwise they stay off.
+    /// </summary>
+    internal static class VanillaFilter
+    {
+        public static bool HideCards => !Plugin.ShowVanillaCards.Value && Registry.Sets.Count > 0;
+        public static bool HidePacks => !Plugin.ShowVanillaPacks.Value && Registry.Packs.Count > 0;
+        /// <summary>
+        /// Vanilla accessories are hidden per kind ([Content] ShowVanilla&lt;Kind&gt; off) and only when that kind has at least one
+        /// custom item, so a category is never left empty.
+        /// </summary>
+        public static bool HideKind(Core.AccessoryKind k) =>
+            Plugin.ShowVanillaAccessory.TryGetValue(k, out var show) && !show.Value &&
+            Registry.Accessories.Exists(a => a.Item != EItemType.None && a.Def.Kind == k);
+
+        public static bool HideAccessories
+        {
+            get
+            {
+                foreach (var k in Plugin.ShowVanillaAccessory.Keys) if (HideKind(k)) return true;
+                return false;
+            }
+        }
+
+        public static ECardExpansionType FirstCustomExpansion => Registry.Sets.Count > 0 ? Registry.Sets[0].Expansion : ECardExpansionType.Tetramon;
+
+        private static StockItemData_ScriptableObject _so;
+        private static List<EItemType> _origShown, _origShownAll, _origPackList, _origShownAccessory;
+        private static readonly HashSet<EItemType> VanillaCardProducts = new HashSet<EItemType>();
+
+        /// <summary>Called by ItemInjector after custom items are added: remembers the full lists so filtering is reversible.</summary>
+        public static void Capture(StockItemData_ScriptableObject so)
+        {
+            _so = so;
+            _origShown = new List<EItemType>(so.m_ShownItemType);
+            _origShownAll = new List<EItemType>(so.m_ShownAllItemType);
+            _origPackList = new List<EItemType>(so.m_CardPackItemTypeList);
+            _origShownAccessory = new List<EItemType>(so.m_ShownAccessoryItemType);
+            VanillaCardProducts.Clear();
+            for (int i = 0; i < (int)EItemType.Max; i++)
+                if (InventoryBase.ItemTypeToCollectionPackType((EItemType)i) != ECollectionPackType.None)
+                    VanillaCardProducts.Add((EItemType)i);
+            Apply();
+        }
+
+        public static bool IsVanillaCardProduct(EItemType t) => VanillaCardProducts.Contains(t);
+
+        /// <summary>Vanilla accessory whose kind is currently hidden.</summary>
+        public static bool IsVanillaAccessory(EItemType t)
+        {
+            var k = Core.AccessoryKinds.KindOf(t);
+            return k.HasValue && HideKind(k.Value);
+        }
+
+        /// <summary>Hidden right now (used by the shop lists, customer demand and the category lookups).</summary>
+        public static bool IsHidden(EItemType t) => (HidePacks && IsVanillaCardProduct(t)) || IsVanillaAccessory(t);
+
+        /// <summary>Rebuilds the shared item lists in place (other objects hold references to them).</summary>
+        public static void Apply()
+        {
+            if (_so == null) return;
+            Refill(_so.m_ShownItemType, _origShown);
+            Refill(_so.m_ShownAllItemType, _origShownAll);
+            Refill(_so.m_CardPackItemTypeList, _origPackList);
+            Refill(_so.m_ShownAccessoryItemType, _origShownAccessory);
+            ApplyPlayerDefaults();
+            // The deck box / playmat picker caches its lists until a license is bought; make it rebuild them.
+            GameInstance.m_IsItemLicenseUnlocked = true;
+        }
+
+        private static void Refill(List<EItemType> target, List<EItemType> original)
+        {
+            target.Clear();
+            target.AddRange(original.Where(t => !IsHidden(t)));
+        }
+
+        /// <summary>Saved "last used set" of workbench / quick-fill screens → a custom set while vanilla cards are hidden.</summary>
+        public static void ApplyPlayerDefaults()
+        {
+            if (!HideCards) return;
+            var first = FirstCustomExpansion;
+            if (!Registry.IsCustom(CPlayerData.m_WorkbenchCardExpansionType)) CPlayerData.m_WorkbenchCardExpansionType = first;
+            if (!Registry.IsCustom(CPlayerData.m_QuickFillCardExpansionType)) CPlayerData.m_QuickFillCardExpansionType = first;
+            if (!Registry.IsCustom(CPlayerData.m_DonationQuickFillCardExpansionType)) CPlayerData.m_DonationQuickFillCardExpansionType = first;
+        }
+
+        /// <summary>Replacement for the play-table prize's hardcoded AscensionCardPack.</summary>
+        public static EItemType GiftPack()
+        {
+            if (!HidePacks) return EItemType.AscensionCardPack;
+            return Registry.Packs[Random.Range(0, Registry.Packs.Count)].PackItem;
+        }
+
+        /// <summary>Expansion a trade/sell customer brings: a random custom set while vanilla cards are hidden.</summary>
+        public static ECardExpansionType TradeExpansion(ECardExpansionType rolled)
+        {
+            if (!HideCards) return rolled;
+            return Registry.Sets[Random.Range(0, Registry.Sets.Count)].Expansion;
+        }
+    }
+}

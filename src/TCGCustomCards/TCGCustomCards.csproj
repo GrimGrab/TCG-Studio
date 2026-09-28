@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>TCGCustomCards</AssemblyName>
+    <RootNamespace>TCGCustomCards</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <!-- Single version for the mod and TCG Studio: TCG Custom Cards\VERSION (bumped by tools\publish.ps1). -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>portable</DebugType>
+    <!-- No local build paths (user name, folders) in the shipped DLL/PDB. -->
+    <PathMap>$(MSBuildProjectDirectory)=TCGCustomCards</PathMap>
+  </PropertyGroup>
+
+  <!-- Override with: dotnet build -p:GamePath="X:\path\to\TCG Card Shop Simulator" -->
+  <PropertyGroup>
+    <GamePath Condition="'$(GamePath)' == ''">D:\SteamLibrary\steamapps\common\TCG Card Shop Simulator</GamePath>
+    <ManagedPath>$(GamePath)\Card Shop Simulator_Data\Managed</ManagedPath>
+    <BepInExCorePath>$(GamePath)\BepInEx\core</BepInExCorePath>
+    <PluginInstallDir>$(GamePath)\BepInEx\plugins\TCGCustomCards</PluginInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ManagedPath)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(ManagedPath)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(ManagedPath)\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(ManagedPath)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.ImageConversionModule"><HintPath>$(ManagedPath)\UnityEngine.ImageConversionModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.JSONSerializeModule"><HintPath>$(ManagedPath)\UnityEngine.JSONSerializeModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(ManagedPath)\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AssetBundleModule"><HintPath>$(ManagedPath)\UnityEngine.AssetBundleModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AnimationModule"><HintPath>$(ManagedPath)\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>$(ManagedPath)\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(ManagedPath)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="BepInEx"><HintPath>$(BepInExCorePath)\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExCorePath)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!-- BepInPlugin needs a compile-time constant: generate BuildInfo.Version from VERSION. -->
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <BuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</BuildInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(BuildInfoFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace TCGCustomCards { internal static class BuildInfo { public const string Version = &quot;$(Version)&quot;%3B } }" />
+    <ItemGroup>
+      <Compile Include="$(BuildInfoFile)" />
+      <FileWrites Include="$(BuildInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="InstallPlugin" AfterTargets="Build" Condition="Exists('$(GamePath)\BepInEx')">
+    <MakeDir Directories="$(PluginInstallDir)" />
+    <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb" DestinationFolder="$(PluginInstallDir)" SkipUnchangedFiles="true" />
+    <!-- Shader bundle built by tools\build-shaders.ps1 (Unity 2021.3.38f1). -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\tcgcc_foil" DestinationFolder="$(PluginInstallDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)Assets\tcgcc_foil')" />
+    <!-- MTG mode: Forge bridge built by tools\build-bridge.ps1 (Java, GPL-3.0 — source in forge-bridge\). -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\tcgcc-forge-bridge.jar" DestinationFolder="$(PluginInstallDir)" SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)Assets\tcgcc-forge-bridge.jar')" />
+    <!-- Dev convenience: install example sets with -p:InstallExamples=true (off by default). -->
+    <ItemGroup Condition="'$(InstallExamples)' == 'true'">
+      <ExampleSetFiles Include="$(MSBuildThisFileDirectory)..\..\examples\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ExampleSetFiles)" DestinationFiles="@(ExampleSetFiles->'$(PluginInstallDir)\Sets\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Installed $(TargetFileName) -> $(PluginInstallDir)" />
+  </Target>
+
+</Project>

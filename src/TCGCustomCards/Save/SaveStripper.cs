@@ -1,0 +1,365 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using TCGCustomCards.Runtime;
+using UnityEngine;
+
+namespace TCGCustomCards.Save
+{
+    /// <summary>
+    /// Keeps the vanilla save free of custom content so it still loads without the mod.
+    /// Save: every CGameData field that references custom content is swapped (for the duration of CSaveLoad.Save only) for a
+    /// cleaned copy; the originals are stashed in the side-car with the int allocation of that moment.
+    /// Load: before ShelfManager spawns objects, stashed originals are remapped to the current ints and put back into CPlayerData.
+    /// </summary>
+    internal static class SaveStripper
+    {
+        public class StashEntry
+        {
+            public string field;
+            public int index = -1;
+            /// <summary>replace (list element / object at index), remove (appended back), scalar (object or enum field), spawn (paired restock lists).</summary>
+            public string mode;
+            public string type;
+            public string json;
+        }
+
+        public class Stash
+        {
+            public AllocationSnapshot alloc;
+            public List<StashEntry> entries = new List<StashEntry>();
+        }
+
+        /// <summary>Unordered collections: custom entries are removed from the save and appended back on load.</summary>
+        private static readonly HashSet<string> RemoveLists = new HashSet<string>
+        {
+            "m_PackageBoxItemSaveDataList", "m_PackageBoxCardSaveDataList", "m_CustomerSaveDataList", "m_GradedCardInventoryList",
+            "m_HoldCardDataList", "m_HoldItemTypeList", "m_TargetBuyItemList", "m_CustomerReviewDataList"
+        };
+
+        private static readonly FieldInfo[] GameFields = typeof(CGameData).GetFields(BindingFlags.Instance | BindingFlags.Public);
+
+        // ------------------------------------------------------------------ strip (save)
+
+        /// <summary>Swaps custom-referencing fields of <paramref name="g"/> for cleaned copies. Returns the stash and an undo action.</summary>
+        public static Stash Strip(CGameData g, out Action undo)
+        {
+            var stash = new Stash { alloc = AllocationSnapshot.Current() };
+            var originals = new List<(FieldInfo f, object value)>();
+            undo = () => { foreach (var (f, v) in originals) f.SetValue(g, v); };
+            if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0) return stash;
+
+            StripSpawnWaiting(g, stash, originals);
+            foreach (var f in GameFields)
+            {
+                if (f.Name == "m_SpawnBoxRestockIndexWaitingList" || f.Name == "m_SpawnBoxItemCountWaitingList") continue;
+                try
+                {
+                    object value = f.GetValue(g);
+                    if (value == null) continue;
+                    object cleaned = StripField(f, value, stash);
+                    if (cleaned != null && !ReferenceEquals(cleaned, value))
+                    {
+                        originals.Add((f, value));
+                        f.SetValue(g, cleaned);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError($"Save strip failed for {f.Name}: {e}");
+                }
+            }
+            if (stash.entries.Count > 0) Plugin.Log.LogInfo($"Save: moved {stash.entries.Count} custom entries out of the vanilla save");
+            return stash;
+        }
+
+        private static object StripField(FieldInfo f, object value, Stash stash)
+        {
+            string name = f.Name;
+            var type = f.FieldType;
+
+            if (name == "m_IsItemLicenseUnlocked" && value is List<bool> licenses)
+            {
+                // Custom rows live in the side-car; never leave stray unlocks at indices a game update might reuse.
+                var rows = stash.alloc.restockRows.Keys.Where(r => r < licenses.Count && licenses[r]).ToList();
+                if (rows.Count == 0) return value;
+                var copy = new List<bool>(licenses);
+                foreach (int r in rows) copy[r] = false;
+                return copy;
+            }
+            if (name == "m_ChampionCardCollectedList" && value is List<int> champions)
+            {
+                if (!champions.Any(CustomRefWalker.IsCustomMonster)) return value;
+                foreach (int m in champions.Where(CustomRefWalker.IsCustomMonster))
+                    stash.entries.Add(new StashEntry { field = name, mode = "remove", type = "monster", json = m.ToString() });
+                return champions.Where(m => !CustomRefWalker.IsCustomMonster(m)).ToList();
+            }
+            if (!CustomRefWalker.MayHold(type)) return value;
+
+            if (type.IsEnum)
+            {
+                if (!CustomRefWalker.Walk(new EnumBox(value), CustomRefWalker.Mode.Detect)) return value;
+                stash.entries.Add(new StashEntry { field = name, mode = "scalar", type = type.AssemblyQualifiedName, json = Convert.ToInt32(value).ToString() });
+                return type == typeof(ECardExpansionType) ? ECardExpansionType.Tetramon : Enum.ToObject(type, type == typeof(EItemType) ? (int)EItemType.None : 0);
+            }
+
+            if (value is IList list && type.IsGenericType)
+            {
+                var elemType = type.GetGenericArguments()[0];
+                bool remove = RemoveLists.Contains(name);
+                IList copy = null;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var item = list[i];
+                    if (item == null) continue;
+                    bool custom = elemType.IsEnum ? CustomRefWalker.Walk(new EnumBox(item), CustomRefWalker.Mode.Detect) : CustomRefWalker.Walk(item, CustomRefWalker.Mode.Detect);
+                    if (!custom) continue;
+                    if (copy == null) copy = (IList)Activator.CreateInstance(type, list);
+                    stash.entries.Add(new StashEntry
+                    {
+                        field = name, index = i, mode = remove ? "remove" : "replace",
+                        type = elemType.AssemblyQualifiedName,
+                        json = elemType.IsEnum ? Convert.ToInt32(item).ToString() : JsonUtility.ToJson(item)
+                    });
+                    if (!remove) copy[i] = Neutralized(item);
+                }
+                if (copy == null) return value;
+                if (remove)
+                {
+                    // Remove from the copy back to front using the recorded indices.
+                    foreach (var e in stash.entries.Where(e => e.field == name).OrderByDescending(e => e.index)) copy.RemoveAt(e.index);
+                }
+                return copy;
+            }
+
+            if (type.IsClass && !(value is string))
+            {
+                if (!CustomRefWalker.Walk(value, CustomRefWalker.Mode.Detect)) return value;
+                stash.entries.Add(new StashEntry { field = name, mode = "scalar", type = type.AssemblyQualifiedName, json = JsonUtility.ToJson(value) });
+                return Neutralized(value);
+            }
+            return value;
+        }
+
+        /// <summary>Queued restock deliveries are two parallel lists (restock row, amount); custom rows are removed from both together.</summary>
+        private static void StripSpawnWaiting(CGameData g, Stash stash, List<(FieldInfo f, object value)> originals)
+        {
+            var fRows = typeof(CGameData).GetField("m_SpawnBoxRestockIndexWaitingList");
+            var fCounts = typeof(CGameData).GetField("m_SpawnBoxItemCountWaitingList");
+            if (!(fRows?.GetValue(g) is List<int> rows) || !(fCounts?.GetValue(g) is List<int> counts)) return;
+            if (!rows.Any(r => stash.alloc.restockRows.ContainsKey(r))) return;
+            var keptRows = new List<int>();
+            var keptCounts = new List<int>();
+            for (int i = 0; i < rows.Count; i++)
+            {
+                int count = i < counts.Count ? counts[i] : 0;
+                if (stash.alloc.restockRows.ContainsKey(rows[i]))
+                    stash.entries.Add(new StashEntry { field = "spawnWaiting", mode = "spawn", json = $"{rows[i]},{count}" });
+                else { keptRows.Add(rows[i]); keptCounts.Add(count); }
+            }
+            originals.Add((fRows, rows));
+            originals.Add((fCounts, counts));
+            fRows.SetValue(g, keptRows);
+            fCounts.SetValue(g, keptCounts);
+        }
+
+        private static object Neutralized(object original)
+        {
+            var copy = JsonUtility.FromJson(JsonUtility.ToJson(original), original.GetType());
+            CustomRefWalker.Walk(copy, CustomRefWalker.Mode.Neutralize);
+            return copy;
+        }
+
+        /// <summary>Lets the walker inspect a lone enum value.</summary>
+        [Serializable]
+        private class EnumBox
+        {
+            public ECardExpansionType expansion;
+            public EMonsterType monster;
+            public EItemType item;
+
+            public EnumBox(object value)
+            {
+                if (value is ECardExpansionType e) expansion = e;
+                else if (value is EMonsterType m) monster = m;
+                else if (value is EItemType it) item = it;
+                if (!(value is EItemType)) item = EItemType.None;
+            }
+        }
+
+        // ------------------------------------------------------------------ orphan cleanup (load)
+
+        /// <summary>
+        /// Removes/blanks references to custom content that is no longer installed (a removed set, or saves written before
+        /// strip/restore existed). Runs on the live CPlayerData save lists before ShelfManager spawns objects, so an unknown
+        /// EItemType can never index past m_ItemDataList. Returns the number of entries changed.
+        /// </summary>
+        public static int CleanOrphans()
+        {
+            int changed = 0;
+            foreach (var gf in GameFields)
+            {
+                var f = typeof(CPlayerData).GetField(gf.Name, BindingFlags.Static | BindingFlags.Public);
+                if (f == null || f.FieldType != gf.FieldType) continue;
+                try
+                {
+                    changed += CleanField(f);
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError($"Orphan cleanup failed for {f.Name}: {e.Message}");
+                }
+            }
+            changed += CleanSpawnWaiting();
+            if (changed > 0) Plugin.Log.LogWarning($"Orphan cleanup: removed {changed} reference(s) to custom content that is no longer installed");
+            return changed;
+        }
+
+        private static int CleanField(FieldInfo f)
+        {
+            var type = f.FieldType;
+            object value = f.GetValue(null);
+            if (value == null) return 0;
+
+            if (f.Name == "m_ChampionCardCollectedList" && value is List<int> champions)
+                return champions.RemoveAll(CustomRefWalker.IsOrphanMonster);
+
+            if (!CustomRefWalker.MayHold(type)) return 0;
+
+            if (type.IsEnum)
+            {
+                if (!CustomRefWalker.Walk(new EnumBox(value), CustomRefWalker.Mode.Detect, orphansOnly: true)) return 0;
+                f.SetValue(null, type == typeof(ECardExpansionType) ? ECardExpansionType.Tetramon : Enum.ToObject(type, type == typeof(EItemType) ? (int)EItemType.None : 0));
+                return 1;
+            }
+
+            if (value is IList list && type.IsGenericType)
+            {
+                var elemType = type.GetGenericArguments()[0];
+                bool remove = RemoveLists.Contains(f.Name);
+                int changed = 0;
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    var item = list[i];
+                    if (item == null) continue;
+                    bool orphan = elemType.IsEnum
+                        ? CustomRefWalker.Walk(new EnumBox(item), CustomRefWalker.Mode.Detect, orphansOnly: true)
+                        : CustomRefWalker.Walk(item, CustomRefWalker.Mode.Detect, orphansOnly: true);
+                    if (!orphan) continue;
+                    changed++;
+                    if (remove) list.RemoveAt(i);
+                    else if (elemType.IsEnum) list[i] = Enum.ToObject(elemType, elemType == typeof(EItemType) ? (int)EItemType.None : 0);
+                    else CustomRefWalker.Walk(item, CustomRefWalker.Mode.Neutralize, orphansOnly: true);
+                }
+                return changed;
+            }
+
+            if (type.IsClass && !(value is string) && CustomRefWalker.Walk(value, CustomRefWalker.Mode.Detect, orphansOnly: true))
+            {
+                CustomRefWalker.Walk(value, CustomRefWalker.Mode.Neutralize, orphansOnly: true);
+                return 1;
+            }
+            return 0;
+        }
+
+        /// <summary>Queued deliveries pointing past the restock table (a removed custom pack) are dropped from both parallel lists.</summary>
+        private static int CleanSpawnWaiting()
+        {
+            var rows = CPlayerData.m_SpawnBoxRestockIndexWaitingList;
+            var counts = CPlayerData.m_SpawnBoxItemCountWaitingList;
+            var so = CSingleton<InventoryBase>.Instance.m_StockItemData_SO;
+            if (rows == null || so == null) return 0;
+            int changed = 0;
+            for (int i = rows.Count - 1; i >= 0; i--)
+            {
+                if (rows[i] >= 0 && rows[i] < so.m_RestockDataList.Count) continue;
+                rows.RemoveAt(i);
+                if (counts != null && i < counts.Count) counts.RemoveAt(i);
+                changed++;
+            }
+            return changed;
+        }
+
+        // ------------------------------------------------------------------ restore (load)
+
+        public static void Restore(Stash stash)
+        {
+            if (stash == null || stash.entries.Count == 0) return;
+            var alloc = stash.alloc ?? new AllocationSnapshot();
+            int ok = 0, dropped = 0;
+            // Replace entries first (indices refer to the saved list), removes appended afterwards.
+            foreach (var e in stash.entries.OrderBy(e => e.mode == "replace" ? 0 : 1))
+            {
+                try
+                {
+                    if (RestoreOne(e, alloc)) ok++;
+                    else { dropped++; Plugin.Log.LogWarning($"Restore: dropped {e.field}[{e.index}] (its custom set/card/pack is no longer installed)"); }
+                }
+                catch (Exception ex)
+                {
+                    dropped++;
+                    Plugin.Log.LogError($"Restore failed for {e.field}[{e.index}]: {ex.Message}");
+                }
+            }
+            Plugin.Log.LogInfo($"Load: restored {ok} custom entries into the game{(dropped > 0 ? $", dropped {dropped}" : "")}");
+        }
+
+        private static bool RestoreOne(StashEntry e, AllocationSnapshot alloc)
+        {
+            if (e.mode == "spawn")
+            {
+                var parts = e.json.Split(',');
+                if (!alloc.RestockRow(int.Parse(parts[0]), out int row)) return false;
+                CPlayerData.m_SpawnBoxRestockIndexWaitingList.Add(row);
+                CPlayerData.m_SpawnBoxItemCountWaitingList.Add(int.Parse(parts[1]));
+                return true;
+            }
+
+            var target = typeof(CPlayerData).GetField(e.field, BindingFlags.Static | BindingFlags.Public);
+            if (target == null) { Plugin.Log.LogWarning($"Restore: CPlayerData.{e.field} not found"); return false; }
+
+            if (e.type == "monster")
+            {
+                if (!alloc.Monster(int.Parse(e.json), out int m)) return false;
+                ((List<int>)target.GetValue(null)).Add(m);
+                return true;
+            }
+
+            var type = Type.GetType(e.type);
+            if (type == null) return false;
+            object obj;
+            if (type.IsEnum)
+            {
+                int v = int.Parse(e.json);
+                bool mapped = type == typeof(ECardExpansionType) ? alloc.Expansion(v, out v)
+                            : type == typeof(EMonsterType) ? alloc.Monster(v, out v)
+                            : type == typeof(EItemType) ? alloc.Item(v, out v) : true;
+                if (!mapped) return false;
+                obj = Enum.ToObject(type, v);
+            }
+            else
+            {
+                obj = JsonUtility.FromJson(e.json, type);
+                if (!CustomRefWalker.Walk(obj, CustomRefWalker.Mode.Remap, alloc)) return false;
+            }
+
+            switch (e.mode)
+            {
+                case "scalar":
+                    target.SetValue(null, obj);
+                    return true;
+                case "replace":
+                    var list = (IList)target.GetValue(null);
+                    if (list == null || e.index < 0 || e.index >= list.Count) return false;
+                    list[e.index] = obj;
+                    return true;
+                case "remove":
+                    ((IList)target.GetValue(null))?.Add(obj);
+                    return true;
+            }
+            return false;
+        }
+    }
+}

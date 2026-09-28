@@ -1,0 +1,164 @@
+﻿{
+    "schemaVersion":  1,
+    "id":  "test-fullimage",
+    "name":  "Test: Full Image",
+    "renderMode":  "FullImage",
+    "frameTemplate":  "Tetramon",
+    "priceDefaults":  {
+                          "borderMultipliers":  [
+                                                    1,
+                                                    1.25,
+                                                    1.5,
+                                                    2,
+                                                    3,
+                                                    5
+                                                ],
+                          "foilMultiplier":  2.5,
+                          "minimum":  0.05
+                      },
+    "cards":  [
+                  {
+                      "id":  "ember-drake",
+                      "name":  "Ember Drake",
+                      "rarity":  "Common",
+                      "number":  "1",
+                      "image":  "images/card1.png",
+                      "artist":  "Placeholder",
+                      "description":  "A test card.",
+                      "price":  {
+                                    "base":  0.25
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      30,
+                                                      0,
+                                                      0,
+                                                      10
+                                                  ],
+                                   "element":  "Fire"
+                               }
+                  },
+                  {
+                      "id":  "moss-golem",
+                      "name":  "Moss Golem",
+                      "rarity":  "Common",
+                      "number":  "2",
+                      "image":  "images/card2.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  0.30
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      35,
+                                                      5,
+                                                      0
+                                                  ],
+                                   "element":  "Earth"
+                               }
+                  },
+                  {
+                      "id":  "tide-sprite",
+                      "name":  "Tide Sprite",
+                      "rarity":  "Rare",
+                      "number":  "3",
+                      "image":  "images/card3.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  1.50
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      5,
+                                                      40,
+                                                      5
+                                                  ],
+                                   "element":  "Water"
+                               }
+                  },
+                  {
+                      "id":  "void-wisp",
+                      "name":  "Void Wisp",
+                      "rarity":  "Epic",
+                      "number":  "4",
+                      "image":  "images/card4.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  6.00,
+                                    "overrides":  {
+                                                      "FullArt_foil":  250
+                                                  }
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      10,
+                                                      10,
+                                                      10,
+                                                      30
+                                                  ],
+                                   "element":  "Wind"
+                               }
+                  },
+                  {
+                      "id":  "sun-lion",
+                      "name":  "Sun Lion",
+                      "rarity":  "Legendary",
+                      "number":  "5",
+                      "image":  "images/card5.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  25.00
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      60,
+                                                      20,
+                                                      0,
+                                                      0
+                                                  ],
+                                   "element":  "Fire"
+                               }
+                  },
+                  {
+                      "id":  "jade-serpent",
+                      "name":  "Jade Serpent",
+                      "rarity":  "Rare",
+                      "number":  "6",
+                      "image":  "images/card6.png",
+                      "artist":  "Placeholder",
+                      "price":  {
+                                    "base":  2.00
+                                },
+                      "play":  {
+                                   "laneAttack":  [
+                                                      0,
+                                                      45,
+                                                      10,
+                                                      0
+                                                  ],
+                                   "element":  "Earth",
+                                   "evolvesFrom":  "moss-golem"
+                               }
+                  }
+              ],
+    "packs":  [
+                  {
+                      "license":  {
+                                      "packPrice":  0,
+                                      "boxPrice":  100,
+                                      "packLevel":  1,
+                                      "boxLevel":  1
+                                  },
+                      "packCost":  1.5,
+                      "name":  "Full Image Booster",
+                      "id":  "booster",
+                      "starter":  true,
+                      "packTexture":  "images/pack_texture.png",
+                      "packIcon":  "images/pack_icon.png",
+                      "boxTexture":  "images/box_texture.png",
+                      "boxIcon":  "images/box_icon.png"
+                  }
+              ]
+}

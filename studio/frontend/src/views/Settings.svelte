@@ -1,21 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, errText } from '../lib/api';
+  import { App, EventsOn, errText } from '../lib/api';
 
   let { notify, onchange }: { notify: (t: string, k?: string) => void; onchange: () => void } = $props();
 
   let settings = $state<any>(null);
   let status = $state<any>(null);
+  let tpl = $state<any>(null); // game templates (read from the game files, or the mod's in-game export)
 
   async function load() {
     settings = await App.GetSettings();
     status = await App.GameStatus();
+    tpl = await App.TemplatesStatus();
     globalBack = await App.GlobalCardBack();
+  }
+
+  async function rereadTemplates() {
+    try { tpl = await App.RefreshTemplates(true); } catch (e) { notify(errText(e), 'error'); }
   }
 
   async function locate() {
     status = await App.LocateGame();
     settings = await App.GetSettings();
+    tpl = await App.TemplatesStatus();
     notify(status.found ? 'Game found' : 'Game not found in Steam libraries — use Browse', status.found ? 'ok' : 'error');
     onchange();
   }
@@ -24,6 +31,7 @@
     try {
       status = await App.BrowseGameFolder();
       settings = await App.GetSettings();
+      tpl = await App.TemplatesStatus();
       onchange();
     } catch (e) {
       notify(errText(e), 'error');
@@ -53,7 +61,14 @@
     }
   }
 
-  onMount(load);
+  onMount(() => {
+    load();
+    const offs = [
+      EventsOn('templates:progress', (m: string) => (tpl = { ...tpl, busy: true, message: m })),
+      EventsOn('templates:ready', async (t: any) => { tpl = t; status = await App.GameStatus(); }),
+    ];
+    return () => offs.forEach((off) => off());
+  });
 </script>
 
 <div class="page">
@@ -66,7 +81,12 @@
         <li>{status.found ? '✅' : '❌'} TCG Card Shop Simulator</li>
         <li>{status.bepInEx ? '✅' : '❌'} BepInEx</li>
         <li>{status.modInstalled ? '✅' : '❌'} TCG Custom Cards mod</li>
-        <li>{status.templatesFound ? '✅' : '⚠️'} Pack/box templates {status.templatesFound ? '' : '(load a save once with the mod installed to export them)'}</li>
+        <li>
+          {#if tpl?.busy}⏳ Game templates — {tpl.message}
+          {:else if tpl?.ready}✅ Game templates <span class="muted">({tpl.source === 'mod' ? 'old in-game export — use Read again' : 'read from the game files'})</span>
+          {:else}⚠️ Game templates <span class="muted">{tpl?.error || (status.found ? 'not read yet' : 'set the game folder first')}</span>{/if}
+          {#if status.found && !tpl?.busy}<button class="small" onclick={rereadTemplates} title="Read the vanilla art, models and prices from the game files again">Read again</button>{/if}
+        </li>
       </ul>
     </section>
     <section>

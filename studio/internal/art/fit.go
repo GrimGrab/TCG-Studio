@@ -305,7 +305,7 @@ func CardBackFromFile(srcPath, out string) error {
 func PackIconFromTexture(templatesDir string, texture image.Image, front image.Rectangle) (*image.NRGBA, error) {
 	f, err := os.Open(filepath.Join(templatesDir, "BasicCardPack_icon.png"))
 	if err != nil {
-		return nil, fmt.Errorf("template BasicCardPack_icon.png not found — load a save once with the mod installed so it exports templates")
+		return nil, fmt.Errorf("template BasicCardPack_icon.png not found — the game templates aren't available yet (Settings → Game)")
 	}
 	defer f.Close()
 	src, err := png.Decode(f)

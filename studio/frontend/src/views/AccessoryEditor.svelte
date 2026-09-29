@@ -141,7 +141,7 @@
     // Packs: the vanilla pack render with the front warped in (Go side, like the generator).
     if (model.icon === 'pack') return { texture, icon: await App.PackIconFromTexture(texture) };
     if (model.icon === 'recolor') {
-      if (!vanilla || !vanillaIconUrl) throw new Error('the vanilla icon is needed to recolour it — load a save once so the mod exports templates');
+      if (!vanilla || !vanillaIconUrl) throw new Error("the vanilla icon is needed to recolour it — the game templates aren't available yet (Settings → Game)");
       icon = recolorIcon(model, net, S, vanilla, await loadImage(vanillaIconUrl));
     } else icon = composeIcon(model, net, S, iconSize[0], iconSize[1]);
     return { texture, icon: icon.toDataURL('image/png') };
@@ -451,7 +451,7 @@
       url: tpl(p.mesh + '.obj'), texture: p.texture, glass: p.glass, secondaryUrl: base ? tpl(`${base}_texture2.png`) : undefined,
     }));
     mv.load(parts).then(() => { if (textureCanvas) mv.setTexture(textureCanvas); })
-      .catch((e) => (meshError = errText(e) + ' — load a save once so the mod exports the models'));
+      .catch((e) => (meshError = errText(e) + " — the game templates aren't available yet (Settings → Game)"));
     return () => { mv.dispose(); if (mesh === mv) mesh = null; };
   });
 

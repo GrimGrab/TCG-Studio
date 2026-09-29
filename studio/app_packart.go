@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 
 	"tcgstudio/internal/art"
-	"tcgstudio/internal/game"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/uvmap"
 )
@@ -70,8 +69,8 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 // PackIconFromTexture renders a pack shop icon (data URL) from a composed pack texture (data URL): the vanilla pack icon with
 // the front face warped in.
 func (a *App) PackIconFromTexture(texturePNG string) (string, error) {
-	if !game.GetStatus(a.settings.GameDir).TemplatesFound {
-		return "", errors.New("pack templates not found — load a save once with the mod installed (it exports them)")
+	if !a.templatesReady() {
+		return "", errors.New("the game templates aren't available yet — check Settings → Game")
 	}
 	b, err := decodeDataURL(texturePNG)
 	if err != nil {
@@ -93,7 +92,7 @@ func (a *App) PackIconFromTexture(texturePNG string) (string, error) {
 			}
 		}
 	}
-	icon, err := art.PackIconFromTexture(game.TemplatesDir(a.settings.GameDir), tex, front)
+	icon, err := art.PackIconFromTexture(a.templatesDir(), tex, front)
 	if err != nil {
 		return "", err
 	}

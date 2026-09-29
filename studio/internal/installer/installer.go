@@ -22,6 +22,8 @@ const (
 	cfgMgrRel   = "BepInEx/plugins/ConfigurationManager/ConfigurationManager.dll"
 	doorstopIni = "doorstop_config.ini"
 	proxyDLL    = "winhttp.dll"
+
+	legacyTemplatesRel = pluginRel + "/templates" // in-game template export of mod versions up to 0.7.x
 )
 
 // Item states shown on the Setup screen.
@@ -166,10 +168,8 @@ func Inspect(game string, p Payload, havePayload, running bool) State {
 		add("stray", "Duplicate mod copies", Conflict, "Extra copies would load the mod twice and will be backed up: "+strings.Join(stray, ", "))
 	}
 
-	if exists(abs(game, pluginRel+"/templates/BasicCardPack_texture.png")) {
-		add("templates", "Art templates", Info, "Exported — pack/box art generation works.")
-	} else {
-		add("templates", "Art templates", Info, "Launch the game once (load a save) so the mod can export the templates used for pack art.")
+	if exists(abs(game, legacyTemplatesRel)) {
+		add("templates", "Old art templates", Outdated, "Exported in game by an older mod version and no longer used (TCG Studio reads the game files) — Install / Repair removes them.")
 	}
 	sets, _ := os.ReadDir(abs(game, pluginRel+"/Sets"))
 	n := 0
@@ -366,6 +366,14 @@ func Repair(game string, p Payload, running bool, log func(string)) (backupDir s
 	}
 	if exists(abs(game, pluginRel+"/TCGCustomCards.pdb")) {
 		if err = s.moveToBackup(pluginRel + "/TCGCustomCards.pdb"); err != nil {
+			return s.backup, err
+		}
+	}
+	// Older mod versions exported art templates in game; TCG Studio now reads them from the game files. Generated data, so it
+	// is deleted rather than backed up.
+	if exists(abs(game, legacyTemplatesRel)) {
+		s.say("Removing the old in-game template export (no longer used)")
+		if err = os.RemoveAll(abs(game, legacyTemplatesRel)); err != nil {
 			return s.backup, err
 		}
 	}

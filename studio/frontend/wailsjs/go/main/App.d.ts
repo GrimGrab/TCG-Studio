@@ -122,6 +122,8 @@ export function ProjectInstallState(arg1:string):Promise<string>;
 
 export function RefreshPrices(arg1:string):Promise<string>;
 
+export function RefreshTemplates(arg1:boolean):Promise<main.TemplatesStatus>;
+
 export function RemoveForge():Promise<void>;
 
 export function RemoveGlobalCardBack():Promise<void>;
@@ -153,6 +155,8 @@ export function SetupUninstall(arg1:boolean):Promise<string>;
 export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SyncInstalledSets():Promise<string>;
+
+export function TemplatesStatus():Promise<main.TemplatesStatus>;
 
 export function UninstallProject(arg1:string):Promise<void>;
 

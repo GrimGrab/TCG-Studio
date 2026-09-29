@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, errText, ask } from '../lib/api';
+  import { App, EventsOn, errText, ask } from '../lib/api';
   import { newLayout, type Layout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
   import FigurineEditor, { newFigLayout, type FigLayout } from './FigurineEditor.svelte';
@@ -121,13 +121,27 @@
     return v === '' || isNaN(+v) ? undefined : +v;
   }
 
-  onMount(async () => {
-    try {
-      TABS = await App.AccessoryKinds();
-      const raw = await App.AccessoryTemplates();
-      templates = raw ? JSON.parse(raw) : null;
-      await load(false);
-    } catch (e) { notify(errText(e), 'error'); }
+  // Game templates (vanilla art, models, prices): TCG Studio reads them from the game files in the background.
+  let tplStatus = $state<any>(null);
+  async function loadTemplates() {
+    const raw = await App.AccessoryTemplates();
+    templates = raw ? JSON.parse(raw) : null;
+    tplStatus = await App.TemplatesStatus();
+  }
+
+  onMount(() => {
+    const offs = [
+      EventsOn('templates:progress', (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
+      EventsOn('templates:ready', () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
+    ];
+    (async () => {
+      try {
+        TABS = await App.AccessoryKinds();
+        await loadTemplates();
+        await load(false);
+      } catch (e) { notify(errText(e), 'error'); }
+    })();
+    return () => offs.forEach((off) => off());
   });
 
   let t = $derived(tplItem(acc));
@@ -147,7 +161,11 @@
     {#if view && !view.installed && view.accessories.length}<span class="warn">Not installed yet — set the game folder in Settings.</span>{/if}
   </p>
   {#if !templates}
-    <p class="warn small">Templates not exported yet: start the game and load a save once with the mod installed (vanilla art, prices and icons).</p>
+    {#if tplStatus?.busy}
+      <p class="muted small">Reading the game's models and art… {tplStatus.message ?? ''}</p>
+    {:else}
+      <p class="warn small">The game's models and art aren't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</p>
+    {/if}
   {/if}
   {#if view?.errors?.length}<div class="err small">{#each view.errors as e}<div>{e}</div>{/each}</div>{/if}
 

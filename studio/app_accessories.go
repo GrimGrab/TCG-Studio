@@ -77,13 +77,13 @@ func (a *App) Accessories() (AccessoryView, error) {
 // AccessoryKinds lists the accessory kinds (tabs), their vanilla bases and mod toggles.
 func (a *App) AccessoryKinds() []setfmt.AccessoryKind { return setfmt.AccessoryKinds }
 
-// AccessoryTemplates returns the mod's export (templates\accessories\accessories.json: items, meshes, textures,
-// license rows) as raw JSON, or "" when the game hasn't exported it yet (load a save once with the mod installed).
+// AccessoryTemplates returns accessories.json of the game templates (items, meshes, textures, license rows, shelves; see
+// app_templates.go) as raw JSON, or "" while they aren't available.
 func (a *App) AccessoryTemplates() string {
 	if !game.IsGameDir(a.settings.GameDir) {
 		return ""
 	}
-	b, err := os.ReadFile(filepath.Join(game.TemplatesDir(a.settings.GameDir), "accessories", "accessories.json"))
+	b, err := os.ReadFile(filepath.Join(a.templatesDir(), "accessories", "accessories.json"))
 	if err != nil {
 		return ""
 	}

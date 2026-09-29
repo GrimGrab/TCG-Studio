@@ -218,6 +218,10 @@ export function RefreshPrices(arg1) {
   return window['go']['main']['App']['RefreshPrices'](arg1);
 }
 
+export function RefreshTemplates(arg1) {
+  return window['go']['main']['App']['RefreshTemplates'](arg1);
+}
+
 export function RemoveForge() {
   return window['go']['main']['App']['RemoveForge']();
 }
@@ -280,6 +284,10 @@ export function SnapshotPackBase(arg1, arg2, arg3, arg4) {
 
 export function SyncInstalledSets() {
   return window['go']['main']['App']['SyncInstalledSets']();
+}
+
+export function TemplatesStatus() {
+  return window['go']['main']['App']['TemplatesStatus']();
 }
 
 export function UninstallProject(arg1) {

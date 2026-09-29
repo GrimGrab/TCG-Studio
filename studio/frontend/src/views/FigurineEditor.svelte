@@ -109,7 +109,7 @@
 
   /** Why the model can't be baked yet ('' = ready): without the base toy's size the anchor and height would be guesses. */
   export function bakeProblem(): string {
-    return item?.bounds ? '' : `No size known for ${base} (a toy added by a game update?) — start the game and load a save once with the mod installed, then save again.`;
+    return item?.bounds ? '' : `No size known for ${base} — the game templates aren't available yet (Settings → Game); save again once they are.`;
   }
 
   /** Placement for BakeFigurine. */
@@ -286,7 +286,7 @@
       <div class="grow"></div>
       <div class="seg">
         <button class:on={mode === 'model'} onclick={() => (mode = 'model')}>Model</button>
-        <button class:on={mode === 'shelf'} onclick={() => (mode = 'shelf')} disabled={!shelves.length} title={shelves.length ? '' : 'Load a save once with the mod installed (shelf export)'}>On a shelf</button>
+        <button class:on={mode === 'shelf'} onclick={() => (mode = 'shelf')} disabled={!shelves.length} title={shelves.length ? '' : 'Needs the game templates (Settings → Game)'}>On a shelf</button>
       </div>
     </div>
     <div class="scene">
@@ -357,9 +357,9 @@
       {/if}
     {/if}
     {#if !item?.bounds}
-      <p class="warn small">No size known for {base}: start the game and load a save once with the mod installed before saving this figurine.</p>
+      <p class="warn small">No size known for {base}: the game templates aren't available yet (Settings → Game).</p>
     {:else if !shelves.length}
-      <p class="muted small">Sizes and the shelf fit use built-in data. The vanilla toy beside yours and the “On a shelf” view appear after you start the game and load a save once with the mod installed.</p>
+      <p class="muted small">Sizes and the shelf fit use built-in data until TCG Studio has read the game files (Settings → Game); the vanilla toy beside yours and the “On a shelf” view appear then.</p>
     {/if}
   </div>
 </div>

@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.7.6 - 2026-09-29
+
+TCG Studio no longer needs you to start the game before you can design packs, accessories and figurines.
+
+- New: TCG Studio reads the game's own art, models, icons and prices straight from your game folder (a few seconds on first start, and again after a game update). Settings → Game shows the status and has a Read again button.
+- Changed: the mod no longer exports templates in game; Setup → Install / Repair removes the old export folder (about 230 MB).
+- Fixed: figurines, the "On a shelf" view and the pack/box 3D editor work right away on a fresh install.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.7.5 - 2026-09-29
 
 Figurines now come out right even before you've played with the mod.

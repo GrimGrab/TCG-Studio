@@ -60,7 +60,7 @@ By default your exe checks this repository for new releases and offers to update
 An update replaces your build with the official exe. To build an exe that never checks for updates:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\package.ps1 -GamePath "<game folder>" -UpdateRepo ""
+powershell -ExecutionPolicy Bypass -Command "& .\tools\package.ps1 -GamePath '<game folder>' -UpdateRepo ''"
 ```
 
 Builds are not byte-for-byte identical to the official exe, so their SHA-256 won't match the one in the release notes.

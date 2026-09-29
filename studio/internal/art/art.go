@@ -79,7 +79,7 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	load := func(name string) (*image.NRGBA, error) {
 		f, err := os.Open(filepath.Join(templatesDir, name))
 		if err != nil {
-			return nil, fmt.Errorf("template %s not found — load a save once with the mod installed so it exports templates", name)
+			return nil, fmt.Errorf("template %s not found — the game templates aren't available yet (Settings → Game)", name)
 		}
 		defer f.Close()
 		img, err := png.Decode(f)

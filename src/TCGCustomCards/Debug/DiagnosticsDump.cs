@@ -22,7 +22,6 @@ namespace TCGCustomCards.Debug
         [HarmonyPostfix]
         private static void Postfix()
         {
-            TemplateExport.RunIfMissing();
             if (_done || !Plugin.DumpDiagnostics.Value) return;
             _done = true;
 
@@ -172,7 +171,6 @@ namespace TCGCustomCards.Debug
         /// Which foil material each card style uses (CardUI.m_FoilShowList order: 0 CardBGMask shine, 1 CardBorderMask glitter,
         /// 2 CenterFrameMask glitter, 3 CenterFrameMask glitter btm; blended: 0 CardBGMask blended), the generic lists in
         /// Card3dUISpawner (applied first, then overridden by the style's lists), and every material's shader properties.
-        /// Textures are exported to templates\Foil_*.png.
         /// </summary>
         /// <summary>
         /// Layer tree of a pooled 3D card's front (draw order = listing order): which images are masks, which carry foil materials,
@@ -249,7 +247,6 @@ namespace TCGCustomCards.Debug
             else sb.AppendLine("Card3dUISpawner: not found");
             CardTree(sb, spawner);
 
-            string dir = Path.Combine(Plugin.PluginDir, "templates");
             foreach (var m in all)
             {
                 var sh = m.shader;
@@ -264,12 +261,6 @@ namespace TCGCustomCards.Debug
                         case ShaderPropertyType.Texture:
                             var tex = m.GetTexture(n);
                             props.Add($"{n}={(tex != null ? $"{tex.name} {tex.width}x{tex.height}" : "none")}");
-                            try
-                            {
-                                if (tex != null && Directory.Exists(dir) && !File.Exists(Path.Combine(dir, $"Foil_{tex.name}.png")))
-                                    TemplateExport.SaveTexture(tex, Path.Combine(dir, $"Foil_{tex.name}.png"));
-                            }
-                            catch (Exception e) { props.Add($"(export failed: {e.Message})"); }
                             break;
                         case ShaderPropertyType.Color: props.Add($"{n}={m.GetColor(n)}"); break;
                         case ShaderPropertyType.Vector: props.Add($"{n}={m.GetVector(n)}"); break;

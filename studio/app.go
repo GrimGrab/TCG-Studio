@@ -39,6 +39,7 @@ type App struct {
 	cancel    context.CancelFunc
 	updatedTo string           // set when started by an update (--updated=<version>)
 	release   *updater.Release // newest release found by CheckForUpdate
+	tpl       templatesState   // game templates (app_templates.go)
 }
 
 type Settings struct {
@@ -60,6 +61,7 @@ func (a *App) startup(ctx context.Context) {
 		a.settings.GameDir = game.Locate()
 	}
 	_ = saveSettings(a.settings)
+	a.RefreshTemplates(false)
 }
 
 func (a *App) ws() project.Workspace { return project.Workspace{Root: a.settings.Workspace} }
@@ -95,16 +97,29 @@ func (a *App) SaveSettings(s Settings) (Settings, error) {
 		s.Workspace = project.DefaultRoot()
 	}
 	s.SyncedVersion = a.settings.SyncedVersion // backend-only
+	changed := s.GameDir != a.settings.GameDir
 	a.settings = s
-	return s, saveSettings(s)
+	err := saveSettings(s)
+	if changed {
+		a.invalidateTemplates()
+	}
+	return s, err
 }
 
-func (a *App) GameStatus() game.Status { return game.GetStatus(a.settings.GameDir) }
+func (a *App) GameStatus() game.Status {
+	s := game.GetStatus(a.settings.GameDir)
+	s.TemplatesFound = a.templatesReady()
+	return s
+}
 
 func (a *App) LocateGame() game.Status {
 	if dir := game.Locate(); dir != "" {
+		changed := dir != a.settings.GameDir
 		a.settings.GameDir = dir
 		_ = saveSettings(a.settings)
+		if changed {
+			a.invalidateTemplates()
+		}
 	}
 	return a.GameStatus()
 }
@@ -334,8 +349,8 @@ func (a *App) ImportScryfallSet(code string, opt importer.Options) (string, erro
 		return "", err
 	}
 	// Brand the default booster with generated art when the game's templates are available.
-	if len(p.Set.Packs) > 0 && game.GetStatus(a.settings.GameDir).TemplatesFound {
-		if res, err := art.Generate(game.TemplatesDir(a.settings.GameDir), p.Folder, p.ID, p.Set.Name, art.Options{}); err == nil {
+	if len(p.Set.Packs) > 0 && a.templatesReady() {
+		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{}); err == nil {
 			applyArt(&p.Set.Packs[0], res)
 			_ = a.ws().Save(p)
 		}
@@ -350,8 +365,8 @@ func (a *App) DefaultArtColor(id string) string { return art.DefaultColor(id) }
 // GeneratePackArt renders pack/box textures + icons for one pack from the game's templates and returns the file paths.
 // The caller assigns them to the pack (the files are written immediately; per-pack files avoid clobbering other packs).
 func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Result, error) {
-	if !game.GetStatus(a.settings.GameDir).TemplatesFound {
-		return art.Result{}, errors.New("pack templates not found — load a save once with the mod installed (it exports them), and check Settings → Game")
+	if !a.templatesReady() {
+		return art.Result{}, errors.New("the game templates aren't available yet — check Settings → Game (TCG Studio reads them from the game folder)")
 	}
 	p, err := a.ws().Load(id)
 	if err != nil {
@@ -362,7 +377,7 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 	if packID != "" && packID != "booster" && setfmt.SafeID(packID) {
 		o.FilePrefix = packID + "_"
 	}
-	return art.Generate(game.TemplatesDir(a.settings.GameDir), p.Folder, p.ID, p.Set.Name, o)
+	return art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, o)
 }
 
 // ---------------------------------------------------------------- card backs
@@ -765,14 +780,14 @@ func (a *App) fileHandler() http.Handler {
 				http.NotFound(w, r)
 				return
 			}
-			file = filepath.Join(game.TemplatesDir(a.settings.GameDir), name)
+			file = filepath.Join(a.templatesDir(), name)
 		case strings.HasPrefix(path, "acctemplates/"):
 			name := strings.TrimPrefix(path, "acctemplates/")
 			if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
 				http.NotFound(w, r)
 				return
 			}
-			file = filepath.Join(game.TemplatesDir(a.settings.GameDir), "accessories", name)
+			file = filepath.Join(a.templatesDir(), "accessories", name)
 		case strings.HasPrefix(path, "acc/"):
 			rel := strings.TrimPrefix(path, "acc/")
 			if strings.Contains(rel, "..") {

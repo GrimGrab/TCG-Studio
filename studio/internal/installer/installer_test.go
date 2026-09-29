@@ -218,3 +218,31 @@ func TestUninstall(t *testing.T) {
 		t.Fatalf("full uninstall should remove BepInEx: %+v", s.Items)
 	}
 }
+
+func TestRemovesOldTemplateExport(t *testing.T) {
+	p := fakePayload(t)
+	game := newGame(t, map[string]string{
+		"BepInEx/plugins/TCGCustomCards/templates/BasicCardPack_texture.png":    "png",
+		"BepInEx/plugins/TCGCustomCards/templates/accessories/accessories.json": "{}",
+		"BepInEx/plugins/TCGCustomCards/Sets/my-set/set.json":                   "{}",
+	})
+	if st := Inspect(game, p, true, false); stateOf(st, "templates") != Outdated || st.Ready {
+		t.Fatal("old templates not reported as work to do")
+	}
+	backup, err := Repair(game, p, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(game, "BepInEx/plugins/TCGCustomCards/templates")); err == nil {
+		t.Fatal("old templates still present")
+	}
+	if _, err := os.Stat(filepath.Join(backup, "BepInEx/plugins/TCGCustomCards/templates")); err == nil {
+		t.Fatal("old templates copied to the backup")
+	}
+	if read(t, game, "BepInEx/plugins/TCGCustomCards/Sets/my-set/set.json") != "{}" {
+		t.Fatal("sets touched")
+	}
+	if stateOf(Inspect(game, p, true, false), "templates") != "" {
+		t.Fatal("templates still reported after repair")
+	}
+}

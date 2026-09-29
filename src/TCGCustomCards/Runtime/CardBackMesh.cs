@@ -93,7 +93,7 @@ namespace TCGCustomCards.Runtime
         {
             var vanilla = renderer.sharedMaterial != null ? renderer.sharedMaterial.mainTexture : null;
             if (vanilla == null) return null;
-            var baseTex = Debug.TemplateExport.Read(vanilla, new RectInt(0, 0, vanilla.width, vanilla.height));
+            var baseTex = TextureReadback.Read(vanilla, new RectInt(0, 0, vanilla.width, vanilla.height));
             if (baseTex == null) return null;
             var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!src.LoadImage(File.ReadAllBytes(path))) { Object.Destroy(src); Object.Destroy(baseTex); return null; }
@@ -163,13 +163,6 @@ namespace TCGCustomCards.Runtime
             Plugin.Log.LogInfo($"Card back mesh: renderer={renderer.name} material={mat?.name} shader={mat?.shader?.name} textures=[{texInfo}] " +
                                $"mesh={mesh?.name} readable={mesh?.isReadable} uv={UvBounds(renderer)} " +
                                $"ui back active={ui.m_CardBack?.activeInHierarchy} ui back sprite={ui.m_CardBackImage?.sprite?.name}");
-            try
-            {
-                var dir = Path.Combine(Plugin.PluginDir, "templates");
-                if (mat?.mainTexture != null && Directory.Exists(dir) && !File.Exists(Path.Combine(dir, "CardBackMesh_texture.png")))
-                    Debug.TemplateExport.SaveTexture(mat.mainTexture, Path.Combine(dir, "CardBackMesh_texture.png"));
-            }
-            catch (System.Exception e) { Plugin.Log.LogWarning($"Card back mesh texture export failed: {e.Message}"); }
         }
     }
 }

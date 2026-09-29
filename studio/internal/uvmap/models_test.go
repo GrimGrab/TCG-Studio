@@ -8,14 +8,15 @@ import (
 	"testing"
 )
 
-// templatesDir holds the mod's export (set TCG_TEMPLATES, or the default Steam install path). Tests skip without it.
+// templatesDir holds the game templates' accessories folder (TCG_TEMPLATES, or TCG Studio's extraction cache). Tests skip without it.
 func templatesDir(t *testing.T) string {
 	dir := os.Getenv("TCG_TEMPLATES")
 	if dir == "" {
-		dir = `D:\SteamLibrary\steamapps\common\TCG Card Shop Simulator\BepInEx\plugins\TCGCustomCards\templates\accessories`
+		cache, _ := os.UserCacheDir()
+		dir = filepath.Join(cache, "TCG Studio", "game-templates", "accessories")
 	}
 	if _, err := os.Stat(dir); err != nil {
-		t.Skip("accessory templates not exported: ", dir)
+		t.Skip("no game templates (run TCG Studio once, or set TCG_TEMPLATES): ", dir)
 	}
 	return dir
 }

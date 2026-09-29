@@ -573,6 +573,26 @@ export namespace main {
 	        this.syncedVersion = source["syncedVersion"];
 	    }
 	}
+	export class TemplatesStatus {
+	    ready: boolean;
+	    source: string;
+	    busy: boolean;
+	    message: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TemplatesStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ready = source["ready"];
+	        this.source = source["source"];
+	        this.busy = source["busy"];
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
 	export class VersionInfo {
 	    version: string;
 	    canUpdate: boolean;

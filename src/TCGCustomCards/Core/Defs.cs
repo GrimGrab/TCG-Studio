@@ -134,10 +134,10 @@ namespace TCGCustomCards.Core
         /// <summary>Also sell a box of 8 packs.</summary>
         [JsonProperty("hasBox")] public bool HasBox = true;
 
-        /// <summary>1024² texture in the vanilla card-pack UV layout (see templates\pack_template.png). Null = vanilla basic pack art.</summary>
+        /// <summary>1024² texture in the vanilla card-pack UV layout (TCG Studio's pack editor shows it). Null = vanilla basic pack art.</summary>
         [JsonProperty("packTexture")] public string PackTexture;
         [JsonProperty("packIcon")] public string PackIcon;
-        /// <summary>1024² texture in the vanilla card-box UV layout (see templates\box_template.png).</summary>
+        /// <summary>1024² texture in the vanilla card-box UV layout (TCG Studio's box editor shows it).</summary>
         [JsonProperty("boxTexture")] public string BoxTexture;
         [JsonProperty("boxIcon")] public string BoxIcon;
 
@@ -210,7 +210,7 @@ namespace TCGCustomCards.Core
         [JsonProperty("name")] public string Name;
         /// <summary>Vanilla item of the same kind whose model, box size, shop tab and restock rows are copied (e.g. "DeckBox1", "Manga3"). Empty = the kind's default (<see cref="AccessoryKinds.DefaultBase"/>).</summary>
         [JsonProperty("base")] public string Base;
-        /// <summary>Full replacement texture in the base item's texture layout (see templates\accessories\). Null = base item's art.</summary>
+        /// <summary>Full replacement texture in the base item's texture layout (as in TCG Studio's accessory editor). Null = base item's art.</summary>
         [JsonProperty("texture")] public string Texture;
         [JsonProperty("icon")] public string Icon;
         /// <summary>

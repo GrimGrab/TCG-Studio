@@ -22,6 +22,10 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function BakeFigurine(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BakeFigurine'](arg1, arg2, arg3, arg4);
+}
+
 export function BrowseGameFolder() {
   return window['go']['main']['App']['BrowseGameFolder']();
 }
@@ -124,6 +128,10 @@ export function GetSettings() {
 
 export function GlobalCardBack() {
   return window['go']['main']['App']['GlobalCardBack']();
+}
+
+export function ImportFigurineModel() {
+  return window['go']['main']['App']['ImportFigurineModel']();
 }
 
 export function ImportScryfallSet(arg1, arg2) {

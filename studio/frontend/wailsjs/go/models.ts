@@ -43,6 +43,31 @@ export namespace art {
 
 }
 
+export namespace figurine {
+	
+	export class Placement {
+	    rotX: number;
+	    rotY: number;
+	    rotZ: number;
+	    height: number;
+	    anchor: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Placement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rotX = source["rotX"];
+	        this.rotY = source["rotY"];
+	        this.rotZ = source["rotZ"];
+	        this.height = source["height"];
+	        this.anchor = source["anchor"];
+	    }
+	}
+
+}
+
 export namespace forge {
 	
 	export class Status {
@@ -357,6 +382,48 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class FigurineBake {
+	    mesh: string;
+	    texture: string;
+	    triangles: number;
+	    size: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FigurineBake(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mesh = source["mesh"];
+	        this.texture = source["texture"];
+	        this.triangles = source["triangles"];
+	        this.size = source["size"];
+	    }
+	}
+	export class FigurineSource {
+	    model: string;
+	    texture: string;
+	    name: string;
+	    triangles: number;
+	    vertices: number;
+	    size: number[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FigurineSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.model = source["model"];
+	        this.texture = source["texture"];
+	        this.name = source["name"];
+	        this.triangles = source["triangles"];
+	        this.vertices = source["vertices"];
+	        this.size = source["size"];
+	        this.warnings = source["warnings"];
+	    }
 	}
 	export class ModCheck {
 	    logFound: boolean;
@@ -820,6 +887,7 @@ export namespace setfmt {
 	    base?: string;
 	    texture?: string;
 	    icon?: string;
+	    mesh?: string;
 	    cost?: number;
 	    marketMin?: number;
 	    marketMax?: number;
@@ -837,6 +905,7 @@ export namespace setfmt {
 	        this.base = source["base"];
 	        this.texture = source["texture"];
 	        this.icon = source["icon"];
+	        this.mesh = source["mesh"];
 	        this.cost = source["cost"];
 	        this.marketMin = source["marketMin"];
 	        this.marketMax = source["marketMax"];
@@ -868,6 +937,7 @@ export namespace setfmt {
 	    toggle: string;
 	    bases: string[];
 	    palette: boolean;
+	    model: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AccessoryKind(source);
@@ -881,6 +951,7 @@ export namespace setfmt {
 	        this.toggle = source["toggle"];
 	        this.bases = source["bases"];
 	        this.palette = source["palette"];
+	        this.model = source["model"];
 	    }
 	}
 	

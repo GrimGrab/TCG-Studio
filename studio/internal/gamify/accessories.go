@@ -36,6 +36,10 @@ var vanillaCurves = map[string][][2]float64{
 	"Binder": {{11, 1000}, {50, 10000}},
 	// Battle decks (PreconDeck_*): the four elements, then the Destiny variants.
 	"BattleDeck": {{9, 1000}, {14, 1000}, {17, 1000}, {22, 1000}, {33, 5000}, {39, 5000}, {45, 5000}, {50, 5000}},
+	// Figurines (Toy_*, restock table game 1.02; ToonZ left out, Evo trees included).
+	"Figurine": {{6, 500}, {8, 700}, {10, 900}, {12, 1200}, {15, 2500}, {18, 2500}, {20, 2500}, {24, 2500}, {28, 3500},
+		{30, 5000}, {34, 5000}, {42, 5000}, {50, 5000}, {55, 10000}, {65, 10000}, {70, 15000}, {75, 15000}, {77, 15000},
+		{80, 20000}},
 }
 
 // DefaultAccessorySettings spans each kind's vanilla level range.
@@ -48,6 +52,7 @@ func DefaultAccessorySettings() AccessorySettings {
 		"Comic":      {MinLevel: 13, MaxLevel: 72, PriceScale: 1},
 		"Binder":     {MinLevel: 11, MaxLevel: 50, PriceScale: 1},
 		"BattleDeck": {MinLevel: 9, MaxLevel: 50, PriceScale: 1},
+		"Figurine":   {MinLevel: 6, MaxLevel: 77, PriceScale: 1},
 	}
 }
 

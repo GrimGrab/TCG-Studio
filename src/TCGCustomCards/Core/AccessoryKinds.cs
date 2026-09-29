@@ -20,6 +20,8 @@ namespace TCGCustomCards.Core
             if (n.StartsWith("BinderBook", StringComparison.Ordinal)) return AccessoryKind.Binder;
             // Battle decks: category TCG, sold on the booster-pack tab; nothing opens them.
             if (n.StartsWith("PreconDeck_", StringComparison.Ordinal)) return AccessoryKind.BattleDeck;
+            // Figurines: every toy has its own model; custom ones bring a mesh and stand in the base toy's shelf slot.
+            if (n.StartsWith("Toy_", StringComparison.Ordinal)) return AccessoryKind.Figurine;
             return null;
         }
 
@@ -34,6 +36,7 @@ namespace TCGCustomCards.Core
                 case AccessoryKind.Dice: return "D20DiceBox";
                 case AccessoryKind.Comic: return "Manga1";
                 case AccessoryKind.BattleDeck: return "PreconDeck_Fire";
+                case AccessoryKind.Figurine: return "Toy_PiggyA";
                 default: return "BinderBook";
             }
         }

@@ -1,5 +1,5 @@
 // Package updater checks GitHub Releases for a newer TCG Studio, downloads it (verifying the SHA-256 from the release notes)
-// and swaps it in for the running exe. Releases are published by tools\publish.ps1: tag vX.Y.Z, asset "TCG Studio.exe",
+// and swaps it in for the running exe. Releases are published by the release script: tag vX.Y.Z, asset "TCG Studio.exe",
 // notes ending with a line "sha256: <hex>".
 package updater
 

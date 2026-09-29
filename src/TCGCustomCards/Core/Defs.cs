@@ -199,8 +199,8 @@ namespace TCGCustomCards.Core
         [JsonIgnore] public string FolderPath;
     }
 
-    /// <summary>Deck boxes, playmats, card sleeves, dice boxes, comics (Manga items), collection books (binders), battle decks (PreconDeck items).</summary>
-    public enum AccessoryKind { Deckbox, Playmat, Sleeve, Dice, Comic, Binder, BattleDeck }
+    /// <summary>Deck boxes, playmats, card sleeves, dice boxes, comics (Manga items), collection books (binders), battle decks (PreconDeck items), figurines (Toy items).</summary>
+    public enum AccessoryKind { Deckbox, Playmat, Sleeve, Dice, Comic, Binder, BattleDeck, Figurine }
 
     public class AccessoryDef
     {
@@ -213,6 +213,11 @@ namespace TCGCustomCards.Core
         /// <summary>Full replacement texture in the base item's texture layout (see templates\accessories\). Null = base item's art.</summary>
         [JsonProperty("texture")] public string Texture;
         [JsonProperty("icon")] public string Icon;
+        /// <summary>
+        /// Figurines only: own model as a baked OBJ written by TCG Studio (Unity space: left-handed, Y up, UV origin bottom-left; one object,
+        /// triangles), placed in the base toy's mesh space so it stands in the base toy's shelf slot. Null = the base toy's model.
+        /// </summary>
+        [JsonProperty("mesh")] public string Mesh;
         /// <summary>Wholesale cost per item. Null = base item's cost.</summary>
         [JsonProperty("cost")] public float? Cost;
         /// <summary>Market price range as multiples of cost. Null = base item's range.</summary>

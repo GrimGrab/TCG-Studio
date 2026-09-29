@@ -6,7 +6,7 @@
     <RootNamespace>TCGCustomCards</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <!-- Single version for the mod and TCG Studio: TCG Custom Cards\VERSION (bumped by tools\publish.ps1). -->
+    <!-- Single version for the mod and TCG Studio: TCG Custom Cards\VERSION (bumped by the release script). -->
     <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <GenerateDependencyFile>false</GenerateDependencyFile>

@@ -170,6 +170,29 @@ namespace TCGCustomCards.Runtime
             var md = Clone(vanilla);
             md.materialList = vanilla.materialList != null ? new List<Material>(vanilla.materialList) : null;
             var tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Path.Combine(def.FolderPath, def.Texture))?.texture;
+
+            // Figurines with their own model: one mesh, one material (the base toy's material with our texture); no secondary parts.
+            var mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Path.Combine(def.FolderPath, def.Mesh));
+            if (mesh != null)
+            {
+                var baseMat = vanilla.material ?? vanilla.materialList?.Find(m => m != null);
+                md.mesh = mesh;
+                md.meshSecondary = null;
+                md.materialSecondary = null;
+                md.materialList = null;
+                md.material = baseMat == null ? null : new Material(baseMat) { name = $"TCGCC_{def.Id}", hideFlags = HideFlags.DontUnloadUnusedAsset };
+                if (md.material != null)
+                {
+                    var old = baseMat.mainTexture;
+                    if (tex != null)
+                        foreach (var prop in md.material.GetTexturePropertyNames())
+                            if (md.material.GetTexture(prop) == old && old != null) md.material.SetTexture(prop, tex);
+                    md.material.mainTexture = tex != null ? tex : Texture2D.whiteTexture;
+                    md.material.mainTextureScale = Vector2.one;
+                    md.material.mainTextureOffset = Vector2.zero;
+                }
+                return md;
+            }
             if (tex == null || vanilla.material == null) return md;
 
             var copies = new Dictionary<Material, Material>();

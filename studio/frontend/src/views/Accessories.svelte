@@ -3,6 +3,7 @@
   import { App, errText, ask } from '../lib/api';
   import { newLayout, type Layout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
+  import FigurineEditor, { newFigLayout, type FigLayout } from './FigurineEditor.svelte';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
@@ -15,10 +16,12 @@
   let items = $derived((view?.accessories ?? []).filter((a: any) => a.kind === kind));
   let acc = $state<any>(null);           // working copy of the selected accessory
   let layout = $state<Layout>(newLayout());
+  let figLayout = $state<FigLayout>(newFigLayout()); // figurines: own model instead of a texture design
   let dirty = $state(false);
   let saving = $state(false);
   let bust = $state(Date.now());
   let editor = $state<any>(null);
+  let figEditor = $state<any>(null);
   let editorKey = $state(0);
 
   const accUrl = (rel?: string) => (rel ? `/acc/${rel.split('/').map(encodeURIComponent).join('/')}?v=${bust}` : '');
@@ -40,6 +43,7 @@
     let l: any = null;
     try { l = a && view.layouts[id] ? JSON.parse(view.layouts[id]) : null; } catch { l = null; }
     layout = l && l.version === 2 ? l : newLayout();
+    figLayout = l && l.version === 'fig1' ? { ...newFigLayout(), ...l } : newFigLayout();
     dirty = false;
     editorKey++;
   }
@@ -87,9 +91,21 @@
     saving = true;
     try {
       let texture = '', icon = '';
-      if (isVanilla(layout)) { acc.texture = ''; acc.icon = ''; }
-      else if (editor) ({ texture, icon } = await editor.exportImages());
-      view = await App.SaveAccessory(acc, JSON.stringify(layout), texture, icon);
+      if (acc.kind === 'Figurine') {
+        // Bake the model into the base toy's mesh space (Go), then render the shop icon.
+        if (!figLayout.model) { acc.mesh = ''; acc.texture = ''; acc.icon = ''; }
+        else if (figEditor) {
+          const b = await App.BakeFigurine(acc.id, figLayout.model, figLayout.texture, figEditor.bakeParams());
+          acc.mesh = b.mesh;
+          acc.texture = b.texture;
+          icon = await figEditor.exportIcon(t?.iconRect ?? [512, 512]);
+        }
+        view = await App.SaveAccessory(acc, JSON.stringify(figLayout), '', icon);
+      } else {
+        if (isVanilla(layout)) { acc.texture = ''; acc.icon = ''; }
+        else if (editor) ({ texture, icon } = await editor.exportImages());
+        view = await App.SaveAccessory(acc, JSON.stringify(layout), texture, icon);
+      }
       bust = Date.now();
       dirty = false;
       const id = acc.id;
@@ -122,8 +138,8 @@
     <button onclick={() => App.OpenAccessoriesFolder()}>Open folder</button>
   </header>
   <p class="muted small">
-    Your own deck boxes, playmats, sleeves, dice, comics, collection books and battle decks (on the booster-pack tab), sold in the
-    shop next to the vanilla ones. They are
+    Your own deck boxes, playmats, sleeves, dice, comics, collection books, battle decks (on the booster-pack tab) and figurines
+    (your own 3D models), sold in the shop next to the vanilla ones. They are
     global (not part of a set) and installed into the game on every save — restart the game to see changes. To sell only yours, turn
     off <b>Mod settings → Content → {kindInfo(kind)?.toggle ?? 'ShowVanilla…'}</b> (one switch per type).
     {#if view && !view.installed && view.accessories.length}<span class="warn">Not installed yet — set the game folder in Settings.</span>{/if}
@@ -157,7 +173,9 @@
         <section>
           <div class="row">
             <label class="field grow">Name<input bind:value={acc.name} oninput={() => (dirty = true)} /></label>
-            <label class="field" title="Vanilla item whose art is the starting point (and whose cost / market range are the defaults). All deck boxes share one model, all playmats another.">Start from
+            <label class="field" title={acc.kind === 'Figurine'
+              ? 'Vanilla toy whose shelf slot (how many fit and how big), shop tab and cost / market range are used.'
+              : 'Vanilla item whose art is the starting point (and whose cost / market range are the defaults). All deck boxes share one model, all playmats another.'}>Start from
               <select value={baseOf(acc)} onchange={(e) => { acc.base = e.currentTarget.value; dirty = true; }}>
                 {#each kindInfo(acc.kind)?.bases ?? [] as b}<option>{b}</option>{/each}
               </select>
@@ -183,8 +201,14 @@
             </span>
           </div>
           {#key editorKey}
+            {#if acc.kind === 'Figurine'}
+              <FigurineEditor bind:this={figEditor} base={baseOf(acc)} {templates} bind:layout={figLayout} {notify}
+                onchange={() => (dirty = true)}
+                onimported={(n) => { if (/^Custom figurine( \d+)?$/i.test(acc.name)) { acc.name = n; } }} />
+            {:else}
             <AccessoryEditor bind:this={editor} kind={acc.kind} base={baseOf(acc)} vanillaUrl={tplUrl(t?.texture)} vanillaIconUrl={tplUrl(t?.icon)} bind:layout
               iconSize={t?.iconRect ?? [512, 512]} {notify} onchange={() => (dirty = true)} />
+            {/if}
           {/key}
         </section>
 

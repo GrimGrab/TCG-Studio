@@ -56,6 +56,19 @@ namespace TCGCustomCards.Core
                 foreach (var img in new[] { a.Texture, a.Icon })
                     if (!string.IsNullOrEmpty(img) && !File.Exists(Path.Combine(dir, img)))
                         Plugin.Log.LogWarning($"Accessory library {where}: image not found '{img}' (vanilla art used)");
+                if (!string.IsNullOrEmpty(a.Mesh))
+                {
+                    if (a.Kind != AccessoryKind.Figurine)
+                    {
+                        Plugin.Log.LogWarning($"Accessory library {where}: 'mesh' is only used by figurines (ignored)");
+                        a.Mesh = null;
+                    }
+                    else if (!File.Exists(Path.Combine(dir, a.Mesh)))
+                    {
+                        Plugin.Log.LogWarning($"Accessory library {where}: model not found '{a.Mesh}' (base toy's model used)");
+                        a.Mesh = null;
+                    }
+                }
                 if (errors.Count > 0)
                 {
                     Plugin.Log.LogError($"Accessory library {where} rejected: " + string.Join("; ", errors));

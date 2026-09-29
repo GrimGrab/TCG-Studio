@@ -72,6 +72,9 @@ namespace TCGCustomCards.Debug
                     type = type.ToString(), id = i, category = data.category.ToString(), name = data.name,
                     data.baseCost, data.marketPriceMinPercent, data.marketPriceMaxPercent, data.isTallItem,
                     itemDimension = V(data.itemDimension),
+                    // v11: how the item sits in a shelf slot / in the hand (figurine size reference).
+                    data.posYOffsetInBox, data.scaleOffsetInBox, data.itemHandScaleOffset, data.iconScale,
+                    colliderPosOffset = V(data.colliderPosOffset), colliderScale = V(data.colliderScale),
                     texture = tex != null ? $"{type}_texture.png" : null, textureName = tex?.name,
                     textureSize = tex != null ? new[] { tex.width, tex.height } : null,
                     icon = data.icon != null ? $"{type}_icon.png" : null,
@@ -111,8 +114,15 @@ namespace TCGCustomCards.Debug
                 Table($"PlayCardSet({p.name}).m_Mesh_Deckbox", p.m_Mesh_Deckbox);
             }
 
+            // v11: shop item prefab (mesh child transform) and shelves, so TCG Studio can show a figurine on a real shelf.
+            object itemPrefab = null, shelves = null;
+            try { itemPrefab = ShelfExport.ItemPrefab(); }
+            catch (Exception e) { Plugin.Log.LogWarning($"Item prefab export failed: {e.Message}"); }
+            try { shelves = ShelfExport.Run(dir, ref n); }
+            catch (Exception e) { Plugin.Log.LogWarning($"Shelf export failed: {e}"); }
+
             File.WriteAllText(Path.Combine(dir, "accessories.json"),
-                JsonConvert.SerializeObject(new { version = 1, items, tables }, Formatting.Indented));
+                JsonConvert.SerializeObject(new { version = 2, items, tables, itemPrefab, shelves }, Formatting.Indented));
             Plugin.Log.LogInfo($"Accessory templates: {items.Count} items, {meshes.Count} meshes, {tables.Count} table renderers → {dir}");
             return n + 1;
         }
@@ -186,15 +196,21 @@ namespace TCGCustomCards.Debug
     /// </summary>
     internal static class MeshReader
     {
-        public static string ToObj(Mesh mesh)
+        /// <summary>Geometry of any mesh (readable or captured on the GPU). False when it can't be read.</summary>
+        public static bool Read(Mesh mesh, out Vector3[] pos, out Vector3[] nrm, out Vector2[] uv, out List<int[]> subs)
         {
-            Vector3[] pos; Vector3[] nrm; Vector2[] uv; List<int[]> subs;
             if (mesh.isReadable)
             {
                 pos = mesh.vertices; nrm = mesh.normals; uv = mesh.uv;
                 subs = Enumerable.Range(0, mesh.subMeshCount).Select(s => mesh.GetTriangles(s)).ToList();
+                return true;
             }
-            else if (!CaptureGpu(mesh, out pos, out nrm, out uv, out subs)) return null;
+            return CaptureGpu(mesh, out pos, out nrm, out uv, out subs);
+        }
+
+        public static string ToObj(Mesh mesh)
+        {
+            if (!Read(mesh, out var pos, out var nrm, out var uv, out var subs)) return null;
 
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var sb = new StringBuilder();

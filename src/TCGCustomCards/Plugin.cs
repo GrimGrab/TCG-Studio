@@ -67,6 +67,7 @@ namespace TCGCustomCards
                 (AccessoryKind.Comic, "ShowVanillaComics", "comics", "restock list, play tables, customer demand"),
                 (AccessoryKind.Binder, "ShowVanillaCollectionBooks", "collection books", "restock list, customer demand"),
                 (AccessoryKind.BattleDeck, "ShowVanillaBattleDecks", "battle decks", "booster-pack restock list, customer demand"),
+                (AccessoryKind.Figurine, "ShowVanillaFigurines", "figurines", "restock list, customer demand"),
             })
             {
                 var entry = Config.Bind("Content", key, true,

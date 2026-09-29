@@ -3,6 +3,7 @@
 import {main} from '../models';
 import {setfmt} from '../models';
 import {uvmap} from '../models';
+import {figurine} from '../models';
 import {game} from '../models';
 import {updater} from '../models';
 import {project} from '../models';
@@ -22,6 +23,8 @@ export function AccessoryModel(arg1:string):Promise<uvmap.Model>;
 export function AccessoryTemplates():Promise<string>;
 
 export function AppVersion():Promise<main.VersionInfo>;
+
+export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FigurineBake>;
 
 export function BrowseGameFolder():Promise<game.Status>;
 
@@ -74,6 +77,8 @@ export function GenerateSetCardBack(arg1:string,arg2:string,arg3:string):Promise
 export function GetSettings():Promise<main.Settings>;
 
 export function GlobalCardBack():Promise<string>;
+
+export function ImportFigurineModel():Promise<main.FigurineSource>;
 
 export function ImportScryfallSet(arg1:string,arg2:importer.Options):Promise<string>;
 

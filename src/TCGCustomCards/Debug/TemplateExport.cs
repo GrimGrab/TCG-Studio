@@ -10,7 +10,7 @@ namespace TCGCustomCards.Debug
     /// </summary>
     internal static class TemplateExport
     {
-        private const int Version = 10;
+        private const int Version = 11;
 
         public static void RunIfMissing()
         {

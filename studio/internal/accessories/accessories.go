@@ -105,7 +105,7 @@ func (l *Library) Put(a setfmt.Accessory) {
 	l.Lib.Accessories = append(l.Lib.Accessories, a)
 }
 
-// Delete removes an accessory, its layout and its images/<id>_* files.
+// Delete removes an accessory, its layout and its images/<id>_* files (texture, icon, figurine model).
 func (l *Library) Delete(id string) {
 	if i := l.Index(id); i >= 0 {
 		l.Lib.Accessories = append(l.Lib.Accessories[:i], l.Lib.Accessories[i+1:]...)
@@ -155,6 +155,26 @@ func (l *Library) WriteSource(name string, b []byte) (string, error) {
 	return rel, os.WriteFile(dst, b, 0o644)
 }
 
+// FreeSourceBase returns images/src/<base> (no extension) such that neither <base>.obj nor <base>.png exists yet (figurine sources).
+func (l *Library) FreeSourceBase(base string) string {
+	for n := 1; ; n++ {
+		name := base
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d", strings.TrimSuffix(base, ".fig"), n)
+			if strings.HasSuffix(base, ".fig") {
+				name += ".fig"
+			}
+		}
+		rel := ImagesDir + "/src/" + name
+		p := filepath.Join(l.Folder, filepath.FromSlash(rel))
+		_, e1 := os.Stat(p + ".obj")
+		_, e2 := os.Stat(p + ".png")
+		if os.IsNotExist(e1) && os.IsNotExist(e2) {
+			return rel
+		}
+	}
+}
+
 func (l *Library) freeSource(name string) (rel, dst string) {
 	rel = ImagesDir + "/src/" + name
 	dst = filepath.Join(l.Folder, filepath.FromSlash(rel))
@@ -180,7 +200,7 @@ func (l *Library) Install(gameDir string) error {
 	tmp := dest + ".installing"
 	_ = os.RemoveAll(tmp)
 	for _, a := range l.Lib.Accessories {
-		for _, rel := range []string{a.Texture, a.Icon} {
+		for _, rel := range []string{a.Texture, a.Icon, a.Mesh} {
 			if rel == "" {
 				continue
 			}

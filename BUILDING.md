@@ -96,8 +96,7 @@ Keep Vite on version 6 if you're on Node 18.
 | `forge-bridge/` | Headless Forge bridge for MTG mode (Java, GPL-3.0) |
 | `shaders/` | Unity project for the foil shaders |
 | `examples/` | Small example sets |
-| `docs/` | File formats and protocols (`set-format.md`, `mtg-forge.md`, `runtime-facts.md`) |
-| `tools/` | Build and release scripts |
+| `tools/` | Build scripts |
 | `third_party/` | BepInEx 5 + ConfigurationManager package that Setup installs |
 | `licenses/`, `THIRD_PARTY_NOTICES.txt` | Third-party licenses |
 | `VERSION` | Single version for the mod and TCG Studio |

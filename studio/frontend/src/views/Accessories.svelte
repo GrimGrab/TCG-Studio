@@ -95,6 +95,8 @@
         // Bake the model into the base toy's mesh space (Go), then render the shop icon.
         if (!figLayout.model) { acc.mesh = ''; acc.texture = ''; acc.icon = ''; }
         else if (figEditor) {
+          const problem = figEditor.bakeProblem();
+          if (problem) throw new Error(problem);
           const b = await App.BakeFigurine(acc.id, figLayout.model, figLayout.texture, figEditor.bakeParams());
           acc.mesh = b.mesh;
           acc.texture = b.texture;

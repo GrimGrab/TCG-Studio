@@ -26,6 +26,7 @@
     MIRROR_Z, transformBox, boxLines,
   } from '../lib/figurineView';
   import { type ShelfTpl, type ItemTpl, slotMatrices, meshMatrix, cmPerUnit, fitCheck, boxOf, type Fit } from '../lib/figurineShelf';
+  import sizes from '../lib/figurineSizes.json';
 
   let {
     base, templates, layout = $bindable(), notify, onchange, onimported,
@@ -54,11 +55,19 @@
   let shelfGeom: Geom | null = null;
   let loadedModel = '', loadedTexture = '', loadedBase = '', loadedShelf = '';
 
-  let item = $derived<ItemTpl | undefined>(templates?.items?.find((i: any) => i.type === base));
-  let prefab = $derived(templates?.itemPrefab);
+  // The player's own template export wins; the built-in sizes (figurineSizes.json, measurements only) fill in until the game has
+  // exported it, so placement, height and the fit check are right from the start. Meshes (vanilla toy, shelf model) need the export.
+  let ownItem = $derived<ItemTpl | undefined>(templates?.items?.find((i: any) => i.type === base));
+  let item = $derived.by<ItemTpl | undefined>(() => {
+    if (ownItem?.bounds) return ownItem;
+    const b = (sizes.items as ItemTpl[]).find((i) => i.type === base);
+    return b ? { ...b, mesh: ownItem?.mesh ?? null, texture: ownItem?.texture ?? null } : ownItem;
+  });
+  let prefab = $derived(templates?.itemPrefab ?? sizes.itemPrefab);
   let cmU = $derived(cmPerUnit(prefab));
   let shelves = $derived<ShelfTpl[]>((templates?.shelves ?? []).filter((s: ShelfTpl) => s.mesh && s.compartments.some((c) => c.m_CanPutItem)));
-  let shelf = $derived(shelves.find((s) => s.name === shelfName) ?? shelves[0]);
+  let fitShelves = $derived<ShelfTpl[]>(shelves.length ? shelves : (sizes.shelves as ShelfTpl[]));
+  let shelf = $derived(fitShelves.find((s) => s.name === shelfName) ?? fitShelves[0]);
   let baseHeight = $derived(item?.bounds?.size[1] ?? 1.3);
 
   // ---------------------------------------------------------------- placement (mirrors figurine.Place in Go)
@@ -97,6 +106,11 @@
   }
   function anchorGL(): number[] { const a = anchorUnity(); return [a[0], a[1], -a[2]]; }
   const mirrorBox = (b: Box): Box => ({ min: [b.min[0], b.min[1], -b.max[2]], max: [b.max[0], b.max[1], -b.min[2]] });
+
+  /** Why the model can't be baked yet ('' = ready): without the base toy's size the anchor and height would be guesses. */
+  export function bakeProblem(): string {
+    return item?.bounds ? '' : `No size known for ${base} (a toy added by a game update?) — start the game and load a save once with the mod installed, then save again.`;
+  }
 
   /** Placement for BakeFigurine. */
   export function bakeParams() {
@@ -341,8 +355,11 @@
           {#if fit.problems.length}<div class="muted">Make it smaller, or pick a bigger “Start from” toy (its slot size is used).</div>{/if}
         </div>
       {/if}
-    {:else if !templates}
-      <p class="warn small">Templates not exported yet: start the game and load a save once with the mod installed (vanilla toys and shelves for size).</p>
+    {/if}
+    {#if !item?.bounds}
+      <p class="warn small">No size known for {base}: start the game and load a save once with the mod installed before saving this figurine.</p>
+    {:else if !shelves.length}
+      <p class="muted small">Sizes and the shelf fit use built-in data. The vanilla toy beside yours and the “On a shelf” view appear after you start the game and load a save once with the mod installed.</p>
     {/if}
   </div>
 </div>

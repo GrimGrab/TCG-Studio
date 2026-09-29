@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.7.5 - 2026-09-29
+
+Figurines now come out right even before you've played with the mod.
+
+- Fixed: a figurine saved before the game had been started once with the mod could end up the wrong size, floating or sunk into the shelf. TCG Studio now knows the vanilla toy sizes and shelf slots from the start, so the shelf fit check works right away too.
+No changes to the mod in the game this time.
+
 ## v0.7.4 - 2026-09-29
 
 Custom figurines: put your own 3D models on the shop shelves.

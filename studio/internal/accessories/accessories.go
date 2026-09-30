@@ -90,7 +90,8 @@ func (l *Library) NewID(name string) string {
 		base = "accessory"
 	}
 	id := base
-	for n := 2; l.Index(id) >= 0; n++ {
+	// Accessories and furniture share images/<id>_*, so an id is unique across both lists.
+	for n := 2; l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0; n++ {
 		id = fmt.Sprintf("%s-%d", base, n)
 	}
 	return id
@@ -109,6 +110,38 @@ func (l *Library) Put(a setfmt.Accessory) {
 func (l *Library) Delete(id string) {
 	if i := l.Index(id); i >= 0 {
 		l.Lib.Accessories = append(l.Lib.Accessories[:i], l.Lib.Accessories[i+1:]...)
+	}
+	delete(l.Meta.Layouts, id)
+	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
+}
+
+// FurnitureIndex is the position of a furniture piece in the library (-1 = none).
+func (l *Library) FurnitureIndex(id string) int {
+	for i, f := range l.Lib.Furniture {
+		if f.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// PutFurniture inserts or replaces a furniture piece (matched by id).
+func (l *Library) PutFurniture(f setfmt.Furniture) {
+	if i := l.FurnitureIndex(f.ID); i >= 0 {
+		l.Lib.Furniture[i] = f
+		return
+	}
+	l.Lib.Furniture = append(l.Lib.Furniture, f)
+}
+
+// DeleteFurniture removes a piece and its images/<id>_* files (icon, texture, model).
+func (l *Library) DeleteFurniture(id string) {
+	if i := l.FurnitureIndex(id); i >= 0 {
+		l.Lib.Furniture = append(l.Lib.Furniture[:i], l.Lib.Furniture[i+1:]...)
 	}
 	delete(l.Meta.Layouts, id)
 	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
@@ -188,12 +221,13 @@ func (l *Library) freeSource(name string) (rel, dst string) {
 	}
 }
 
-// Install replaces <plugin>\Accessories with accessories.json and every referenced image. An empty library uninstalls.
+// Install replaces <plugin>\Accessories with accessories.json and every referenced image/model (accessories and furniture). An
+// empty library uninstalls.
 func (l *Library) Install(gameDir string) error {
 	if !game.IsGameDir(gameDir) {
 		return fmt.Errorf("game folder not set")
 	}
-	if len(l.Lib.Accessories) == 0 {
+	if len(l.Lib.Accessories) == 0 && len(l.Lib.Furniture) == 0 {
 		return Uninstall(gameDir)
 	}
 	dest := InstalledDir(gameDir)
@@ -201,6 +235,16 @@ func (l *Library) Install(gameDir string) error {
 	_ = os.RemoveAll(tmp)
 	for _, a := range l.Lib.Accessories {
 		for _, rel := range []string{a.Texture, a.Icon, a.Mesh} {
+			if rel == "" {
+				continue
+			}
+			if err := copyFile(filepath.Join(l.Folder, filepath.FromSlash(rel)), filepath.Join(tmp, filepath.FromSlash(rel))); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	for _, f := range l.Lib.Furniture {
+		for _, rel := range []string{f.Texture, f.Icon, f.Mesh} {
 			if rel == "" {
 				continue
 			}

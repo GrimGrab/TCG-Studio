@@ -129,6 +129,31 @@ namespace TCGCustomCards.Runtime
         {
             foreach (var def in defs) Accessories.Add(new CustomAccessory { Def = def });
         }
+
+        /// <summary>Custom furniture ints live in [FurnitureBase, FurnitureEnd): vanilla uses 0–56, other loaders 200000+.</summary>
+        public const int FurnitureBase = 1000;
+        public const int FurnitureEnd = 2000;
+        public static readonly List<CustomFurniture> Furniture = new List<CustomFurniture>();
+        private static readonly Dictionary<int, CustomFurniture> ByObject = new Dictionary<int, CustomFurniture>();
+
+        /// <summary>Allocates furniture ints in id order (stable across launches while the library doesn't change).</summary>
+        public static void BuildFurniture(List<FurnitureDef> defs)
+        {
+            int next = FurnitureBase;
+            foreach (var def in defs.OrderBy(d => d.Id, System.StringComparer.Ordinal))
+            {
+                if (next >= FurnitureEnd) { Plugin.Log.LogError($"Too many custom furniture pieces; '{def.Id}' and later skipped"); break; }
+                var f = new CustomFurniture { Def = def, Object = (EObjectType)next++ };
+                Furniture.Add(f);
+                ByObject[(int)f.Object] = f;
+            }
+        }
+
+        public static CustomFurniture GetFurniture(EObjectType t) => ByObject.TryGetValue((int)t, out var f) ? f : null;
+        /// <summary>A custom piece that exists this session (its prefab was built).</summary>
+        public static bool IsCustomFurniture(EObjectType t) => ByObject.TryGetValue((int)t, out var f) && f.Prefab != null;
+        /// <summary>In our furniture block (ours whether or not it is still installed).</summary>
+        public static bool InFurnitureBlock(int v) => v >= FurnitureBase && v < FurnitureEnd;
         private static readonly Dictionary<int, CustomSet> ByExpansion = new Dictionary<int, CustomSet>();
         private static readonly Dictionary<int, CustomSet> ByMonster = new Dictionary<int, CustomSet>();
         private static readonly Dictionary<string, CustomSet> ById = new Dictionary<string, CustomSet>();

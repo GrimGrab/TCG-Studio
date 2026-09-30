@@ -264,7 +264,7 @@
 
 <style>
   .page { padding: 16px 20px; height: 100%; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
-  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
   .wrap { display: flex; flex: 1; min-height: 0; }
   .list { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }

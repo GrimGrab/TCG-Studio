@@ -15,6 +15,8 @@ namespace TCGCustomCards.Runtime
         public readonly List<int> RestockRows = new List<int>();
         /// <summary>Row names ("Small"/"Big") parallel to <see cref="RestockRows"/>, used in license keys.</summary>
         public readonly List<string> RowNames = new List<string>();
+        /// <summary>Pricing fingerprint for the side-car, set when the item is injected.</summary>
+        public string DefKey;
 
         public string ItemKey => $"acc/{Def.Id}";
         public string LicenseKey(int row) => $"acc/{Def.Id}/{RowNames[row]}";

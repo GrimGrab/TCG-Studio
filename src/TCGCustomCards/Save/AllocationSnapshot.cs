@@ -14,6 +14,7 @@ namespace TCGCustomCards.Save
         public Dictionary<int, string> monsters = new Dictionary<int, string>();
         public Dictionary<int, string> items = new Dictionary<int, string>();
         public Dictionary<int, string> restockRows = new Dictionary<int, string>();
+        public Dictionary<int, string> furniture = new Dictionary<int, string>();
         /// <summary>setId → card ids in set order (cardSaveIndex = pos * 12 + variant).</summary>
         public Dictionary<string, List<string>> cardOrder = new Dictionary<string, List<string>>();
 
@@ -39,6 +40,8 @@ namespace TCGCustomCards.Save
                 s.items[(int)acc.Item] = acc.ItemKey;
                 for (int r = 0; r < acc.RestockRows.Count; r++) s.restockRows[acc.RestockRows[r]] = acc.LicenseKey(r);
             }
+            foreach (var f in Registry.Furniture)
+                if (f.Prefab != null) s.furniture[(int)f.Object] = f.Key;
             return s;
         }
 
@@ -52,6 +55,7 @@ namespace TCGCustomCards.Save
         public bool Monster(int oldValue, out int newValue) => Translate(monsters, CurrentAlloc.monsters, oldValue, out newValue);
         public bool Item(int oldValue, out int newValue) => Translate(items, CurrentAlloc.items, oldValue, out newValue);
         public bool WasCustomItem(int oldValue) => items.ContainsKey(oldValue);
+        public bool Furniture(int oldValue, out int newValue) => Translate(furniture, CurrentAlloc.furniture, oldValue, out newValue);
         public bool RestockRow(int oldValue, out int newValue) => Translate(restockRows, CurrentAlloc.restockRows, oldValue, out newValue);
 
         public bool CardSlot(int oldExpansion, int oldSlot, out int newSlot)

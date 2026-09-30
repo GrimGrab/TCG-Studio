@@ -20,6 +20,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> DumpDiagnostics;
         internal static ConfigEntry<bool> ShowVanillaCards;
         internal static ConfigEntry<bool> ShowVanillaPacks;
+        internal static ConfigEntry<bool> ShowVanillaFurniture;
         /// <summary>[Content] ShowVanilla&lt;Kind&gt; per accessory kind.</summary>
         internal static readonly System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>> ShowVanillaAccessory =
             new System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>>();
@@ -76,6 +77,9 @@ namespace TCGCustomCards
                 entry.SettingChanged += (_, __) => VanillaFilter.Apply();
                 ShowVanillaAccessory[kind] = entry;
             }
+            ShowVanillaFurniture = Config.Bind("Content", "ShowVanillaFurniture", true,
+                "Sell the vanilla furniture in the furniture shop. Off = only your custom furniture from TCG Studio (the cash counter, " +
+                "workbench, trash bin and empty box storage stay unless you have a custom one of that kind). Placed furniture stays.");
             CardBackScale = Config.Bind("Visuals", "CardBackScale", 1.08f, new ConfigDescription(
                 "Size of custom card-back art on 3D cards relative to the vanilla art window (1 = same as the vanilla art, larger also covers the dark border). Applies live to newly shown cards.",
                 new AcceptableValueRange<float>(0.9f, 1.25f)));
@@ -147,11 +151,12 @@ namespace TCGCustomCards
 
             Registry.Build(SetLoader.LoadAll(Path.Combine(PluginDir, "Sets")));
             Registry.BuildAccessories(AccessoryLoader.Load(PluginDir));
+            Registry.BuildFurniture(AccessoryLoader.LoadFurniture(PluginDir));
 
             _harmony = new Harmony(Guid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
 
-            Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s) and {Registry.Accessories.Count} accessor(ies)");
+            Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s)");
             WatchConfig();
         }
 

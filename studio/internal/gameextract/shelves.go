@@ -209,8 +209,18 @@ func (x *extractor) shelf(g *graph, root *node, name string, sh unityfs.Shelf, m
 
 // shelfModel merges the shelf's static renderers (not items or boxes on it) into one OBJ in the shelf's root space.
 func (x *extractor) shelfModel(g *graph, root *node, name string, inv mat, meshes *meshSet) string {
+	file := "Shelf_" + safe(name) + ".obj"
+	if !x.mergedModel(g, root, "Shelf "+name, filepath.Join(x.acc, file), inv, meshes, nil) {
+		return ""
+	}
+	return file
+}
+
+// mergedModel writes a piece's static renderers (not items or boxes on it, nor nodes skip rejects) as one OBJ in the space of inv
+// (the root's inverse world matrix). Groups are named after the renderer's path. False when nothing was written.
+func (x *extractor) mergedModel(g *graph, root *node, title, path string, inv mat, meshes *meshSet, skip func(*node) bool) bool {
 	var sb strings.Builder
-	sb.WriteString("# Shelf " + name + " — extracted by TCG Studio from the game files (shelf root space, Unity: left-handed, Y up)\n")
+	sb.WriteString("# " + title + " — extracted by TCG Studio from the game files (root space, Unity: left-handed, Y up)\n")
 	f := func(v float64) string { return strconv.FormatFloat(float64(float32(v)), 'g', -1, 32) }
 	base, parts, tris := 1, 0, 0
 	stop := false
@@ -228,7 +238,7 @@ func (x *extractor) shelfModel(g *graph, root *node, name string, inv mat, meshe
 			return
 		}
 		r, err := unityfs.ReadRenderer(ro)
-		if err != nil || !r.Enabled || n.hasInParent("Item", "InteractablePackagingBox") {
+		if err != nil || !r.Enabled || n.hasInParent("Item", "InteractablePackagingBox") || (skip != nil && skip(n)) {
 			return
 		}
 		mf, err := unityfs.ReadMeshFilter(mfo)
@@ -275,14 +285,13 @@ func (x *extractor) shelfModel(g *graph, root *node, name string, inv mat, meshe
 		parts++
 	})
 	if parts == 0 {
-		return ""
+		return false
 	}
-	file := "Shelf_" + safe(name) + ".obj"
-	if err := os.WriteFile(filepath.Join(x.acc, file), []byte(sb.String()), 0o644); err != nil {
-		x.warn("shelf %s: %v", name, err)
-		return ""
+	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
+		x.warn("%s: %v", title, err)
+		return false
 	}
-	return file
+	return true
 }
 
 // tables: the play table's playmat / deck box renderers ("tables" of the former in-game export); their meshes go through the

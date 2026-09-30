@@ -20,6 +20,7 @@ import (
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/art"
 	"tcgstudio/internal/game"
+	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/gamify"
 	"tcgstudio/internal/importer"
 	"tcgstudio/internal/installer"
@@ -761,7 +762,7 @@ func issues(i []setfmt.Issue) []setfmt.Issue {
 // ---------------------------------------------------------------- files for the frontend
 
 // fileHandler serves project images at /proj/<id>/<relative path>, game templates at /templates/<file>, accessory templates at
-// /acctemplates/<file> and accessory library files at /acc/<relative path>.
+// /acctemplates/<file>, furniture templates at /furntemplates/<file> and accessory library files at /acc/<relative path>.
 func (a *App) fileHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
@@ -788,6 +789,13 @@ func (a *App) fileHandler() http.Handler {
 				return
 			}
 			file = filepath.Join(a.templatesDir(), "accessories", name)
+		case strings.HasPrefix(path, "furntemplates/"):
+			name := strings.TrimPrefix(path, "furntemplates/")
+			if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+				http.NotFound(w, r)
+				return
+			}
+			file = filepath.Join(a.templatesDir(), gameextract.FurnitureDir, name)
 		case strings.HasPrefix(path, "acc/"):
 			rel := strings.TrimPrefix(path, "acc/")
 			if strings.Contains(rel, "..") {

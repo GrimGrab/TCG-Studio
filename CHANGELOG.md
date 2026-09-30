@@ -3,6 +3,22 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.8.0 - 2026-09-30
+
+Custom furniture: make your own shelves, card shelves, play tables and more in TCG Studio.
+
+- New: Furniture page in TCG Studio. Build new furniture on any vanilla piece's type (shelf, card shelf, play table, bulk donation bin, trash bin, empty box storage, card storage shelf, auto pack opener, auto cleanser, workbench, cash counter) with your own name, description, price, shop level, colour, icon or your own 3D model (.glb/.gltf/.obj).
+- New: 3D spot editor for shelves and card shelves: add, delete, move, turn and resize spots with drag handles, set how many items fit, and preview the shelf filled with any pack, box, accessory or figurine. Price tags and customer points are editable too.
+- New: edit where people sit, stand and work: play table seats, the cashier and queue at the cash counter, worker spots at machines, customer stand points at bins and storage.
+- New: edit each piece's placement area (the space kept free around it when placing).
+- New: Mod settings → Content → ShowVanillaFurniture: turn off to sell only your own furniture (cash counter, workbench, trash bin and empty box storage stay until you make your own).
+- New: full-view button on the 3D previews, undo/redo and keyboard shortcuts in the furniture editor (press ? in the view).
+- Fixed: custom sets' progress could be lost when quitting the game (the save on quit didn't write the mod's save file).
+
+Placed custom furniture is kept in the mod's save file, so your game still loads if you remove the mod.
+
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.7.6 - 2026-09-29
 
 TCG Studio no longer needs you to start the game before you can design packs, accessories and figurines.

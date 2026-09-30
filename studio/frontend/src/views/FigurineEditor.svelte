@@ -18,6 +18,7 @@
 <script lang="ts">
   // Figurine editor: import a model (.glb/.gltf/.obj), turn and scale it, and check it against its base toy on a real shelf
   // (the mod's shelf export). Saving bakes it in Go (BakeFigurine) — the same placement maths as placement() below.
+  import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
   import { App, errText } from '../lib/api';
   import { loadImage } from '../lib/accessoryArt';
@@ -289,7 +290,7 @@
         <button class:on={mode === 'shelf'} onclick={() => (mode = 'shelf')} disabled={!shelves.length} title={shelves.length ? '' : 'Needs the game templates (Settings → Game)'}>On a shelf</button>
       </div>
     </div>
-    <div class="scene">
+    <div class="scene" use:maximizable>
       <canvas bind:this={canvas} class="view3d"></canvas>
       {#if !layout.model}
         <div class="empty">
@@ -371,7 +372,7 @@
   .view3d { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .view3d:active { cursor: grabbing; }
   .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; pointer-events: none; }
-  .overlay { position: absolute; left: 12px; top: 8px; margin: 0; }
+  .overlay { position: absolute; left: 48px; top: 10px; margin: 0; }
   .hint { position: absolute; left: 12px; bottom: 4px; margin: 0; }
   .seg button.on { border-color: var(--accent); background: #22304d; }
   .side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }

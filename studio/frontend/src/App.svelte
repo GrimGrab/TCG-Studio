@@ -8,9 +8,10 @@
   import Gamify from './views/Gamify.svelte';
   import Setup from './views/Setup.svelte';
   import Accessories from './views/Accessories.svelte';
+  import Furniture from './views/Furniture.svelte';
   import ModSettings from './views/ModSettings.svelte';
 
-  type View = 'setup' | 'projects' | 'import' | 'accessories' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
   let gameStatus = $state<any>(null);
@@ -92,6 +93,7 @@
     <button class:active={view === 'projects' || view === 'editor'} onclick={() => (view = 'projects')}>My Sets</button>
     <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import from Scryfall</button>
     <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
+    <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
     <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
     <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
     <button class:active={view === 'settings'} onclick={() => (view = 'settings')}>Settings</button>
@@ -135,6 +137,8 @@
       <Import {open} {notify} />
     {:else if view === 'accessories'}
       <Accessories {notify} />
+    {:else if view === 'furniture'}
+      <Furniture {notify} />
     {:else if view === 'gamify'}
       <Gamify {notify} />
     {:else if view === 'modsettings'}

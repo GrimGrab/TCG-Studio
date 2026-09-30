@@ -146,7 +146,7 @@ export class FigurineView {
   private bufs = new Map<Geom, GpuGeom>();
   private textures = new Map<string, WebGLTexture>();
   private objs: SceneObj[] = [];
-  private lines: { buf: WebGLBuffer; count: number; color: [number, number, number, number] }[] = [];
+  private lines: { buf: WebGLBuffer; count: number; color: [number, number, number, number]; top: boolean }[] = [];
   private frame = 0;
   private disposed = false;
   // Orbit camera around target.
@@ -156,6 +156,14 @@ export class FigurineView {
   pitch = 18;  // degrees, positive = from above
   fov = 0.6;
   onchange?: () => void;
+  /**
+   * Tool hooks (e.g. drag handles): onpointerdown gets left presses first (canvas CSS pixels) and returns true to take the drag;
+   * the camera orbits/pans otherwise. onhover sees the pointer while nothing is dragged (for the cursor).
+   */
+  onpointerdown?: (e: PointerEvent, x: number, y: number) => boolean;
+  onpointerdrag?: (e: PointerEvent, x: number, y: number) => void;
+  onpointerup?: (e: PointerEvent) => void;
+  onhover?: (x: number, y: number) => void;
 
   constructor(private canvas: HTMLCanvasElement, opts: { preserve?: boolean; interactive?: boolean } = {}) {
     const gl = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: !!opts.preserve });
@@ -180,14 +188,31 @@ export class FigurineView {
   private attachControls() {
     const c = this.canvas;
     let drag: { x: number; y: number; pan: boolean } | null = null;
+    let tool = false;
+    const local = (e: PointerEvent) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     c.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Middle button pans the view; without this the browser starts auto-scrolling the page.
+    c.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
+    c.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     c.addEventListener('pointerdown', (e) => {
+      if (e.button === 1) e.preventDefault();
+      const [x, y] = local(e);
+      if (e.button === 0 && this.onpointerdown?.(e, x, y)) {
+        tool = true;
+        c.setPointerCapture(e.pointerId);
+        return;
+      }
       drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.button === 1 || e.shiftKey };
       c.setPointerCapture(e.pointerId);
     });
-    c.addEventListener('pointerup', (e) => { drag = null; c.releasePointerCapture(e.pointerId); });
+    c.addEventListener('pointerup', (e) => {
+      if (tool) { tool = false; this.onpointerup?.(e); }
+      drag = null;
+      c.releasePointerCapture(e.pointerId);
+    });
     c.addEventListener('pointermove', (e) => {
-      if (!drag) return;
+      if (tool) { const [x, y] = local(e); this.onpointerdrag?.(e, x, y); return; }
+      if (!drag) { const [x, y] = local(e); this.onhover?.(x, y); return; }
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
       if (drag.pan) {
@@ -227,6 +252,32 @@ export class FigurineView {
     m[13] = -(u[0] * eye[0] + u[1] * eye[1] + u[2] * eye[2]);
     m[14] = -(b[0] * eye[0] + b[1] * eye[1] + b[2] * eye[2]);
     return m;
+  }
+
+  private viewProj(): Mat {
+    const c = this.canvas;
+    const near = Math.max(1e-4, this.dist * 0.01), far = this.dist * 50;
+    return mul(perspective(this.fov, Math.max(1, c.clientWidth) / Math.max(1, c.clientHeight), near, far), this.viewMatrix());
+  }
+
+  /** Screen position (canvas CSS pixels) of a GL point; null when behind the camera. */
+  project(p: number[]): number[] | null {
+    const m = this.viewProj(), c = this.canvas;
+    const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+    const y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    const w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 1e-6) return null;
+    return [((x / w + 1) / 2) * c.clientWidth, ((1 - y / w) / 2) * c.clientHeight];
+  }
+
+  /** Picking ray through a canvas point (CSS pixels): origin (camera) and unit direction, GL space. */
+  ray(x: number, y: number): { o: number[]; d: number[] } {
+    const c = this.canvas, [r, u, b] = this.axes();
+    const t = Math.tan(this.fov / 2), aspect = Math.max(1, c.clientWidth) / Math.max(1, c.clientHeight);
+    const nx = (x / Math.max(1, c.clientWidth)) * 2 - 1, ny = 1 - (y / Math.max(1, c.clientHeight)) * 2;
+    const d = [0, 1, 2].map((q) => -b[q] + r[q] * nx * t * aspect + u[q] * ny * t);
+    const l = Math.hypot(d[0], d[1], d[2]);
+    return { o: [0, 1, 2].map((q) => this.target[q] + b[q] * this.dist), d: d.map((v) => v / l) };
   }
 
   /** Points the camera at a box so it fills the view (fill = fraction of the view height). */
@@ -274,8 +325,8 @@ export class FigurineView {
     this.draw();
   }
 
-  /** Wireframe boxes/lines: pairs of points (GL space). */
-  setLines(sets: { points: number[]; color: [number, number, number, number] }[]) {
+  /** Wireframe boxes/lines: pairs of points (GL space). top = drawn over everything (handles). */
+  setLines(sets: { points: number[]; color: [number, number, number, number]; top?: boolean }[]) {
     const gl = this.gl;
     for (const l of this.lines) gl.deleteBuffer(l.buf);
     this.lines = sets.filter((s) => s.points.length).map((s) => {
@@ -284,7 +335,7 @@ export class FigurineView {
       const d: number[] = [];
       for (let i = 0; i + 2 < s.points.length; i += 3) d.push(s.points[i], s.points[i + 1], s.points[i + 2], 0, 1, 0, 0, 0);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d), gl.STATIC_DRAW);
-      return { buf, count: d.length / 8, color: s.color };
+      return { buf, count: d.length / 8, color: s.color, top: !!s.top };
     });
     this.draw();
   }
@@ -338,7 +389,8 @@ export class FigurineView {
     }
     gl.depthMask(true);
     gl.disable(gl.BLEND);
-    for (const l of this.lines) {
+    for (const l of [...this.lines.filter((x) => !x.top), ...this.lines.filter((x) => x.top)]) {
+      if (l.top) gl.disable(gl.DEPTH_TEST);
       bind(l.buf);
       gl.uniformMatrix4fv(loc('uModel'), false, ident());
       gl.uniformMatrix3fv(loc('uNrm'), false, new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]));

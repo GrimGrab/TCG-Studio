@@ -26,6 +26,10 @@ export function BakeFigurine(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BakeFigurine'](arg1, arg2, arg3, arg4);
 }
 
+export function BakeFurnitureModel(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BakeFurnitureModel'](arg1, arg2, arg3, arg4);
+}
+
 export function BrowseGameFolder() {
   return window['go']['main']['App']['BrowseGameFolder']();
 }
@@ -74,12 +78,24 @@ export function DeleteAccessory(arg1) {
   return window['go']['main']['App']['DeleteAccessory'](arg1);
 }
 
+export function DeleteFurniture(arg1) {
+  return window['go']['main']['App']['DeleteFurniture'](arg1);
+}
+
 export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
 }
 
 export function ForgeStatus() {
   return window['go']['main']['App']['ForgeStatus']();
+}
+
+export function FurnitureTemplates() {
+  return window['go']['main']['App']['FurnitureTemplates']();
+}
+
+export function FurnitureTypes() {
+  return window['go']['main']['App']['FurnitureTypes']();
 }
 
 export function GameStatus() {
@@ -182,6 +198,10 @@ export function NewAccessory(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewAccessory'](arg1, arg2, arg3);
 }
 
+export function NewFurniture(arg1, arg2, arg3) {
+  return window['go']['main']['App']['NewFurniture'](arg1, arg2, arg3);
+}
+
 export function OpenAccessoriesFolder() {
   return window['go']['main']['App']['OpenAccessoriesFolder']();
 }
@@ -240,6 +260,10 @@ export function SaveAccessory(arg1, arg2, arg3, arg4) {
 
 export function SaveAccessorySourceImage(arg1, arg2) {
   return window['go']['main']['App']['SaveAccessorySourceImage'](arg1, arg2);
+}
+
+export function SaveFurniture(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveFurniture'](arg1, arg2, arg3);
 }
 
 export function SavePackArt(arg1, arg2, arg3, arg4, arg5) {

@@ -26,6 +26,7 @@ import (
 // AccessoryView is the library as the frontend sees it; layouts are the editor's own JSON, kept as strings.
 type AccessoryView struct {
 	Accessories []setfmt.Accessory `json:"accessories"`
+	Furniture   []setfmt.Furniture `json:"furniture"`
 	Layouts     map[string]string  `json:"layouts"`
 	Installed   bool               `json:"installed"`
 	Warnings    []string           `json:"warnings"`
@@ -35,11 +36,16 @@ type AccessoryView struct {
 func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.settings.Workspace) }
 
 func (a *App) accView(l *accessories.Library) AccessoryView {
-	v := AccessoryView{Accessories: l.Lib.Accessories, Layouts: map[string]string{}}
+	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Layouts: map[string]string{}}
+	if v.Furniture == nil {
+		v.Furniture = []setfmt.Furniture{}
+	}
 	for id, raw := range l.Meta.Layouts {
 		v.Layouts[id] = string(raw)
 	}
 	v.Errors, v.Warnings = l.Lib.Validate(l.Folder)
+	fe, fw := l.Lib.ValidateFurniture(l.Folder, a.furnitureBases())
+	v.Errors, v.Warnings = append(v.Errors, fe...), append(v.Warnings, fw...)
 	if game.IsGameDir(a.settings.GameDir) {
 		_, err := os.Stat(filepath.Join(accessories.InstalledDir(a.settings.GameDir), accessories.LibraryFile))
 		v.Installed = err == nil

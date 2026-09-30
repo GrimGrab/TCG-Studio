@@ -2,6 +2,7 @@
   // Face-by-face editor for deck boxes / playmats: the model unfolded into a net, layers placed on it (images can span faces),
   // mapped into the game texture through the model's targets. Views: net, the raw texture (UV map) and a 3D preview of the
   // real game mesh.
+  import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
   import { App, errText } from '../lib/api';
   import {
@@ -452,7 +453,9 @@
     }));
     mv.load(parts).then(() => { if (textureCanvas) mv.setTexture(textureCanvas); })
       .catch((e) => (meshError = errText(e) + " — the game templates aren't available yet (Settings → Game)"));
-    return () => { mv.dispose(); if (mesh === mv) mesh = null; };
+    const ro = new ResizeObserver(() => mv.draw()); // e.g. full view on/off
+    ro.observe(c);
+    return () => { ro.disconnect(); mv.dispose(); if (mesh === mv) mesh = null; };
   });
 
   let spin: { x: number; y: number; rx: number; ry: number } | null = null;
@@ -510,7 +513,7 @@
 </script>
 
 {#snippet viewer()}
-  <div class="scene">
+  <div class="scene" use:maximizable>
     <canvas class="view3d" bind:this={canvas3d} onpointerdown={spinDown} onpointermove={spinMove} onpointerup={() => (spin = null)} onwheel={spinWheel}></canvas>
     {#if meshError}<p class="warn small overlay">{meshError}</p>{/if}
   </div>

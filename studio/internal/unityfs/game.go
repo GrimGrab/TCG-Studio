@@ -114,6 +114,8 @@ type ShelfCompartment struct {
 	CanPutItem, CanPutBox, ItemNotForSale              bool
 	StartLoc, EndWidthLoc, EndDepthLoc, EndHeightLoc   PPtr
 	PosListGrp                                         PPtr
+	CustomerStandLoc                                   PPtr   // Transform
+	PriceTags                                          []PPtr // InteractablePriceTag components
 	ApplyScaleOffset, HeightGoesUp, AffectedByTallItem bool
 	SizeX, SizeY, SizeZ                                int32
 }
@@ -135,10 +137,10 @@ func ReadShelfCompartment(o *Object) (c ShelfCompartment, err error) {
 	c.EndDepthLoc = r.pptr()
 	c.EndHeightLoc = r.pptr()
 	c.PosListGrp = r.pptr()
-	r.pptr()  // customer stand loc
-	r.pptr()  // stored item list grp
-	r.pptr()  // gamepad aim loc
-	r.pptrs() // price tags
+	c.CustomerStandLoc = r.pptr()
+	r.pptr() // stored item list grp
+	r.pptr() // gamepad aim loc
+	c.PriceTags = r.pptrs()
 	c.ApplyScaleOffset = r.flag()
 	c.HeightGoesUp = r.flag()
 	c.AffectedByTallItem = r.flag()
@@ -163,24 +165,157 @@ func ReadShelf(o *Object) (s Shelf, err error) {
 	}
 	r := mb.fields
 	s.GameObject = mb.GameObject
-	r.i32() // object type
-	r.i32() // deco object type
-	for i := 0; i < 5; i++ {
-		r.pptr() // highlight, nav mesh cut, mesh, culling mesh, skin mesh
-	}
-	r.f32() // highlight outline width
-	for i := 0; i < 10; i++ {
-		r.flag() // generic object … can cat stand on this
-	}
-	for i := 0; i < 5; i++ {
-		r.pptr() // pickup mesh, valid area, shelf valid area, box collider, cat stand collider
-	}
-	r.pptrs() // box collider list
-	r.i32s()  // game action input display list
-	r.i32s()  // controller-only list
+	readInteractableObject(r)
 	s.ItemNotForSale = r.flag()
 	r.flag() // gamepad quick select reverse
 	s.CompartmentGroups = r.pptrs()
+	return s, nil
+}
+
+// InteractableObject: the base fields every furniture piece starts with.
+type InteractableObject struct {
+	GameObject                         PPtr
+	ObjectType                         int32
+	Highlight, NavMeshCut              PPtr // GameObjects (helpers, not part of the look)
+	Mesh, CullingMesh                  PPtr // MeshRenderers
+	IsGeneric                          bool
+	PickupMesh, ValidArea, BoxCollider PPtr // MeshFilter, Transform (placement area), BoxCollider
+}
+
+func readInteractableObject(r *reader) (io InteractableObject) {
+	io.ObjectType = r.i32()
+	r.i32() // deco object type
+	io.Highlight = r.pptr()
+	io.NavMeshCut = r.pptr()
+	io.Mesh = r.pptr()
+	io.CullingMesh = r.pptr()
+	r.pptr() // skin mesh
+	r.f32()  // highlight outline width
+	io.IsGeneric = r.flag()
+	for i := 0; i < 9; i++ {
+		r.flag() // can pickup move … can cat stand on this
+	}
+	io.PickupMesh = r.pptr()
+	io.ValidArea = r.pptr()
+	r.pptr() // shelf valid area
+	io.BoxCollider = r.pptr()
+	r.pptr()  // cat stand collider
+	r.pptrs() // box collider list
+	r.i32s()  // game action input display list
+	r.i32s()  // controller-only list
+	return io
+}
+
+// ReadInteractableObject decodes the base fields of any InteractableObject script (subclass fields follow, unread).
+func ReadInteractableObject(o *Object) (io InteractableObject, err error) {
+	defer catch(&err, "InteractableObject")
+	mb, err := readMonoBehaviour(o)
+	if err != nil {
+		return io, err
+	}
+	io = readInteractableObject(mb.fields)
+	io.GameObject = mb.GameObject
+	return io, nil
+}
+
+// CardShelf: m_CardShelfCompartmentGrpList (Transforms whose children are the card compartments).
+type CardShelf struct {
+	GameObject        PPtr
+	ItemNotForSale    bool
+	CompartmentGroups []PPtr
+}
+
+func ReadCardShelf(o *Object) (s CardShelf, err error) {
+	defer catch(&err, "CardShelf")
+	mb, err := readMonoBehaviour(o)
+	if err != nil {
+		return s, err
+	}
+	r := mb.fields
+	s.GameObject = mb.GameObject
+	readInteractableObject(r)
+	s.ItemNotForSale = r.flag()
+	s.CompartmentGroups = r.pptrs()
+	return s, nil
+}
+
+// CardCompartment is InteractableCardCompartment (one card spot).
+type CardCompartment struct {
+	GameObject                           PPtr
+	CustomerStandLoc, PutCardLoc, AimLoc PPtr // Transforms
+	PriceTags                            []PPtr
+}
+
+func ReadCardCompartment(o *Object) (c CardCompartment, err error) {
+	defer catch(&err, "InteractableCardCompartment")
+	mb, err := readMonoBehaviour(o)
+	if err != nil {
+		return c, err
+	}
+	r := mb.fields
+	c.GameObject = mb.GameObject
+	r.flag() // item not for sale
+	r.flag() // hide adapter mesh
+	r.flag() // none-graded card uses alt location
+	c.CustomerStandLoc = r.pptr()
+	r.pptr() // stored item list grp
+	c.PutCardLoc = r.pptr()
+	r.pptr() // put card location alt
+	c.AimLoc = r.pptr()
+	r.pptr() // adapter mesh
+	c.PriceTags = r.pptrs()
+	return c, nil
+}
+
+// ObjectData / FurniturePurchaseData (ShelfData_ScriptableObject).
+type ObjectData struct {
+	Name       string // I2 term
+	ObjectType int32
+	Prefab     PPtr // InteractableObject script
+	DecoBonus  float32
+}
+
+type FurniturePurchase struct {
+	Name, Description string // I2 terms
+	Level             int32
+	Price             float32
+	ObjectType        int32
+	Icon              PPtr
+}
+
+type ShelfData struct {
+	File      *File
+	Objects   []ObjectData
+	Purchases []FurniturePurchase
+}
+
+// ReadShelfData decodes ShelfData_ScriptableObject up to m_FurniturePurchaseDataList.
+func ReadShelfData(o *Object) (s ShelfData, err error) {
+	defer catch(&err, "ShelfData_ScriptableObject")
+	mb, err := readMonoBehaviour(o)
+	if err != nil {
+		return s, err
+	}
+	r := mb.fields
+	s.File = o.File
+	s.Objects = make([]ObjectData, r.count(24))
+	for i := range s.Objects {
+		d := &s.Objects[i]
+		d.Name = r.str()
+		d.ObjectType = r.i32()
+		d.Prefab = r.pptr()
+		d.DecoBonus = r.f32()
+	}
+	s.Purchases = make([]FurniturePurchase, r.count(32))
+	for i := range s.Purchases {
+		d := &s.Purchases[i]
+		d.Name = r.str()
+		d.Description = r.str()
+		d.Level = r.i32()
+		d.Price = r.f32()
+		d.ObjectType = r.i32()
+		d.Icon = r.pptr()
+	}
 	return s, nil
 }
 
@@ -211,4 +346,49 @@ func ReadItemMeshFilter(o *Object) (gameObject, meshFilter PPtr, err error) {
 func MonoBehaviourGameObject(o *Object) (PPtr, error) {
 	mb, err := readMonoBehaviour(o)
 	return mb.GameObject, err
+}
+
+// ReadFurniturePoints reads the position Transforms of a furniture script (the fields right after InteractableObject's), by the
+// mod's role names (Core/FurnitureKinds.cs PointRoles). Classes without points return an empty map.
+func ReadFurniturePoints(o *Object, class string) (roles map[string][]PPtr, err error) {
+	defer catch(&err, class)
+	roles = map[string][]PPtr{}
+	mb, err := readMonoBehaviour(o)
+	if err != nil {
+		return roles, err
+	}
+	r := mb.fields
+	readInteractableObject(r)
+	one := func(role string) { roles[role] = []PPtr{r.pptr()} }
+	switch class {
+	case "InteractablePlayTable":
+		roles["stand"] = r.pptrs()
+		roles["standB"] = r.pptrs()
+		roles["sit"] = r.pptrs()
+	case "InteractableCashierCounter":
+		one("cashier")
+		one("queue")
+		one("placeItems")
+		for i := 0; i < 8; i++ {
+			r.pptr() // scanned item lerp, money, coin, screens, credit card machine…
+		}
+		roles["trade"] = r.pptrs()
+	case "InteractableAutoPackOpener":
+		r.pptr() // pos
+		r.pptr() // pos inside
+		r.pptr() // UI pos
+		one("worker")
+	case "InteractableAutoCleanser":
+		r.pptrs() // item pos list
+		one("worker")
+	case "InteractableWorkbench":
+		one("player")
+	case "InteractableBulkDonationBox", "InteractableCardStorageShelf":
+		roles["customer"] = r.pptrs()
+	case "InteractableEmptyBoxStorage":
+		r.pptr() // box stack
+		r.pptr() // box spawn loc
+		roles["customer"] = r.pptrs()
+	}
+	return roles, nil
 }

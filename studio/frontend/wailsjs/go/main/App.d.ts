@@ -26,6 +26,8 @@ export function AppVersion():Promise<main.VersionInfo>;
 
 export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FigurineBake>;
 
+export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FurnitureBake>;
+
 export function BrowseGameFolder():Promise<game.Status>;
 
 export function CancelForgeInstall():Promise<void>;
@@ -50,9 +52,15 @@ export function DefaultImportOptions():Promise<importer.Options>;
 
 export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
 
+export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
+
 export function DeleteProject(arg1:string):Promise<void>;
 
 export function ForgeStatus():Promise<forge.Status>;
+
+export function FurnitureTemplates():Promise<string>;
+
+export function FurnitureTypes():Promise<Array<setfmt.FurnitureType>>;
 
 export function GameStatus():Promise<game.Status>;
 
@@ -104,6 +112,8 @@ export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryVie
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
 
+export function NewFurniture(arg1:string,arg2:string,arg3:string):Promise<setfmt.Furniture>;
+
 export function OpenAccessoriesFolder():Promise<void>;
 
 export function OpenFolder(arg1:string):Promise<void>;
@@ -133,6 +143,8 @@ export function RestoreModDefaults(arg1:string):Promise<number>;
 export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4:string):Promise<main.AccessoryView>;
 
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;
+
+export function SaveFurniture(arg1:setfmt.Furniture,arg2:string,arg3:string):Promise<main.AccessoryView>;
 
 export function SavePackArt(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.PackArtFiles>;
 

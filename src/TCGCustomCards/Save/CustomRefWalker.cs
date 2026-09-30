@@ -25,6 +25,7 @@ namespace TCGCustomCards.Save
             /// <summary>Was this EItemType int a custom item when the data was saved?</summary>
             bool WasCustomItem(int oldValue);
             bool CardSlot(int oldExpansion, int oldSlot, out int newSlot);
+            bool Furniture(int oldValue, out int newValue);
         }
 
         private static readonly Dictionary<Type, bool> MayHoldCache = new Dictionary<Type, bool>();
@@ -33,6 +34,8 @@ namespace TCGCustomCards.Save
         public static bool IsCustomExpansion(int v) => v >= Registry.ExpansionBase;
         public static bool IsCustomMonster(int v) => v >= Registry.MonsterBase - 1;
         public static bool IsCustomItem(int v) => Registry.IsCustomItem((EItemType)v);
+        /// <summary>Custom furniture: anything in our furniture block (other loaders use 200000+, vanilla 0–56).</summary>
+        public static bool IsCustomFurniture(int v) => Registry.InFurnitureBlock(v);
 
         public static bool IsCustomCard(CardData c) => c != null && (IsCustomExpansion((int)c.expansionType) || IsCustomMonster((int)c.monsterType));
 
@@ -40,6 +43,17 @@ namespace TCGCustomCards.Save
         public static bool IsOrphanExpansion(int v) => v >= Registry.ExpansionBase && Registry.Get((ECardExpansionType)v) == null;
         public static bool IsOrphanMonster(int v) => v >= Registry.MonsterBase - 1 && !Registry.TryGetCard((EMonsterType)v, out _, out _);
         public static bool IsOrphanItem(int v) => v >= (int)EItemType.Max && !Registry.IsCustomItem((EItemType)v);
+        public static bool IsOrphanFurniture(int v) => Registry.InFurnitureBlock(v) && !Registry.IsCustomFurniture((EObjectType)v);
+
+        /// <summary>A save entry for a placed piece (it has an EObjectType objectType field) that is one of our furniture pieces.</summary>
+        public static bool IsCustomFurnitureEntry(object entry, bool orphansOnly = false)
+        {
+            if (entry == null) return false;
+            var f = entry.GetType().GetField("objectType");
+            if (f == null || f.FieldType != typeof(EObjectType)) return false;
+            int v = (int)(EObjectType)f.GetValue(entry);
+            return orphansOnly ? IsOrphanFurniture(v) : IsCustomFurniture(v);
+        }
 
         /// <summary>
         /// Detect: true if the graph references custom content. Neutralize: strips it (in place). Remap: false if something could not be remapped.
@@ -63,6 +77,7 @@ namespace TCGCustomCards.Save
             public bool Expansion(int v) => OrphansOnly ? IsOrphanExpansion(v) : IsCustomExpansion(v);
             public bool Monster(int v) => OrphansOnly ? IsOrphanMonster(v) : IsCustomMonster(v);
             public bool Item(int v) => OrphansOnly ? IsOrphanItem(v) : Mode == Mode.Remap ? Remap.WasCustomItem(v) : IsCustomItem(v);
+            public bool Furniture(int v) => OrphansOnly ? IsOrphanFurniture(v) : IsCustomFurniture(v);
             public bool Card(CardData c) => c != null && (Expansion((int)c.expansionType) || Monster((int)c.monsterType));
         }
 
@@ -72,7 +87,7 @@ namespace TCGCustomCards.Save
             if (MayHoldCache.TryGetValue(t, out bool v)) return v;
             MayHoldCache[t] = false; // cycle guard
             bool result;
-            if (t == typeof(ECardExpansionType) || t == typeof(EMonsterType) || t == typeof(EItemType) || t == typeof(CardData) || t == typeof(CompactCardDataAmount)
+            if (t == typeof(ECardExpansionType) || t == typeof(EMonsterType) || t == typeof(EItemType) || t == typeof(EObjectType) || t == typeof(CardData) || t == typeof(CompactCardDataAmount)
                 || t == typeof(DeckCompactCardDataList))
                 result = true;
             else if (t.IsPrimitive || t.IsEnum || t == typeof(string) || typeof(UnityEngine.Object).IsAssignableFrom(t))
@@ -173,6 +188,7 @@ namespace TCGCustomCards.Save
             newValue = v;
             bool custom = t == typeof(ECardExpansionType) ? s.Expansion(v)
                         : t == typeof(EMonsterType) ? s.Monster(v)
+                        : t == typeof(EObjectType) ? s.Furniture(v)
                         : t == typeof(EItemType) && s.Item(v);
             if (!custom) return false;
             s.Found = true;
@@ -183,11 +199,13 @@ namespace TCGCustomCards.Save
                 case Mode.Neutralize:
                     newValue = t == typeof(ECardExpansionType) ? (int)ECardExpansionType.Tetramon
                              : t == typeof(EMonsterType) ? (int)EMonsterType.None
+                             : t == typeof(EObjectType) ? (int)EObjectType.None
                              : (int)EItemType.None;
                     return true;
                 default:
                     bool ok = t == typeof(ECardExpansionType) ? s.Remap.Expansion(v, out newValue)
                             : t == typeof(EMonsterType) ? s.Remap.Monster(v, out newValue)
+                            : t == typeof(EObjectType) ? s.Remap.Furniture(v, out newValue)
                             : s.Remap.Item(v, out newValue);
                     if (!ok) s.Failed = true;
                     return ok;

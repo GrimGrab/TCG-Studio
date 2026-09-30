@@ -220,11 +220,12 @@ namespace TCGCustomCards.Save
         }
 
         /// <summary>Fingerprint of an accessory's pricing inputs (cost/market after defaults from the base item).</summary>
-        private static string DefinitionKey(CustomAccessory acc)
-        {
-            var d = InventoryBase.GetItemData(acc.Item);
-            return System.FormattableString.Invariant($"acc{d.baseCost:0.###}|{d.marketPriceMinPercent:0.###}-{d.marketPriceMaxPercent:0.###}");
-        }
+        /// <remarks>Taken from the injected ItemData (<see cref="CustomAccessory.DefKey"/>): the save on quit runs after the game may
+        /// already have destroyed InventoryBase, so the side-car must not look anything up there.</remarks>
+        private static string DefinitionKey(CustomAccessory acc) => acc.DefKey ?? "";
+
+        internal static string DefinitionKey(ItemData d) =>
+            System.FormattableString.Invariant($"acc{d.baseCost:0.###}|{d.marketPriceMinPercent:0.###}-{d.marketPriceMaxPercent:0.###}");
 
         /// <summary>Every custom item with its side-car key and pricing fingerprint (pack + box items, then accessories).</summary>
         private static IEnumerable<(string key, EItemType item, string def)> CustomItems()

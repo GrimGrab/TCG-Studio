@@ -347,6 +347,7 @@ export namespace main {
 	
 	export class AccessoryView {
 	    accessories: setfmt.Accessory[];
+	    furniture: setfmt.Furniture[];
 	    layouts: Record<string, string>;
 	    installed: boolean;
 	    warnings: string[];
@@ -359,6 +360,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.accessories = this.convertValues(source["accessories"], setfmt.Accessory);
+	        this.furniture = this.convertValues(source["furniture"], setfmt.Furniture);
 	        this.layouts = source["layouts"];
 	        this.installed = source["installed"];
 	        this.warnings = source["warnings"];
@@ -423,6 +425,24 @@ export namespace main {
 	        this.vertices = source["vertices"];
 	        this.size = source["size"];
 	        this.warnings = source["warnings"];
+	    }
+	}
+	export class FurnitureBake {
+	    mesh: string;
+	    texture: string;
+	    triangles: number;
+	    size: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurnitureBake(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mesh = source["mesh"];
+	        this.texture = source["texture"];
+	        this.triangles = source["triangles"];
+	        this.size = source["size"];
 	    }
 	}
 	export class ModCheck {
@@ -1087,6 +1107,181 @@ export namespace setfmt {
 	}
 	
 	
+	export class FurniturePoint {
+	    role: string;
+	    pos: number[];
+	    rot: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurniturePoint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.pos = source["pos"];
+	        this.rot = source["rot"];
+	    }
+	}
+	export class FurnitureArea {
+	    pos: number[];
+	    size: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurnitureArea(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pos = source["pos"];
+	        this.size = source["size"];
+	    }
+	}
+	export class FurnitureSpot {
+	    kind: string;
+	    pos: number[];
+	    rot: number[];
+	    size?: number[];
+	    grid?: number[];
+	    customer?: number[];
+	    priceTag?: number[];
+	    boxes?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FurnitureSpot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.pos = source["pos"];
+	        this.rot = source["rot"];
+	        this.size = source["size"];
+	        this.grid = source["grid"];
+	        this.customer = source["customer"];
+	        this.priceTag = source["priceTag"];
+	        this.boxes = source["boxes"];
+	    }
+	}
+	export class Furniture {
+	    id: string;
+	    type: string;
+	    name: string;
+	    description?: string;
+	    base?: string;
+	    price?: number;
+	    level?: number;
+	    decoBonus?: number;
+	    icon?: string;
+	    texture?: string;
+	    tint?: string;
+	    mesh?: string;
+	    spots?: FurnitureSpot[];
+	    area?: FurnitureArea;
+	    points?: FurniturePoint[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Furniture(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.base = source["base"];
+	        this.price = source["price"];
+	        this.level = source["level"];
+	        this.decoBonus = source["decoBonus"];
+	        this.icon = source["icon"];
+	        this.texture = source["texture"];
+	        this.tint = source["tint"];
+	        this.mesh = source["mesh"];
+	        this.spots = this.convertValues(source["spots"], FurnitureSpot);
+	        this.area = this.convertValues(source["area"], FurnitureArea);
+	        this.points = this.convertValues(source["points"], FurniturePoint);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	export class PointRole {
+	    role: string;
+	    label: string;
+	    tip: string;
+	    resizable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PointRole(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.label = source["label"];
+	        this.tip = source["tip"];
+	        this.resizable = source["resizable"];
+	    }
+	}
+	export class FurnitureType {
+	    type: string;
+	    title: string;
+	    one: string;
+	    defaultBase: string;
+	    spots: string;
+	    points: PointRole[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurnitureType(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.title = source["title"];
+	        this.one = source["one"];
+	        this.defaultBase = source["defaultBase"];
+	        this.spots = source["spots"];
+	        this.points = this.convertValues(source["points"], PointRole);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Issue {
 	    level: string;
 	    where: string;
@@ -1211,6 +1406,7 @@ export namespace setfmt {
 		    return a;
 		}
 	}
+	
 	
 	export class PriceDefaults {
 	    borderMultipliers: number[];

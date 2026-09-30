@@ -10,6 +10,7 @@ namespace TCGCustomCards.Runtime
     ///  • Accessories hidden (per kind: deck boxes, playmats, sleeves, dice, comics, collection books, battle decks, figurines): the vanilla items of that kind
     ///    leave the restock lists, the deck picker, play tables and customer demand.
     ///  • Cards hidden: vanilla sets leave the binder and set pickers, screens default to a custom set, trade customers bring custom cards.
+    ///  • Furniture hidden: vanilla pieces leave the furniture shop (applied when the shop opens); essential ones stay without a custom one.
     /// Each requires at least one custom set/pack/accessory, otherwise they stay off.
     /// </summary>
     internal static class VanillaFilter
@@ -31,6 +32,26 @@ namespace TCGCustomCards.Runtime
                 foreach (var k in Plugin.ShowVanillaAccessory.Keys) if (HideKind(k)) return true;
                 return false;
             }
+        }
+
+        /// <summary>Vanilla furniture leaves the furniture shop (placed pieces stay). Needs at least one custom piece.</summary>
+        public static bool HideFurniture => Plugin.ShowVanillaFurniture != null && !Plugin.ShowVanillaFurniture.Value && Registry.Furniture.Exists(f => f.Prefab != null);
+
+        /// <summary>
+        /// Hidden from the furniture shop right now: a vanilla piece, unless it is an essential type (cash counter, workbench, trash bin,
+        /// empty box storage) with no custom piece of that type.
+        /// </summary>
+        public static bool IsHiddenFurniture(EObjectType t)
+        {
+            if (!HideFurniture || t < 0 || t >= EObjectType.MAX) return false;
+            var prefab = InventoryBase.GetSpawnInteractableObjectPrefab(t);
+            foreach (Core.FurnitureType type in System.Enum.GetValues(typeof(Core.FurnitureType)))
+            {
+                if (!Core.FurnitureKinds.Matches(type, prefab)) continue;
+                if (Core.FurnitureKinds.IsEssential(type) && !Registry.Furniture.Exists(f => f.Prefab != null && f.Def.Type == type)) return false;
+                break;
+            }
+            return true;
         }
 
         public static ECardExpansionType FirstCustomExpansion => Registry.Sets.Count > 0 ? Registry.Sets[0].Expansion : ECardExpansionType.Tetramon;

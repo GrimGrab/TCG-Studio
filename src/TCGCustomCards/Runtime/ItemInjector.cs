@@ -20,6 +20,8 @@ namespace TCGCustomCards.Runtime
 
         public static void EnsureInjected()
         {
+            // Same moments as items: before saved objects spawn (furniture prefabs must exist by then).
+            FurnitureInjector.EnsureInjected();
             if (Registry.Packs.Count == 0 && Registry.Accessories.Count == 0) return;
             // Never touch CSingleton<InventoryBase>.Instance outside the shop scene: it would create an empty manager.
             var inv = Object.FindObjectOfType<InventoryBase>();
@@ -138,6 +140,7 @@ namespace TCGCustomCards.Runtime
                 if (def.MarketMax.HasValue) data.marketPriceMaxPercent = def.MarketMax.Value;
                 data.boxFollowItemPrice = EItemType.None;
                 data.isHideItemUntilUnlocked = false;
+                acc.DefKey = Save.SideCar.DefinitionKey(data);
                 AddItem(so, acc.Item, data, AccessoryMeshData(vMesh, def));
                 Registry.RegisterItem(acc.Item, acc);
 

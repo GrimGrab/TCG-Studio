@@ -196,7 +196,96 @@ namespace TCGCustomCards.Core
         public const int CurrentSchemaVersion = 1;
         [JsonProperty("schemaVersion")] public int SchemaVersion = CurrentSchemaVersion;
         [JsonProperty("accessories")] public List<AccessoryDef> Accessories = new List<AccessoryDef>();
+        [JsonProperty("furniture")] public List<FurnitureDef> Furniture = new List<FurnitureDef>();
         [JsonIgnore] public string FolderPath;
+    }
+
+    /// <summary>What a custom furniture piece does: the vanilla behaviour (component) it is built on.</summary>
+    public enum FurnitureType
+    {
+        Shelf, CardShelf, PlayTable, BulkDonationBox, TrashBin, EmptyBoxStorage, CardStorageShelf,
+        AutoPackOpener, AutoCleanser, Workbench, CashCounter
+    }
+
+    /// <summary>
+    /// A new furniture piece: a copy of a vanilla piece of the same <see cref="Type"/> (its behaviour) with its own look, name, price and,
+    /// for shelves, its own spots. Sold in the furniture shop next to the vanilla pieces.
+    /// </summary>
+    public class FurnitureDef
+    {
+        /// <summary>Stable id (side-car keys "fur/&lt;id&gt;"). No spaces, ':', '/' or '|'.</summary>
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("type"), JsonConverter(typeof(StringEnumConverter))] public FurnitureType Type;
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("description")] public string Description;
+        /// <summary>Vanilla EObjectType of the same type used as the starting point (e.g. "ShelfSmall"). Empty = the type's default.</summary>
+        [JsonProperty("base")] public string Base;
+        /// <summary>Furniture shop price. Null = base piece's price.</summary>
+        [JsonProperty("price")] public float? Price;
+        /// <summary>Shop level needed to buy it. Null = base piece's level.</summary>
+        [JsonProperty("level")] public int? Level;
+        /// <summary>Shop attractiveness per placed piece (customers). Null = base piece's value.</summary>
+        [JsonProperty("decoBonus")] public float? DecoBonus;
+        [JsonProperty("icon")] public string Icon;
+        /// <summary>Replacement for the base piece's main texture (same UV layout). Null = base art.</summary>
+        [JsonProperty("texture")] public string Texture;
+        /// <summary>Colour multiplied onto the piece's materials, "#RRGGBB". Null = none.</summary>
+        [JsonProperty("tint")] public string Tint;
+        /// <summary>Own model: baked OBJ in the piece's local space (Unity space, like figurine models). Null = base model.</summary>
+        [JsonProperty("mesh")] public string Mesh;
+        /// <summary>Shelf spots (item or card spots, depending on the type). Null/empty = the base piece's own spots.</summary>
+        [JsonProperty("spots")] public List<FurnitureSpotDef> Spots;
+        /// <summary>Placement area: the floor box kept free of other furniture/walls when placing. Null = the base piece's.</summary>
+        [JsonProperty("area")] public FurnitureAreaDef Area;
+        /// <summary>Positions the game uses (seats, where the cashier/worker stands, customer stand points…) by role. Null = the base's.</summary>
+        [JsonProperty("points")] public List<FurniturePointDef> Points;
+
+        [JsonIgnore] public EObjectType BaseObject = EObjectType.None;
+        [JsonIgnore] public string FolderPath;
+    }
+
+    public enum FurnitureSpotKind { Items, Card }
+
+    /// <summary>
+    /// A position the game uses on a piece, in its local space (metres, degrees). Points of a role replace the base piece's in order;
+    /// resizable roles (lists the game picks from) may have more or fewer, the others keep the base's count. See FurnitureKinds.PointRoles.
+    /// </summary>
+    public class FurniturePointDef
+    {
+        [JsonProperty("role")] public string Role;
+        [JsonProperty("pos")] public float[] Pos = { 0f, 0f, 0f };
+        [JsonProperty("rot")] public float[] Rot = { 0f, 0f, 0f };
+    }
+
+    /// <summary>
+    /// Placement area in the piece's local space (metres): centre x/z on the floor and width (x) / depth (z). Height and rotation stay
+    /// the base piece's. The game checks this box (m_MoveStateValidArea) against other furniture and walls, and snaps pieces by it.
+    /// </summary>
+    public class FurnitureAreaDef
+    {
+        [JsonProperty("pos")] public float[] Pos = { 0f, 0f };
+        [JsonProperty("size")] public float[] Size;
+    }
+
+    /// <summary>
+    /// One place where things go, in the piece's local space (metres, degrees). Item spot: a box of <see cref="Size"/> (width, depth, height)
+    /// centred on <see cref="Pos"/>, filled with a grid of <see cref="Grid"/> item units (a pack is 1×1×1: 4×8×1 = 32 packs, like vanilla).
+    /// Height 0 = items stand on that plane in one layer (vanilla shop shelves).
+    /// Card spot: <see cref="Pos"/>/<see cref="Rot"/> is where the card sits.
+    /// </summary>
+    public class FurnitureSpotDef
+    {
+        [JsonProperty("kind"), JsonConverter(typeof(StringEnumConverter))] public FurnitureSpotKind Kind = FurnitureSpotKind.Items;
+        [JsonProperty("pos")] public float[] Pos = { 0f, 0f, 0f };
+        [JsonProperty("rot")] public float[] Rot = { 0f, 0f, 0f };
+        [JsonProperty("size")] public float[] Size;
+        [JsonProperty("grid")] public int[] Grid;
+        /// <summary>Where customers stand to take from this spot (x, z on the floor). Null = in front of the spot.</summary>
+        [JsonProperty("customer")] public float[] Customer;
+        /// <summary>Price tag position. Null = kept relative to the spot as on the base piece.</summary>
+        [JsonProperty("priceTag")] public float[] PriceTag;
+        /// <summary>Item spots: whole boxes can be put here (like warehouse-style shelves).</summary>
+        [JsonProperty("boxes")] public bool? Boxes;
     }
 
     /// <summary>Deck boxes, playmats, card sleeves, dice boxes, comics (Manga items), collection books (binders), battle decks (PreconDeck items), figurines (Toy items).</summary>

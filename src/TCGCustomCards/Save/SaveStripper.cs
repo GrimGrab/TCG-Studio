@@ -20,7 +20,10 @@ namespace TCGCustomCards.Save
         {
             public string field;
             public int index = -1;
-            /// <summary>replace (list element / object at index), remove (appended back), scalar (object or enum field), spawn (paired restock lists).</summary>
+            /// <summary>
+            /// replace (list element / object at index), remove (appended back), removeAt (put back at its index: placed custom furniture,
+            /// whose list order other save data may rely on), scalar (object or enum field), spawn (paired restock lists).
+            /// </summary>
             public string mode;
             public string type;
             public string json;
@@ -49,7 +52,7 @@ namespace TCGCustomCards.Save
             var stash = new Stash { alloc = AllocationSnapshot.Current() };
             var originals = new List<(FieldInfo f, object value)>();
             undo = () => { foreach (var (f, v) in originals) f.SetValue(g, v); };
-            if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0) return stash;
+            if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0) return stash;
 
             StripSpawnWaiting(g, stash, originals);
             foreach (var f in GameFields)
@@ -110,27 +113,29 @@ namespace TCGCustomCards.Save
                 var elemType = type.GetGenericArguments()[0];
                 bool remove = RemoveLists.Contains(name);
                 IList copy = null;
+                var removed = new List<int>();
                 for (int i = 0; i < list.Count; i++)
                 {
                     var item = list[i];
                     if (item == null) continue;
-                    bool custom = elemType.IsEnum ? CustomRefWalker.Walk(new EnumBox(item), CustomRefWalker.Mode.Detect) : CustomRefWalker.Walk(item, CustomRefWalker.Mode.Detect);
+                    // A placed custom furniture piece leaves the save whole (its type can't be spawned without the mod).
+                    bool piece = !elemType.IsEnum && CustomRefWalker.IsCustomFurnitureEntry(item);
+                    bool custom = piece || (elemType.IsEnum ? CustomRefWalker.Walk(new EnumBox(item), CustomRefWalker.Mode.Detect) : CustomRefWalker.Walk(item, CustomRefWalker.Mode.Detect));
                     if (!custom) continue;
                     if (copy == null) copy = (IList)Activator.CreateInstance(type, list);
+                    string mode = piece ? "removeAt" : remove ? "remove" : "replace";
                     stash.entries.Add(new StashEntry
                     {
-                        field = name, index = i, mode = remove ? "remove" : "replace",
+                        field = name, index = i, mode = mode,
                         type = elemType.AssemblyQualifiedName,
                         json = elemType.IsEnum ? Convert.ToInt32(item).ToString() : JsonUtility.ToJson(item)
                     });
-                    if (!remove) copy[i] = Neutralized(item);
+                    if (mode == "replace") copy[i] = Neutralized(item);
+                    else removed.Add(i);
                 }
                 if (copy == null) return value;
-                if (remove)
-                {
-                    // Remove from the copy back to front using the recorded indices.
-                    foreach (var e in stash.entries.Where(e => e.field == name).OrderByDescending(e => e.index)) copy.RemoveAt(e.index);
-                }
+                // Remove from the copy back to front using the recorded indices (replace entries keep theirs).
+                for (int k = removed.Count - 1; k >= 0; k--) copy.RemoveAt(removed[k]);
                 return copy;
             }
 
@@ -244,6 +249,13 @@ namespace TCGCustomCards.Save
                 {
                     var item = list[i];
                     if (item == null) continue;
+                    if (!elemType.IsEnum && CustomRefWalker.IsCustomFurnitureEntry(item, orphansOnly: true))
+                    {
+                        // A piece whose furniture is no longer installed would stop the whole load (unknown object type).
+                        list.RemoveAt(i);
+                        changed++;
+                        continue;
+                    }
                     bool orphan = elemType.IsEnum
                         ? CustomRefWalker.Walk(new EnumBox(item), CustomRefWalker.Mode.Detect, orphansOnly: true)
                         : CustomRefWalker.Walk(item, CustomRefWalker.Mode.Detect, orphansOnly: true);
@@ -289,13 +301,14 @@ namespace TCGCustomCards.Save
             if (stash == null || stash.entries.Count == 0) return;
             var alloc = stash.alloc ?? new AllocationSnapshot();
             int ok = 0, dropped = 0;
-            // Replace entries first (indices refer to the saved list), removes appended afterwards.
-            foreach (var e in stash.entries.OrderBy(e => e.mode == "replace" ? 0 : 1))
+            // Pieces go back to their saved index first (ascending, so the list is as saved), then replace entries (indices refer to
+            // the saved list), then removes are appended.
+            foreach (var e in stash.entries.OrderBy(e => e.mode == "removeAt" ? 0 : e.mode == "replace" ? 1 : 2).ThenBy(e => e.index))
             {
                 try
                 {
                     if (RestoreOne(e, alloc)) ok++;
-                    else { dropped++; Plugin.Log.LogWarning($"Restore: dropped {e.field}[{e.index}] (its custom set/card/pack is no longer installed)"); }
+                    else { dropped++; Plugin.Log.LogWarning($"Restore: dropped {e.field}[{e.index}] (its custom set/card/pack/furniture is no longer installed)"); }
                 }
                 catch (Exception ex)
                 {
@@ -357,6 +370,11 @@ namespace TCGCustomCards.Save
                     return true;
                 case "remove":
                     ((IList)target.GetValue(null))?.Add(obj);
+                    return true;
+                case "removeAt":
+                    var l = (IList)target.GetValue(null);
+                    if (l == null) return false;
+                    l.Insert(Mathf.Clamp(e.index, 0, l.Count), obj);
                     return true;
             }
             return false;

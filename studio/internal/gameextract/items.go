@@ -187,6 +187,11 @@ type packItem struct {
 	Texture           *string `json:"texture"`
 	Material          any     `json:"material"`
 	MaterialSecondary any     `json:"materialSecondary"`
+	// Shelf placement (ItemData), as for accessories: how the item fills a compartment.
+	ItemDimension    [3]float32 `json:"itemDimension"`
+	IsTallItem       bool       `json:"isTallItem"`
+	PosYOffsetInBox  float32    `json:"posYOffsetInBox"`
+	ScaleOffsetInBox float32    `json:"scaleOffsetInBox"`
 }
 
 // packMeshes: former PackTemplateExport (items part): pack/box meshes into accessories\ and packs.json.
@@ -208,6 +213,10 @@ func (x *extractor) packMeshes() ([]packItem, error) {
 		}
 		it := packItem{Type: name, ID: i, Kind: map[bool]string{true: "box", false: "pack"}[box], Mesh: strOrNil(file), MeshName: m.Name, Bounds: m.Bounds(),
 			Material: x.matInfo(f, md.Material), MaterialSecondary: x.matInfo(f, md.MaterialSecondary)}
+		if i < len(x.so.Items) {
+			d := x.so.Items[i]
+			it.ItemDimension, it.IsTallItem, it.PosYOffsetInBox, it.ScaleOffsetInBox = d.ItemDimension, d.IsTallItem, d.PosYOffsetInBox, d.ScaleOffsetInBox
+		}
 		file2, m2 := meshes.export(f, md.MeshSecondary)
 		it.MeshSecondaryFile = strOrNil(file2)
 		if m2 != nil {

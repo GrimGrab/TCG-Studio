@@ -200,6 +200,9 @@ func (w Workspace) Install(p *Project, gameDir string) error {
 	dest := filepath.Join(game.SetsDir(gameDir), p.ID)
 	tmp := dest + ".installing"
 	_ = os.RemoveAll(tmp)
+	if err := os.MkdirAll(tmp, 0o755); err != nil { // a set without images copies no file that would create it
+		return err
+	}
 	for rel := range installFiles(p) {
 		if err := copyFile(filepath.Join(p.Folder, rel), filepath.Join(tmp, rel)); err != nil && !os.IsNotExist(err) {
 			return err

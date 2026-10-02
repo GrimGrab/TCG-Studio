@@ -103,7 +103,7 @@
     </section>
     <section>
       <h3>Workspace</h3>
-      <p class="muted">Where the studio keeps your sets and their images before they are installed into the game.</p>
+      <p class="muted">The folder that holds all your setups (each with its sets, images and accessories) — see My Setups.</p>
       <div class="row"><input class="grow" bind:value={settings.workspace} /><button onclick={saveWorkspace}>Save</button></div>
     </section>
   {/if}

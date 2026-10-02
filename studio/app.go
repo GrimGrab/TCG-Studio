@@ -41,6 +41,7 @@ type App struct {
 	updatedTo string           // set when started by an update (--updated=<version>)
 	release   *updater.Release // newest release found by CheckForUpdate
 	tpl       templatesState   // game templates (app_templates.go)
+	setups    setupsState      // active setup (app_setups.go)
 }
 
 type Settings struct {
@@ -62,10 +63,12 @@ func (a *App) startup(ctx context.Context) {
 		a.settings.GameDir = game.Locate()
 	}
 	_ = saveSettings(a.settings)
+	a.initSetups()
 	a.RefreshTemplates(false)
 }
 
-func (a *App) ws() project.Workspace { return project.Workspace{Root: a.settings.Workspace} }
+// ws is the active setup's studio root (projects + accessory library); see app_setups.go.
+func (a *App) ws() project.Workspace { return project.Workspace{Root: a.root()} }
 
 // ---------------------------------------------------------------- settings & game
 
@@ -99,10 +102,14 @@ func (a *App) SaveSettings(s Settings) (Settings, error) {
 	}
 	s.SyncedVersion = a.settings.SyncedVersion // backend-only
 	changed := s.GameDir != a.settings.GameDir
+	wsChanged := s.Workspace != a.settings.Workspace
 	a.settings = s
 	err := saveSettings(s)
 	if changed {
 		a.invalidateTemplates()
+	}
+	if wsChanged {
+		a.initSetups()
 	}
 	return s, err
 }
@@ -296,7 +303,7 @@ type ScryfallSet struct {
 
 // ScryfallSets lists sets (cached for a day in the workspace).
 func (a *App) ScryfallSets(refresh bool) ([]ScryfallSet, error) {
-	cache := filepath.Join(a.ws().CacheDir(), "scryfall_sets.json")
+	cache := filepath.Join(a.home().CacheDir(), "scryfall_sets.json")
 	var sets []scryfall.Set
 	if info, err := os.Stat(cache); err == nil && !refresh && time.Since(info.ModTime()) < 24*time.Hour {
 		if b, err := os.ReadFile(cache); err == nil {
@@ -802,7 +809,7 @@ func (a *App) fileHandler() http.Handler {
 				http.NotFound(w, r)
 				return
 			}
-			file = filepath.Join(accessories.Folder(a.settings.Workspace), filepath.FromSlash(rel))
+			file = filepath.Join(accessories.Folder(a.root()), filepath.FromSlash(rel))
 		case path == "globalback/"+globalBackFile:
 			file = filepath.Join(game.PluginDir(a.settings.GameDir), globalBackFile)
 		default:

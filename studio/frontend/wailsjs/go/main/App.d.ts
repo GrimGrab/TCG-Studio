@@ -46,6 +46,8 @@ export function Confirm(arg1:string):Promise<boolean>;
 
 export function CreateProject(arg1:string,arg2:string):Promise<project.Project>;
 
+export function CreateSetup(arg1:string,arg2:string,arg3:boolean):Promise<main.SetupsView>;
+
 export function DefaultArtColor(arg1:string):Promise<string>;
 
 export function DefaultImportOptions():Promise<importer.Options>;
@@ -55,6 +57,10 @@ export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
 export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
 
 export function DeleteProject(arg1:string):Promise<void>;
+
+export function DeleteSetup(arg1:string):Promise<main.SetupsView>;
+
+export function ExportSetup(arg1:string):Promise<string>;
 
 export function ForgeStatus():Promise<forge.Status>;
 
@@ -90,6 +96,8 @@ export function ImportFigurineModel():Promise<main.FigurineSource>;
 
 export function ImportScryfallSet(arg1:string,arg2:importer.Options):Promise<string>;
 
+export function ImportSetup(arg1:string):Promise<string>;
+
 export function InstallAccessories():Promise<main.AccessoryView>;
 
 export function InstallForge():Promise<string>;
@@ -102,6 +110,8 @@ export function LaunchGame():Promise<void>;
 
 export function ListProjects():Promise<Array<project.Summary>>;
 
+export function ListSetups():Promise<main.SetupsView>;
+
 export function LoadProject(arg1:string):Promise<project.Project>;
 
 export function LocateGame():Promise<game.Status>;
@@ -109,6 +119,8 @@ export function LocateGame():Promise<game.Status>;
 export function ModSettings():Promise<main.ModSettingsView>;
 
 export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryView>;
+
+export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
 
@@ -120,6 +132,8 @@ export function OpenFolder(arg1:string):Promise<void>;
 
 export function OpenProjectFolder(arg1:string):Promise<void>;
 
+export function OpenSetupFolder(arg1:string):Promise<void>;
+
 export function PackIconFromTexture(arg1:string):Promise<string>;
 
 export function PickAccessoryImage():Promise<string>;
@@ -127,6 +141,8 @@ export function PickAccessoryImage():Promise<string>;
 export function PickImage(arg1:string,arg2:string):Promise<string>;
 
 export function PickImages(arg1:string):Promise<Array<string>>;
+
+export function PickSetupFile():Promise<main.SetupFileInfo>;
 
 export function ProjectInstallState(arg1:string):Promise<string>;
 
@@ -139,6 +155,8 @@ export function RemoveForge():Promise<void>;
 export function RemoveGlobalCardBack():Promise<void>;
 
 export function RestoreModDefaults(arg1:string):Promise<number>;
+
+export function RetrySetups():Promise<main.SetupsView>;
 
 export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4:string):Promise<main.AccessoryView>;
 
@@ -166,10 +184,14 @@ export function SetupUninstall(arg1:boolean):Promise<string>;
 
 export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
+export function SwitchSetup(arg1:string):Promise<main.SwitchResult>;
+
 export function SyncInstalledSets():Promise<string>;
 
 export function TemplatesStatus():Promise<main.TemplatesStatus>;
 
 export function UninstallProject(arg1:string):Promise<void>;
+
+export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
 
 export function ValidateProject(arg1:string):Promise<Array<setfmt.Issue>>;

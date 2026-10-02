@@ -42,6 +42,12 @@ func TemplatesDir(gameDir string) string {
 	return filepath.Join(PluginDir(gameDir), "templates")
 }
 
+// SaveDir is the game's Unity persistentDataPath: vanilla saves (savedGames_*), the mod's side-car folder and logs.
+func SaveDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "AppData", "LocalLow", "OPNeonGames", "Card Shop Simulator")
+}
+
 // Status describes what is installed in the game folder.
 type Status struct {
 	GameDir        string `json:"gameDir"`

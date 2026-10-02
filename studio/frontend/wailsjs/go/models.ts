@@ -593,6 +593,96 @@ export namespace main {
 	        this.syncedVersion = source["syncedVersion"];
 	    }
 	}
+	export class SetupFileInfo {
+	    file: string;
+	    manifest?: setups.Manifest;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetupFileInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.manifest = this.convertValues(source["manifest"], setups.Manifest);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SetupsView {
+	    setups: setups.Summary[];
+	    active: string;
+	    gameRunning: boolean;
+	    gameFound: boolean;
+	    steamCloud: boolean;
+	    error: string;
+	    message: string;
+	    pending: boolean;
+	    workspace: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetupsView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setups = this.convertValues(source["setups"], setups.Summary);
+	        this.active = source["active"];
+	        this.gameRunning = source["gameRunning"];
+	        this.gameFound = source["gameFound"];
+	        this.steamCloud = source["steamCloud"];
+	        this.error = source["error"];
+	        this.message = source["message"];
+	        this.pending = source["pending"];
+	        this.workspace = source["workspace"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SwitchResult {
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SwitchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.warnings = source["warnings"];
+	    }
+	}
 	export class TemplatesStatus {
 	    ready: boolean;
 	    source: string;
@@ -1485,6 +1575,107 @@ export namespace setfmt {
 		}
 	}
 	
+
+}
+
+export namespace setups {
+	
+	export class Manifest {
+	    format: string;
+	    formatVersion: number;
+	    name: string;
+	    description?: string;
+	    studioVersion?: string;
+	    // Go type: time
+	    exported: any;
+	    sets: number;
+	    accessories: number;
+	    furniture: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Manifest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.format = source["format"];
+	        this.formatVersion = source["formatVersion"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.studioVersion = source["studioVersion"];
+	        this.exported = this.convertValues(source["exported"], null);
+	        this.sets = source["sets"];
+	        this.accessories = source["accessories"];
+	        this.furniture = source["furniture"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Summary {
+	    id: string;
+	    name: string;
+	    description: string;
+	    // Go type: time
+	    created: any;
+	    folder: string;
+	    active: boolean;
+	    sets: number;
+	    accessories: number;
+	    furniture: number;
+	    hasSaves: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Summary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.created = this.convertValues(source["created"], null);
+	        this.folder = source["folder"];
+	        this.active = source["active"];
+	        this.sets = source["sets"];
+	        this.accessories = source["accessories"];
+	        this.furniture = source["furniture"];
+	        this.hasSaves = source["hasSaves"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

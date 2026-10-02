@@ -66,6 +66,10 @@ export function CreateProject(arg1, arg2) {
   return window['go']['main']['App']['CreateProject'](arg1, arg2);
 }
 
+export function CreateSetup(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateSetup'](arg1, arg2, arg3);
+}
+
 export function DefaultArtColor(arg1) {
   return window['go']['main']['App']['DefaultArtColor'](arg1);
 }
@@ -84,6 +88,14 @@ export function DeleteFurniture(arg1) {
 
 export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
+}
+
+export function DeleteSetup(arg1) {
+  return window['go']['main']['App']['DeleteSetup'](arg1);
+}
+
+export function ExportSetup(arg1) {
+  return window['go']['main']['App']['ExportSetup'](arg1);
 }
 
 export function ForgeStatus() {
@@ -154,6 +166,10 @@ export function ImportScryfallSet(arg1, arg2) {
   return window['go']['main']['App']['ImportScryfallSet'](arg1, arg2);
 }
 
+export function ImportSetup(arg1) {
+  return window['go']['main']['App']['ImportSetup'](arg1);
+}
+
 export function InstallAccessories() {
   return window['go']['main']['App']['InstallAccessories']();
 }
@@ -178,6 +194,10 @@ export function ListProjects() {
   return window['go']['main']['App']['ListProjects']();
 }
 
+export function ListSetups() {
+  return window['go']['main']['App']['ListSetups']();
+}
+
 export function LoadProject(arg1) {
   return window['go']['main']['App']['LoadProject'](arg1);
 }
@@ -192,6 +212,10 @@ export function ModSettings() {
 
 export function MoveAccessory(arg1, arg2) {
   return window['go']['main']['App']['MoveAccessory'](arg1, arg2);
+}
+
+export function MoveSetup(arg1, arg2) {
+  return window['go']['main']['App']['MoveSetup'](arg1, arg2);
 }
 
 export function NewAccessory(arg1, arg2, arg3) {
@@ -214,6 +238,10 @@ export function OpenProjectFolder(arg1) {
   return window['go']['main']['App']['OpenProjectFolder'](arg1);
 }
 
+export function OpenSetupFolder(arg1) {
+  return window['go']['main']['App']['OpenSetupFolder'](arg1);
+}
+
 export function PackIconFromTexture(arg1) {
   return window['go']['main']['App']['PackIconFromTexture'](arg1);
 }
@@ -228,6 +256,10 @@ export function PickImage(arg1, arg2) {
 
 export function PickImages(arg1) {
   return window['go']['main']['App']['PickImages'](arg1);
+}
+
+export function PickSetupFile() {
+  return window['go']['main']['App']['PickSetupFile']();
 }
 
 export function ProjectInstallState(arg1) {
@@ -252,6 +284,10 @@ export function RemoveGlobalCardBack() {
 
 export function RestoreModDefaults(arg1) {
   return window['go']['main']['App']['RestoreModDefaults'](arg1);
+}
+
+export function RetrySetups() {
+  return window['go']['main']['App']['RetrySetups']();
 }
 
 export function SaveAccessory(arg1, arg2, arg3, arg4) {
@@ -306,6 +342,10 @@ export function SnapshotPackBase(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SnapshotPackBase'](arg1, arg2, arg3, arg4);
 }
 
+export function SwitchSetup(arg1) {
+  return window['go']['main']['App']['SwitchSetup'](arg1);
+}
+
 export function SyncInstalledSets() {
   return window['go']['main']['App']['SyncInstalledSets']();
 }
@@ -316,6 +356,10 @@ export function TemplatesStatus() {
 
 export function UninstallProject(arg1) {
   return window['go']['main']['App']['UninstallProject'](arg1);
+}
+
+export function UpdateSetup(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateSetup'](arg1, arg2, arg3);
 }
 
 export function ValidateProject(arg1) {

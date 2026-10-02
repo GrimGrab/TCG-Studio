@@ -112,7 +112,7 @@
 
 <div class="page">
   <header class="row">
-    <h2 class="grow">My Sets</h2>
+    <h2 class="grow">Sets</h2>
     <button onclick={() => (creating = !creating)}>New empty set</button>
   </header>
 

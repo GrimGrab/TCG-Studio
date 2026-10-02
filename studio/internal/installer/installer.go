@@ -178,7 +178,7 @@ func Inspect(game string, p Payload, havePayload, running bool) State {
 			n++
 		}
 	}
-	add("sets", "Card sets", Info, fmt.Sprintf("%d set(s) installed. Import sets from Scryfall in My Sets / Import, then Install.", n))
+	add("sets", "Card sets", Info, fmt.Sprintf("%d set(s) installed. Import sets from Scryfall in Sets / Import, then Install.", n))
 
 	s.Ready = true
 	for _, it := range s.Items {

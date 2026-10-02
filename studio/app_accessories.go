@@ -33,7 +33,7 @@ type AccessoryView struct {
 	Errors      []string           `json:"errors"`
 }
 
-func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.settings.Workspace) }
+func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.root()) }
 
 func (a *App) accView(l *accessories.Library) AccessoryView {
 	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Layouts: map[string]string{}}

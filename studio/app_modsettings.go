@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"path/filepath"
 
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/modconfig"
@@ -21,10 +22,31 @@ func (a *App) modConfigPath() (string, error) {
 		return "", errors.New("game folder not set (Settings → Game)")
 	}
 	p := modconfig.Path(a.settings.GameDir)
-	if _, err := os.Stat(p); err != nil {
-		return "", errors.New("the mod hasn't created its settings file yet — start the game once with the mod installed")
+	if info, err := os.Stat(p); err == nil {
+		// Remember this mod version's defaults, for creating the file when it is missing (new setup, fresh install).
+		if c, cerr := os.Stat(modDefaultsCache()); cerr != nil || info.ModTime().After(c.ModTime()) {
+			_ = modconfig.MakeDefaults(p, modDefaultsCache())
+		}
+		return p, nil
+	}
+	if !game.GetStatus(a.settings.GameDir).ModInstalled {
+		return "", errors.New("the mod isn't installed yet — install it on the Setup screen")
+	}
+	// No file yet (the game hasn't run with the mod, or a setup without saved settings): write the defaults; the mod reads
+	// it on start and adds any setting the file doesn't have.
+	if err := modconfig.WriteDefaults(p, modDefaultsCache()); err != nil {
+		return "", err
 	}
 	return p, nil
+}
+
+// modDefaultsCache is a copy of the installed mod's config with every value at its default.
+func modDefaultsCache() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	return filepath.Join(dir, "TCG Studio", "mod-defaults.cfg")
 }
 
 func (a *App) ModSettings() (ModSettingsView, error) {

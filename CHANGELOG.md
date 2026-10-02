@@ -3,6 +3,19 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.9.0 - 2026-10-02
+
+Setups: keep several custom-content setups, switch the game between them, and share them.
+
+- New: Setups. Keep complete setups (sets, accessories, furniture, mod settings and the global card back) and switch the game between them from the setup menu at the top of the sidebar. Each setup keeps its own game saves, which are swapped too (close the game first). The first switch makes a one-time backup of your saves in the workspace folder.
+- New: Export a setup as one .tcgsetup file to share with friends, and Import theirs. Exports never contain saves or folder paths from your PC.
+- New: Mod settings works before you've ever started the game; Studio creates the settings file with default values.
+- Changed: "My Sets" is now called "Sets".
+- Fixed: installing a set that has no images failed.
+- Note: on the first start, your existing sets and accessories become the setup "My Setup". Nothing in the game changes.
+- Note: if Steam Cloud is on for the game, switching to a setup without saves may bring the previous setup's saves back from Steam. Turn off Steam Cloud for TCG Card Shop Simulator to keep setups apart.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.8.0 - 2026-09-30
 
 Custom furniture: make your own shelves, card shelves, play tables and more in TCG Studio.

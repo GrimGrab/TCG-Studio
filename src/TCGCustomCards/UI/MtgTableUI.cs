@@ -28,8 +28,12 @@ namespace TCGCustomCards.UI
         // clicked), so an assignment is sent as two clicks: the attacker, then the blocker.
         private bool _blockStep;
         private readonly HashSet<int> _blockAttackers = new HashSet<int>();
-        private int _blockCurrent = -1;       // Forge's current attacker (prompt.picked)
         private int _pendingBlocker = -1;     // clicked creature waiting for its attacker
+        // Forge's answers for the current block step (bridge combat[].canBeBlockedBy / blockers): attacker -> creatures Forge's
+        // rules let block it (null = the bridge didn't send it: let Forge decide on each click), and blocker -> its attacker.
+        private Dictionary<int, HashSet<int>> _legal;
+        private readonly Dictionary<int, int> _blockingOf = new Dictionary<int, int>();
+        private (int blocker, int attacker, float until)? _expectBlock; // sent block, checked against Forge's next combat state
         private int _dragBlocker = -1;        // creature being dragged
         private Vector2 _dragFrom;
         private bool _dragMoved;
@@ -46,6 +50,9 @@ namespace TCGCustomCards.UI
         private readonly List<int> _order = new List<int>(); // "reorder" dialog: option indexes, top first
         private string _zoneView; // "me:graveyard" etc.
         private bool _confirmConcede;
+        private bool _deckInfoOpen;           // "Customer's deck" panel toggled by the player
+        private Vector2 _revealScroll;
+        private JObject _revealCard;          // reveal panel: last card name hovered (shown on the right)
         private GUIStyle _text, _small, _title, _tile, _button, _big;
         private float _guiScale = 1f;
         private int _lastActive = int.MinValue;
@@ -71,6 +78,9 @@ namespace TCGCustomCards.UI
             _inst._logCount = -1;
             _inst._zoneView = null;
             _inst._confirmConcede = false;
+            _inst._deckInfoOpen = false;
+            _inst._revealScroll = Vector2.zero;
+            _inst._revealCard = null;
             _inst.enabled = true;
         }
 
@@ -200,7 +210,8 @@ namespace TCGCustomCards.UI
             var combat = Arr(st, "combat").ToList();
 
             // IMGUI gives clicks to the first control drawn: keep the board inert while a dialog is open.
-            bool modal = MtgSession.Ask != null || _confirmConcede || _zoneView != null;
+            // The after-match deck reveal counts too: its Continue button sits over the board.
+            bool modal = MtgSession.Ask != null || _confirmConcede || _zoneView != null || MtgSession.RevealOpen;
             UpdateBlockStep(st, prompt, picked, combat, modal);
             GUI.enabled = !modal;
             if (board3d)
@@ -240,8 +251,97 @@ namespace TCGCustomCards.UI
                     new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
                 GUI.color = Color.white;
             }
-            if (MtgSession.Status.Length > 0 && !MtgSession.Playing || MtgSession.GameOver != null)
+            if ((MtgSession.Status.Length > 0 && !MtgSession.Playing || MtgSession.GameOver != null) && !MtgSession.RevealOpen)
                 GUI.Label(new Rect(0, H / 2 - 60, 1460, 120), $"<size=64><b>{MtgSession.Status}</b></size>", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
+            if (MtgSession.RevealOpen) DrawReveal();
+            else if (!modal) DrawDeckInfo(board3d);
+        }
+
+        // ------------------------------------------------------------------ the customer's deck
+
+        /// <summary>"Customer's deck: …" chip (click = how Forge built it); opens by itself for a few seconds when a game starts.</summary>
+        private void DrawDeckInfo(bool board3d)
+        {
+            var d = MtgSession.AiDeck;
+            if (d == null) return;
+            bool open = _deckInfoOpen || Time.unscaledTime - MtgSession.AiDeckAt < 6f;
+            var r = board3d ? new Rect(8, 8, 560, 34) : new Rect(1160, 8, 300, 36);
+            string colors = S(d, "colors");
+            string chip = $"<b>Customer's deck</b>: {(string.IsNullOrEmpty(colors) ? "" : colors + " · ")}{I(d, "cards")} cards  {(open ? "▴" : "▾")}";
+            if (GUI.Button(r, chip, new GUIStyle(_button) { richText = true, fontSize = 15, alignment = TextAnchor.MiddleLeft }))
+                _deckInfoOpen = !open;
+            if (!open) return;
+            var lines = (d["lines"] as JArray)?.Select(l => (string)l).ToList() ?? new List<string>();
+            string profile = S(d, "profile");
+            if (!string.IsNullOrEmpty(profile)) lines.Add("Play style: " + profile);
+            float w = 560, x = board3d ? r.x : r.xMax - w;
+            var box = new Rect(x, r.yMax + 4, w, 12 + lines.Count * 24);
+            GUI.color = new Color(0f, 0f, 0f, 0.82f);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            for (int i = 0; i < lines.Count; i++)
+                GUI.Label(new Rect(box.x + 10, box.y + 6 + i * 24, w - 20, 24), lines[i], _small);
+        }
+
+        /// <summary>
+        /// After the game: result + the customer's whole deck by type; hovering a name shows that card on the right (our set's
+        /// card, like on the table). Continue goes on to the vanilla result screen.
+        /// </summary>
+        private void DrawReveal()
+        {
+            var d = MtgSession.AiDeck;
+            var rows = Arr(d, "list").ToList();
+            const float previewW = 330f, previewH = 460f;
+            var r = new Rect(W / 2 - 720, 70, 1440, H - 140);
+            GUI.color = new Color(0f, 0f, 0f, 0.9f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(r.x, r.y + 14, r.width, 60), $"<size=44><b>{MtgSession.Status}</b></size>", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
+            string colors = S(d, "colors");
+            GUI.Label(new Rect(r.x, r.y + 76, r.width, 30),
+                $"The customer's deck{(string.IsNullOrEmpty(colors) ? "" : " — " + colors)} · {I(d, "cards")} cards  <color=#aaaaaa>(hover a name to see the card)</color>",
+                new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter });
+
+            // Lists (left), card preview (right)
+            var groups = new[] { ("Creatures", "creature"), ("Other spells", "spell"), ("Lands", "land") };
+            float listW = r.width - previewW - 80, colW = listW / 3f, top = r.y + 120, height = r.height - 120 - 90;
+            float content = groups.Max(g => 34 + rows.Count(x => S(x, "kind") == g.Item2) * 26f);
+            _revealScroll = GUI.BeginScrollView(new Rect(r.x + 20, top, listW + 20, height), _revealScroll,
+                new Rect(0, 0, listW, Math.Max(height, content)));
+            var mouse = Event.current.mousePosition; // scroll-view content space here
+            for (int g = 0; g < groups.Length; g++)
+            {
+                var items = rows.Where(x => S(x, "kind") == groups[g].Item2).OrderBy(x => S(x, "name")).ToList();
+                int count = items.Sum(x => I(x, "n"));
+                GUI.Label(new Rect(g * colW, 0, colW - 10, 30), $"<b>{groups[g].Item1}</b> ({count})", _text);
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var line = new Rect(g * colW, 34 + i * 26, colW - 10, 26);
+                    bool hot = line.Contains(mouse);
+                    if (hot) _revealCard = items[i];
+                    bool shown = _revealCard != null && S(_revealCard, "name") == S(items[i], "name");
+                    string text = $"{I(items[i], "n")}× {S(items[i], "name")}";
+                    GUI.Label(line, shown ? $"<color=#9fd3ff><b>{text}</b></color>" : text, _small);
+                }
+            }
+            GUI.EndScrollView();
+
+            var pr = new Rect(r.xMax - previewW - 30, top + (height - previewH) / 2f, previewW, previewH);
+            if (_revealCard != null)
+            {
+                var card = new JObject { ["name"] = S(_revealCard, "name"), ["set"] = S(_revealCard, "set") };
+                if (!DrawFace(pr, card, live: false))
+                    GUI.Label(pr, $"<b>{S(_revealCard, "name")}</b>\n<color=#aaaaaa>(no picture for this card)</color>",
+                        new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter });
+            }
+            else
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.06f);
+                GUI.DrawTexture(pr, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                GUI.Label(pr, "<color=#aaaaaa>Hover a card name</color>", new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter });
+            }
+            if (GUI.Button(new Rect(r.center.x - 150, r.yMax - 76, 300, 60), "Continue", _big)) MtgSession.RevealOpen = false;
         }
 
         private void DrawPlayerBar(Rect r, JObject p, JObject st, HashSet<int> selectable, HashSet<int> picked)
@@ -389,10 +489,19 @@ namespace TCGCustomCards.UI
                     else if (_blockAttackers.Contains(id))
                     {
                         bool target = choosing && hit == s;
-                        frame = target ? Color.white : choosing ? Selectable : id == _blockCurrent ? Picked : Attacking;
+                        bool illegal = choosing && Legal(Chooser, id) == false;
+                        frame = illegal ? CantBlock : target ? Color.white : choosing ? Selectable : Attacking;
                         if (target) width = 7f;
+                        if (illegal && !e.Covered)
+                        {
+                            var tr = new Rect(r.center.x - 56f, r.y + 4f, 112f, 20f);
+                            GUI.color = new Color(0, 0, 0, 0.75f);
+                            GUI.DrawTexture(tr, Texture2D.whiteTexture);
+                            GUI.color = old;
+                            GUI.Label(tr, "<color=#ff8080>can't block</color>", new GUIStyle(_small) { fontSize = 13, alignment = TextAnchor.MiddleCenter });
+                        }
                     }
-                    else if (CanBlockNow(c, meId)) frame = Selectable;
+                    else if (Draggable(c, meId)) frame = _blockingOf.ContainsKey(id) ? Blocking : Selectable; // live from Forge's combat
                     else if (!e.Covered && B(c, "blocking")) frame = Blocking;
                 }
                 else if (selectable.Contains(id) || picked.Contains(id) || (!e.Covered && (B(c, "attacking") || B(c, "blocking"))))
@@ -412,20 +521,12 @@ namespace TCGCustomCards.UI
                         GUI.color = old;
                     }
                 }
-                // The attacker a plain click on one of your creatures would block (Forge's current attacker).
-                if (_blockStep && !choosing && id == _blockCurrent && _blockAttackers.Count > 1 && !e.Covered)
-                {
-                    var tr = new Rect(r.center.x - 48f, r.y + 4f, 96f, 20f);
-                    GUI.color = new Color(0, 0, 0, 0.7f);
-                    GUI.DrawTexture(tr, Texture2D.whiteTexture);
-                    GUI.color = old;
-                    GUI.Label(tr, "<color=#7dff8c>Selected</color>", new GUIStyle(_small) { fontSize = 13, alignment = TextAnchor.MiddleCenter });
-                }
                 var lines = new List<string>();
                 if (c["power"] != null) lines.Add($"<b>{I(c, "power")}/{I(c, "toughness")}</b>" + (I(c, "damage") > 0 ? $" <color=#ff6060>-{I(c, "damage")}</color>" : ""));
                 if (S(c, "loyalty") != null) lines.Add($"Loyalty {S(c, "loyalty")}");
                 if (c["counters"] is JObject cnt) foreach (var p in cnt.Properties()) lines.Add($"{p.Value}× {p.Name}");
                 if (MtgTable3d.IsUnknown(e)) lines.Insert(0, $"<b>{S(c, "name")}</b>");
+                if (B(c, "faceDown")) lines.Insert(0, "<i>Face-down</i>");
                 // Tags only for permanents (battlefield): not when hidden behind a nearer card, not in the hand or on the stack
                 // (the popped-up card being played) — their printed stats are enough.
                 if (lines.Count > 0 && !e.Covered && S(c, "zone") == "Battlefield")
@@ -450,7 +551,8 @@ namespace TCGCustomCards.UI
                 {
                     var a = from.R.center;
                     var b = ev.mousePosition;
-                    var col = hit != null && _blockAttackers.Contains(hit.Id) ? Color.white : Selectable;
+                    var col = hit != null && _blockAttackers.Contains(hit.Id)
+                        ? (Legal(_dragBlocker, hit.Id) == false ? CantBlock : Color.white) : Selectable;
                     DrawLine(a, b, col, 6f);
                     var dir = (b - a).sqrMagnitude > 1f ? (b - a).normalized : Vector2.up;
                     var side = new Vector2(-dir.y, dir.x);
@@ -488,22 +590,67 @@ namespace TCGCustomCards.UI
             _blockStep = !modal && S(st, "phase") == "COMBAT_DECLARE_BLOCKERS" && I(st, "activePlayer", -1) != I(st, "me", -1)
                          && combat.Count > 0 && prompt != null && !text.StartsWith("Waiting for");
             _blockAttackers.Clear();
-            _blockCurrent = -1;
             if (!_blockStep)
             {
                 _pendingBlocker = -1;
                 _dragBlocker = -1;
+                _expectBlock = null;
                 return;
             }
             foreach (var cb in combat) _blockAttackers.Add(I(cb, "attacker", -1));
-            _blockCurrent = picked.FirstOrDefault(_blockAttackers.Contains);
-            if (!_blockAttackers.Contains(_blockCurrent)) _blockCurrent = -1;
+            // Forge's "current attacker" (prompt.picked) isn't shown: the table always sends explicit blocker/attacker pairs,
+            // which leave it pointing at whatever attacker was touched last — showing it looked like a selection that wasn't.
+
+            _blockingOf.Clear();
+            _legal = combat.All(cb => cb["canBeBlockedBy"] is JArray) ? new Dictionary<int, HashSet<int>>() : null;
+            foreach (var cb in combat)
+            {
+                int att = I(cb, "attacker", -1);
+                foreach (var b in (cb["blockers"] as JArray)?.Where(t => t.Type == JTokenType.Integer) ?? Enumerable.Empty<JToken>())
+                    _blockingOf[(int)b] = att;
+                if (_legal != null)
+                    _legal[att] = new HashSet<int>(((JArray)cb["canBeBlockedBy"]).Where(t => t.Type == JTokenType.Integer).Select(t => (int)t));
+            }
+            // A block we sent that Forge's combat still doesn't show after a moment: Forge refused it (a rule its per-pair
+            // check doesn't cover, e.g. a block requirement) - say so instead of failing silently.
+            if (_expectBlock is var (eb, ea, until))
+            {
+                if (_blockingOf.TryGetValue(eb, out int now) && now == ea) _expectBlock = null;
+                else if (Time.unscaledTime > until)
+                {
+                    _expectBlock = null;
+                    MtgSession.AddMessage($"Forge didn't accept {NameOf(eb)} blocking {NameOf(ea)}");
+                }
+            }
         }
 
-        /// <summary>One of my untapped creatures on the battlefield that isn't blocking yet (Forge still checks legality).</summary>
-        private static bool CanBlockNow(JObject c, int meId) =>
-            c != null && I(c, "controller", -1) == meId && S(c, "zone") == "Battlefield" && B(c, "creature") &&
-            !B(c, "tapped") && !B(c, "blocking") && !B(c, "attacking");
+        private static readonly Color CantBlock = new Color(0.85f, 0.25f, 0.25f, 0.9f);
+
+        /// <summary>The creature being placed (dragged or clicked and waiting for its attacker).</summary>
+        private int Chooser => _dragBlocker >= 0 ? _dragBlocker : _pendingBlocker;
+
+        /// <summary>Forge's answer to "may this creature block that attacker?" - null when the bridge didn't send one.</summary>
+        private bool? Legal(int blocker, int attacker) =>
+            _legal == null ? (bool?)null : _legal.TryGetValue(attacker, out var set) && set.Contains(blocker);
+
+        /// <summary>
+        /// A creature you can place as a blocker: Forge lists it for some attacker, or Forge's combat shows it blocking (drag it
+        /// to another attacker or off its attacker). Without Forge's list: any of your creatures, and Forge decides on the click.
+        /// </summary>
+        private bool Draggable(JObject c, int meId)
+        {
+            if (c == null) return false;
+            int id = I(c, "id");
+            if (_blockingOf.ContainsKey(id)) return true;
+            if (_legal != null) return _legal.Values.Any(set => set.Contains(id));
+            return I(c, "controller", -1) == meId && S(c, "zone") == "Battlefield" && B(c, "creature");
+        }
+
+        private static string NameOf(int id)
+        {
+            var c = MtgTable3d.Visible.FirstOrDefault(v => v.Json != null && I(v.Json, "id") == id)?.Json;
+            return S(c, "name") ?? "that card";
+        }
 
         private void HandleBlockInput(Event ev, Shown hit, int meId)
         {
@@ -515,7 +662,7 @@ namespace TCGCustomCards.UI
                     ev.Use();
                     break;
                 case EventType.MouseDown when ev.button == 0 && hit != null:
-                    if (CanBlockNow(hit.C, meId))
+                    if (Draggable(hit.C, meId))
                     {
                         _dragBlocker = hit.Id; // a drag or a click: decided on release
                         _dragFrom = ev.mousePosition;
@@ -533,8 +680,9 @@ namespace TCGCustomCards.UI
                     _dragBlocker = -1;
                     if (_dragMoved)
                     {
-                        if (hit != null && _blockAttackers.Contains(hit.Id)) AssignBlock(hit.Id, blocker);
-                        // dropped anywhere else: cancelled
+                        if (hit != null && _blockAttackers.Contains(hit.Id)) TryBlock(blocker, hit.Id);
+                        else if (_blockingOf.TryGetValue(blocker, out int from)) RemoveBlock(blocker, from); // dragged off its attacker
+                        // a free creature dropped anywhere else: cancelled
                     }
                     else
                     {
@@ -555,25 +703,53 @@ namespace TCGCustomCards.UI
         private void BlockClick(JObject c, int meId)
         {
             int id = I(c, "id");
-            if (CanBlockNow(c, meId) && _blockAttackers.Count > 1)
-            {
-                _pendingBlocker = _pendingBlocker == id ? -1 : id;
-                return;
-            }
             if (_blockAttackers.Contains(id) && _pendingBlocker >= 0)
             {
-                AssignBlock(id, _pendingBlocker);
+                TryBlock(_pendingBlocker, id);
                 _pendingBlocker = -1;
                 return;
             }
+            if (_blockingOf.TryGetValue(id, out int from)) // a click on a blocking creature takes its block back
+            {
+                _pendingBlocker = -1;
+                RemoveBlock(id, from);
+                return;
+            }
+            if (Draggable(c, meId))
+            {
+                if (_blockAttackers.Count > 1) _pendingBlocker = _pendingBlocker == id ? -1 : id;
+                else if (_blockAttackers.Count == 1) TryBlock(id, _blockAttackers.First());
+                return;
+            }
             _pendingBlocker = -1;
+            if (_blockAttackers.Contains(id)) return; // an attacker on its own: nothing to do (it would only move Forge's hidden current attacker)
             Click(c);
         }
 
-        /// <summary>Forge's order: make the attacker current, then click the blocker (the bridge handles messages in order).</summary>
-        private static void AssignBlock(int attacker, int blocker)
+        /// <summary>Blocks the attacker with the creature if Forge's rules allow it (moving it off another attacker first).</summary>
+        private void TryBlock(int blocker, int attacker)
         {
+            if (Legal(blocker, attacker) == false)
+            {
+                MtgSession.AddMessage($"{NameOf(blocker)} can't block {NameOf(attacker)}");
+                return;
+            }
+            if (_blockingOf.TryGetValue(blocker, out int from))
+            {
+                if (from == attacker) return;
+                RemoveBlock(blocker, from);
+            }
+            // Forge's InputBlock: clicking an attacker makes it the current one, clicking a creature then blocks it.
             Plugin.Log.LogInfo($"MTG block: {blocker} blocks {attacker}");
+            ForgeBridge.Act("card", attacker);
+            ForgeBridge.Act("card", blocker);
+            _expectBlock = (blocker, attacker, Time.unscaledTime + 1.5f);
+        }
+
+        /// <summary>Takes a block back: with its attacker current, clicking the blocker removes it (Forge's InputBlock).</summary>
+        private static void RemoveBlock(int blocker, int attacker)
+        {
+            Plugin.Log.LogInfo($"MTG unblock: {blocker} from {attacker}");
             ForgeBridge.Act("card", attacker);
             ForgeBridge.Act("card", blocker);
         }

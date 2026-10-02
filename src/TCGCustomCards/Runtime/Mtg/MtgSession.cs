@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using TCGCustomCards.UI;
@@ -27,6 +28,11 @@ namespace TCGCustomCards.Runtime.Mtg
         public static string Status = "";
         public static bool Playing;
         public static JObject GameOver;
+        /// <summary>How Forge built the customer's deck (bridge <c>aideck</c>: lines, list, colours, profile) and when it arrived.</summary>
+        public static JObject AiDeck;
+        public static float AiDeckAt;
+        /// <summary>After the game: the customer's deck list is on screen until the player clicks Continue.</summary>
+        public static bool RevealOpen;
 
         private static MtgRunner _runner;
 
@@ -58,6 +64,13 @@ namespace TCGCustomCards.Runtime.Mtg
                         AddMessage(((string)m["title"] is string t && t.Length > 0 ? t + ": " : "") + (string)m["text"]);
                         break;
                     case "flash": AddMessage("Can't do that now"); break;
+                    case "aideck": // how Forge built the customer's deck: shown in the table's deck panel, list revealed after the game
+                        AiDeck = m;
+                        AiDeckAt = Time.unscaledTime;
+                        Plugin.Log.LogInfo($"MTG AI deck: {(string)m["style"]} via {(string)m["source"]}, {(string)m["colors"]}, " +
+                                           $"{(int?)m["cards"]} cards, play style {(string)m["profile"]}: " +
+                                           string.Join(" | ", (m["lines"] as JArray)?.Select(l => (string)l) ?? Enumerable.Empty<string>()));
+                        break;
                     case "exited":
                         if (Playing) AddMessage("Forge stopped unexpectedly (see TCGForge\\userdata\\tcgcc-bridge.log)");
                         break;
@@ -65,7 +78,7 @@ namespace TCGCustomCards.Runtime.Mtg
             }
         }
 
-        private static void AddMessage(string s)
+        internal static void AddMessage(string s)
         {
             Messages.Add(s);
             if (Messages.Count > 6) Messages.RemoveAt(0);
@@ -95,10 +108,12 @@ namespace TCGCustomCards.Runtime.Mtg
         }
 
         /// <summary>Replacement for PlayTableGame.DelayStart (a coroutine on the PlayTableGame).</summary>
-        public static IEnumerator Run(PlayTableGame game)
+        /// <param name="rematch">Another game with the same customer (vanilla rematch) — [MTG - AI opponent] AiKeepDeckOnRematch.</param>
+        public static IEnumerator Run(PlayTableGame game, bool rematch)
         {
             EnsureRunner();
-            State = Prompt = Ask = GameOver = null;
+            State = Prompt = Ask = GameOver = AiDeck = null;
+            RevealOpen = false;
             Messages.Clear();
             _leftMidGame = false;
             Playing = true;
@@ -108,13 +123,14 @@ namespace TCGCustomCards.Runtime.Mtg
             SoundManager.BlendToMusic("BGM_FightOpening", 0.5f, isLinearBlend: true);
             SoundManager.QueueMusic("BGM_FightOpening", "BGM_FightLoop", 1f);
 
-            string err = MtgMode.BuildDecks(out var player, out var opponent);
+            string err = MtgMode.BuildDecks(out var player, out var opponent, out var aiDeck);
             if (err == null) err = ForgeBridge.EnsureStarted();
             if (err != null)
             {
                 yield return Abort(game, err);
                 yield break;
             }
+            if (rematch && Plugin.MtgAiKeepDeckOnRematch?.Value != false && aiDeck != null) aiDeck["reuse"] = true;
             string deckFile = ForgeLauncher.WriteDeck(player);
             string oppFile = ForgeLauncher.WriteDeck(opponent);
 
@@ -139,6 +155,9 @@ namespace TCGCustomCards.Runtime.Mtg
                 ["t"] = "start", ["deck"] = deckFile, ["opponent"] = oppFile,
                 ["name"] = string.IsNullOrWhiteSpace(CPlayerData.PlayerName) ? "Player" : CPlayerData.PlayerName,
                 ["opponentName"] = "Customer",
+                ["aiDeck"] = aiDeck,
+                ["lifeYou"] = Plugin.MtgYourStartingLife?.Value ?? 20,
+                ["lifeCustomer"] = Plugin.MtgCustomerStartingLife?.Value ?? 20,
             });
             Traverse.Create(game).Field("m_CurrentInteractablePlayTable").GetValue<InteractablePlayTable>()?.StartPlayerCardGame();
             Traverse.Create(game).Field("m_CanExit").SetValue(true); // Esc → vanilla "quit battle?" → concede (MtgQuitBattle)
@@ -159,7 +178,12 @@ namespace TCGCustomCards.Runtime.Mtg
             Traverse.Create(game).Field("m_CanExit").SetValue(false);
             Status = draw ? "Draw!" : won ? "You win!" : "You lose!";
             RestoreShopMusic(); // vanilla does this when a player's HP hits 0 (PlayCardSet.TakeDamage)
-            yield return new WaitForSecondsRealtime(2.5f);
+            if (Plugin.MtgAiRevealDeck?.Value != false && (AiDeck?["list"] as JArray)?.Count > 0)
+            {
+                RevealOpen = true; // MtgTableUI shows the result + the customer's deck; Continue closes it
+                while (RevealOpen && !_leftMidGame) yield return null;
+            }
+            else yield return new WaitForSecondsRealtime(2.5f);
             if (_leftMidGame) yield break;
             Playing = false;
             MtgTableUI.Hide();

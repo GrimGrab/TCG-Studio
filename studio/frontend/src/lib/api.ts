@@ -1,6 +1,6 @@
 // Thin helpers over the generated Wails bindings.
 export * as App from '../../wailsjs/go/main/App';
-export { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+export { EventsOn, EventsOff, BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { Confirm } from '../../wailsjs/go/main/App';
 
 // SuperLegend exists in the game's enum but has no rarity icon (shows as Common), so the studio doesn't offer it.

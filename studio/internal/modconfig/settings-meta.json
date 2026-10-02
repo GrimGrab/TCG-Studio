@@ -1,0 +1,18 @@
+{
+  "_about": "Extra structure for the mod's settings, read by the mod (embedded resource: F1 menu) and TCG Studio (Mod settings). showWhen: a setting is only shown while another setting has one of the listed values. Keys are unique across sections. TestSettingsMeta checks every name and value against defaults.cfg.",
+  "showWhen": {
+    "AiDeckSetsMin": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
+    "AiDeckSetsMax": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
+    "AiDeckSize": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiSealedBoosters": { "setting": "AiDeckStyle", "is": ["Sealed"] },
+    "AiDeckPower": { "setting": "AiDeckPowerFollowsShopLevel", "is": ["false"] },
+    "AiFullPowerShopLevel": { "setting": "AiDeckPowerFollowsShopLevel", "is": ["true"] },
+    "AiDeckColorsMin": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckColorsMax": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckWeight1Color": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckWeight2Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckWeight3Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckWeight4Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
+    "AiDeckWeight5Colors": { "setting": "AiDeckStyle", "is": ["Random"] }
+  }
+}

@@ -41,6 +41,10 @@ func Read(path string) ([]Section, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parse(lines), nil
+}
+
+func parse(lines []string) []Section {
 	var out []Section
 	var cur *Section
 	var pending Entry
@@ -104,7 +108,7 @@ func Read(path string) ([]Section, error) {
 			kept = append(kept, s)
 		}
 	}
-	return kept, nil
+	return kept
 }
 
 // Set replaces one entry's value (validated against its type/range/options) and writes the file back.
@@ -140,7 +144,8 @@ func Set(path, section, key, value string) (Entry, error) {
 	return *e, nil
 }
 
-// RestoreDefaults sets every entry of a section (all sections when section is "") back to its default value in one write.
+// RestoreDefaults sets every entry of a section and its sub-sections ("Foil" also resets "Foil - Base"; all sections when
+// section is "") back to its default value in one write.
 // Returns the number of values that changed.
 func RestoreDefaults(path, section string) (int, error) {
 	secs, err := Read(path)
@@ -153,7 +158,7 @@ func RestoreDefaults(path, section string) (int, error) {
 	}
 	n := 0
 	for _, s := range secs {
-		if section != "" && s.Name != section {
+		if section != "" && s.Name != section && !strings.HasPrefix(s.Name, section+" - ") {
 			continue
 		}
 		for _, e := range s.Entries {

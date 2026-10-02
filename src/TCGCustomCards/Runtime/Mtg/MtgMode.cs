@@ -1,10 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 using TCGCustomCards.Core;
 
 namespace TCGCustomCards.Runtime.Mtg
 {
+    /// <summary>[MTG] AiDeckStyle: which Forge generator builds the customer's deck (bridge mode).</summary>
+    public enum AiDeckStyle { Random, Sealed }
+
+    /// <summary>[MTG - AI deck] AiDeckSets: which sets the customer's deck comes from.</summary>
+    public enum AiDeckSets { RandomInstalled, RandomLicensed, MatchMyDeck }
+
+    /// <summary>[MTG - AI deck] AiDeckPower: deck strength by Forge's card ratings.</summary>
+    public enum AiDeckPower { Weak, Normal, Strong, Random }
+
+    /// <summary>[MTG - AI opponent] AiPlayStyle: Forge's AI profiles (res/ai/&lt;name&gt;.ai) or one of them at random.</summary>
+    public enum AiPlayStyle { Default, Cautious, Reckless, Experimental, Random }
+
     /// <summary>MTG mode entry point: reads the selected in-game deck, builds Forge decks and launches Forge.</summary>
     internal static class MtgMode
     {
@@ -70,11 +83,16 @@ namespace TCGCustomCards.Runtime.Mtg
             };
         }
 
-        /// <summary>Player deck (from the selected in-game deck) and an AI deck from the same sets; returns an error or null.</summary>
-        public static string BuildDecks(out MtgDeck player, out MtgDeck opponent)
+        /// <summary>
+        /// Player deck (from the selected in-game deck) and an AI deck from the same sets; returns an error or null.
+        /// <paramref name="aiDeck"/> = what the bridge needs to build the AI deck with Forge (style, set codes, card names);
+        /// <paramref name="opponent"/> is our own simple deck, used when Forge can't (and in PlayInForgeWindow mode).
+        /// </summary>
+        public static string BuildDecks(out MtgDeck player, out MtgDeck opponent, out JObject aiDeck)
         {
-            if (UseMtgDecks) return BuildFromMtgDeck(out player, out opponent);
+            if (UseMtgDecks) return BuildFromMtgDeck(out player, out opponent, out aiDeck);
             player = opponent = null;
+            aiDeck = null;
             var deck = SelectedDeck;
             var sets = new HashSet<CustomSet>();
             var cards = MtgCards(deck, sets, out int nonMtg);
@@ -84,7 +102,9 @@ namespace TCGCustomCards.Runtime.Mtg
             string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.deckName) ? "Deck" : deck.deckName));
             player = MtgDeckBuilder.FromPlayerDeck(name, cards, pool);
             if (nonMtg > 0) player.Notes.Add($"{nonMtg} non-MTG card(s) left out");
-            opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, pool, Rng);
+            var aiPool = AiPool(sets);
+            opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, aiPool, Rng);
+            aiDeck = AiDeckSpec(aiPool);
             Plugin.Log.LogInfo($"MTG deck '{name}': {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}. " +
                                string.Join("; ", player.Notes));
             return opponent == null ? "Couldn't build an opponent deck from these sets" : null;
@@ -94,9 +114,10 @@ namespace TCGCustomCards.Runtime.Mtg
         /// Player deck = the active MTG deck exactly as built (its cards + the basics the player chose; nothing added or dropped),
         /// AI deck from the sets it uses.
         /// </summary>
-        private static string BuildFromMtgDeck(out MtgDeck player, out MtgDeck opponent)
+        private static string BuildFromMtgDeck(out MtgDeck player, out MtgDeck opponent, out JObject aiDeck)
         {
             player = opponent = null;
+            aiDeck = null;
             var deck = MtgDeckStore.ActiveDeck;
             if (deck == null) return "No active MTG deck - build one at the workbench and set it active";
             if (!deck.Valid) return deck.Problems[0];
@@ -112,15 +133,110 @@ namespace TCGCustomCards.Runtime.Mtg
             var pool = sets.SelectMany(s => s.Def.Cards.Select(c => ToMtg(s.Def, c))).Where(c => c != null).ToList();
             string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.Name) ? "Deck" : deck.Name));
             player = MtgDeckBuilder.FromMtgDeck(name, cards, deck.Save.Basics, pool);
-            opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, pool, Rng);
+            var aiPool = AiPool(sets);
+            opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, aiPool, Rng);
+            aiDeck = AiDeckSpec(aiPool);
             Plugin.Log.LogInfo($"MTG deck '{name}' (MTG deck builder): {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}");
             return opponent == null ? "Couldn't build an opponent deck from these sets" : null;
+        }
+
+        /// <summary>MTG cards of the sets the customer plays (see <see cref="ChooseAiSets"/>).</summary>
+        private static List<MtgCard> AiPool(HashSet<CustomSet> deckSets)
+        {
+            var chosen = ChooseAiSets(deckSets);
+            Plugin.Log.LogInfo($"MTG AI sets: {string.Join(", ", chosen.Select(s => s.Def.Mtg?.SetCode ?? s.Def.Id))}");
+            return chosen.SelectMany(s => s.Def.Cards.Select(c => ToMtg(s.Def, c))).Where(c => c != null).ToList();
+        }
+
+        private static bool HasMtg(CustomSet s) => s.Def.Cards.Any(c => ToMtg(s.Def, c) != null);
+
+        /// <summary>A set counts as licensed when any restock row of one of its packs is unlocked in the shop.</summary>
+        private static bool IsLicensed(CustomSet s)
+        {
+            var list = CPlayerData.m_IsItemLicenseUnlocked;
+            return list != null && Registry.Packs.Any(p => p.Set == s && p.RestockRows.Any(i => i >= 0 && i < list.Count && list[i]));
+        }
+
+        /// <summary>
+        /// [MTG - AI deck] AiDeckSets: MatchMyDeck = the deck's sets; RandomInstalled / RandomLicensed = AiDeckSetsMin..Max sets
+        /// picked at random among installed MTG sets (licensed ones only, or all installed while none is licensed).
+        /// </summary>
+        private static List<CustomSet> ChooseAiSets(HashSet<CustomSet> deckSets)
+        {
+            var mode = Plugin.MtgAiDeckSets?.Value ?? AiDeckSets.RandomLicensed;
+            if (mode == AiDeckSets.MatchMyDeck) return deckSets.ToList();
+            var eligible = Registry.Sets.Where(HasMtg).ToList();
+            if (mode == AiDeckSets.RandomLicensed)
+            {
+                var licensed = eligible.Where(IsLicensed).ToList();
+                if (licensed.Count > 0) eligible = licensed;
+                else Plugin.Log.LogInfo("MTG AI sets: no MTG set licensed yet - using every installed set");
+            }
+            if (eligible.Count == 0) return deckSets.ToList();
+            int min = Plugin.MtgAiDeckSetsMin?.Value ?? 1, max = Plugin.MtgAiDeckSetsMax?.Value ?? 10;
+            if (min > max) (min, max) = (max, min);
+            int count = Math.Min(eligible.Count, Rng.Next(min, max + 1));
+            return eligible.OrderBy(_ => Rng.Next()).Take(Math.Max(1, count)).ToList();
+        }
+
+        /// <summary>Deck power -1 (weak) .. 1 (strong): AiDeckPower, or rising with the shop level.</summary>
+        private static double Power()
+        {
+            if (Plugin.MtgAiPowerFollowsShopLevel?.Value ?? true)
+            {
+                int full = Math.Max(1, Plugin.MtgAiFullPowerShopLevel?.Value ?? 35);
+                return -1 + 2 * Math.Min(1.0, CPlayerData.m_ShopLevel / (double)full);
+            }
+            switch (Plugin.MtgAiDeckPower?.Value ?? AiDeckPower.Normal)
+            {
+                case AiDeckPower.Weak: return -1;
+                case AiDeckPower.Strong: return 1;
+                case AiDeckPower.Random: return Rng.NextDouble() * 2 - 1;
+                default: return 0;
+            }
+        }
+
+        /// <summary>Forge AI profile name for [MTG - AI opponent] AiPlayStyle.</summary>
+        private static string Profile()
+        {
+            var style = Plugin.MtgAiPlayStyle?.Value ?? AiPlayStyle.Default;
+            if (style == AiPlayStyle.Random) style = (AiPlayStyle)Rng.Next(0, (int)AiPlayStyle.Random);
+            return style.ToString();
+        }
+
+        /// <summary>
+        /// The bridge's <c>aiDeck</c>: style, size, boosters, power, play style, colours + per set its code and every card name
+        /// (basics too: booster land slots), so Forge opens each set's boosters from that set's cards only. MtgSession adds
+        /// <c>reuse</c> on a rematch.
+        /// </summary>
+        private static JObject AiDeckSpec(List<MtgCard> pool) => new JObject
+        {
+            ["style"] = (Plugin.MtgAiDeckStyle?.Value ?? AiDeckStyle.Random) == AiDeckStyle.Sealed ? "sealed" : "random",
+            ["size"] = Plugin.MtgAiDeckSize?.Value ?? 60,
+            ["boosters"] = Plugin.MtgAiSealedBoosters?.Value ?? 6,
+            ["power"] = Power(),
+            ["profile"] = Profile(),
+            ["colors"] = ColorSpec(),
+            ["pools"] = new JArray(pool.GroupBy(c => c.SetCode ?? "", StringComparer.OrdinalIgnoreCase).Select(g => new JObject
+            {
+                ["set"] = g.Key,
+                ["names"] = new JArray(g.Select(c => c.Name).Distinct(StringComparer.OrdinalIgnoreCase)),
+            })),
+        };
+
+        /// <summary>Random-deck colour count: <c>{min, max, weights[5]}</c> (weights for 1..5 colours; min ≤ max).</summary>
+        private static JObject ColorSpec()
+        {
+            int min = Plugin.MtgAiDeckColorsMin?.Value ?? 1, max = Plugin.MtgAiDeckColorsMax?.Value ?? 5;
+            if (min > max) (min, max) = (max, min);
+            var w = Plugin.MtgAiDeckColorWeights.Select((e, i) => e?.Value ?? new[] { 15, 45, 25, 10, 5 }[i]);
+            return new JObject { ["min"] = min, ["max"] = max, ["weights"] = new JArray(w) };
         }
 
         /// <summary>Builds both decks from the selected deck and starts Forge in its own window. Returns a message for the player.</summary>
         public static string PlaySelectedDeck()
         {
-            string err = BuildDecks(out var player, out var opponent);
+            string err = BuildDecks(out var player, out var opponent, out _);
             if (err != null) return err;
             string error = ForgeLauncher.Launch(player, opponent);
             if (error != null) return error;

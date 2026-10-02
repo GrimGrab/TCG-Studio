@@ -8,8 +8,32 @@ import (
 	"testing"
 )
 
+// loopBinds lists the settings the mod binds in loops (section/key built at run time), keyed by a piece of the Bind call's
+// source text. A Bind whose section or key the test can't read must be listed here, or TestDefaultsCoverMod fails — so a new
+// setting can't slip past it unchecked.
+var loopBinds = map[string][]string{
+	`Config.Bind("Content", key,`: {"Content/ShowVanillaDeckBoxes", "Content/ShowVanillaPlaymats", "Content/ShowVanillaSleeves",
+		"Content/ShowVanillaDice", "Content/ShowVanillaComics", "Content/ShowVanillaCollectionBooks", "Content/ShowVanillaBattleDecks",
+		"Content/ShowVanillaFigurines"},
+	`Config.Bind(foilSection, $"{grades[g]}`: foilGrades(),
+	`Config.Bind(aiCol, i == 0 ? "AiDeckWeight1Color"`: {"MTG - AI deck colours/AiDeckWeight1Color",
+		"MTG - AI deck colours/AiDeckWeight2Colors", "MTG - AI deck colours/AiDeckWeight3Colors",
+		"MTG - AI deck colours/AiDeckWeight4Colors", "MTG - AI deck colours/AiDeckWeight5Colors"},
+}
+
+func foilGrades() []string {
+	var out []string
+	names := [][2]string{{"Base", "Base"}, {"FirstEdition", "First edition"}, {"Silver", "Silver"}, {"Gold", "Gold"}, {"EX", "EX"}, {"FullArt", "Full art"}}
+	for _, g := range names {
+		for _, k := range []string{"Color", "Strength", "Pattern"} {
+			out = append(out, "Foil - "+g[1]+"/"+g[0]+k)
+		}
+	}
+	return out
+}
+
 // TestDefaultsCoverMod fails when the mod binds a setting the built-in defaults.cfg doesn't have (refresh it, see defaults.go).
-// Only literal keys are checked; keys built in a loop (ShowVanilla<Kind>, <Grade>Color, …) are covered by the refresh.
+// Sections/keys may be string literals or `const string` names from the same file; anything else must be in loopBinds.
 func TestDefaultsCoverMod(t *testing.T) {
 	src := filepath.Join("..", "..", "..", "src", "TCGCustomCards")
 	if _, err := os.Stat(src); err != nil {
@@ -29,8 +53,15 @@ func TestDefaultsCoverMod(t *testing.T) {
 			have[s.Name+"/"+e.Key] = true
 		}
 	}
-	bind := regexp.MustCompile(`Config\.Bind(?:<[^>]*>)?\(\s*"([^"]+)",\s*"([^"]+)"`)
+	check := func(sk string) {
+		if !have[sk] {
+			t.Errorf("defaults.cfg lacks %s — run: go run ./cmd/modcfgdefaults <game cfg>, or add the entry by hand", sk)
+		}
+	}
+	bind := regexp.MustCompile(`(?:Config|config)\.Bind(?:<[^>]*>)?\(\s*([^,]+?)\s*,\s*([^,]+?)\s*,`)
+	constDecl := regexp.MustCompile(`(\w+)\s*=\s*"([^"]*)"`)
 	n := 0
+	usedLoops := map[string]bool{}
 	err = filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".cs") {
 			return err
@@ -39,10 +70,43 @@ func TestDefaultsCoverMod(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, m := range bind.FindAllStringSubmatch(string(b), -1) {
+		text := string(b)
+		consts := map[string]string{}
+		for _, line := range strings.Split(text, "\n") {
+			if i := strings.Index(line, "const string "); i >= 0 {
+				for _, m := range constDecl.FindAllStringSubmatch(line[i:], -1) {
+					consts[m[1]] = m[2]
+				}
+			}
+		}
+		resolve := func(arg string) (string, bool) {
+			if strings.HasPrefix(arg, `"`) && strings.HasSuffix(arg, `"`) && len(arg) >= 2 {
+				return arg[1 : len(arg)-1], true
+			}
+			v, ok := consts[arg]
+			return v, ok
+		}
+		for _, loc := range bind.FindAllStringSubmatchIndex(text, -1) {
 			n++
-			if !have[m[1]+"/"+m[2]] {
-				t.Errorf("defaults.cfg lacks [%s] %s — run: go run ./cmd/modcfgdefaults <game cfg>", m[1], m[2])
+			call := text[loc[0]:loc[1]]
+			sec, okS := resolve(text[loc[2]:loc[3]])
+			key, okK := resolve(text[loc[4]:loc[5]])
+			if okS && okK {
+				check(sec + "/" + key)
+				continue
+			}
+			known := false
+			for prefix, keys := range loopBinds {
+				if strings.HasPrefix(call, prefix) || strings.Contains(text[loc[0]:min(len(text), loc[0]+len(prefix)+5)], prefix) {
+					known = true
+					usedLoops[prefix] = true
+					for _, sk := range keys {
+						check(sk)
+					}
+				}
+			}
+			if !known {
+				t.Errorf("%s: can't read the section/key of %q — add its keys to loopBinds in this test", filepath.Base(p), call)
 			}
 		}
 		return nil
@@ -52,6 +116,11 @@ func TestDefaultsCoverMod(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no Config.Bind calls found — did the mod source move?")
+	}
+	for prefix := range loopBinds {
+		if !usedLoops[prefix] {
+			t.Errorf("loopBinds entry %q no longer matches any Bind — update or remove it", prefix)
+		}
 	}
 }
 

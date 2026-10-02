@@ -468,6 +468,7 @@ export namespace main {
 	export class ModSettingsView {
 	    sections: modconfig.Section[];
 	    gameRunning: boolean;
+	    showWhen: Record<string, modconfig.ShowWhen>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ModSettingsView(source);
@@ -477,6 +478,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sections = this.convertValues(source["sections"], modconfig.Section);
 	        this.gameRunning = source["gameRunning"];
+	        this.showWhen = this.convertValues(source["showWhen"], modconfig.ShowWhen, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -785,6 +787,20 @@ export namespace modconfig {
 		    }
 		    return a;
 		}
+	}
+	export class ShowWhen {
+	    setting: string;
+	    is: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ShowWhen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setting = source["setting"];
+	        this.is = source["is"];
+	    }
 	}
 
 }

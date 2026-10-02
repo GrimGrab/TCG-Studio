@@ -59,9 +59,10 @@ namespace TCGCustomCards.Patches
         private static bool Prefix(PlayTableGame __instance, ref IEnumerator __result)
         {
             if (!MtgSession.Pending && !MtgSession.InSession) return true;
+            bool rematch = MtgSession.InSession && !MtgSession.Pending; // vanilla rematch with the same customer
             MtgSession.Pending = false;
             MtgSession.InSession = true;
-            __result = MtgSession.Run(__instance);
+            __result = MtgSession.Run(__instance, rematch);
             return false;
         }
     }

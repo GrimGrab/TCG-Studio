@@ -30,6 +30,7 @@ namespace TCGCustomCards.Runtime.Mtg
             public float Depth;        // distance from the camera (smaller = in front)
             public bool Covered;       // mostly hidden behind a nearer card: no overlay labels/frames
             public bool Unknown;       // no matching in-game card (token etc.): shown as a stand-in, labelled by the overlay
+            public CardData Data;      // the face its CardUI shows (null = the stand-in back card)
         }
 
         public static bool IsUnknown(Entry e) => e.Unknown;
@@ -474,12 +475,32 @@ namespace TCGCustomCards.Runtime.Mtg
         private void Place(JObject json, int meId, Side side, Transform reference, Vector3 pos, float scale, bool tapped, bool faceDown)
         {
             string key = "card:" + (int)json["id"];
-            var data = _faces.For(json, meId);
+            bool hidden = B(json, "faceDown"); // morph/manifest etc.: never give it a face, show the back
+            var data = hidden ? null : _faces.For(json, meId);
             var e = Get(key, data ?? _backData, side);
-            e.Unknown = data == null;
+            // A card object is made once per Forge card. When its face becomes known or changes (a face-down card turned up,
+            // a card first seen without a match), re-skin it — otherwise it keeps the stand-in it was made with (a card from
+            // the player's deck) and shows that face up.
+            if (data != null && !SameCard(e.Data, data)) Reskin(e, data);
+            e.Unknown = data == null && !hidden;
             e.Json = json;
             // No matching in-game card (tokens etc.): show a card back; the overlay prints its name and stats on it.
-            Aim(e, reference, pos, scale, tapped, faceDown || e.Unknown, side);
+            Aim(e, reference, pos, scale, tapped, faceDown || hidden || e.Unknown, side);
+        }
+
+        private static bool SameCard(CardData a, CardData b) =>
+            a != null && b != null && a.expansionType == b.expansionType && a.monsterType == b.monsterType &&
+            a.borderType == b.borderType && a.isFoil == b.isFoil && a.isDestiny == b.isDestiny;
+
+        /// <summary>Shows <paramref name="data"/> on the entry's existing card (same calls as <see cref="NewCard3d"/>).</summary>
+        private static void Reskin(Entry e, CardData data)
+        {
+            var ui = e.Card != null ? e.Card.m_Card3dUI : null;
+            if (ui == null) return;
+            ui.m_CardUI.SetCardUI(data);
+            ui.m_CardUI.SetFoilMaterialListFromSettingData(isWorldView: false);
+            ui.m_CardUI.SetFoilBlendedMaterialListFromSettingData(isWorldView: false);
+            e.Data = data;
         }
 
         private Entry Get(string key, CardData data, Side side)
@@ -488,6 +509,7 @@ namespace TCGCustomCards.Runtime.Mtg
             {
                 e = new Entry { Key = key, Anchor = new GameObject("TCGCC_" + key).transform };
                 e.Card = NewCard3d(data, side.DeckRef);
+                e.Data = data == _backData ? null : data; // stand-in: re-skinned once the real face is known
                 _cards[key] = e;
             }
             e.Seen = true;
@@ -579,6 +601,9 @@ namespace TCGCustomCards.Runtime.Mtg
                 e.OnScreen = e.ScreenRect.width > 2 && e.ScreenRect.height > 2 && e.ScreenRect.width < Screen.width * 0.95f;
             }
             // A card more than half hidden behind a nearer one (e.g. the big card being played) gets no overlay labels.
+            // Attachments (Equipment, Auras) lie under their host by design (LayoutAttachments lifts the host), but their centre
+            // can measure nearer to the tilted camera — they never count as covering the card they're attached to, or the
+            // creature would lose its power/toughness tag and combat frames when equipped.
             var shown = _cards.Values.Where(c => c.OnScreen).ToList();
             foreach (var e in shown)
             {
@@ -586,7 +611,7 @@ namespace TCGCustomCards.Runtime.Mtg
                 float area = e.ScreenRect.width * e.ScreenRect.height;
                 foreach (var f in shown)
                 {
-                    if (f == e || f.Depth >= e.Depth - 0.001f) continue;
+                    if (f == e || f.Depth >= e.Depth - 0.001f || IsAttachedUnder(f, e)) continue;
                     if (Overlap(e.ScreenRect, f.ScreenRect) > area * 0.5f) { e.Covered = true; break; }
                 }
             }
@@ -597,6 +622,22 @@ namespace TCGCustomCards.Runtime.Mtg
                 Plugin.Log.LogInfo($"MTG table: {_cards.Values.Count(c => c.OnScreen)}/{_cards.Count} cards have click areas" +
                                    (first != null ? $", e.g. {first.Key} at {first.ScreenRect}" : "") + $" (camera {cam.name})");
             }
+        }
+
+        /// <summary>True when <paramref name="f"/> is attached to <paramref name="host"/>, directly or through other attachments.</summary>
+        private bool IsAttachedUnder(Entry f, Entry host)
+        {
+            int hostId = (int?)host.Json?["id"] ?? -1;
+            if (hostId < 0) return false;
+            var c = f.Json;
+            for (int depth = 0; depth < 4 && c != null; depth++)
+            {
+                if (c["attachedTo"]?.Type != JTokenType.Integer) return false;
+                int to = (int)c["attachedTo"];
+                if (to == hostId) return true;
+                c = _cards.Values.FirstOrDefault(x => (int?)x.Json?["id"] == to)?.Json; // attached to an attachment of the host?
+            }
+            return false;
         }
 
         private static string _rectSource; // which card part gave usable click rects (logged once)

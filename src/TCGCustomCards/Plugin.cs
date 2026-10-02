@@ -31,6 +31,16 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> MtgBoard3D;
         internal static ConfigEntry<float> MtgHandHeight;
         internal static ConfigEntry<bool> MtgDeckBuilder;
+        internal static ConfigEntry<Runtime.Mtg.AiDeckStyle> MtgAiDeckStyle;
+        internal static ConfigEntry<Runtime.Mtg.AiDeckSets> MtgAiDeckSets;
+        internal static ConfigEntry<int> MtgAiDeckSetsMin, MtgAiDeckSetsMax, MtgAiDeckSize, MtgAiSealedBoosters, MtgAiFullPowerShopLevel;
+        internal static ConfigEntry<Runtime.Mtg.AiDeckPower> MtgAiDeckPower;
+        internal static ConfigEntry<bool> MtgAiPowerFollowsShopLevel, MtgAiKeepDeckOnRematch, MtgAiRevealDeck;
+        internal static ConfigEntry<Runtime.Mtg.AiPlayStyle> MtgAiPlayStyle;
+        internal static ConfigEntry<int> MtgYourStartingLife, MtgCustomerStartingLife;
+        internal static ConfigEntry<int> MtgAiDeckColorsMin, MtgAiDeckColorsMax;
+        /// <summary>[MTG] AiDeckWeight1Color … AiDeckWeight5Colors: how often each colour count is rolled.</summary>
+        internal static readonly ConfigEntry<int>[] MtgAiDeckColorWeights = new ConfigEntry<int>[5];
         internal static ConfigEntry<float> FullImageInset;
         internal static ConfigEntry<bool> FullImageFoilGlow;
         internal static ConfigEntry<bool> GradeLabel;
@@ -53,6 +63,7 @@ namespace TCGCustomCards
             Log = Logger;
             PluginDir = Path.GetDirectoryName(Info.Location);
 
+            var cfgBefore = ConfigMoves.Snapshot(Config); // see ConfigMoves: settings moved to a sub-section keep their value
             DumpDiagnostics = Config.Bind("Debug", "DumpDiagnostics", true,
                 "Write runtime game data (list sizes, materials, restock entries) to diagnostics.txt once per session after a save loads.");
             ShowVanillaCards = Config.Bind("Content", "ShowVanillaCards", true,
@@ -90,16 +101,16 @@ namespace TCGCustomCards
                 new AcceptableValueRange<float>(0.7f, 1f)));
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
-            GradeLabel = Config.Bind("Visuals", "GradeLabel", true,
+            GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
                 "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");
-            GradeLabelOffsetX = Config.Bind("Visuals", "GradeLabelOffsetX", 0f, new ConfigDescription(
+            GradeLabelOffsetX = Config.Bind("Visuals - Grade label", "GradeLabelOffsetX", 0f, new ConfigDescription(
                 "Full-image cards: move the grade label sideways, in % of the card width (0 = the game's own spot, + = right). Applies live.",
                 new AcceptableValueRange<float>(-50f, 50f)));
-            GradeLabelOffsetY = Config.Bind("Visuals", "GradeLabelOffsetY", -24.882f, new ConfigDescription(
+            GradeLabelOffsetY = Config.Bind("Visuals - Grade label", "GradeLabelOffsetY", -24.882f, new ConfigDescription(
                 "Full-image cards: move the grade label up/down, in % of the card height (0 = the game's own spot, + = up; " +
                 "default -24.882 = near the bottom, chosen in game 2026-09-24). Applies live.",
                 new AcceptableValueRange<float>(-50f, 50f)));
-            GradeLabelSize = Config.Bind("Visuals", "GradeLabelSize", 1f, new ConfigDescription(
+            GradeLabelSize = Config.Bind("Visuals - Grade label", "GradeLabelSize", 1f, new ConfigDescription(
                 "Full-image cards: size of the grade label (1 = the game's size). Applies live.",
                 new AcceptableValueRange<float>(0.3f, 4f)));
             HoloFoil = Config.Bind("Foil", "HoloFoil", true,
@@ -115,14 +126,16 @@ namespace TCGCustomCards
             HoloFoilMotion.SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
             HoloFoilViewReact.SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
             string[] grades = { "Base", "FirstEdition", "Silver", "Gold", "EX", "FullArt" };
+            string[] gradeNames = { "Base", "First edition", "Silver", "Gold", "EX", "Full art" };
             for (int g = 0; g < grades.Length; g++)
             {
                 var preset = Runtime.HoloFoil.Presets[g];
-                HoloFoilColor[g] = Config.Bind("Foil", $"{grades[g]}Color", preset.Color,
+                string foilSection = "Foil - " + gradeNames[g];
+                HoloFoilColor[g] = Config.Bind(foilSection, $"{grades[g]}Color", preset.Color,
                     $"{grades[g]} foil colour (default: {preset.Name}). Applies live.");
-                HoloFoilStrength[g] = Config.Bind("Foil", $"{grades[g]}Strength", preset.Strength, new ConfigDescription(
+                HoloFoilStrength[g] = Config.Bind(foilSection, $"{grades[g]}Strength", preset.Strength, new ConfigDescription(
                     $"{grades[g]} foil strength (0 = off). Applies live.", new AcceptableValueRange<float>(0f, 1.5f)));
-                HoloFoilPattern[g] = Config.Bind("Foil", $"{grades[g]}Pattern", preset.Pattern,
+                HoloFoilPattern[g] = Config.Bind(foilSection, $"{grades[g]}Pattern", preset.Pattern,
                     $"{grades[g]} foil pattern: None, Sparkle, Etched (lines that catch the light) or Cosmos (nebula + sparkles). Applies live.");
                 HoloFoilColor[g].SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
                 HoloFoilStrength[g].SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
@@ -145,9 +158,65 @@ namespace TCGCustomCards
                 "On = the workbench's Edit Deck opens the MTG deck builder (search/filter your MTG cards, free basic lands, 60-card " +
                 "decks) and MTG games use its active deck. Off = the vanilla deck builder (MTG games then pad your 50-card deck " +
                 "with free lands). Your vanilla decks are kept either way.");
+            // MTG AI opponent. Settings that only matter for some choice are hidden in TCG Studio by settings-meta.json
+            // (studio/internal/modconfig); the F1 menu shows them all, so their descriptions say when they apply.
+            const string aiDeck = "MTG - AI deck", aiOpp = "MTG - AI opponent", aiCol = "MTG - AI deck colours", match = "MTG - Match";
+            const string next = " Applies to the next game (not in PlayInForgeWindow mode).";
+            MtgAiDeckStyle = Config.Bind(aiDeck, "AiDeckStyle", Runtime.Mtg.AiDeckStyle.Random,
+                "How the customer builds their deck. Random = a deck from Forge's deck generator (size, colours and power below). " +
+                "Sealed = Forge opens boosters of the customer's sets and builds the best 40-card deck, like a sealed event." + next);
+            MtgAiDeckSets = Config.Bind(aiDeck, "AiDeckSets", Runtime.Mtg.AiDeckSets.RandomLicensed,
+                "Which sets the customer plays. RandomInstalled = random sets from every installed MTG set. RandomLicensed = random " +
+                "sets among those whose packs you've unlocked in the shop (all installed sets until you have one). MatchMyDeck = the " +
+                "sets your deck uses." + next);
+            MtgAiDeckSetsMin = Config.Bind(aiDeck, "AiDeckSetsMin", 1, new ConfigDescription(
+                "Random sets only: fewest sets a customer mixes into their deck." + next,
+                new AcceptableValueRange<int>(1, 10)));
+            MtgAiDeckSetsMax = Config.Bind(aiDeck, "AiDeckSetsMax", 10, new ConfigDescription(
+                "Random sets only: most sets a customer mixes into their deck (set Min and Max equal for a fixed number)." + next, new AcceptableValueRange<int>(1, 10)));
+            MtgAiDeckSize = Config.Bind(aiDeck, "AiDeckSize", 60, new ConfigDescription(
+                "Random style: cards in the customer's deck (40 = quicker games)." + next,
+                new AcceptableValueRange<int>(40, 100)));
+            MtgAiSealedBoosters = Config.Bind(aiDeck, "AiSealedBoosters", 6, new ConfigDescription(
+                "Sealed style: boosters a customer opens to build their deck (more = more cards to pick from = a stronger deck)." + next, new AcceptableValueRange<int>(3, 12)));
+            MtgAiPowerFollowsShopLevel = Config.Bind(aiDeck, "AiDeckPowerFollowsShopLevel", true,
+                "On = customers' decks get stronger as your shop levels up: weak at level 0, strong from AiFullPowerShopLevel. " +
+                "Off = AiDeckPower decides." + next);
+            MtgAiDeckPower = Config.Bind(aiDeck, "AiDeckPower", Runtime.Mtg.AiDeckPower.Normal, new ConfigDescription(
+                "With AiDeckPowerFollowsShopLevel off: how strong customers' decks are, by Forge's card ratings. Weak = the best-rated cards are left out. Normal = every " +
+                "card. Strong = mostly the best-rated cards (Sealed: more boosters). Random = anything in between, per customer." + next));
+            MtgAiFullPowerShopLevel = Config.Bind(aiDeck, "AiFullPowerShopLevel", 35, new ConfigDescription(
+                "With AiDeckPowerFollowsShopLevel on: shop level at which customers' decks reach full strength (it rises a little every level before that)." + next, new AcceptableValueRange<int>(1, 100)));
+            MtgAiDeckColorsMin = Config.Bind(aiCol, "AiDeckColorsMin", 1, new ConfigDescription(
+                "Random style: fewest colours the customer's deck may have. Decks with 3+ colours need mana fixing from the sets, so small or " +
+                "old sets may give fewer colours." + next,
+                new AcceptableValueRange<int>(1, 5)));
+            MtgAiDeckColorsMax = Config.Bind(aiCol, "AiDeckColorsMax", 5, new ConfigDescription(
+                "Random style: most colours the customer's deck may have (set Min and Max equal for a fixed count)." + next, new AcceptableValueRange<int>(1, 5)));
+            int[] colorWeights = { 15, 45, 25, 10, 5 };
+            for (int i = 0; i < 5; i++)
+            {
+                string what = i == 0 ? "1 colour" : $"{i + 1} colours";
+                MtgAiDeckColorWeights[i] = Config.Bind(aiCol, i == 0 ? "AiDeckWeight1Color" : $"AiDeckWeight{i + 1}Colors", colorWeights[i],
+                    new ConfigDescription($"Random style: how often a {what} deck is picked, relative to the other weights (0 = never; only " +
+                                          "counts between Min and Max are used)." + next,
+                        new AcceptableValueRange<int>(0, 100)));
+            }
+            MtgAiPlayStyle = Config.Bind(aiOpp, "AiPlayStyle", Runtime.Mtg.AiPlayStyle.Default,
+                "How the customer plays (Forge's AI profiles). Default = Forge's standard AI. Cautious = holds back, avoids risky " +
+                "attacks. Reckless = attacks a lot. Experimental = Forge's newest AI logic. Random = one of them per customer." + next);
+            MtgAiKeepDeckOnRematch = Config.Bind(aiOpp, "AiKeepDeckOnRematch", true,
+                "On = a rematch against the same customer uses the same deck (learn it and beat it). Off = a new deck every game." + next);
+            MtgAiRevealDeck = Config.Bind(aiOpp, "AiRevealDeckAfterMatch", true,
+                "On = after the game the customer shows their deck list (click Continue to close it). Off = straight to the result screen.");
+            MtgYourStartingLife = Config.Bind(match, "YourStartingLife", 20, new ConfigDescription(
+                "Your life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
+            MtgCustomerStartingLife = Config.Bind(match, "CustomerStartingLife", 20, new ConfigDescription(
+                "The customer's life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
             ShowVanillaCards.SettingChanged += (_, __) => VanillaFilter.Apply();
             ShowVanillaPacks.SettingChanged += (_, __) => VanillaFilter.Apply();
             DevTools.Init(Config);
+            ConfigMoves.CarryMoved(Config, cfgBefore); // after every Bind
 
             Registry.Build(SetLoader.LoadAll(Path.Combine(PluginDir, "Sets")));
             Registry.BuildAccessories(AccessoryLoader.Load(PluginDir));

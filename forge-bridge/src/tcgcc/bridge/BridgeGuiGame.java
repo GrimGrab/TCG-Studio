@@ -73,7 +73,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         if (gv == null) return;
         dirty = false;
         try {
-            Map<String, Object> s = StateWriter.write(gv, humanView());
+            Map<String, Object> s = StateWriter.write(gv, humanView(), match == null ? null : match.getGame());
             s.put("t", "state");
             Bridge.send(s);
         } catch (RuntimeException e) {

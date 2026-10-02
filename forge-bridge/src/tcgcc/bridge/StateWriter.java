@@ -1,7 +1,11 @@
 package tcgcc.bridge;
 
 import forge.card.MagicColor;
+import forge.game.Game;
 import forge.game.GameEntityView;
+import forge.game.card.Card;
+import forge.game.combat.CombatUtil;
+import forge.game.player.Player;
 import forge.game.GameLogEntry;
 import forge.game.GameView;
 import forge.game.card.CardView;
@@ -26,7 +30,8 @@ final class StateWriter {
 
     private static final ZoneType[] PUBLIC_ZONES = { ZoneType.Battlefield, ZoneType.Graveyard, ZoneType.Exile, ZoneType.Command };
 
-    static Map<String, Object> write(GameView gv, PlayerView me) {
+    /** {@code game} (may be null) lets Forge's own rules answer questions the views can't, e.g. who may block whom. */
+    static Map<String, Object> write(GameView gv, PlayerView me, Game game) {
         Map<String, Object> s = new LinkedHashMap<>();
         s.put("turn", gv.getTurn());
         s.put("phase", gv.getPhase() == null ? "" : gv.getPhase().name());
@@ -85,10 +90,17 @@ final class StateWriter {
                 GameEntityView d = cv.getDefender(a);
                 e.put("defender", d == null ? null : d.getId());
                 e.put("defenderIsPlayer", d instanceof PlayerView);
-                List<Integer> bl = new ArrayList<>();
-                var blockers = cv.getBlockers(a);
-                if (blockers != null) for (CardView b : blockers) bl.add(b.getId());
+                // Blockers from Forge's live combat (updated on every assignment while you declare); the view only catches up
+                // once blocks are confirmed, so lines/checks on the table lagged a whole step.
+                List<Integer> bl = liveBlockers(game, a.getId());
+                if (bl == null) {
+                    bl = new ArrayList<>();
+                    var blockers = cv.getBlockers(a);
+                    if (blockers != null) for (CardView b : blockers) bl.add(b.getId());
+                }
                 e.put("blockers", bl);
+                List<Integer> can = canBeBlockedBy(game, me, a.getId());
+                if (can != null) e.put("canBeBlockedBy", can);
                 combat.add(e);
             }
         }
@@ -139,6 +151,43 @@ final class StateWriter {
         return true;
     }
 
+    /**
+     * The viewer's creatures that Forge's rules allow to block this attacker ({@code CombatUtil.canBlock(attacker, blocker)}:
+     * evasion, "can't block", tapped, …) — the table only shows Forge's answer. Null when it can't be worked out.
+     */
+    private static List<Integer> canBeBlockedBy(Game game, PlayerView me, int attackerId) {
+        if (game == null || me == null) return null;
+        try {
+            Card attacker = game.findById(attackerId);
+            if (attacker == null) return null;
+            for (Player p : game.getPlayers()) {
+                if (p.getId() != me.getId()) continue;
+                List<Integer> ids = new ArrayList<>();
+                for (Card c : p.getCreaturesInPlay()) if (CombatUtil.canBlock(attacker, c)) ids.add(c.getId());
+                return ids;
+            }
+        } catch (Throwable t) {
+            Bridge.log("canBeBlockedBy failed: " + t);
+        }
+        return null;
+    }
+
+    /** Blockers of this attacker in Forge's live combat, or null when that isn't available (then the view's are used). */
+    private static List<Integer> liveBlockers(Game game, int attackerId) {
+        if (game == null) return null;
+        try {
+            var combat = game.getCombat();
+            Card attacker = game.findById(attackerId);
+            if (combat == null || attacker == null) return null;
+            List<Integer> ids = new ArrayList<>();
+            for (Card b : combat.getBlockers(attacker)) ids.add(b.getId());
+            return ids;
+        } catch (Throwable t) {
+            Bridge.log("liveBlockers failed: " + t);
+            return null;
+        }
+    }
+
     private static void putMana(Map<String, Object> m, String k, int v) { if (v > 0) m.put(k, v); }
 
     private static List<Object> cards(Iterable<CardView> cs) {
@@ -151,13 +200,18 @@ final class StateWriter {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", c.getId());
         CardView.CardStateView st = c.getCurrentState();
-        m.put("name", st == null ? c.getName() : st.getName());
-        m.put("oracleName", c.getOracleName());
+        // The AI's face-down cards (morph, manifest…) are hidden information: no name, set or text that would let the
+        // game's previews show the real card. The player's own face-down cards keep theirs.
+        boolean hidden = c.isFaceDown() && c.getController() != null && c.getController().isAI();
+        m.put("name", hidden ? "Face-down card" : st == null ? c.getName() : st.getName());
+        if (!hidden) m.put("oracleName", c.getOracleName());
         if (st != null) {
-            m.put("set", st.getSetCode());
+            if (!hidden) {
+                m.put("set", st.getSetCode());
+                m.put("cost", st.getManaCost() == null ? "" : st.getManaCost().toString());
+                m.put("text", st.getOracleText());
+            }
             m.put("type", st.getType() == null ? "" : st.getType().toString());
-            m.put("cost", st.getManaCost() == null ? "" : st.getManaCost().toString());
-            m.put("text", st.getOracleText());
             if (st.isCreature()) {
                 m.put("power", st.getPower());
                 m.put("toughness", st.getToughness());

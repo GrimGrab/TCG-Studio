@@ -3,6 +3,24 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.10.0 - 2026-10-02
+
+Smarter MTG opponents built by Forge, more control over them, and a tidier Mod settings page.
+
+- New: Customers build their MTG decks with Forge's own deck builder: Random (1–5 colours) or Sealed (they open boosters and build the best 40 cards). F1 → MTG - AI deck → AiDeckStyle.
+- New: Pick which sets customers play: random sets you've licensed in the shop (default), any installed set, or the sets your deck uses, and how many sets they mix (AiDeckSets, AiDeckSetsMin/Max).
+- New: Deck power from Forge's card ratings (Weak / Normal / Strong / Random), or let it grow with your shop level (AiDeckPowerFollowsShopLevel; full strength at level 35 by default).
+- New: Deck size, Sealed booster count and colour weights (MTG - AI deck, MTG - AI deck colours).
+- New: Customer play style (Forge's Default / Cautious / Reckless / Experimental AI, or random), same deck on rematch, and starting life for you and the customer (MTG - AI opponent, MTG - Match).
+- New: A "Customer's deck" panel at the start of a match; after the match the customer shows their deck list. Hover a name to see the card.
+- New: TCG Studio Mod settings: collapsible sections and groups, a search box, "customised" markers, settings that don't apply to your choices are hidden, and new settings show up right away without starting the game.
+- New: "Join our Discord" button in TCG Studio. Share workspaces, request features and get help.
+- Fixed: Blocking. Attackers a creature can't legally block (e.g. flyers) are marked while you drag, blocks show their line straight away, and you can move or take back a blocker by dragging or clicking it.
+- Fixed: An equipped or enchanted creature lost its power/toughness tag and combat outline.
+- Fixed: A morph turned face up showed a card from your hand. The AI's face-down cards no longer reveal themselves on hover.
+- Changed: Foil grade and grade label settings moved into their own groups (Foil - Base … Foil - Full art, Visuals - Grade label). Your values are kept.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.9.0 - 2026-10-02
 
 Setups: keep several custom-content setups, switch the game between them, and share them.

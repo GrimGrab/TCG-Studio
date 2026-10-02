@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, EventsOn, errText } from './lib/api';
+  import { App, EventsOn, BrowserOpenURL, errText } from './lib/api';
   import Projects from './views/Projects.svelte';
   import Import from './views/Import.svelte';
   import Settings from './views/Settings.svelte';
@@ -30,6 +30,7 @@
   let setupMenu = $state(false);
   let setupAction = $state<any>(null); // one-shot request for the Setups page: { create: true } or { switchTo: id }
   let toastTimer: number | undefined;
+  const DISCORD_URL = 'https://discord.gg/Pf75vnuN6B';
 
   function notify(text: string, kind = 'info') {
     toast = { text, kind };
@@ -152,6 +153,10 @@
     <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
     <button class:active={view === 'settings'} onclick={() => (view = 'settings')}>Settings</button>
     <div class="grow"></div>
+    <button class="discord" title="Opens {DISCORD_URL} in your browser" onclick={() => BrowserOpenURL(DISCORD_URL)}>
+      <span class="discord-title">Join our Discord</span>
+      <span class="discord-sub">Share workspaces, request features, show off your sets and get help</span>
+    </button>
     {#if gameStatus}
       <div class="status">
         {#if !gameStatus.found}
@@ -246,6 +251,13 @@
   nav button { text-align: left; background: transparent; border-color: transparent; }
   nav button.active { background: var(--panel-2); border-color: var(--line); }
   .status { padding: 8px; }
+  nav button.discord {
+    display: flex; flex-direction: column; gap: 2px; margin: 4px 0; padding: 8px 10px;
+    background: #5865f2; border-color: #5865f2; color: #fff;
+  }
+  nav button.discord:hover { background: #4752c4; border-color: #4752c4; }
+  .discord-title { font-weight: 700; text-align: center; }
+  .discord-sub { font-size: 11px; line-height: 1.3; opacity: 0.9; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d9a400; margin-left: 8px; vertical-align: middle; }
   .linkish { cursor: pointer; }
   .version { padding: 4px 8px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }

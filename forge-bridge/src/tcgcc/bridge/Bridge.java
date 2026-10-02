@@ -1,5 +1,7 @@
 package tcgcc.bridge;
 
+import forge.LobbyPlayer;
+import forge.ai.LobbyPlayerAi;
 import forge.deck.Deck;
 import forge.deck.io.DeckSerializer;
 import forge.game.GameType;
@@ -34,7 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "1";
+    public static final String VERSION = "3";
 
     private static PrintStream proto;
     private static PrintStream logStream;
@@ -104,13 +106,28 @@ public final class Bridge {
             Deck human = DeckSerializer.fromFile(new File(Json.s(m, "deck")));
             Deck ai = DeckSerializer.fromFile(new File(Json.s(m, "opponent")));
             if (human == null || ai == null) throw new IllegalArgumentException("deck file unreadable");
+            String profile = null;
+            if (m.get("aiDeck") instanceof Map<?, ?> spec0) { // Forge builds the AI deck; the file is the fallback
+                @SuppressWarnings("unchecked")
+                Map<String, Object> spec = (Map<String, Object>) spec0;
+                AiDeckGen.Result r = AiDeckGen.build(spec, ai);
+                ai = r.deck;
+                profile = Json.s(spec, "profile");
+                send(msg("aideck", "style", Json.s(spec, "style"), "source", r.source, "colors", r.colors,
+                        "cards", ai.getMain().countAll(), "lines", r.lines, "list", r.list, "profile", profile));
+            }
             String name = Json.s(m, "name");
             String aiName = Json.s(m, "opponentName");
 
             RegisteredPlayer rpHuman = new RegisteredPlayer(human);
             rpHuman.setPlayer(GamePlayerUtil.getGuiPlayer(name == null ? "Player" : name, 0, 0, false));
             RegisteredPlayer rpAi = new RegisteredPlayer(ai);
-            rpAi.setPlayer(GamePlayerUtil.createAiPlayer(aiName == null ? "Opponent" : aiName, 1));
+            LobbyPlayer aiPlayer = GamePlayerUtil.createAiPlayer(aiName == null ? "Opponent" : aiName, 1);
+            if (profile != null && !profile.isEmpty() && aiPlayer instanceof LobbyPlayerAi lpa) lpa.setAiProfile(profile); // res/ai/<profile>.ai
+            rpAi.setPlayer(aiPlayer);
+            int lifeYou = Json.i(m, "lifeYou", 20), lifeAi = Json.i(m, "lifeCustomer", 20);
+            rpHuman.setStartingLife(Math.max(1, lifeYou));
+            rpAi.setStartingLife(Math.max(1, lifeAi));
             List<RegisteredPlayer> players = new ArrayList<>(List.of(rpHuman, rpAi));
 
             gui = new BridgeGuiGame(null);

@@ -13,8 +13,9 @@ import (
 
 // ModSettingsView is the mod's config file as sections of self-describing entries.
 type ModSettingsView struct {
-	Sections    []modconfig.Section `json:"sections"`
-	GameRunning bool                `json:"gameRunning"`
+	Sections    []modconfig.Section           `json:"sections"`
+	GameRunning bool                          `json:"gameRunning"`
+	ShowWhen    map[string]modconfig.ShowWhen `json:"showWhen"` // settings shown only for some value of another (settings-meta.json)
 }
 
 func (a *App) modConfigPath() (string, error) {
@@ -23,6 +24,10 @@ func (a *App) modConfigPath() (string, error) {
 	}
 	p := modconfig.Path(a.settings.GameDir)
 	if info, err := os.Stat(p); err == nil {
+		// Settings a mod update added show up (at their defaults) without starting the game first.
+		if n, err := modconfig.AddMissing(p); err == nil && n > 0 {
+			info, _ = os.Stat(p)
+		}
 		// Remember this mod version's defaults, for creating the file when it is missing (new setup, fresh install).
 		if c, cerr := os.Stat(modDefaultsCache()); cerr != nil || info.ModTime().After(c.ModTime()) {
 			_ = modconfig.MakeDefaults(p, modDefaultsCache())
@@ -58,7 +63,11 @@ func (a *App) ModSettings() (ModSettingsView, error) {
 	if err != nil {
 		return ModSettingsView{}, err
 	}
-	return ModSettingsView{Sections: secs, GameRunning: game.IsRunning()}, nil
+	meta, err := modconfig.SettingsMeta()
+	if err != nil {
+		return ModSettingsView{}, err
+	}
+	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen}, nil
 }
 
 // SetModSetting changes one value (validated against the setting's type/range). A running game reloads it right away.

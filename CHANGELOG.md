@@ -3,6 +3,18 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.12.0 - 2026-10-02
+
+Import Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana and Flesh and Blood sets.
+
+- New: "Import sets" now also offers Yu-Gi-Oh! (YGOPRODeck), One Piece (TCGplayer), Star Wars: Unlimited (SWU-DB), Disney Lorcana (Lorcast) and Flesh and Blood (TCGplayer), with card art, real prices and a ready-made booster pack.
+- New: Each game gets its own filter and sorts in the set editor's Cards tab: Card type, Level and ATK for Yu-Gi-Oh!; Color, Cost and Power for One Piece; Aspect for Star Wars: Unlimited; Ink, Ink cost and Strength for Lorcana; Class for Flesh and Blood. Rarity sorting follows each game's own rarities. Magic gains Mana value and Power sorts, Pokémon an HP sort.
+- New: Optional setting Visuals → HidePrintedBorders (off by default) crops the printed border of full-image cards so the game's border frames the card directly. Visuals → PrintedBorderMax sets the widest border it will crop.
+- Changed: Default boosters no longer use a rarity a set doesn't have (for example modern Yu-Gi-Oh! sets have no Rares); that slot uses the next rarity down.
+- Changed: Sets that aren't released yet are marked "upcoming" in the Import sets list and can't be imported before card images exist. Cards whose image fails to download are left out instead of being kept without art.
+- Fixed: Yu-Gi-Oh! cards now fill the card frame (their art is narrower than other games' cards).
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.11.0 - 2026-10-02
 
 Import Pokémon sets, on a new "Import sets" page.

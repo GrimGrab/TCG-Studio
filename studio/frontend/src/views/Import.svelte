@@ -24,6 +24,7 @@
   let importing = $state<string | null>(null);
   let progress = $state<any>(null);
 
+  const today = new Date().toISOString().slice(0, 10);
   const source = $derived(sources.find((s) => s.id === sourceId));
   const langs = $derived<string[]>(source?.languages ?? []);
   const groups = $derived([...new Set(sets.map((s) => s.group).filter(Boolean))]);
@@ -117,7 +118,7 @@
       </select>
     {/if}
     {#if options}
-      {#if sourceId === 'scryfall'}
+      {#if source?.variants}
         <label class="check"><input type="checkbox" bind:checked={options.includeVariants} /> Include variant printings</label>
       {/if}
       <label class="check">Image width
@@ -149,8 +150,8 @@
             <div class="noicon">{s.code.slice(0, 4).toUpperCase()}</div>
           {/if}
           <div class="grow">
-            <div class="name">{s.name}</div>
-            <div class="muted small">{s.code.toUpperCase()}{s.releasedAt ? ` · ${s.releasedAt}` : ''} · {s.cards} cards{s.group ? ` · ${s.group}` : ''}</div>
+            <div class="name">{s.name}{#if s.releasedAt && s.releasedAt > today}<span class="upcoming" title="Not released yet — card images may be missing">upcoming</span>{/if}</div>
+            <div class="muted small">{[s.code.toUpperCase(), s.releasedAt, s.cards ? `${s.cards} cards` : ''].filter(Boolean).join(' · ')}{s.group ? ` · ${s.group}` : ''}</div>
           </div>
           {#if s.imported}
             <button onclick={() => open(s.projectId)}>Open</button>
@@ -179,5 +180,6 @@
   .set img.logo { width: 64px; height: 32px; object-fit: contain; }
   .noicon { width: 64px; height: 32px; display: grid; place-items: center; font-size: 11px; color: var(--muted, #888); border: 1px dashed var(--line); border-radius: 4px; }
   .name { font-weight: 600; }
+  .upcoming { margin-left: 8px; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--accent-2); color: var(--muted, #aaa); }
   .small { font-size: 12px; }
 </style>

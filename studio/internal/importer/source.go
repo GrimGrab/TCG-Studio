@@ -23,6 +23,11 @@ type SourceInfo struct {
 	Colors     []Facet `json:"colors"`
 	// RarityOrder lists the source's own rarities (meta.srcRarity), lowest first, for the editor's rarity filter and sort.
 	RarityOrder []string `json:"rarityOrder"`
+	// Sorts are extra Cards-tab sorts on numbers kept in studio.json: "cost" (meta.cmc, low first) and "power"
+	// (meta.power, high first), labelled the game's way (Mana value, Level/Rank, Ink cost…).
+	Sorts []Facet `json:"sorts"`
+	// Variants: the source has alternate printings the "Include variant printings" option can leave out.
+	Variants bool `json:"variants"`
 }
 
 type Facet struct {
@@ -56,7 +61,8 @@ type Source interface {
 type Registry struct{ list []Source }
 
 func NewRegistry(sf *scryfall.Client, tc *tcgdex.Client) *Registry {
-	return &Registry{list: []Source{&scryfallSource{sf}, &tcgdexSource{tc}}}
+	return &Registry{list: []Source{&scryfallSource{sf}, &tcgdexSource{tc}, newYGOSource(), newOnePieceSource(),
+		newSWUSource(), newLorcanaSource(), newFabSource()}}
 }
 
 func (r *Registry) All() []Source { return r.list }
@@ -80,7 +86,8 @@ var scryfallMainTypes = map[string]bool{"core": true, "expansion": true, "master
 func (s *scryfallSource) Info() SourceInfo {
 	return SourceInfo{ID: "scryfall", Name: "Scryfall", Game: "Magic: The Gathering", ColorLabel: "Color",
 		Colors:      []Facet{{"W", "White"}, {"U", "Blue"}, {"B", "Black"}, {"R", "Red"}, {"G", "Green"}, {"M", "Multicolor"}, {"C", "Colorless"}},
-		RarityOrder: []string{"common", "uncommon", "rare", "mythic", "special", "bonus"}}
+		RarityOrder: []string{"common", "uncommon", "rare", "mythic", "special", "bonus"},
+		Sorts:       []Facet{{"cost", "Mana value"}, {"power", "Power"}}, Variants: true}
 }
 
 func (s *scryfallSource) DefaultOptions() Options { return DefaultOptions() }

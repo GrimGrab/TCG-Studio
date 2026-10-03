@@ -17,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/gen2brain/avif" // Lorcana art is AVIF only
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp"
 
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/scryfall"
@@ -139,7 +141,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		if u == "" {
 			u = img.Large
 		}
-		jobs = append(jobs, imageJob{u, filepath.Join(folder, filepath.FromSlash(rel))})
+		jobs = append(jobs, imageJob{url: u, path: filepath.Join(folder, filepath.FromSlash(rel))})
 	}
 	if len(set.Cards) == 0 {
 		return nil, fmt.Errorf("no printable cards found in set %s", code)
@@ -286,7 +288,15 @@ func RealPrice(m project.CardMeta) setfmt.CardPrice {
 	return p
 }
 
-type imageJob struct{ url, path string }
+type imageJob struct {
+	url, path string
+	rotate    bool    // turn landscape art upright
+	aspect    float64 // > 0: stretch to this width/height (cards narrower than the game's 63×88 slot, e.g. Yu-Gi-Oh! 59×86)
+}
+
+// CardAspect is the card shape the game's FullImage slot is drawn for (63×88 mm, like Magic); the mod keeps an image's
+// own aspect, so narrower art leaves the frame showing on both sides.
+const CardAspect = 63.0 / 88.0
 
 // downloadImages saves the jobs' images with a few workers (resized to width), reporting "images" progress.
 // Returns the file names that failed; the caller checks ctx for a cancel.
@@ -303,7 +313,7 @@ func downloadImages(ctx context.Context, get func(context.Context, string) ([]by
 		go func() {
 			defer wg.Done()
 			for j := range ch {
-				err := saveImage(ctx, get, j.url, j.path, width)
+				err := saveImage(ctx, get, j, width)
 				mu.Lock()
 				done++
 				if err != nil {
@@ -325,23 +335,98 @@ func downloadImages(ctx context.Context, get func(context.Context, string) ([]by
 	return failed
 }
 
-func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, error), url, path string, width int) error {
-	b, err := get(ctx, url)
+// saveImage downloads a card image and writes it as PNG (the game and the pack-art tools read PNG/JPG; AVIF/WebP
+// sources are converted). Landscape cards are turned upright when job.rotate is set; width > 0 shrinks wider images.
+func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, error), job imageJob, width int) error {
+	b, err := get(ctx, job.url)
 	if err != nil {
 		return err
 	}
-	if width > 0 {
-		if img, _, err := image.Decode(bytes.NewReader(b)); err == nil && img.Bounds().Dx() > width {
-			h := img.Bounds().Dy() * width / img.Bounds().Dx()
-			dst := image.NewNRGBA(image.Rect(0, 0, width, h))
-			draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Src, nil)
-			var buf bytes.Buffer
-			if err := png.Encode(&buf, dst); err == nil {
-				b = buf.Bytes()
-			}
+	img, format, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		if bytes.HasPrefix(b, []byte{0x89, 'P', 'N', 'G'}) {
+			return os.WriteFile(job.path, b, 0o644) // undecodable but already PNG: keep as is
+		}
+		return fmt.Errorf("%s: %w", job.url, err)
+	}
+	changed := format != "png"
+	if job.rotate && img.Bounds().Dx() > img.Bounds().Dy() {
+		img = rotateCW(img)
+		changed = true
+	}
+	if fitted, ok := fitImage(img, job.aspect, width); ok {
+		img, changed = fitted, true
+	}
+	if changed {
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return err
+		}
+		b = buf.Bytes()
+	}
+	return os.WriteFile(job.path, b, 0o644)
+}
+
+// fitImage stretches img to aspect (when set and more than half a percent off) and shrinks it to width (when > 0).
+// Returns ok=false when nothing needs changing.
+func fitImage(img image.Image, aspect float64, width int) (image.Image, bool) {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if aspect > 0 && math.Abs(float64(w)/float64(h)-aspect) > 0.005 {
+		w = int(math.Round(float64(h) * aspect))
+	}
+	if width > 0 && w > width {
+		h = int(math.Round(float64(h) * float64(width) / float64(w)))
+		w = width
+	}
+	if w == b.Dx() && h == b.Dy() {
+		return img, false
+	}
+	dst := image.NewNRGBA(image.Rect(0, 0, w, h))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, b, draw.Src, nil)
+	return dst, true
+}
+
+// FitCardImages stretches a project's card images to aspect in place (fixes sets imported before their source fitted
+// the art). Returns how many images changed.
+func FitCardImages(p *project.Project, aspect float64) (int, error) {
+	n := 0
+	for _, c := range p.Set.Cards {
+		path := filepath.Join(p.Folder, filepath.FromSlash(c.Image))
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		img, _, err := image.Decode(bytes.NewReader(b))
+		if err != nil {
+			continue
+		}
+		fitted, ok := fitImage(img, aspect, 0)
+		if !ok {
+			continue
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, fitted); err != nil {
+			return n, err
+		}
+		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// rotateCW turns an image a quarter turn clockwise (landscape cards → portrait card slots).
+func rotateCW(src image.Image) image.Image {
+	b := src.Bounds()
+	dst := image.NewNRGBA(image.Rect(0, 0, b.Dy(), b.Dx()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(b.Max.Y-1-y, x-b.Min.X, src.At(x, y))
 		}
 	}
-	return os.WriteFile(path, b, 0o644)
+	return dst
 }
 
 // VariantTags names what makes a printing special (empty for a regular printing).

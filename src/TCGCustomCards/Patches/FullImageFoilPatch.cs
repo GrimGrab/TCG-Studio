@@ -193,7 +193,7 @@ namespace TCGCustomCards.Patches
             rt.anchorMax = Vector2.one;
             rt.offsetMin = rt.offsetMax = Vector2.zero;
             _holo = go.GetComponent<Image>();
-            _holo.preserveAspect = true; // same drawn rect as the overlay's artwork
+            _holo.preserveAspect = false; // the overlay's rect is the drawn card (SetCardUIPatch.Fit): cover it exactly
             _holo.raycastTarget = false;
         }
 

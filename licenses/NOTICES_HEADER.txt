@@ -36,6 +36,10 @@ WHAT IS INCLUDED IN THE DOWNLOAD
 4. Libraries built into TCG Studio.exe:
    - The Go standard library. BSD-3-Clause. https://go.dev
    - Svelte (the app's user interface). MIT. https://github.com/sveltejs/svelte
+   - AVIF image decoding (Lorcana card art), compiled into the github.com/gen2brain/avif module: libavif (BSD-2-Clause,
+     https://github.com/AOMediaCodec/libavif), dav1d (BSD-2-Clause, https://code.videolan.org/videolan/dav1d),
+     libaom (BSD-2-Clause, https://aomedia.googlesource.com/aom) and libyuv (BSD-3-Clause,
+     https://chromium.googlesource.com/libyuv/libyuv). Full texts below.
    - Go modules (license in brackets; full texts below):
 {{GO_MODULES}}
 

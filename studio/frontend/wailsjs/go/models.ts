@@ -299,6 +299,8 @@ export namespace importer {
 	    colorLabel: string;
 	    colors: Facet[];
 	    rarityOrder: string[];
+	    sorts: Facet[];
+	    variants: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SourceInfo(source);
@@ -313,6 +315,8 @@ export namespace importer {
 	        this.colorLabel = source["colorLabel"];
 	        this.colors = this.convertValues(source["colors"], Facet);
 	        this.rarityOrder = source["rarityOrder"];
+	        this.sorts = this.convertValues(source["sorts"], Facet);
+	        this.variants = source["variants"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

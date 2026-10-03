@@ -34,14 +34,39 @@ namespace TCGCustomCards.Patches
             if (!Registry.TryGetCard(cardData.monsterType, out var set, out int pos)) return;
             if (set.Def.RenderMode != Core.RenderMode.FullImage) return;
 
-            var sprite = set.CardImage(pos);
+            var sprite = set.CardFace(pos);
             if (sprite == null) return;
             var overlay = Find(__instance) ?? Create(__instance);
             overlay.sprite = sprite;
+            Fit(__instance, overlay, sprite);
             bool fullArt = cardData.borderType == ECardBorderType.FullArt;
             float inset = fullArt ? 1f : Mathf.Clamp(Plugin.FullImageInset.Value, 0.7f, 1f);
             overlay.rectTransform.localScale = Vector3.one * (FullImageScale * inset);
             overlay.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Sizes the overlay to the card's printed area at the shape of the whole image (texture), not the sprite: a sprite
+        /// trimmed of its printed border is stretched back to the full card's size, so the game's border sits right against
+        /// the card content instead of leaving the gap the border used to fill. Untrimmed sprites get the same rect that
+        /// preserveAspect gave them. Done on every SetCardUI because CardUIs are reused.
+        /// </summary>
+        private static void Fit(CardUI ui, Image overlay, Sprite sprite)
+        {
+            var rt = overlay.rectTransform;
+            var parentRt = rt.parent as RectTransform;
+            bool parentSized = parentRt != null && parentRt.rect.width > 1f;
+            Vector2 area = parentSized ? parentRt.rect.size
+                : ui.m_CardBorderMask != null ? ui.m_CardBorderMask.rectTransform.rect.size : rt.rect.size;
+            float aspect = sprite.texture.width / (float)sprite.texture.height;
+            if (area.x <= 1f || area.y <= 1f || aspect <= 0f) { overlay.preserveAspect = true; return; }
+            overlay.preserveAspect = false;
+            if (parentSized)
+            {
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = Vector2.zero;
+            }
+            rt.sizeDelta = area.x / area.y > aspect ? new Vector2(area.y * aspect, area.y) : new Vector2(area.x, area.x / aspect);
         }
 
         private static Image Find(CardUI ui)

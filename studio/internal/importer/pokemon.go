@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,7 @@ func (s *tcgdexSource) Info() SourceInfo {
 		colors = append(colors, Facet{t, t})
 	}
 	return SourceInfo{ID: "tcgdex", Name: "TCGdex", Game: "Pokémon TCG", Languages: tcgdex.Languages,
-		ColorLabel: "Type", Colors: colors, RarityOrder: PokemonRarityOrder}
+		ColorLabel: "Type", Colors: colors, RarityOrder: PokemonRarityOrder, Sorts: []Facet{{"power", "HP"}}}
 }
 
 // PokemonRarityOrder ranks TCGdex rarities (English names), lowest first. Keep in step with DefaultPokemonRarityMap.
@@ -162,8 +163,12 @@ func pokemonElement(types []string) string {
 
 func pokemonMeta(c *tcgdex.Card) project.CardMeta {
 	usd, foil, eur := c.Prices()
-	return project.CardMeta{SourceID: c.ID, Name: c.Name, TypeLine: c.TypeLine(), Colors: c.Types, SrcRarity: c.Rarity,
+	m := project.CardMeta{SourceID: c.ID, Name: c.Name, TypeLine: c.TypeLine(), Colors: c.Types, SrcRarity: c.Rarity,
 		USD: usd, USDFoil: foil, EUR: eur}
+	if c.HP > 0 {
+		m.Power = strconv.Itoa(c.HP) // the "HP" sort
+	}
+	return m
 }
 
 // fetchCards loads the full card records with a few workers. Cards that fail to load are returned by id in failed.
@@ -262,7 +267,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		card.Price = RealPrice(cm)
 		set.Cards = append(set.Cards, card)
 		meta.Cards[cid] = cm
-		jobs = append(jobs, imageJob{img, filepath.Join(folder, filepath.FromSlash(rel))})
+		jobs = append(jobs, imageJob{url: img, path: filepath.Join(folder, filepath.FromSlash(rel))})
 	}
 	if len(set.Cards) == 0 {
 		_ = os.RemoveAll(folder)
@@ -271,11 +276,11 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 
 	// Default booster: 7 cards like the other sources — 4 commons, 2 uncommons, 1 rare-or-better.
 	pack := setfmt.NewPack("booster", tset.Name+" Booster")
-	pack.Slots = []setfmt.Slot{
+	pack.Slots = fitSlots([]setfmt.Slot{
 		{Count: 4, Weights: map[string]float64{"Common": 1}},
 		{Count: 2, Weights: map[string]float64{"Rare": 1}},
 		{Count: 1, Weights: map[string]float64{"Epic": 6, "Legendary": 1}},
-	}
+	}, set.Cards)
 	pack.FoilChance = 15 // reverse holos are common in Pokémon packs
 	set.Packs = append(set.Packs, pack)
 
@@ -336,6 +341,9 @@ func (s *tcgdexSource) RefreshMeta(ctx context.Context, p *project.Project) (int
 		for _, cid := range keys[c.ID] {
 			m := p.Meta.Cards[cid]
 			m.USD, m.USDFoil, m.EUR = usd, foil, eur
+			if m.Power == "" && c.HP > 0 {
+				m.Power = strconv.Itoa(c.HP) // imported before the HP sort
+			}
 			p.Meta.Cards[cid] = m
 			n++
 		}

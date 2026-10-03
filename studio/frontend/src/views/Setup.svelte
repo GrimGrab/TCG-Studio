@@ -153,7 +153,7 @@
       <section>
         <h3>Next steps</h3>
         <ol class="small steps">
-          <li>Use <b>Import sets</b> to download Magic or Pokémon sets, then <b>Install</b> them from <b>Sets</b>.</li>
+          <li>Use <b>Import sets</b> to download card sets (Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana), then <b>Install</b> them from <b>Sets</b>.</li>
           <li>Restart the game — your sets are in the shop and binder. Press <b>F1</b> in game for mod settings.</li>
         </ol>
         <div class="row">

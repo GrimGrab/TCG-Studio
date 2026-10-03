@@ -23,7 +23,7 @@ export function money(v: number | undefined | null): string {
 
 /** Display name of an import source (project meta.source). */
 export function sourceName(source: string | undefined): string {
-  return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex' } as Record<string, string>)[source ?? ''] ?? source ?? '';
+  return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex', ygoprodeck: 'YGOPRODeck', optcg: 'TCGplayer', swudb: 'SWU-DB', lorcast: 'Lorcast', fab: 'TCGplayer' } as Record<string, string>)[source ?? ''] ?? source ?? '';
 }
 
 let sourcesPromise: Promise<any[]> | null = null;

@@ -43,6 +43,8 @@ namespace TCGCustomCards
         internal static readonly ConfigEntry<int>[] MtgAiDeckColorWeights = new ConfigEntry<int>[5];
         internal static ConfigEntry<float> FullImageInset;
         internal static ConfigEntry<bool> FullImageFoilGlow;
+        internal static ConfigEntry<bool> HidePrintedBorders;
+        internal static ConfigEntry<float> PrintedBorderMax;
         internal static ConfigEntry<bool> GradeLabel;
         internal static ConfigEntry<float> GradeLabelOffsetX;
         internal static ConfigEntry<float> GradeLabelOffsetY;
@@ -99,6 +101,14 @@ namespace TCGCustomCards
                 "Full-image cards: art size of Base/1st Edition/Silver/Gold/EX cards relative to Full Art, so the grade's border rim shows " +
                 "around it (1 = no rim). Full Art cards always fill the card. Applies to newly shown cards.",
                 new AcceptableValueRange<float>(0.7f, 1f)));
+            HidePrintedBorders = Config.Bind("Visuals", "HidePrintedBorders", false,
+                "Full-image cards: crop the card scan's own printed border (the black/white/yellow rim of the real card) so the game's " +
+                "border frames the card directly; the rest is stretched back to the full card size. Detected per image (borderless " +
+                "printings are left alone); image files are not changed. Applies to newly shown cards.");
+            PrintedBorderMax = Config.Bind("Visuals", "PrintedBorderMax", 0.1f, new ConfigDescription(
+                "Full-image cards with HidePrintedBorders on: the widest printed border that is cropped, as a fraction of the card " +
+                "width; anything wider is treated as artwork and left alone. Applies to newly shown cards.",
+                new AcceptableValueRange<float>(0f, 0.2f)));
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
             GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,

@@ -129,7 +129,7 @@
   {:else if projects.length === 0}
     <div class="empty">
       <p>No sets yet.</p>
-      <p class="muted">Use <b>Import sets</b> to pull in a whole Magic or Pokémon set, or create an empty set.</p>
+      <p class="muted">Use <b>Import sets</b> to pull in a whole set (Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana), or create an empty set.</p>
     </div>
   {:else}
     <div class="toolbar row">

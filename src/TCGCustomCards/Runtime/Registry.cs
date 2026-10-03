@@ -25,6 +25,32 @@ namespace TCGCustomCards.Runtime
         public string ImagePath(CardDef card) => string.IsNullOrEmpty(card.Image) ? null : Path.Combine(Def.FolderPath, card.Image);
         public Sprite CardImage(int pos) => ImageCache.Get(ImagePath(Card(pos)));
 
+        private bool _trimLogged;
+        private int _trimSeen, _trimNone, _trimSum;
+
+        /// <summary>
+        /// The card as drawn on full-image cards: without the scan's printed border when [Visuals] HidePrintedBorders is on
+        /// (SetCardUIPatch stretches it back to the texture's shape). CardImage stays whole for thumbnails and Framed art.
+        /// </summary>
+        public Sprite CardFace(int pos)
+        {
+            if (!Plugin.HidePrintedBorders.Value) return CardImage(pos);
+            var sprite = ImageCache.GetTrimmedCard(ImagePath(Card(pos)), Mathf.Clamp(Plugin.PrintedBorderMax.Value, 0f, 0.2f), out int b);
+            if (!_trimLogged && sprite != null)
+            {
+                _trimSeen++;
+                if (b == 0) _trimNone++; else _trimSum += b;
+                if (_trimSeen >= Mathf.Min(20, Def.Cards.Count))
+                {
+                    _trimLogged = true;
+                    int trimmed = _trimSeen - _trimNone;
+                    Plugin.Log.LogInfo($"Printed border trim {Def.Id}: first {_trimSeen} cards shown, {trimmed} trimmed " +
+                                       $"(avg {(trimmed > 0 ? _trimSum / trimmed : 0)} px of {sprite.texture.width}), {_trimNone} without a border");
+                }
+            }
+            return sprite;
+        }
+
         /// <summary>Shallow copy of the template expansion's CardUISetting (frame sprites are shared, read-only).</summary>
         public CardUISetting UISetting
         {

@@ -41,6 +41,94 @@ namespace TCGCustomCards.Runtime
             return Store(absolutePath, tex);
         }
 
+        private static readonly Dictionary<string, int> Trims = new Dictionary<string, int>();
+
+        /// <summary>
+        /// Card face without the scan's own printed border (the black/white/yellow rim of a photographed card), so the game's
+        /// border frames the card content directly. The border is detected per image (borderless and full-art printings have
+        /// none) and only the sprite's rectangle is shrunk — same texture, files untouched. Callers stretch the sprite back to
+        /// the untrimmed shape (texture size). Falls back to the whole image when nothing is detected.
+        /// </summary>
+        public static Sprite GetTrimmedCard(string absolutePath, float maxFraction, out int borderPx)
+        {
+            borderPx = 0;
+            if (string.IsNullOrEmpty(absolutePath)) return null;
+            string key = $"{absolutePath}#trim{maxFraction:F3}";
+            if (Sprites.TryGetValue(key, out var cached) && cached != null)
+            {
+                Trims.TryGetValue(key, out borderPx);
+                return cached;
+            }
+            if (Failed.Contains(absolutePath) || !File.Exists(absolutePath)) return Get(absolutePath);
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, true)
+            {
+                name = Path.GetFileNameWithoutExtension(absolutePath) + "_face",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Trilinear,
+                anisoLevel = 4
+            };
+            if (!tex.LoadImage(File.ReadAllBytes(absolutePath), markNonReadable: false))
+            {
+                Object.Destroy(tex);
+                return Get(absolutePath);
+            }
+            int w = tex.width, h = tex.height;
+            int b = DetectBorder(tex.GetPixels32(), w, h);
+            if (b > maxFraction * w || b * 2 >= w || b * 2 >= h) b = 0; // wider than any printed border: artwork
+            tex.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+            var sprite = Sprite.Create(tex, new Rect(b, b, w - 2 * b, h - 2 * b), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = tex.name;
+            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            sprite.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            Sprites[key] = sprite;
+            Trims[key] = borderPx = b;
+            return sprite;
+        }
+
+        /// <summary>
+        /// Width in pixels of a uniform-colour rim around the image (0 = none): per side, the median run of edge-coloured pixels
+        /// on 7 scanlines (25–75 %) after skipping transparent rounded corners and the anti-aliased outer pixel; the second-smallest
+        /// side wins; +1 px for the anti-aliased inner edge. Pixel rows start at the bottom (Unity order).
+        /// </summary>
+        internal static int DetectBorder(Color32[] px, int w, int h)
+        {
+            int Run(int x0, int y0, int dx, int dy, int limit)
+            {
+                int i = 0;
+                while (i < limit && px[(y0 + dy * i) * w + x0 + dx * i].a < 200) i++; // transparent corner / anti-aliasing
+                if (i + 2 >= limit) return 0;
+                // Reference = the rim colour one pixel in (the outermost pixel is often a lighter anti-aliased edge).
+                i++;
+                var r = px[(y0 + dy * i) * w + x0 + dx * i];
+                int start = i;
+                for (; i < limit; i++)
+                {
+                    var c = px[(y0 + dy * i) * w + x0 + dx * i];
+                    if (System.Math.Abs(c.r - r.r) + System.Math.Abs(c.g - r.g) + System.Math.Abs(c.b - r.b) > 60) break;
+                }
+                return i - start < 2 ? 0 : i; // measured from the image edge
+            }
+            int Median(System.Func<float, int> line)
+            {
+                var runs = new List<int>();
+                for (int k = 0; k < 7; k++) runs.Add(line(0.25f + k * 0.5f / 6f));
+                runs.Sort();
+                return runs[3];
+            }
+            int lw = w / 4, lh = h / 4;
+            int left = Median(f => Run(0, (int)(f * (h - 1)), 1, 0, lw));
+            int right = Median(f => Run(w - 1, (int)(f * (h - 1)), -1, 0, lw));
+            int bottom = Median(f => Run((int)(f * (w - 1)), 0, 0, 1, lh));
+            int top = Median(f => Run((int)(f * (w - 1)), h - 1, 0, -1, lh));
+            // Second-smallest side: one side may run long (art in the rim colour) or short (a detail line in the rim,
+            // e.g. Pokémon's silver border) without moving the result.
+            var sides = new List<int> { left, right, top, bottom };
+            sides.Sort();
+            int b = sides[1];
+            return b < 2 ? 0 : b + 1;
+        }
+
         /// <summary>
         /// Loads an image and pads it with transparency (centered, not scaled) to <paramref name="targetAspect"/> (width/height).
         /// UI slots such as shop icons are sized for the vanilla sprite's shape, so an unpadded image would be stretched.

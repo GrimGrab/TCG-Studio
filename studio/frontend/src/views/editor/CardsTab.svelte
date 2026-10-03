@@ -27,12 +27,24 @@
   // Unknown source rarities rank in the middle of the ladder.
   const srcRank = (r: string | undefined) => {
     const i = r ? srcOrder.indexOf(r) : -1;
-    return i >= 0 ? i : srcOrder.length / 2;
+    return i >= 0 ? i : (srcOrder.length - 1) / 2 + 0.25;
   };
   const srcRarities = $derived(
     [...new Set<string>(project.set.cards.map((c: any) => meta(c.id).srcRarity).filter(Boolean))].sort((a, b) => srcRank(a) - srcRank(b))
   );
   const setIndex = $derived(new Map(project.set.cards.map((c: any, i: number) => [c.id, i])));
+  const bySet = (a: any, b: any) => (setIndex.get(a.id) as number) - (setIndex.get(b.id) as number);
+  // Extra sorts from the source: "cost" low first, "power" high first (cards without one go last), and its colour/type order.
+  const sorts = $derived<any[]>(source?.sorts ?? []);
+  const num = (v: any) => (v === undefined || v === null || v === '' || isNaN(Number(v)) ? null : Number(v));
+  function colorIndex(m: any): number {
+    if (m.colors?.length > 1) {
+      const multi = colors.findIndex((f) => f.value === 'M');
+      if (multi >= 0) return multi;
+    }
+    const i = colors.findIndex((f) => f.value !== 'M' && colorMatch(m, f.value));
+    return i >= 0 ? i : colors.length;
+  }
 
   function colorMatch(m: any, v: string): boolean {
     if (v === 'C') return !m.colors?.length && !(m.typeLine ?? '').match(/^(Trainer|Energy)/);
@@ -52,7 +64,17 @@
     if (sort === 'name') list = [...list].sort((a: any, b: any) => a.name.localeCompare(b.name));
     if (sort === 'rarity')
       list = [...list].sort((a: any, b: any) => RANK[b.rarity] - RANK[a.rarity] || srcRank(meta(b.id).srcRarity) - srcRank(meta(a.id).srcRarity) ||
-        (setIndex.get(a.id) as number) - (setIndex.get(b.id) as number));
+        bySet(a, b));
+    if (sort === 'cost' || sort === 'power') {
+      const key = sort === 'cost' ? 'cmc' : 'power';
+      const dir = sort === 'cost' ? 1 : -1;
+      list = [...list].sort((a: any, b: any) => {
+        const x = num(meta(a.id)[key]), y = num(meta(b.id)[key]);
+        if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0) || bySet(a, b);
+        return dir * (x - y) || bySet(a, b);
+      });
+    }
+    if (sort === 'color') list = [...list].sort((a: any, b: any) => colorIndex(meta(a.id)) - colorIndex(meta(b.id)) || bySet(a, b));
     if (sort === 'price') list = [...list].sort((a: any, b: any) => b.price.base - a.price.base);
     if (sort === 'real') list = [...list].sort((a: any, b: any) => (meta(b.id).usd ?? 0) - (meta(a.id).usd ?? 0));
     return list;
@@ -129,6 +151,8 @@
       {/if}
       <select bind:value={sort}>
         <option value="set">Set order</option><option value="name">Name</option><option value="rarity">Rarity</option>
+        {#if colors.length}<option value="color">{source.colorLabel}</option>{/if}
+        {#each sorts as s}<option value={s.value}>{s.label}</option>{/each}
         <option value="price">Game price</option><option value="real">Real price</option>
       </select>
       <input type="range" min="100" max="260" bind:value={size} title="Card size" />

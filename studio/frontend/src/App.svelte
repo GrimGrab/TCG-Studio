@@ -104,7 +104,10 @@
 
   // Open on Setup when something isn't installed yet (e.g. a friend's first run) or right after an update
   // (the mod in the game then needs updating too).
+  let ready = $state(false);
   onMount(async () => {
+    await App.WaitReady(); // the backend's startup runs alongside the page load
+    ready = true;
     EventsOn('update:progress', (f: number) => (updateProgress = f));
     version = await App.AppVersion();
     await refreshStatus();
@@ -146,7 +149,7 @@
     {/if}
     <button class:active={view === 'setup'} onclick={() => (view = 'setup')}>Setup{#if !setupReady}<span class="dot" title="Something needs installing"></span>{/if}</button>
     <button class:active={view === 'projects' || view === 'editor'} onclick={() => (view = 'projects')}>Sets</button>
-    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import from Scryfall</button>
+    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import sets</button>
     <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
     <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
     <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
@@ -189,7 +192,9 @@
       </div>
     {/if}
     {#key setupKey}
-    {#if view === 'setup'}
+    {#if !ready}
+      <p class="muted" style="padding:20px 24px">Loading…</p>
+    {:else if view === 'setup'}
       <Setup {notify} onchange={refreshStatus} />
     {:else if view === 'setups'}
       <Setups {notify} onswitched={setupSwitched} action={setupAction} ondone={() => (setupAction = null)} />

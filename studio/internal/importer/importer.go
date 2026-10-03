@@ -1,4 +1,5 @@
-// Package importer turns a Scryfall set into a studio project (set.json + images + studio.json).
+// Package importer turns a set from a card database (Scryfall, TCGdex, … — see source.go) into a studio project
+// (set.json + images + studio.json).
 package importer
 
 import (
@@ -26,7 +27,8 @@ import (
 type Options struct {
 	IncludeVariants bool              `json:"includeVariants"` // showcase/borderless/extended-art printings
 	ImageWidth      int               `json:"imageWidth"`      // resize width (0 = keep 745)
-	RarityMap       map[string]string `json:"rarityMap"`       // scryfall rarity → game rarity
+	RarityMap       map[string]string `json:"rarityMap"`       // source rarity → game rarity
+	Lang            string            `json:"lang,omitempty"`  // card language, for sources with several
 }
 
 func DefaultOptions() Options {
@@ -87,8 +89,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	meta := &project.Meta{Source: "scryfall", ScryfallCode: sfSet.Code, ReleasedAt: sfSet.ReleasedAt,
 		ImportedAt: time.Now(), PricesUpdated: time.Now(), Cards: map[string]project.CardMeta{}}
 
-	type job struct{ url, path string }
-	var jobs []job
+	var jobs []imageJob
 	used := map[string]int{}
 	for _, c := range cards {
 		if c.Digital && !sfSet.Digital {
@@ -138,7 +139,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		if u == "" {
 			u = img.Large
 		}
-		jobs = append(jobs, job{u, filepath.Join(folder, filepath.FromSlash(rel))})
+		jobs = append(jobs, imageJob{u, filepath.Join(folder, filepath.FromSlash(rel))})
 	}
 	if len(set.Cards) == 0 {
 		return nil, fmt.Errorf("no printable cards found in set %s", code)
@@ -162,38 +163,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	}
 
 	// Images: the card CDN has no API rate limit, but stay modest.
-	var (
-		wg     sync.WaitGroup
-		mu     sync.Mutex
-		done   int
-		failed []string
-	)
-	ch := make(chan job)
-	dl := &imageDownloader{sf: scryfall.NewUnthrottled()}
-	for w := 0; w < 6; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range ch {
-				err := dl.save(ctx, j.url, j.path, opt.ImageWidth)
-				mu.Lock()
-				done++
-				if err != nil {
-					failed = append(failed, filepath.Base(j.path))
-				}
-				report(Progress{Stage: "images", Done: done, Total: len(jobs), Message: fmt.Sprintf("Downloaded %d / %d images", done, len(jobs))})
-				mu.Unlock()
-			}
-		}()
-	}
-	for _, j := range jobs {
-		if ctx.Err() != nil {
-			break
-		}
-		ch <- j
-	}
-	close(ch)
-	wg.Wait()
+	failed := downloadImages(ctx, scryfall.NewUnthrottled().Download, jobs, opt.ImageWidth, report)
 	if ctx.Err() != nil {
 		_ = os.RemoveAll(folder)
 		return nil, ctx.Err()
@@ -316,12 +286,47 @@ func RealPrice(m project.CardMeta) setfmt.CardPrice {
 	return p
 }
 
-type imageDownloader struct {
-	sf *scryfall.Client
+type imageJob struct{ url, path string }
+
+// downloadImages saves the jobs' images with a few workers (resized to width), reporting "images" progress.
+// Returns the file names that failed; the caller checks ctx for a cancel.
+func downloadImages(ctx context.Context, get func(context.Context, string) ([]byte, error), jobs []imageJob, width int, report func(Progress)) []string {
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		done   int
+		failed []string
+	)
+	ch := make(chan imageJob)
+	for w := 0; w < 6; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range ch {
+				err := saveImage(ctx, get, j.url, j.path, width)
+				mu.Lock()
+				done++
+				if err != nil {
+					failed = append(failed, filepath.Base(j.path))
+				}
+				report(Progress{Stage: "images", Done: done, Total: len(jobs), Message: fmt.Sprintf("Downloaded %d / %d images", done, len(jobs))})
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, j := range jobs {
+		if ctx.Err() != nil {
+			break
+		}
+		ch <- j
+	}
+	close(ch)
+	wg.Wait()
+	return failed
 }
 
-func (d *imageDownloader) save(ctx context.Context, url, path string, width int) error {
-	b, err := d.sf.Download(ctx, url)
+func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, error), url, path string, width int) error {
+	b, err := get(ctx, url)
 	if err != nil {
 		return err
 	}

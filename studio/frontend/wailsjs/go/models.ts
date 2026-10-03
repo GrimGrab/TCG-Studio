@@ -259,10 +259,25 @@ export namespace gamify {
 
 export namespace importer {
 	
+	export class Facet {
+	    value: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Facet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.value = source["value"];
+	        this.label = source["label"];
+	    }
+	}
 	export class Options {
 	    includeVariants: boolean;
 	    imageWidth: number;
 	    rarityMap: Record<string, string>;
+	    lang?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Options(source);
@@ -273,7 +288,50 @@ export namespace importer {
 	        this.includeVariants = source["includeVariants"];
 	        this.imageWidth = source["imageWidth"];
 	        this.rarityMap = source["rarityMap"];
+	        this.lang = source["lang"];
 	    }
+	}
+	export class SourceInfo {
+	    id: string;
+	    name: string;
+	    game: string;
+	    languages: string[];
+	    colorLabel: string;
+	    colors: Facet[];
+	    rarityOrder: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SourceInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.game = source["game"];
+	        this.languages = source["languages"];
+	        this.colorLabel = source["colorLabel"];
+	        this.colors = this.convertValues(source["colors"], Facet);
+	        this.rarityOrder = source["rarityOrder"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -445,6 +503,36 @@ export namespace main {
 	        this.size = source["size"];
 	    }
 	}
+	export class ImportableSet {
+	    code: string;
+	    name: string;
+	    group: string;
+	    releasedAt: string;
+	    icon: string;
+	    iconMono: boolean;
+	    cards: number;
+	    main: boolean;
+	    imported: boolean;
+	    projectId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportableSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.group = source["group"];
+	        this.releasedAt = source["releasedAt"];
+	        this.icon = source["icon"];
+	        this.iconMono = source["iconMono"];
+	        this.cards = source["cards"];
+	        this.main = source["main"];
+	        this.imported = source["imported"];
+	        this.projectId = source["projectId"];
+	    }
+	}
 	export class ModCheck {
 	    logFound: boolean;
 	    when: string;
@@ -550,34 +638,6 @@ export namespace main {
 		    }
 		    return a;
 		}
-	}
-	export class ScryfallSet {
-	    code: string;
-	    name: string;
-	    set_type: string;
-	    released_at: string;
-	    card_count: number;
-	    digital: boolean;
-	    icon_svg_uri: string;
-	    parent_set_code: string;
-	    imported: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScryfallSet(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.code = source["code"];
-	        this.name = source["name"];
-	        this.set_type = source["set_type"];
-	        this.released_at = source["released_at"];
-	        this.card_count = source["card_count"];
-	        this.digital = source["digital"];
-	        this.icon_svg_uri = source["icon_svg_uri"];
-	        this.parent_set_code = source["parent_set_code"];
-	        this.imported = source["imported"];
-	    }
 	}
 	export class Settings {
 	    gameDir: string;
@@ -809,6 +869,7 @@ export namespace project {
 	
 	export class CardMeta {
 	    scryfallId?: string;
+	    sourceId?: string;
 	    name?: string;
 	    layout?: string;
 	    colors?: string[];
@@ -831,6 +892,7 @@ export namespace project {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scryfallId = source["scryfallId"];
+	        this.sourceId = source["sourceId"];
 	        this.name = source["name"];
 	        this.layout = source["layout"];
 	        this.colors = source["colors"];
@@ -868,6 +930,8 @@ export namespace project {
 	export class Meta {
 	    source: string;
 	    scryfallCode?: string;
+	    setCode?: string;
+	    lang?: string;
 	    releasedAt?: string;
 	    // Go type: time
 	    importedAt: any;
@@ -886,6 +950,8 @@ export namespace project {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
 	        this.scryfallCode = source["scryfallCode"];
+	        this.setCode = source["setCode"];
+	        this.lang = source["lang"];
 	        this.releasedAt = source["releasedAt"];
 	        this.importedAt = this.convertValues(source["importedAt"], null);
 	        this.pricesUpdated = this.convertValues(source["pricesUpdated"], null);

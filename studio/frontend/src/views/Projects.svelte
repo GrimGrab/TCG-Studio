@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, projectFile, errText, ask } from '../lib/api';
+  import { App, projectFile, errText, ask, sourceName } from '../lib/api';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
 
@@ -129,7 +129,7 @@
   {:else if projects.length === 0}
     <div class="empty">
       <p>No sets yet.</p>
-      <p class="muted">Use <b>Import from Scryfall</b> to pull in a whole Magic set, or create an empty set.</p>
+      <p class="muted">Use <b>Import sets</b> to pull in a whole Magic or Pokémon set, or create an empty set.</p>
     </div>
   {:else}
     <div class="toolbar row">
@@ -158,7 +158,7 @@
             <button class="name" onclick={() => open(p.id)}>{p.name}</button>
             <div class="muted small">
               {p.id} · {p.cards} cards · {p.packs} pack{p.packs === 1 ? '' : 's'}
-              {#if p.code} · Scryfall {p.code.toUpperCase()} ({p.releasedAt}){/if}
+              {#if p.code} · {sourceName(p.source)} {p.code.toUpperCase()}{p.releasedAt ? ` (${p.releasedAt})` : ''}{/if}
             </div>
             <div class="row" style="margin-top:6px">
               {#if p.installState === 'stale'}<span class="badge warn" title="Edited since it was installed — the game has an older version">Outdated in game</span>

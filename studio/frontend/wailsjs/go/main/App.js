@@ -74,8 +74,8 @@ export function DefaultArtColor(arg1) {
   return window['go']['main']['App']['DefaultArtColor'](arg1);
 }
 
-export function DefaultImportOptions() {
-  return window['go']['main']['App']['DefaultImportOptions']();
+export function DefaultImportOptions(arg1) {
+  return window['go']['main']['App']['DefaultImportOptions'](arg1);
 }
 
 export function DeleteAccessory(arg1) {
@@ -162,12 +162,16 @@ export function ImportFigurineModel() {
   return window['go']['main']['App']['ImportFigurineModel']();
 }
 
-export function ImportScryfallSet(arg1, arg2) {
-  return window['go']['main']['App']['ImportScryfallSet'](arg1, arg2);
+export function ImportSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ImportSet'](arg1, arg2, arg3);
 }
 
 export function ImportSetup(arg1) {
   return window['go']['main']['App']['ImportSetup'](arg1);
+}
+
+export function ImportSources() {
+  return window['go']['main']['App']['ImportSources']();
 }
 
 export function InstallAccessories() {
@@ -318,10 +322,6 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
-export function ScryfallSets(arg1) {
-  return window['go']['main']['App']['ScryfallSets'](arg1);
-}
-
 export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
 }
@@ -340,6 +340,10 @@ export function SetupUninstall(arg1) {
 
 export function SnapshotPackBase(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SnapshotPackBase'](arg1, arg2, arg3, arg4);
+}
+
+export function SourceSets(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SourceSets'](arg1, arg2, arg3);
 }
 
 export function SwitchSetup(arg1) {
@@ -364,4 +368,8 @@ export function UpdateSetup(arg1, arg2, arg3) {
 
 export function ValidateProject(arg1) {
   return window['go']['main']['App']['ValidateProject'](arg1);
+}
+
+export function WaitReady() {
+  return window['go']['main']['App']['WaitReady']();
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, errText, ask } from '../lib/api';
+  import { App, errText, ask, sourceName, sourceCode } from '../lib/api';
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
   import SetTab from './editor/SetTab.svelte';
@@ -107,15 +107,15 @@
       <button onclick={leave}>← Sets</button>
       <div class="grow title">
         <h2>{project.set.name}</h2>
-        <span class="muted">{project.id}{project.meta?.scryfallCode ? ` · Scryfall ${project.meta.scryfallCode.toUpperCase()}` : ''}</span>
+        <span class="muted">{project.id}{sourceCode(project.meta) ? ` · ${sourceName(project.meta.source)} ${sourceCode(project.meta).toUpperCase()}` : ''}</span>
       </div>
       <button class="issues" onclick={() => (showIssues = !showIssues)}>
         {#if errors}<span class="badge err">{errors} errors</span>{/if}
         {#if warnings}<span class="badge warn">{warnings} warnings</span>{/if}
         {#if !errors && !warnings}<span class="badge ok">Valid</span>{/if}
       </button>
-      {#if project.meta?.scryfallCode}
-        <button onclick={refreshPrices} title="Pull today's Scryfall prices (re-applies this set's Gamify settings)">Refresh prices</button>
+      {#if sourceCode(project.meta)}
+        <button onclick={refreshPrices} title="Pull today's {sourceName(project.meta.source)} prices (re-applies this set's Gamify settings)">Refresh prices</button>
       {/if}
       <button onclick={() => App.OpenProjectFolder(id)}>Folder</button>
       {#if installState === 'current'}

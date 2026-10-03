@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +26,7 @@ import (
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/scryfall"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/tcgdex"
 	"tcgstudio/internal/updater"
 )
 
@@ -34,6 +34,8 @@ import (
 type App struct {
 	ctx       context.Context
 	sf        *scryfall.Client
+	sources   *importer.Registry
+	started   chan struct{} // closed when startup has picked the workspace/setup (see WaitReady)
 	mu        sync.Mutex
 	syncMu    sync.Mutex // SyncInstalledSets
 	settings  Settings
@@ -51,7 +53,10 @@ type Settings struct {
 	SyncedVersion string `json:"syncedVersion,omitempty"`
 }
 
-func NewApp() *App { return &App{sf: scryfall.New()} }
+func NewApp() *App {
+	sf := scryfall.New()
+	return &App{sf: sf, sources: importer.NewRegistry(sf, tcgdex.New()), started: make(chan struct{})}
+}
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -64,7 +69,15 @@ func (a *App) startup(ctx context.Context) {
 	}
 	_ = saveSettings(a.settings)
 	a.initSetups()
+	close(a.started)
 	a.RefreshTemplates(false)
+}
+
+// WaitReady returns once startup has loaded the settings and picked the active setup. Wails runs startup in a goroutine
+// while the page loads, so the frontend awaits this before its first calls (an early ListProjects saw no workspace).
+func (a *App) WaitReady() bool {
+	<-a.started
+	return true
 }
 
 // ws is the active setup's studio root (projects + accessory library); see app_setups.go.
@@ -294,25 +307,43 @@ func (a *App) CheckModLoaded() ModCheck {
 	return c
 }
 
-// ---------------------------------------------------------------- scryfall
+// ---------------------------------------------------------------- import sets
 
-type ScryfallSet struct {
-	scryfall.Set
-	Imported bool `json:"imported"`
+// ImportableSet is a set offered by an import source, marked when it is already a project.
+type ImportableSet struct {
+	importer.SetInfo
+	Imported  bool   `json:"imported"`
+	ProjectID string `json:"projectId"`
 }
 
-// ScryfallSets lists sets (cached for a day in the workspace).
-func (a *App) ScryfallSets(refresh bool) ([]ScryfallSet, error) {
-	cache := filepath.Join(a.home().CacheDir(), "scryfall_sets.json")
-	var sets []scryfall.Set
+// ImportSources lists the card databases sets can be imported from.
+func (a *App) ImportSources() []importer.SourceInfo {
+	var out []importer.SourceInfo
+	for _, s := range a.sources.All() {
+		out = append(out, s.Info())
+	}
+	return out
+}
+
+// SourceSets lists a source's sets (cached for a day in the workspace) in the source's order (newest first).
+func (a *App) SourceSets(source, lang string, refresh bool) ([]ImportableSet, error) {
+	src, err := a.sources.Get(source)
+	if err != nil {
+		return nil, err
+	}
+	name := "import_" + source
+	if lang != "" {
+		name += "_" + lang
+	}
+	cache := filepath.Join(a.home().CacheDir(), name+".json")
+	var sets []importer.SetInfo
 	if info, err := os.Stat(cache); err == nil && !refresh && time.Since(info.ModTime()) < 24*time.Hour {
 		if b, err := os.ReadFile(cache); err == nil {
 			_ = json.Unmarshal(b, &sets)
 		}
 	}
 	if len(sets) == 0 {
-		var err error
-		if sets, err = a.sf.Sets(a.ctx); err != nil {
+		if sets, err = src.Sets(a.ctx, lang); err != nil {
 			return nil, err
 		}
 		_ = os.MkdirAll(filepath.Dir(cache), 0o755)
@@ -320,22 +351,29 @@ func (a *App) ScryfallSets(refresh bool) ([]ScryfallSet, error) {
 			_ = os.WriteFile(cache, b, 0o644)
 		}
 	}
-	out := make([]ScryfallSet, 0, len(sets))
+	out := make([]ImportableSet, 0, len(sets))
 	for _, s := range sets {
-		if s.Digital || s.CardCount == 0 {
-			continue
-		}
-		_, err := os.Stat(a.ws().Folder(importer.SetID(s.Code)))
-		out = append(out, ScryfallSet{Set: s, Imported: err == nil})
+		id := src.ProjectID(s.Code, lang)
+		_, err := os.Stat(a.ws().Folder(id))
+		out = append(out, ImportableSet{SetInfo: s, Imported: err == nil, ProjectID: id})
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].ReleasedAt > out[j].ReleasedAt })
 	return out, nil
 }
 
-func (a *App) DefaultImportOptions() importer.Options { return importer.DefaultOptions() }
+func (a *App) DefaultImportOptions(source string) (importer.Options, error) {
+	src, err := a.sources.Get(source)
+	if err != nil {
+		return importer.Options{}, err
+	}
+	return src.DefaultOptions(), nil
+}
 
-// ImportScryfallSet runs an import, emitting "import:progress" events. Returns the new project id.
-func (a *App) ImportScryfallSet(code string, opt importer.Options) (string, error) {
+// ImportSet runs an import from a source, emitting "import:progress" events. Returns the new project id.
+func (a *App) ImportSet(source, code string, opt importer.Options) (string, error) {
+	src, err := a.sources.Get(source)
+	if err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	if a.cancel != nil {
 		a.mu.Unlock()
@@ -350,7 +388,7 @@ func (a *App) ImportScryfallSet(code string, opt importer.Options) (string, erro
 		a.mu.Unlock()
 		cancel()
 	}()
-	p, err := importer.Import(ctx, a.sf, a.ws(), code, opt, func(pr importer.Progress) {
+	p, err := src.Import(ctx, a.ws(), code, opt, func(pr importer.Progress) {
 		runtime.EventsEmit(a.ctx, "import:progress", pr)
 	})
 	if err != nil {
@@ -483,7 +521,10 @@ func (a *App) CancelImport() {
 
 // ---------------------------------------------------------------- projects
 
-func (a *App) ListProjects() ([]project.Summary, error) { return a.ws().List(a.settings.GameDir) }
+func (a *App) ListProjects() ([]project.Summary, error) {
+	<-a.started
+	return a.ws().List(a.settings.GameDir)
+}
 
 func (a *App) LoadProject(id string) (*project.Project, error) { return a.ws().Load(id) }
 
@@ -645,13 +686,17 @@ func (a *App) isInstalled(id string) bool {
 	return err == nil
 }
 
-// RefreshPrices pulls current Scryfall prices and re-applies the project's last pricing settings (licenses untouched).
+// RefreshPrices pulls current prices from the set's import source and re-applies the project's last pricing settings (licenses untouched).
 func (a *App) RefreshPrices(id string) (string, error) {
 	p, err := a.ws().Load(id)
 	if err != nil {
 		return "", err
 	}
-	n, err := importer.RefreshMeta(a.ctx, a.sf, p)
+	src, err := a.sources.Get(p.Meta.Source)
+	if err != nil {
+		return "", fmt.Errorf("%s was not imported from a card database", id)
+	}
+	n, err := src.RefreshMeta(a.ctx, p)
 	if err != nil {
 		return "", err
 	}
@@ -672,7 +717,7 @@ func (a *App) RefreshPrices(id string) (string, error) {
 	} else {
 		for i := range p.Set.Cards {
 			c := &p.Set.Cards[i]
-			if m := p.Meta.Cards[c.ID]; !m.Locked && m.ScryfallID != "" {
+			if m := p.Meta.Cards[c.ID]; !m.Locked && (m.ScryfallID != "" || m.SourceID != "") {
 				c.Price = importer.RealPrice(m)
 			}
 		}

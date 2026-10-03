@@ -1,7 +1,7 @@
 // Thin helpers over the generated Wails bindings.
 export * as App from '../../wailsjs/go/main/App';
 export { EventsOn, EventsOff, BrowserOpenURL } from '../../wailsjs/runtime/runtime';
-import { Confirm } from '../../wailsjs/go/main/App';
+import { Confirm, ImportSources } from '../../wailsjs/go/main/App';
 
 // SuperLegend exists in the game's enum but has no rarity icon (shows as Common), so the studio doesn't offer it.
 export const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
@@ -19,6 +19,25 @@ export function projectFile(projectId: string, rel: string | undefined, bust = 0
 export function money(v: number | undefined | null): string {
   if (v === undefined || v === null || isNaN(v)) return '–';
   return v >= 100 ? `$${v.toFixed(0)}` : `$${v.toFixed(2)}`;
+}
+
+/** Display name of an import source (project meta.source). */
+export function sourceName(source: string | undefined): string {
+  return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex' } as Record<string, string>)[source ?? ''] ?? source ?? '';
+}
+
+let sourcesPromise: Promise<any[]> | null = null;
+
+/** The import source's info (colour filter, rarity order…) for a project's meta.source; null for hand-made sets. */
+export async function sourceInfo(source: string | undefined): Promise<any | null> {
+  if (!source) return null;
+  sourcesPromise ??= ImportSources().catch(() => { sourcesPromise = null; return []; });
+  return (await sourcesPromise).find((s) => s.id === source) ?? null;
+}
+
+/** The imported set's code at its source ('' for hand-made sets). */
+export function sourceCode(meta: any): string {
+  return meta?.scryfallCode || meta?.setCode || '';
 }
 
 export function errText(e: unknown): string {

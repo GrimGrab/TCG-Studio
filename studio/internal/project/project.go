@@ -23,8 +23,10 @@ const (
 
 // Meta is studio-only data that the mod never reads.
 type Meta struct {
-	Source        string              `json:"source"` // "scryfall" | "manual"
+	Source        string              `json:"source"` // import source id ("scryfall", "tcgdex", …) or "manual"
 	ScryfallCode  string              `json:"scryfallCode,omitempty"`
+	SetCode       string              `json:"setCode,omitempty"` // the source's set id for sources other than Scryfall
+	Lang          string              `json:"lang,omitempty"`    // card language of the import, when the source has several
 	ReleasedAt    string              `json:"releasedAt,omitempty"`
 	ImportedAt    time.Time           `json:"importedAt"`
 	PricesUpdated time.Time           `json:"pricesUpdated"`
@@ -34,6 +36,14 @@ type Meta struct {
 	// PackArt holds the pack editor's layouts per pack id: {"pack": layout, "box": layout} (layout = the accessory editor's
 	// JSON, see frontend lib/accessoryArt.ts). Packs without an entry use generated or chosen images only.
 	PackArt map[string]map[string]json.RawMessage `json:"packArt,omitempty"`
+}
+
+// SourceCode is the imported set's code at its source (empty for hand-made sets).
+func (m *Meta) SourceCode() string {
+	if m.ScryfallCode != "" {
+		return m.ScryfallCode
+	}
+	return m.SetCode
 }
 
 // Pricing remembers the last gamify settings so a price refresh can re-apply them.
@@ -47,8 +57,9 @@ type Pricing struct {
 // CardMeta keeps the real-world data behind an imported card.
 type CardMeta struct {
 	ScryfallID string   `json:"scryfallId,omitempty"`
-	Name       string   `json:"name,omitempty"`   // Scryfall name (no variant tags)
-	Layout     string   `json:"layout,omitempty"` // Scryfall layout (normal, split, transform, adventure, …)
+	SourceID   string   `json:"sourceId,omitempty"` // the card's id at a source other than Scryfall (e.g. TCGdex "sv03.5-006")
+	Name       string   `json:"name,omitempty"`     // source name (no variant tags)
+	Layout     string   `json:"layout,omitempty"`   // Scryfall layout (normal, split, transform, adventure, …)
 	Colors     []string `json:"colors,omitempty"`
 	TypeLine   string   `json:"typeLine,omitempty"`
 	ManaCost   string   `json:"manaCost,omitempty"`
@@ -118,7 +129,7 @@ func (w Workspace) List(gameDir string) ([]Summary, error) {
 		}
 		info, _ := os.Stat(filepath.Join(p.Folder, SetFile))
 		s := Summary{ID: p.ID, Name: p.Set.Name, Cards: len(p.Set.Cards), Packs: len(p.Set.Packs),
-			Source: p.Meta.Source, Code: p.Meta.ScryfallCode, ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier}
+			Source: p.Meta.Source, Code: p.Meta.SourceCode(), ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier}
 		if info != nil {
 			s.Modified = info.ModTime()
 		}

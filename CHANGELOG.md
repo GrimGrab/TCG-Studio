@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.11.0 - 2026-10-02
+
+Import Pokémon sets, on a new "Import sets" page.
+
+- New: "Import sets" page (replaces "Import from Scryfall"). Pick where to import from at the top: Magic: The Gathering (Scryfall) or Pokémon TCG (TCGdex).
+- New: Pokémon sets from TCGdex: card art, real TCGplayer/Cardmarket prices (the reverse holo price sets the foil price), rarities mapped to the game's rarities and a ready-made booster pack. Choose the card language (English, French, German, Italian, Spanish, Portuguese, Japanese). Refresh prices works for Pokémon sets too.
+- New: In the set editor's Cards tab, Pokémon sets can be filtered by type (Fire, Water, Grass… plus Trainer and Energy) and by the card's own rarity (e.g. Special illustration rare). Sorting by rarity now orders cards by their real rarity within each game rarity (for Magic: mythics before rares).
+- Fixed: The Sets page could show no sets right after Studio started.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.10.0 - 2026-10-02
 
 Smarter MTG opponents built by Forge, more control over them, and a tidier Mod settings page.

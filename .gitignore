@@ -92,3 +92,6 @@ $RECYCLE.BIN/
 *.log
 *.tmp
 *.bak
+
+# API fixtures for tests (local only, not published)
+**/testdata/

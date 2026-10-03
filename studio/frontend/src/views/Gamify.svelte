@@ -88,7 +88,7 @@
         <select bind:value={settings.mode} onchange={() => (preview = null)}>
           <option value="hybrid">Hybrid — game price bands, ranked by real price (recommended)</option>
           <option value="game">Game-like — fixed price per rarity</option>
-          <option value="real">Real — Scryfall USD prices</option>
+          <option value="real">Real — market USD prices</option>
         </select>
       </label>
       <label class="field">Border & foil values

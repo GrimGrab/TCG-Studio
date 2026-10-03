@@ -50,7 +50,7 @@ export function CreateSetup(arg1:string,arg2:string,arg3:boolean):Promise<main.S
 
 export function DefaultArtColor(arg1:string):Promise<string>;
 
-export function DefaultImportOptions():Promise<importer.Options>;
+export function DefaultImportOptions(arg1:string):Promise<importer.Options>;
 
 export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
 
@@ -94,9 +94,11 @@ export function GlobalCardBack():Promise<string>;
 
 export function ImportFigurineModel():Promise<main.FigurineSource>;
 
-export function ImportScryfallSet(arg1:string,arg2:importer.Options):Promise<string>;
+export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
 
 export function ImportSetup(arg1:string):Promise<string>;
+
+export function ImportSources():Promise<Array<importer.SourceInfo>>;
 
 export function InstallAccessories():Promise<main.AccessoryView>;
 
@@ -172,8 +174,6 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
-export function ScryfallSets(arg1:boolean):Promise<Array<main.ScryfallSet>>;
-
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 
 export function SetupRepair():Promise<string>;
@@ -183,6 +183,8 @@ export function SetupState():Promise<installer.State>;
 export function SetupUninstall(arg1:boolean):Promise<string>;
 
 export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
+export function SourceSets(arg1:string,arg2:string,arg3:boolean):Promise<Array<main.ImportableSet>>;
 
 export function SwitchSetup(arg1:string):Promise<main.SwitchResult>;
 
@@ -195,3 +197,5 @@ export function UninstallProject(arg1:string):Promise<void>;
 export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
 
 export function ValidateProject(arg1:string):Promise<Array<setfmt.Issue>>;
+
+export function WaitReady():Promise<boolean>;

@@ -86,7 +86,7 @@
 
   <h3>Price</h3>
   {#if meta && (meta.usd !== undefined || meta.usdFoil !== undefined)}
-    <div class="muted small">Scryfall: {money(meta.usd)} · foil {money(meta.usdFoil)} ({meta.srcRarity})</div>
+    <div class="muted small">Real price: {money(meta.usd)} · foil {money(meta.usdFoil)} ({meta.srcRarity})</div>
   {/if}
   <div class="row">
     <label class="field grow">Base price<input type="number" step="0.01" min="0" bind:value={card.price.base} /></label>

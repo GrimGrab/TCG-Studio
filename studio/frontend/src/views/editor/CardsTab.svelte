@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { App, projectFile, money, RARITIES, RARITY_COLORS, errText, ask } from '../../lib/api';
+  import { App, projectFile, money, RARITIES, RARITY_COLORS, errText, ask, sourceInfo } from '../../lib/api';
   import CardDetail from './CardDetail.svelte';
   import BulkEdit from './BulkEdit.svelte';
 
@@ -16,19 +16,43 @@
   const meta = (id: string) => project.meta?.cards?.[id] ?? {};
   const RANK: Record<string, number> = Object.fromEntries(RARITIES.map((r, i) => [r, i]));
 
+  // The import source decides the colour filter (Magic colours, Pokémon types) and the order of its own rarities.
+  let source = $state<any>(null);
+  $effect(() => {
+    const id = project.meta?.source;
+    sourceInfo(id).then((s) => { if (project.meta?.source === id) source = s; });
+  });
+  const colors = $derived<any[]>(source?.colors ?? []);
+  const srcOrder = $derived<string[]>(source?.rarityOrder ?? []);
+  // Unknown source rarities rank in the middle of the ladder.
+  const srcRank = (r: string | undefined) => {
+    const i = r ? srcOrder.indexOf(r) : -1;
+    return i >= 0 ? i : srcOrder.length / 2;
+  };
+  const srcRarities = $derived(
+    [...new Set<string>(project.set.cards.map((c: any) => meta(c.id).srcRarity).filter(Boolean))].sort((a, b) => srcRank(a) - srcRank(b))
+  );
+  const setIndex = $derived(new Map(project.set.cards.map((c: any, i: number) => [c.id, i])));
+
+  function colorMatch(m: any, v: string): boolean {
+    if (v === 'C') return !m.colors?.length && !(m.typeLine ?? '').match(/^(Trainer|Energy)/);
+    if (v === 'M') return m.colors?.length > 1;
+    return !!m.colors?.includes(v) || (m.typeLine ?? '').startsWith(v);
+  }
+
   const shown = $derived.by(() => {
     const q = query.trim().toLowerCase();
     let list = project.set.cards.filter((c: any) => {
-      if (rarity && c.rarity !== rarity) return false;
       const m = meta(c.id);
-      if (color === 'C' && m.colors?.length) return false;
-      if (color === 'M' && !(m.colors?.length > 1)) return false;
-      if (color && color !== 'C' && color !== 'M' && !m.colors?.includes(color)) return false;
+      if (rarity.startsWith('src:') ? m.srcRarity !== rarity.slice(4) : rarity && c.rarity !== rarity) return false;
+      if (color && !colorMatch(m, color)) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.id.includes(q) || (m.typeLine ?? '').toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q);
     });
     if (sort === 'name') list = [...list].sort((a: any, b: any) => a.name.localeCompare(b.name));
-    if (sort === 'rarity') list = [...list].sort((a: any, b: any) => RANK[b.rarity] - RANK[a.rarity] || a.name.localeCompare(b.name));
+    if (sort === 'rarity')
+      list = [...list].sort((a: any, b: any) => RANK[b.rarity] - RANK[a.rarity] || srcRank(meta(b.id).srcRarity) - srcRank(meta(a.id).srcRarity) ||
+        (setIndex.get(a.id) as number) - (setIndex.get(b.id) as number));
     if (sort === 'price') list = [...list].sort((a: any, b: any) => b.price.base - a.price.base);
     if (sort === 'real') list = [...list].sort((a: any, b: any) => (meta(b.id).usd ?? 0) - (meta(a.id).usd ?? 0));
     return list;
@@ -90,13 +114,19 @@
       <input class="grow" placeholder="Search name, type, text…" bind:value={query} />
       <select bind:value={rarity}>
         <option value="">All rarities</option>
-        {#each RARITIES as r}<option value={r}>{r}</option>{/each}
+        {#if srcRarities.length}
+          <optgroup label="Game rarity">{#each RARITIES as r}<option value={r}>{r}</option>{/each}</optgroup>
+          <optgroup label="Card rarity">{#each srcRarities as r}<option value={'src:' + r}>{r}</option>{/each}</optgroup>
+        {:else}
+          {#each RARITIES as r}<option value={r}>{r}</option>{/each}
+        {/if}
       </select>
-      <select bind:value={color}>
-        <option value="">All colors</option>
-        <option value="W">White</option><option value="U">Blue</option><option value="B">Black</option>
-        <option value="R">Red</option><option value="G">Green</option><option value="M">Multicolor</option><option value="C">Colorless</option>
-      </select>
+      {#if colors.length}
+        <select bind:value={color}>
+          <option value="">All {source.colorLabel.toLowerCase()}s</option>
+          {#each colors as f}<option value={f.value}>{f.label}</option>{/each}
+        </select>
+      {/if}
       <select bind:value={sort}>
         <option value="set">Set order</option><option value="name">Name</option><option value="rarity">Rarity</option>
         <option value="price">Game price</option><option value="real">Real price</option>
@@ -111,7 +141,8 @@
     </div>
     <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))">
       {#each shown as c, i (c.id)}
-        <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)}>
+        <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)}
+          title={meta(c.id).srcRarity ? `${c.rarity} · ${meta(c.id).srcRarity}` : c.rarity}>
           <div class="img" style="aspect-ratio: 63/88">
             {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt={c.name} loading="lazy" draggable="false" />{/if}
             {#if meta(c.id).locked}<span class="lock" title="Price locked">🔒</span>{/if}

@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.13.2 - 2026-10-03
+
+Union Arena sets can now be imported.
+
+- New: Import sets → Union Arena. Every Union Arena set from TCGplayer (boosters, starter decks, promos), with card scans, real prices, colour filter and Energy / BP sorts. Star parallels, box toppers and serial-numbered cards come in as variants; Action Point cards are left out.
+- New: Find product photos and Smart generate work for Union Arena packs and boxes.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.13.1 - 2026-10-03
 
 The classic pack & box art generator is back.

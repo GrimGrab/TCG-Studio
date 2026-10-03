@@ -45,6 +45,8 @@ func SealedCategory(source string) int {
 		return 71
 	case "fab":
 		return fabCategory
+	case "unionarena":
+		return uaCategory
 	}
 	return 0
 }

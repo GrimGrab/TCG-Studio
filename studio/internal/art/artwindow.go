@@ -2,7 +2,7 @@ package art
 
 // ArtWindow is where the artwork sits on a card scan of an import source, as fractions of the image (x0, y0, x1, y1).
 // Measured 2026-10-03 on sample scans (Dominaria + Alpha, Pokémon SV ex, Dark Magician, Lorcana TFC, OP-02, FaB WTR,
-// SWU SOR leader). Hand-made sets use the whole image (their pictures are often art already).
+// SWU SOR leader, Union Arena UE01BT). Hand-made sets use the whole image (their pictures are often art already).
 func ArtWindow(source string, w, h int) [4]float64 {
 	landscape := w > h
 	switch source {
@@ -18,6 +18,8 @@ func ArtWindow(source string, w, h int) [4]float64 {
 		return [4]float64{0.05, 0.05, 0.95, 0.62}
 	case "fab":
 		return [4]float64{0.08, 0.1, 0.92, 0.52}
+	case "unionarena": // name banner on top, text box from ~57 %
+		return [4]float64{0.07, 0.14, 0.93, 0.57}
 	case "swudb":
 		if landscape { // leaders and bases: art on the left, text on the right
 			return [4]float64{0.03, 0.05, 0.45, 0.95}

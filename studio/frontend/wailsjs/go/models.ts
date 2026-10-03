@@ -1,5 +1,21 @@
 export namespace art {
 	
+	export class DisplayFaces {
+	    front: number[];
+	    lid: number[];
+	    confident: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DisplayFaces(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.front = source["front"];
+	        this.lid = source["lid"];
+	        this.confident = source["confident"];
+	    }
+	}
 	export class Options {
 	    color: string;
 	    title: string;
@@ -7,6 +23,7 @@ export namespace art {
 	    filePrefix: string;
 	    frontImage: string;
 	    titleOnImage: boolean;
+	    noPackText: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Options(source);
@@ -20,6 +37,7 @@ export namespace art {
 	        this.filePrefix = source["filePrefix"];
 	        this.frontImage = source["frontImage"];
 	        this.titleOnImage = source["titleOnImage"];
+	        this.noPackText = source["noPackText"];
 	    }
 	}
 	export class Result {
@@ -289,6 +307,58 @@ export namespace importer {
 	        this.imageWidth = source["imageWidth"];
 	        this.rarityMap = source["rarityMap"];
 	        this.lang = source["lang"];
+	    }
+	}
+	export class SealedGame {
+	    category: number;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SealedGame(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.category = source["category"];
+	        this.name = source["name"];
+	    }
+	}
+	export class SealedGroup {
+	    id: number;
+	    name: string;
+	    code: string;
+	    released: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SealedGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.code = source["code"];
+	        this.released = source["released"];
+	    }
+	}
+	export class SealedProduct {
+	    id: number;
+	    name: string;
+	    kind: string;
+	    thumb: string;
+	    image: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SealedProduct(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.thumb = source["thumb"];
+	        this.image = source["image"];
 	    }
 	}
 	export class SourceInfo {
@@ -605,6 +675,74 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class PickedProducts {
+	    pack?: importer.SealedProduct;
+	    box?: importer.SealedProduct;
+	
+	    static createFrom(source: any = {}) {
+	        return new PickedProducts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pack = this.convertValues(source["pack"], importer.SealedProduct);
+	        this.box = this.convertValues(source["box"], importer.SealedProduct);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ProductPhotoSets {
+	    games: importer.SealedGame[];
+	    category: number;
+	    groups: importer.SealedGroup[];
+	    match: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProductPhotoSets(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.games = this.convertValues(source["games"], importer.SealedGame);
+	        this.category = source["category"];
+	        this.groups = this.convertValues(source["groups"], importer.SealedGroup);
+	        this.match = source["match"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SaveResult {
 	    issues: setfmt.Issue[];
 	    synced: boolean;
@@ -717,6 +855,100 @@ export namespace main {
 	        this.message = source["message"];
 	        this.pending = source["pending"];
 	        this.workspace = source["workspace"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SmartArtCard {
+	    name: string;
+	    image: string;
+	    window: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SmartArtCard(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.image = source["image"];
+	        this.window = source["window"];
+	    }
+	}
+	export class SmartArtSources {
+	    packPhoto: string;
+	    packName: string;
+	    boxPhoto: string;
+	    boxName: string;
+	    box?: art.DisplayFaces;
+	    cards: SmartArtCard[];
+	    icon: string;
+	    notes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SmartArtSources(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.packPhoto = source["packPhoto"];
+	        this.packName = source["packName"];
+	        this.boxPhoto = source["boxPhoto"];
+	        this.boxName = source["boxName"];
+	        this.box = this.convertValues(source["box"], art.DisplayFaces);
+	        this.cards = this.convertValues(source["cards"], SmartArtCard);
+	        this.icon = source["icon"];
+	        this.notes = source["notes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SmartChoice {
+	    manual: boolean;
+	    pack?: importer.SealedProduct;
+	    box?: importer.SealedProduct;
+	
+	    static createFrom(source: any = {}) {
+	        return new SmartChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.manual = source["manual"];
+	        this.pack = this.convertValues(source["pack"], importer.SealedProduct);
+	        this.box = this.convertValues(source["box"], importer.SealedProduct);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

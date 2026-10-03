@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { App, EventsOn, EventsOff, errText } from '../lib/api';
+  import { smartArtForProject } from '../lib/smartArt';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
 
@@ -72,7 +73,14 @@
     progress = { stage: 'cards', done: 0, total: s.cards, message: 'Starting…' };
     try {
       const id = await App.ImportSet(sourceId, s.code, { ...options, lang: langs.length ? lang : '' });
-      notify(progress?.message ?? 'Imported', 'ok');
+      const done = progress?.message ?? 'Imported';
+      // Pack & box art from the set's product photos (or its best card art); the import's simple art stays if this fails.
+      try {
+        const p: any = await App.LoadProject(id);
+        await smartArtForProject(p, (m) => (progress = { ...progress, stage: 'art', message: m }));
+        await App.SaveProject(p);
+      } catch (e) { notify('Pack art: ' + errText(e) + ' — kept the simple generated art', 'error'); }
+      notify(done, 'ok');
       open(id);
     } catch (e) {
       notify(errText(e), 'error');

@@ -94,6 +94,10 @@ export function DeleteSetup(arg1) {
   return window['go']['main']['App']['DeleteSetup'](arg1);
 }
 
+export function DetectBoxFaces(arg1, arg2) {
+  return window['go']['main']['App']['DetectBoxFaces'](arg1, arg2);
+}
+
 export function ExportSetup(arg1) {
   return window['go']['main']['App']['ExportSetup'](arg1);
 }
@@ -262,8 +266,20 @@ export function PickImages(arg1) {
   return window['go']['main']['App']['PickImages'](arg1);
 }
 
+export function PickPackAndBox(arg1, arg2) {
+  return window['go']['main']['App']['PickPackAndBox'](arg1, arg2);
+}
+
 export function PickSetupFile() {
   return window['go']['main']['App']['PickSetupFile']();
+}
+
+export function ProductPhotoSets(arg1, arg2) {
+  return window['go']['main']['App']['ProductPhotoSets'](arg1, arg2);
+}
+
+export function ProductPhotos(arg1, arg2) {
+  return window['go']['main']['App']['ProductPhotos'](arg1, arg2);
 }
 
 export function ProjectInstallState(arg1) {
@@ -302,6 +318,10 @@ export function SaveAccessorySourceImage(arg1, arg2) {
   return window['go']['main']['App']['SaveAccessorySourceImage'](arg1, arg2);
 }
 
+export function SaveAutoArt(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveAutoArt'](arg1, arg2, arg3, arg4);
+}
+
 export function SaveFurniture(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveFurniture'](arg1, arg2, arg3);
 }
@@ -338,6 +358,10 @@ export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
 }
 
+export function SmartArtSources(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SmartArtSources'](arg1, arg2, arg3);
+}
+
 export function SnapshotPackBase(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SnapshotPackBase'](arg1, arg2, arg3, arg4);
 }
@@ -364,6 +388,10 @@ export function UninstallProject(arg1) {
 
 export function UpdateSetup(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateSetup'](arg1, arg2, arg3);
+}
+
+export function UseProductPhoto(arg1, arg2) {
+  return window['go']['main']['App']['UseProductPhoto'](arg1, arg2);
 }
 
 export function ValidateProject(arg1) {

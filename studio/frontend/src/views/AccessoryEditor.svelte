@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  // Layer clipboard (Ctrl+C / Ctrl+V), shared by every editor instance: a layer copied on a deck box pastes into a pack.
+  let clipboard: { layer: any; kind: string; face: number[] } | null = null;
+</script>
+
 <script lang="ts">
   // Face-by-face editor for deck boxes / playmats: the model unfolded into a net, layers placed on it (images can span faces),
   // mapped into the game texture through the model's targets. Views: net, the raw texture (UV map) and a 3D preview of the
@@ -6,7 +11,7 @@
   import { onMount, untrack } from 'svelte';
   import { App, errText } from '../lib/api';
   import {
-    type Model, type Layout, type Layer, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
+    type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
     recolorIcon, loadImage, layerId,
   } from '../lib/accessoryArt';
   import { MeshView } from '../lib/meshView';
@@ -135,7 +140,9 @@
 
   /** PNG data URLs of the texture and the shop icon for saving. */
   export async function exportImages(): Promise<{ texture: string; icon: string }> {
+    await loaded;                                         // model + vanilla art (an export right after mounting)
     await redraw();
+    while (rendering) await new Promise((r) => setTimeout(r, 30)); // a redraw already running returns at once
     if (!model || !textureCanvas) throw new Error('editor not ready');
     let icon: HTMLCanvasElement;
     const texture = textureCanvas.toDataURL('image/png');
@@ -148,9 +155,55 @@
     return { texture, icon: icon.toDataURL('image/png') };
   }
 
+  /** After a layer action (add, paste, duplicate, delete, copy to face, reorder): always its own undo step. */
+  function commit() { lastEdit = 0; changed(); lastEdit = 0; }
+
+  /** After any edit; edits close together (typing, sliders) are one undo step. */
   function changed() {
+    const now = Date.now();
+    if (now - lastEdit > 600) pushUndo(histBase);
+    lastEdit = now;
+    histBase = snapshot();
     onchange();
     redraw();
+  }
+
+  // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
+  // Same pattern as the furniture editor: `histBase` is the layout after the last edit; an edit pushes it (the state before the
+  // edit) unless it continues a burst. A whole drag on the net is one step, pushed when it starts.
+
+  let undoStack = $state<string[]>([]);
+  let redoStack = $state<string[]>([]);
+  let histBase = '';
+  let lastEdit = 0;
+  const snapshot = () => JSON.stringify(layout);
+  function resetHistory() { undoStack = []; redoStack = []; histBase = snapshot(); lastEdit = 0; }
+  function pushUndo(state: string) {
+    if (!state || undoStack.at(-1) === state) return;
+    undoStack = [...undoStack.slice(-99), state];
+    redoStack = [];
+  }
+  function restore(state: string) {
+    layout = JSON.parse(state);
+    histBase = state;
+    lastEdit = 0;
+    if (!layout.layers.some((l) => l.id === selected)) selected = '';
+    onchange();
+    redraw();
+  }
+  function undo() {
+    if (!undoStack.length || drag) return;
+    redoStack = [...redoStack, snapshot()];
+    const prev = undoStack[undoStack.length - 1];
+    undoStack = undoStack.slice(0, -1);
+    restore(prev);
+  }
+  function redo() {
+    if (!redoStack.length || drag) return;
+    undoStack = [...undoStack, snapshot()];
+    const next = redoStack[redoStack.length - 1];
+    redoStack = redoStack.slice(0, -1);
+    restore(next);
   }
 
   // ---------------------------------------------------------------- layers
@@ -182,15 +235,28 @@
   async function addImage() {
     try {
       const rel = await (pickImage ? pickImage() : App.PickAccessoryImage());
-      if (!rel) return;
-      const img = await loadImage(accUrl(rel));
-      const l: Layer = { id: layerId(), kind: 'image', name: rel.split('/').pop() || 'Image', visible: true, opacity: 1, blend: 'source-over',
-        x: 0, y: 0, w: 1, h: 1, rot: 0, src: rel };
-      fitInto(l, mainFace().net, 'cover', img.width / img.height);
-      layout.layers.push(l);
-      selected = l.id;
-      changed();
+      if (rel) await addImageFile(rel);
     } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  /** Adds an image (path for imageUrl) as a new layer `fit`ted into the main face, or into the box around `faces` (ids);
+   *  `name` labels the layer. */
+  export async function addImageFile(rel: string, name = '', fit: 'cover' | 'contain' | 'stretch' = 'cover', faces: string[] = []) {
+    const img = await loadImage(accUrl(rel));
+    const l: Layer = { id: layerId(), kind: 'image', name: name || rel.split('/').pop() || 'Image', visible: true, opacity: 1, blend: 'source-over',
+      x: 0, y: 0, w: 1, h: 1, rot: 0, src: rel };
+    const fs = faces.map(faceById).filter((f): f is Face => !!f);
+    let area = mainFace().net;
+    if (fs.length) {
+      const x0 = Math.min(...fs.map((f) => f.net[0])), y0 = Math.min(...fs.map((f) => f.net[1]));
+      area = [x0, y0, Math.max(...fs.map((f) => f.net[0] + f.net[2])) - x0, Math.max(...fs.map((f) => f.net[1] + f.net[3])) - y0];
+    }
+    const [x, y, w, h] = area;
+    if (fit === 'stretch') { l.w = w; l.h = h; l.x = x + w / 2; l.y = y + h / 2; }
+    else fitInto(l, area, fit, img.width / img.height);
+    layout.layers.push(l);
+    selected = l.id;
+    commit();
   }
 
   function addFill() {
@@ -198,7 +264,15 @@
       x: 0, y: 0, w: 0, h: 0, rot: 0, face: '', color: '#2a6df4', color2: '' };
     layout.layers.push(l);
     selected = l.id;
-    changed();
+    commit();
+  }
+
+  /** Puts colour fills under every other layer, first removing earlier fills whose name starts with `replace`. */
+  export function addFills(fills: { face: string; color: string; color2?: string; name: string }[], replace = '') {
+    if (replace) layout.layers = layout.layers.filter((l) => !(l.kind === 'fill' && l.name.startsWith(replace)));
+    layout.layers.unshift(...fills.map((f): Layer => ({ id: layerId(), kind: 'fill', name: f.name, visible: true, opacity: 1,
+      blend: 'source-over', x: 0, y: 0, w: 0, h: 0, rot: 0, face: f.face, color: f.color, color2: f.color2 ?? '' })));
+    commit();
   }
 
   function addText() {
@@ -208,13 +282,96 @@
       text: defaultText, color: '#ffffff', outline: '#000000' };
     layout.layers.push(l);
     selected = l.id;
-    changed();
+    commit();
   }
 
   function removeLayer(id: string) {
     layout.layers = layout.layers.filter((l) => l.id !== id);
     if (selected === id) selected = '';
-    changed();
+    commit();
+  }
+
+  /** A copy of a layer (same image file) with a new id, inserted just above `after` (or on top) and selected. */
+  function insertCopy(l: Layer, name: string, after?: string): Layer {
+    const c: Layer = { ...JSON.parse(JSON.stringify(l)), id: layerId(), name };
+    const i = after ? layout.layers.findIndex((x) => x.id === after) : -1;
+    const list = [...layout.layers];
+    list.splice(i < 0 ? list.length : i + 1, 0, c);
+    layout.layers = list;
+    selected = c.id;
+    return c;
+  }
+
+  function duplicateLayer(id: string) {
+    const l = layout.layers.find((x) => x.id === id);
+    if (!l) return;
+    insertCopy(l, l.name + ' copy', id);
+    commit();
+  }
+
+  /** The face a layer sits on: the visible face whose net holds its centre (else the main face). */
+  function faceOf(l: Layer) {
+    return model?.faces.find((f) => !f.hidden && l.x >= f.net[0] && l.x <= f.net[0] + f.net[2] && l.y >= f.net[1] && l.y <= f.net[1] + f.net[3]) ?? mainFace();
+  }
+
+  /** Places l at the same relative spot of `to` that it had on `from` (nets: x, y, w, h). */
+  function mapRect(l: Layer, from: number[], to: number[]) {
+    const kx = to[2] / from[2], ky = to[3] / from[3];
+    l.x = to[0] + (l.x - from[0]) * kx; l.y = to[1] + (l.y - from[1]) * ky;
+    l.w *= kx; l.h *= ky;
+  }
+
+  /** Copies the selected layer onto other faces, at the same relative place and size. */
+  function copyToFaces(ids: string[]) {
+    if (!sel || !model) return;
+    const src = sel, from = faceOf(src);
+    let last = src.id;
+    for (const id of ids) {
+      const f = faceById(id);
+      if (!f || f.id === from.id) continue;
+      const c = insertCopy(src, `${src.name.replace(/ \([^()]*\)$/, '')} (${f.label.toLowerCase()})`, last);
+      mapRect(c, from.net, f.net);
+      last = c.id;
+    }
+    commit();
+  }
+
+  /** The face opposite the selected layer's face (deck box: front ↔ back, left ↔ right, lid ↔ bottom), when the model shows it. */
+  const OPPOSITE: Record<string, string> = { front: 'back', back: 'front', left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
+  const oppositeFace = $derived.by(() => {
+    if (!sel || !model || sel.kind === 'fill') return undefined;
+    const f = faceById(OPPOSITE[faceOf(sel).id] ?? '');
+    return f && !f.hidden ? f : undefined;
+  });
+
+  function copyLayer() {
+    if (!sel || !model) return;
+    clipboard = { layer: JSON.parse(JSON.stringify(sel)), kind: model.kind, face: [...faceOf(sel).net] };
+    notify(`Copied "${sel.name}" — Ctrl+V pastes it`);
+  }
+
+  function pasteLayer() {
+    if (!clipboard || !model) return;
+    const c = insertCopy(clipboard.layer as Layer, clipboard.layer.name, selected || undefined);
+    // From another model (e.g. a deck box into a pack): same relative place on this model's main face.
+    if (clipboard.kind !== model.kind && c.kind !== 'fill') mapRect(c, clipboard.face, mainFace().net);
+    if (c.kind === 'fill' && c.face && !faceById(c.face)) c.face = '';
+    commit();
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (!model || straightening || e.defaultPrevented) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName))) return;
+    if (t?.closest?.('.backdrop')) return; // a dialog is open
+    const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    const act = (f: () => void) => { e.preventDefault(); f(); };
+    if (ctrl && k === 'z' && !e.shiftKey) act(undo);
+    else if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) act(redo);
+    else if (ctrl && k === 'c' && sel) act(copyLayer);
+    else if (ctrl && k === 'v' && clipboard) act(pasteLayer);
+    else if (ctrl && k === 'd' && sel) act(() => duplicateLayer(sel!.id));
+    else if ((e.key === 'Delete') && sel) act(() => removeLayer(sel!.id));
   }
 
   function moveLayer(id: string, delta: number) {
@@ -223,7 +380,7 @@
     const list = [...layout.layers];
     [list[i], list[j]] = [list[j], list[i]];
     layout.layers = list;
-    changed();
+    commit();
   }
 
   function setSize(dim: 'w' | 'h', pct: number) {
@@ -360,6 +517,7 @@
     if (hi >= 0 && sel) {
       const [hx, hy, corner] = HANDLES[hi];
       drag = { mode: corner ? 'scale' : 'edge', hx, hy, sx: p.x, sy: p.y, x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+      pushUndo(snapshot());
       netView!.setPointerCapture(e.pointerId);
       return;
     }
@@ -367,6 +525,7 @@
     selected = l?.id ?? (sel?.kind === 'fill' ? selected : '');
     if (l) {
       drag = { mode: 'move', hx: 0, hy: 0, sx: p.x, sy: p.y, x: l.x, y: l.y, w: l.w, h: l.h };
+      pushUndo(snapshot());
       netView!.setPointerCapture(e.pointerId);
     }
     drawNetView();
@@ -423,7 +582,14 @@
     redraw();
   }
 
-  function onUp() { drag = null; }
+  function onUp() {
+    if (drag) {
+      histBase = snapshot();
+      lastEdit = 0;
+      if (undoStack.at(-1) === histBase) undoStack = undoStack.slice(0, -1); // a click without moving: no step
+    }
+    drag = null;
+  }
 
   function onWheel(e: WheelEvent) {
     if (!sel || sel.kind === 'fill') return;
@@ -479,14 +645,19 @@
 
   // ---------------------------------------------------------------- lifecycle
 
+  let markLoaded = () => {};
+  const loaded = new Promise<void>((r) => (markLoaded = r));
+
   onMount(async () => {
     try {
       model = (await App.AccessoryModel(kind)) as unknown as Model;
       S = netScale(model);
       if (model.palette) view = '3d';
       if (!layout || layout.version !== 2) layout = newLayout();
+      resetHistory();
       await loadVanilla();
     } catch (e) { notify(errText(e), 'error'); }
+    markLoaded();
   });
 
   async function loadVanilla() {
@@ -511,6 +682,8 @@
     ['source-over', 'Normal'], ['multiply', 'Multiply (tint)'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['color', 'Colour'], ['soft-light', 'Soft light'],
   ];
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 {#snippet viewer()}
   <div class="scene" use:maximizable>
@@ -576,6 +749,9 @@
         <button class="small primary" onclick={addImage}>+ Image</button>
         <button class="small" onclick={addFill}>+ Colour</button>
         <button class="small" onclick={addText}>+ Text</button>
+        <div class="grow"></div>
+        <button class="small" onclick={undo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">↶</button>
+        <button class="small" onclick={redo} disabled={!redoStack.length} title="Redo (Ctrl+Y)">↷</button>
       </div>
       <div class="layers">
         {#each [...layout.layers].reverse() as l (l.id)}
@@ -584,7 +760,8 @@
             <span class="grow name">{l.kind === 'image' ? '🖼' : l.kind === 'text' ? 'T' : '■'} {l.name}</span>
             <button class="tiny" onclick={(e) => { e.stopPropagation(); moveLayer(l.id, 1); }} title="Move up">▲</button>
             <button class="tiny" onclick={(e) => { e.stopPropagation(); moveLayer(l.id, -1); }} title="Move down">▼</button>
-            <button class="tiny" onclick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Delete">✕</button>
+            <button class="tiny" onclick={(e) => { e.stopPropagation(); duplicateLayer(l.id); }} title="Duplicate (Ctrl+D)">⧉</button>
+            <button class="tiny" onclick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Delete (Del)">✕</button>
           </div>
         {/each}
         <div class="layer base">
@@ -656,7 +833,14 @@
             <div class="row wrap">
               <button class="tiny" onclick={() => fitSelected(mainFace().id, 'contain')}>Fit inside {mainFace().label.toLowerCase()}</button>
             </div>
-            <p class="muted small">Drag the white side handles to stretch one side; the blue corner keeps proportions (hold Shift to stretch freely).</p>
+            <div class="small muted">Copy to (same place on another face; uses the same image file):</div>
+            <div class="row wrap">
+              {#if oppositeFace}<button class="tiny primary" onclick={() => copyToFaces([oppositeFace!.id])}
+                title="The same place on the opposite side">Opposite: {oppositeFace.label}</button>{/if}
+              {#each model.faces.filter((f) => !f.hidden && f.id !== faceOf(sel!).id) as f}<button class="tiny" onclick={() => copyToFaces([f.id])}>{f.label}</button>{/each}
+            </div>
+            <p class="muted small">Drag the white side handles to stretch one side; the blue corner keeps proportions (hold Shift to stretch freely).
+              Keys: Ctrl+C / Ctrl+V copy and paste a layer, Ctrl+D duplicate, Del delete, Ctrl+Z / Ctrl+Y undo and redo.</p>
           {/if}
         </div>
       {:else}

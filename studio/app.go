@@ -396,7 +396,7 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 	}
 	// Brand the default booster with generated art when the game's templates are available.
 	if len(p.Set.Packs) > 0 && a.templatesReady() {
-		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{}); err == nil {
+		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{NoPackText: true}); err == nil {
 			applyArt(&p.Set.Packs[0], res)
 			_ = a.ws().Save(p)
 		}

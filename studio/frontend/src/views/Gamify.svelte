@@ -86,8 +86,8 @@
     <section class="settings">
       <label class="field">Card prices
         <select bind:value={settings.mode} onchange={() => (preview = null)}>
-          <option value="hybrid">Hybrid — game price bands, ranked by real price (recommended)</option>
-          <option value="game">Game-like — fixed price per rarity</option>
+          <option value="game">Game-like — fixed price per rarity (recommended)</option>
+          <option value="hybrid">Hybrid — game price bands, ranked by real price</option>
           <option value="real">Real — market USD prices</option>
         </select>
       </label>

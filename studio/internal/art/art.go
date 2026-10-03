@@ -34,6 +34,8 @@ type Options struct {
 	FrontImage string `json:"frontImage"`
 	// TitleOnImage also prints the title over FrontImage.
 	TitleOnImage bool `json:"titleOnImage"`
+	// NoPackText leaves the title and "7 CARDS" off the pack (Smart generate's fallback); the box keeps its title.
+	NoPackText bool `json:"noPackText"`
 }
 
 // Result lists generated files (relative to the project folder).
@@ -117,8 +119,10 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	} else {
 		gradient(pack, pf, light, dark)
 		drawIcon(pack, icon, center(pf, 0, 20), 250, 235)
-		drawText(pack, face, o.Title, image.Rect(pf.Min.X+40, pf.Min.Y+26, pf.Max.X-40, pf.Min.Y+160), 60, color.White)
-		drawText(pack, face, "7 CARDS", image.Rect(pf.Min.X+18, pf.Max.Y-90, pf.Max.X-18, pf.Max.Y-30), 34, color.NRGBA{255, 255, 255, 220})
+		if !o.NoPackText {
+			drawText(pack, face, o.Title, image.Rect(pf.Min.X+40, pf.Min.Y+26, pf.Max.X-40, pf.Min.Y+160), 60, color.White)
+			drawText(pack, face, "7 CARDS", image.Rect(pf.Min.X+18, pf.Max.Y-90, pf.Max.X-18, pf.Max.Y-30), 34, color.NRGBA{255, 255, 255, 220})
+		}
 	}
 	gradient(pack, pb, dark, shade(base, 0.7))
 	drawIcon(pack, icon, center(pb, 0, 0), 150, 70)

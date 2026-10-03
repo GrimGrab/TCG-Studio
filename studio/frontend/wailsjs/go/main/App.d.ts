@@ -8,9 +8,9 @@ import {game} from '../models';
 import {updater} from '../models';
 import {project} from '../models';
 import {importer} from '../models';
+import {art} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
-import {art} from '../models';
 import {modconfig} from '../models';
 import {installer} from '../models';
 
@@ -59,6 +59,8 @@ export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
 export function DeleteProject(arg1:string):Promise<void>;
 
 export function DeleteSetup(arg1:string):Promise<main.SetupsView>;
+
+export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
 
 export function ExportSetup(arg1:string):Promise<string>;
 
@@ -144,7 +146,13 @@ export function PickImage(arg1:string,arg2:string):Promise<string>;
 
 export function PickImages(arg1:string):Promise<Array<string>>;
 
+export function PickPackAndBox(arg1:Array<importer.SealedProduct>,arg2:number):Promise<main.PickedProducts>;
+
 export function PickSetupFile():Promise<main.SetupFileInfo>;
+
+export function ProductPhotoSets(arg1:string,arg2:number):Promise<main.ProductPhotoSets>;
+
+export function ProductPhotos(arg1:number,arg2:number):Promise<Array<importer.SealedProduct>>;
 
 export function ProjectInstallState(arg1:string):Promise<string>;
 
@@ -164,6 +172,8 @@ export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4
 
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;
 
+export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
 export function SaveFurniture(arg1:setfmt.Furniture,arg2:string,arg3:string):Promise<main.AccessoryView>;
 
 export function SavePackArt(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.PackArtFiles>;
@@ -182,6 +192,8 @@ export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
 
+export function SmartArtSources(arg1:string,arg2:string,arg3:main.SmartChoice):Promise<main.SmartArtSources>;
+
 export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SourceSets(arg1:string,arg2:string,arg3:boolean):Promise<Array<main.ImportableSet>>;
@@ -195,6 +207,8 @@ export function TemplatesStatus():Promise<main.TemplatesStatus>;
 export function UninstallProject(arg1:string):Promise<void>;
 
 export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
+
+export function UseProductPhoto(arg1:string,arg2:importer.SealedProduct):Promise<string>;
 
 export function ValidateProject(arg1:string):Promise<Array<setfmt.Issue>>;
 

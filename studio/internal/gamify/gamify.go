@@ -29,7 +29,7 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Mode: "hybrid", BorderCurve: "game", TierStep: 0.25, PackCostScale: 1, Progression: true, MaxLevel: 70}
+	return Settings{Mode: "game", BorderCurve: "game", TierStep: 0.25, PackCostScale: 1, Progression: true, MaxLevel: 70}
 }
 
 // TierData is one step of the vanilla card-product progression.

@@ -3,6 +3,20 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.13.0 - 2026-10-03
+
+Pack and box art from real product photos, and a better art editor.
+
+- New: Smart generate (Packs → Art) builds a set's pack and booster box from the real product photos on TCGplayer, for Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana and Flesh and Blood. Sets without photos use their most valuable card art.
+- New: Smart generate lets you pick which pack and box photos to use (e.g. Play or Collector booster, 1st or Unlimited Edition) and drag the corners of the pack, the box's front panel and its lid before building.
+- New: imported sets get this pack and box art automatically.
+- New: Find product photos and Match colours buttons in the pack/box editor.
+- New: the 3D art editor (accessories, packs, boxes) can copy a layer to another face ("Opposite" for front/back, left/right), duplicate layers, and has Ctrl+C / Ctrl+V, Ctrl+D, Delete, Ctrl+Z undo and Ctrl+Y redo.
+- Changed: generated packs no longer print the set name; the old Quick start generator is gone (its simple design is the fallback when a set has no photos or card images).
+- Changed: Gamify now defaults to Game-like pricing (Hybrid is still available). Sets you already gamified keep their setting.
+
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.12.0 - 2026-10-02
 
 Import Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana and Flesh and Blood sets.

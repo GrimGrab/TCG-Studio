@@ -301,3 +301,41 @@ export function recolorIcon(m: Model, net: HTMLCanvasElement, S: number, vanilla
 
 let seq = 0;
 export const layerId = () => `l${Date.now().toString(36)}${(seq++).toString(36)}`;
+
+type Picture = CanvasImageSource & { width: number; height: number };
+
+/** Packaging colours of a product photo: the most common colour of its left and right edge strips in an upper and a lower
+ *  band (the art sits in the middle and only touches the edges here and there; the bands skip a pack's crimps). Near-white
+ *  pixels (background the crop left) are ignored. */
+export function edgeColors(img: Picture): { top: string; bottom: string } { return bandColors(img, true); }
+
+/** The most common colour of an image's upper and lower part (all columns): the main colours of a piece of card art. */
+export function dominantColors(img: Picture): { top: string; bottom: string } { return bandColors(img, false); }
+
+function bandColors(img: Picture, edges: boolean): { top: string; bottom: string } {
+  const w = 64, h = Math.max(16, Math.round((64 * img.height) / img.width));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  // Edges: skip the outermost, anti-aliased pixels.
+  const cols = edges ? [2, 3, 4, 5, w - 6, w - 5, w - 4, w - 3] : Array.from({ length: w }, (_, i) => i);
+  const band = (y0: number, y1: number) => {
+    const buckets = new Map<number, number[]>(); // 3 bits per channel → summed r, g, b and count
+    for (let y = Math.floor(y0 * h); y < Math.ceil(y1 * h); y++)
+      for (const x of cols) {
+        const i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+        if (d[i + 3] < 128 || (r > 235 && g > 235 && b > 235)) continue;
+        const k = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
+        const q = buckets.get(k) ?? [0, 0, 0, 0];
+        q[0] += r; q[1] += g; q[2] += b; q[3]++;
+        buckets.set(k, q);
+      }
+    let best: number[] | undefined;
+    for (const q of buckets.values()) if (!best || q[3] > best[3]) best = q;
+    if (!best) return '#3a3a3a';
+    return '#' + best.slice(0, 3).map((v) => Math.round(v / best![3]).toString(16).padStart(2, '0')).join('');
+  };
+  return edges ? { top: band(0.12, 0.35), bottom: band(0.65, 0.88) } : { top: band(0, 0.5), bottom: band(0.5, 1) };
+}

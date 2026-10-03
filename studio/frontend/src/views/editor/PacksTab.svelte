@@ -67,32 +67,7 @@
 
   function optNumber(v: string) { const n = parseFloat(v); return isNaN(n) ? undefined : n; }
 
-  let artColor = $state('#3a7bd5');
-  let artTitle = $state('');
   let artBust = $state(0);
-  let generating = $state(false);
-  $effect(() => { App.DefaultArtColor(project.id).then((c: string) => (artColor = c)); });
-
-  let frontImage = $state('');
-  let titleOnImage = $state(false);
-
-  async function pickFront() {
-    try {
-      const rel = await App.PickImage(project.id, 'Choose artwork for the pack front (e.g. a booster photo)');
-      if (rel) frontImage = rel;
-    } catch (e) { notify(errText(e), 'error'); }
-  }
-
-  async function generateArt() {
-    generating = true;
-    try {
-      const r = await App.GeneratePackArt(project.id, pack.id, { color: artColor, title: artTitle, icon: '', filePrefix: '', frontImage, titleOnImage } as any);
-      pack.packTexture = r.packTexture; pack.packIcon = r.packIcon; pack.boxTexture = r.boxTexture; pack.boxIcon = r.boxIcon;
-      artBust = Date.now();
-      await save(); // keeps it and updates the game like any other save
-    } catch (e) { notify(errText(e), 'error'); }
-    generating = false;
-  }
 </script>
 
 <div class="wrap">
@@ -175,25 +150,7 @@
       <section>
         <h3>Art</h3>
         <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {save} {hooks} onapplied={() => (artBust = Date.now())} />
-        <h4>Quick start</h4>
-        <div class="row gen">
-          <label class="field">Color<input type="color" bind:value={artColor} /></label>
-          <label class="field grow">Title on the pack<input bind:value={artTitle} placeholder={project.set.name} /></label>
-          <button class="primary" disabled={generating} onclick={generateArt}>{generating ? 'Generating…' : 'Generate pack & box art'}</button>
-        </div>
-        <div class="row">
-          <span class="muted small">Pack front:</span>
-          {#if frontImage}
-            <img class="front-thumb" src={projectFile(project.id, frontImage, artBust)} alt="front art" />
-            <span class="small">{frontImage}</span>
-            <label class="check small"><input type="checkbox" bind:checked={titleOnImage} /> Print title over it</label>
-            <button class="small" onclick={() => (frontImage = '')}>Use generated design</button>
-          {:else}
-            <span class="small">generated (colour + set icon + title)</span>
-          {/if}
-          <button class="small" onclick={pickFront}>Use my own image…</button>
-        </div>
-        <p class="muted small">Generated from the game's templates with the set icon and name. Or choose your own images (1024² in the vanilla layout — templates are in BepInEx\plugins\TCGCustomCards\templates). Empty = vanilla art.</p>
+        <p class="muted small">The finished images the pack uses (made by the editor above), or your own: 1024² in the vanilla layout. Empty = vanilla art.</p>
         <div class="art">
           {#each [['packTexture', 'Pack texture'], ['packIcon', 'Pack icon'], ['boxTexture', 'Box texture'], ['boxIcon', 'Box icon']] as [field, label]}
             <div class="artbox">
@@ -223,10 +180,6 @@
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .slot { align-items: flex-end; flex-wrap: wrap; }
   .slot .field { width: 110px; }
-  .gen { align-items: flex-end; }
-  h4 { margin: 6px 0 0; font-size: 13px; color: var(--muted, #9aa4b2); }
-  .front-thumb { height: 48px; border-radius: 4px; }
-  .gen input[type="color"] { width: 60px; height: 32px; padding: 2px; }
   .art { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .artbox { display: flex; flex-direction: column; gap: 6px; }
   .thumb { aspect-ratio: 1; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }

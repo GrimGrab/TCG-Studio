@@ -26,6 +26,14 @@
   let photos = $state(false);                     // product photo picker open
   let generating = $state('');                    // Smart generate progress text
   let smartOpen = $state(false);                 // Smart generate dialog
+  let classicOpen = $state(false);               // Classic generate panel
+
+  // Classic generate: the original generator (colour gradient + set icon + title, or your own front image).
+  let classicColor = $state('#3a7bd5');
+  let classicTitle = $state('');
+  let classicFront = $state('');
+  let classicTitleOnImage = $state(false);
+  $effect(() => { App.DefaultArtColor(project.id).then((c: string) => (classicColor = c)).catch(() => {}); });
 
   $effect(() => {
     const f = () => flush();
@@ -177,6 +185,31 @@
     generating = '';
   }
 
+  async function pickClassicFront() {
+    try {
+      const rel = await App.PickImage(project.id, 'Choose artwork for the pack front (e.g. a booster photo)');
+      if (rel) classicFront = rel;
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  /** Classic generate: renders the pack and box textures + icons straight from the game templates, then saves. */
+  async function runClassic() {
+    try {
+      await flush();
+      open = false;
+      generating = 'Generating…';
+      const r = await App.GeneratePackArt(project.id, pack.id,
+        { color: classicColor, title: classicTitle, icon: '', filePrefix: '', frontImage: classicFront, titleOnImage: classicTitleOnImage } as any);
+      pack.packTexture = r.packTexture; pack.packIcon = r.packIcon; pack.boxTexture = r.boxTexture; pack.boxIcon = r.boxIcon;
+      onapplied();
+      generating = 'Saving…';
+      await save();
+      classicOpen = false;
+      notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated');
+    } catch (e) { notify(errText(e), 'error'); }
+    generating = '';
+  }
+
   async function pickImage(): Promise<string> {
     return (await App.PickImage(project.id, 'Choose an image for the layer')) || '';
   }
@@ -186,6 +219,8 @@
   <button class="primary" disabled={!!generating} onclick={smart}
     title="Pick the product photos (or card art) and check the box faces, then build the pack{pack.hasBox ? ' and box' : ''} as layers you can still edit">
     {generating ? 'Generating…' : 'Smart generate…'}</button>
+  <button class:on={classicOpen} disabled={!!generating} onclick={() => (classicOpen = !classicOpen)}
+    title="The original generator: a colour gradient with the set icon and title, or your own image on the front">Classic generate…</button>
   <button class:primary={!open || which !== 'pack'} class:on={open && which === 'pack'} onclick={() => show('pack')}>Edit pack in 3D editor</button>
   {#if pack.hasBox}
     <button class:primary={!open || which !== 'box'} class:on={open && which === 'box'} onclick={() => show('box')}>Edit box in 3D editor</button>
@@ -197,6 +232,29 @@
 </div>
 
 {#if generating}<p class="muted small">{generating}</p>{/if}
+{#if classicOpen}
+  <div class="classic">
+    <div class="row gen">
+      <label class="field">Color<input type="color" bind:value={classicColor} /></label>
+      <label class="field grow">Title on the pack<input bind:value={classicTitle} placeholder={project.set.name} /></label>
+      <button class="primary" disabled={!!generating} onclick={runClassic}>{generating ? 'Generating…' : 'Generate pack & box art'}</button>
+    </div>
+    <div class="row">
+      <span class="muted small">Pack front:</span>
+      {#if classicFront}
+        <img class="front-thumb" src={projectFile(project.id, classicFront)} alt="front art" />
+        <span class="small">{classicFront}</span>
+        <label class="check small"><input type="checkbox" bind:checked={classicTitleOnImage} /> Print title over it</label>
+        <button class="small" onclick={() => (classicFront = '')}>Use generated design</button>
+      {:else}
+        <span class="small">generated (colour + set icon + title)</span>
+      {/if}
+      <button class="small" onclick={pickClassicFront}>Use my own image…</button>
+    </div>
+    <p class="muted small">Replaces this pack's and box's images. The 3D editor keeps its own layers: to build on the classic art there,
+      set "Start from" to "This pack's current art".</p>
+  </div>
+{/if}
 {#if smartOpen}
   <SmartGenerate {project} {pack} packIndex={Math.max(0, project.set.packs.findIndex((p: any) => p.id === pack.id))} hasBox={!!pack.hasBox}
     ongenerate={runSmart} oncancel={() => (smartOpen = false)} />
@@ -239,4 +297,8 @@
   .pending { color: var(--warn, #d9a400); align-self: center; white-space: nowrap; }
   button.on { border-color: var(--accent); background: #22304d; }
   .small { font-size: 12px; }
+  .classic { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
+  .gen { align-items: flex-end; }
+  .gen input[type="color"] { width: 60px; height: 32px; padding: 2px; }
+  .front-thumb { height: 48px; border-radius: 4px; }
 </style>

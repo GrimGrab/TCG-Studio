@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.13.1 - 2026-10-03
+
+The classic pack & box art generator is back.
+
+- New: "Classic generate…" in the Packs tab's Art section, next to "Smart generate…": the original generator. Pick a colour and a title (or your own image for the pack front) and it makes the pack and box art in one click.
+- Note: the 3D editor keeps its own layers. To edit on top of classic art there, set "Start from" to "This pack's current art" first.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.13.0 - 2026-10-03
 
 Pack and box art from real product photos, and a better art editor.

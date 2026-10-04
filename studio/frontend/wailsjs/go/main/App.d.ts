@@ -193,6 +193,8 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
+export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
+
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 
 export function SetupRepair():Promise<string>;

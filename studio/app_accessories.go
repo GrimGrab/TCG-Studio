@@ -191,6 +191,27 @@ func (a *App) PickAccessoryImage() (string, error) {
 	return l.CopySource(file)
 }
 
+// SaveTemplateImage asks where to save a painting template (PNG data URL from the editor) and writes it. Returns the path,
+// "" when cancelled.
+func (a *App) SaveTemplateImage(name, dataURL string) (string, error) {
+	b, err := decodeDataURL(dataURL)
+	if err != nil {
+		return "", err
+	}
+	file, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save painting template",
+		Filters:         []runtime.FileFilter{{DisplayName: "PNG image (*.png)", Pattern: "*.png"}},
+		DefaultFilename: safeFileName(strings.TrimSuffix(name, ".png")) + ".png",
+	})
+	if err != nil || file == "" {
+		return "", err
+	}
+	if !strings.EqualFold(filepath.Ext(file), ".png") {
+		file += ".png"
+	}
+	return file, os.WriteFile(file, b, 0o644)
+}
+
 // SaveAccessorySourceImage stores an image made in the studio (data URL, e.g. a straightened photo) with the library's source
 // images; returns its path.
 func (a *App) SaveAccessorySourceImage(name, dataURL string) (string, error) {

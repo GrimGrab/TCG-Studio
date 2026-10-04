@@ -9,10 +9,10 @@
   // real game mesh.
   import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
-  import { App, errText } from '../lib/api';
+  import { App, errText, ask } from '../lib/api';
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
-    recolorIcon, loadImage, layerId,
+    recolorIcon, loadImage, layerId, renderTemplate, targetLabel,
   } from '../lib/accessoryArt';
   import { MeshView } from '../lib/meshView';
   import Straighten from './Straighten.svelte';
@@ -39,6 +39,7 @@
   let S = 300;
   let vanilla: HTMLImageElement | null = null;
   let net: HTMLCanvasElement = document.createElement('canvas');
+  const layersNet: HTMLCanvasElement = document.createElement('canvas'); // layers only, over a painted texture
   let view = $state<'net' | 'texture' | '3d'>('net');
   let selected = $state('');
   let showGuides = $state(true);
@@ -61,9 +62,15 @@
     try {
       do {
         again = false;
-        await renderNet(net, model, layout, vanilla, accUrl, S);
+        const painted = await paintedImage();
+        if (painted) {
+          // The painted texture projected onto the faces (net view, icons) — always through the faces' own targets, it is
+          // in our layout, not the base's — while the texture keeps it at full size with only the layers mapped on top.
+          await renderNet(net, model, { ...layout, base: 'vanilla', baseItem: undefined }, painted, accUrl, S);
+          await renderNet(layersNet, model, layout, null, accUrl, S, true);
+        } else await renderNet(net, model, layout, vanilla, accUrl, S);
         drawNetView();
-        textureCanvas = composeTexture(model, net, vanilla, S);
+        textureCanvas = composeTexture(model, painted ? layersNet : net, painted ?? vanilla, S);
         drawTexView();
         mesh?.setTexture(textureCanvas);
       } while (again);
@@ -130,7 +137,7 @@
       ctx.lineWidth = 2 * k;
       ctx.strokeRect(t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k);
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      const label = f.label + (t.src[0] > 0 || t.src[2] < 1 ? (t.src[0] === 0 ? ' (left half)' : ' (right half)') : '') + (t.src[1] > 0 ? ' — cover' : '');
+      const label = targetLabel(f, t);
       const tw = ctx.measureText(label).width;
       ctx.fillRect(t.rect[0] * k + 4, t.rect[1] * k + 4, tw + 8, 24 * k);
       ctx.fillStyle = '#fff';
@@ -237,6 +244,59 @@
       const rel = await (pickImage ? pickImage() : App.PickAccessoryImage());
       if (rel) await addImageFile(rel);
     } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  // ---------------------------------------------------------------- painting templates / painted texture
+
+  /** Size of the game texture (the base's own art; the model's nominal size when it isn't available). */
+  const textureSize = () => [vanilla?.width || model!.textureSize, vanilla?.height || vanilla?.width || model!.textureSize];
+
+  /** The painted texture, stretched to the game texture's shape when it differs (its own width kept, so no detail is lost). */
+  async function paintedImage(): Promise<HTMLImageElement | HTMLCanvasElement | null> {
+    if (!layout.textureFile) return null;
+    let img: HTMLImageElement;
+    try { img = await loadImage(accUrl(layout.textureFile)); }
+    catch { notify(`Painted texture ${layout.textureFile} is missing — using the faces only.`, 'error'); return null; }
+    const [w, h] = textureSize();
+    const ph = Math.round(img.width * h / w);
+    if (Math.abs(ph - img.height) <= 1) return img;
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = ph;
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  /** Saves a blank template of the texture (face areas, labels, up arrows) in the game texture's size, to paint on elsewhere. */
+  async function exportTemplate() {
+    if (!model) return;
+    try {
+      const [w, h] = textureSize();
+      const name = `${kind}${base ? '_' + base : ''}_template.png`;
+      const path = await App.SaveTemplateImage(name, renderTemplate(model, w, h).toDataURL('image/png'));
+      if (path) notify(`Template saved to ${path} (${w}×${h}). Paint over it, then use "Import painted texture…".`);
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  /** Uses a painted image (in the template's layout, any size of the same shape) as the whole texture. */
+  async function importPainted() {
+    if (!model) return;
+    try {
+      const rel = await (pickImage ? pickImage() : App.PickAccessoryImage());
+      if (!rel) return;
+      const img = await loadImage(accUrl(rel));
+      const [w, h] = textureSize();
+      if (Math.abs(img.width / img.height - w / h) > 0.01
+        && !(await ask(`This image is ${img.width}×${img.height}, but the texture is ${w}×${h} — it won't line up with the faces. Stretch it to fit anyway?`))) return;
+      if (img.width < w && !(await ask(`This image (${img.width} px wide) is smaller than the game texture (${w} px) and will look blurrier. Use it anyway?`))) return;
+      layout.textureFile = rel;
+      commit();
+      notify(`Painted texture in use (${img.width}×${img.height}). Layers you add go on top of it.`);
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  function removePainted() {
+    delete layout.textureFile;
+    commit();
   }
 
   /** Adds an image (path for imageUrl) as a new layer `fit`ted into the main face, or into the box around `faces` (ids);
@@ -764,14 +824,28 @@
             <button class="tiny" onclick={(e) => { e.stopPropagation(); removeLayer(l.id); }} title="Delete (Del)">✕</button>
           </div>
         {/each}
-        <div class="layer base">
-          <span class="grow name">Base:</span>
-          <select bind:value={layout.base} onchange={changed}>
-            <option value="vanilla">Vanilla art</option>
-            <option value="color">Plain colour</option>
-          </select>
-          {#if layout.base === 'color'}<input type="color" bind:value={layout.baseColor} oninput={changed} />{/if}
-        </div>
+        {#if layout.textureFile}
+          <div class="layer base" title="Your painted texture, used at its own resolution under the layers">
+            <span class="grow name">🎨 Painted: {layout.textureFile.split('/').pop()}</span>
+            <button class="tiny" onclick={importPainted} title="Use another painted texture">↻</button>
+            <button class="tiny" onclick={removePainted} title="Stop using the painted texture">✕</button>
+          </div>
+        {:else}
+          <div class="layer base">
+            <span class="grow name">Base:</span>
+            <select bind:value={layout.base} onchange={changed}>
+              <option value="vanilla">Vanilla art</option>
+              <option value="color">Plain colour</option>
+            </select>
+            {#if layout.base === 'color'}<input type="color" bind:value={layout.baseColor} oninput={changed} />{/if}
+          </div>
+        {/if}
+      </div>
+      <div class="row wrap">
+        <button class="small" onclick={exportTemplate}
+          title="Saves an image of the game texture at its real size with every face outlined and labelled, to paint your own art on in another program">Export template…</button>
+        <button class="small" onclick={importPainted}
+          title="Uses a texture you painted on an exported template as the whole texture, at full resolution">Import painted texture…</button>
       </div>
 
       {#if sel}

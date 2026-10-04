@@ -26,6 +26,7 @@ export interface Layout {
   version: 2; layers: Layer[]; base: 'vanilla' | 'color'; baseColor: string;
   baseItem?: string;            // pack/box editor: the model base (vanilla item) the art starts from, or 'file'
   baseFile?: string;            // baseItem 'file': project image in the model's own layout (a snapshot of earlier art)
+  textureFile?: string;         // painted texture (made from an exported template): used at its own resolution, layers go on top
 }
 
 export const newLayout = (): Layout => ({ version: 2, layers: [], base: 'vanilla', baseColor: '#3a3a3a' });
@@ -89,10 +90,11 @@ function blit(ctx: CanvasRenderingContext2D, img: CanvasImageSource, sx: number,
 
 /**
  * Renders the net: the base (vanilla texture projected back onto each face, or a plain colour) and the layers on top.
- * `imageUrl` turns a layer's library path into a URL.
+ * `imageUrl` turns a layer's library path into a URL. `layersOnly`: faces stay transparent under the layers (layers over a
+ * painted texture, which composeTexture then keeps at full resolution).
  */
-export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Layout, vanilla: HTMLImageElement | null,
-  imageUrl: (rel: string) => string, S: number) {
+export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Layout, vanilla: HTMLImageElement | HTMLCanvasElement | null,
+  imageUrl: (rel: string) => string, S: number, layersOnly = false) {
   // Where each face is in the base texture (a model base may read other texture areas, e.g. the Rare box in the box atlas).
   const reverse = m.bases?.find((b) => b.id === layout.baseItem)?.targets;
   const b = netBounds(m);
@@ -103,6 +105,7 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
   const k = vanilla ? vanilla.width / m.textureSize : 1;
 
   for (const f of m.faces) {
+    if (layersOnly) break;
     const r = faceRect(m, f, S);
     if (layout.base === 'color' || !vanilla) {
       ctx.fillStyle = layout.baseColor || '#3a3a3a';
@@ -171,7 +174,7 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
 }
 
 /** Maps the net into the texture (vanilla underneath so unmapped areas — insides, edges, the mat's rubber — stay intact). */
-export function composeTexture(m: Model, net: HTMLCanvasElement, vanilla: HTMLImageElement | null, S: number): HTMLCanvasElement {
+export function composeTexture(m: Model, net: HTMLCanvasElement, vanilla: HTMLImageElement | HTMLCanvasElement | null, S: number): HTMLCanvasElement {
   const size = vanilla?.width || m.textureSize;
   const k = size / m.textureSize;
   const c = document.createElement('canvas');
@@ -188,6 +191,86 @@ export function composeTexture(m: Model, net: HTMLCanvasElement, vanilla: HTMLIm
         t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k, t.flipX, t.flipY, t.transpose);
     }
   }
+  return c;
+}
+
+/** Name of one texture area of a face: a face split over several areas says which part (deck box back halves, front cover). */
+export function targetLabel(f: Face, t: Target): string {
+  return f.label + (t.src[0] > 0 || t.src[2] < 1 ? (t.src[0] === 0 ? ' (left half)' : ' (right half)') : '') + (t.src[1] > 0 ? ' — cover' : '');
+}
+
+/**
+ * Painting template in the texture's own size (w×h): every area the game reads a face from, filled per face and labelled
+ * upright as the face is seen on the model (with an "up" arrow — rotated/mirrored areas show their orientation). Everything
+ * else is the dark background (not painted by the faces).
+ */
+export function renderTemplate(m: Model, w: number, h: number): HTMLCanvasElement {
+  const k = w / m.textureSize;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#262626';
+  ctx.fillRect(0, 0, w, h);
+  m.faces.forEach((f, i) => {
+    const fill = f.hidden ? '#6a6a6a' : `hsl(${Math.round((i * 137.5) % 360)} 42% 58%)`;
+    for (const t of f.targets) {
+      if (t.bleed) continue;
+      const dx = t.rect[0] * k, dy = t.rect[1] * k, dw = (t.rect[2] - t.rect[0]) * k, dh = (t.rect[3] - t.rect[1]) * k;
+      // The area drawn upright on its own canvas, then mapped like the editor maps a face (same flips / transpose).
+      const [fw, fh] = t.transpose ? [Math.round(dh), Math.round(dw)] : [Math.round(dw), Math.round(dh)];
+      if (fw < 1 || fh < 1) continue;
+      const fc = document.createElement('canvas');
+      fc.width = fw; fc.height = fh;
+      const fx = fc.getContext('2d')!;
+      fx.fillStyle = fill;
+      fx.fillRect(0, 0, fw, fh);
+      const lines = [targetLabel(f, t) + (f.hidden ? ' (hidden)' : ''), `${Math.round(dw)}×${Math.round(dh)} px`];
+      // Text fits the area: up to ~1/6 of its height, shrunk to 90% of its width.
+      let px = Math.max(6, Math.min(fh / 6, 40 * k));
+      fx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
+      const widest = Math.max(...lines.map((s) => fx.measureText(s).width));
+      if (widest > fw * 0.9) px = Math.max(5, px * (fw * 0.9) / widest);
+      const small = fh < px * 3.2; // thin strip (crimps, spine): one line, no arrow
+      fx.fillStyle = '#111';
+      fx.textAlign = 'center';
+      fx.textBaseline = 'middle';
+      fx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
+      if (small) fx.fillText(lines[0], fw / 2, fh / 2);
+      else {
+        fx.fillText(lines[0], fw / 2, fh / 2);
+        fx.font = `${px * 0.75}px Nunito, "Segoe UI", sans-serif`;
+        fx.fillText(lines[1], fw / 2, fh / 2 + px * 1.1);
+        // Up arrow near the top edge.
+        const a = Math.min(px * 1.2, fh * 0.12), ay = Math.max(a * 0.4, fh * 0.06);
+        fx.beginPath();
+        fx.moveTo(fw / 2, ay);
+        fx.lineTo(fw / 2 + a * 0.7, ay + a);
+        fx.lineTo(fw / 2 - a * 0.7, ay + a);
+        fx.closePath();
+        fx.fill();
+        fx.font = `bold ${px * 0.6}px Nunito, "Segoe UI", sans-serif`;
+        fx.fillText('UP', fw / 2, ay + a + px * 0.5);
+      }
+      blit(ctx, fc, 0, 0, fw, fh, dx, dy, dw, dh, t.flipX, t.flipY, t.transpose);
+      // Readable note on areas whose art lies sideways / mirrored in the texture (their label above is drawn that way too).
+      const note = t.transpose ? 'turned on its side — paint as shown' : t.flipX || t.flipY ? 'mirrored — paint as shown' : '';
+      if (note && dh >= 24 * k) {
+        let np = Math.max(6, Math.min(14 * k, dh / 8));
+        ctx.font = `${np}px Nunito, "Segoe UI", sans-serif`;
+        const nw = ctx.measureText(note).width;
+        if (nw > dw * 0.92) { np = Math.max(5, np * dw * 0.92 / nw); ctx.font = `${np}px Nunito, "Segoe UI", sans-serif`; }
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(dx, dy + dh - np * 1.6, dw, np * 1.6);
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(note, dx + dw / 2, dy + dh - np * 0.8);
+      }
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(1, 2 * k);
+      ctx.strokeRect(dx + ctx.lineWidth / 2, dy + ctx.lineWidth / 2, dw - ctx.lineWidth, dh - ctx.lineWidth);
+    }
+  });
   return c;
 }
 

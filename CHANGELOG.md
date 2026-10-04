@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.15.0 - 2026-10-04
+
+Paint your own high-resolution textures for accessories, packs and boxes in any image editor.
+
+- New: Export template… in the face editor (deck boxes, playmats, sleeves, comics, collection books, battle decks, card packs and card boxes). It saves an image of the game texture at its real size with every face outlined, named, measured in pixels and marked with an UP arrow; areas the game stores mirrored or on their side say so.
+- New: Import painted texture… uses the image you painted on a template as the whole texture, at the resolution you painted it (2048 or 4096 px stay sharp). Image, colour and text layers still go on top, and the painted texture can be replaced or removed at any time.
+- Changed: Smart generate asks before replacing pack or box art that uses a painted texture.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.14.0 - 2026-10-04
 
 Your sets take much less disk space: card art is shared between setups and can be stored as JPEG.

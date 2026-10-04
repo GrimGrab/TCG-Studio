@@ -294,8 +294,8 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
   return { pack, box, notes };
 }
 
-/** True when a layout has layers Smart generate didn't make (so replacing it would lose hand work). */
-export const hasOwnLayers = (l?: Layout) => !!l?.layers.some((x) => !x.name.startsWith(AUTO));
+/** True when a layout has layers Smart generate didn't make or a painted texture (so replacing it would lose hand work). */
+export const hasOwnLayers = (l?: Layout) => !!l?.textureFile || !!l?.layers.some((x) => !x.name.startsWith(AUTO));
 
 /** A layout's texture and shop icon as PNG data URLs, without the editor (same steps as AccessoryEditor.exportImages). */
 export async function renderLayout(projectId: string, m: Model, layout: Layout): Promise<{ texture: string; icon: string }> {

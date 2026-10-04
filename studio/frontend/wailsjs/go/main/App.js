@@ -358,6 +358,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SaveTemplateImage(arg1, arg2) {
+  return window['go']['main']['App']['SaveTemplateImage'](arg1, arg2);
+}
+
 export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
 }

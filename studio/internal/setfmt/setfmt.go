@@ -247,18 +247,28 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// Validate mirrors SetLoader.Validate. folder is used to check image paths (may be empty to skip).
-func (s *Set) Validate(folder string) []Issue {
+// Validate mirrors SetLoader.Validate. folders are where image paths are looked up, in order (the project folder, then the
+// shared card-art library); none or only "" skips the file checks.
+func (s *Set) Validate(folders ...string) []Issue {
 	var out []Issue
 	add := func(level, where, format string, args ...any) {
 		out = append(out, Issue{Level: level, Where: where, Message: fmt.Sprintf(format, args...)})
 	}
 	fileMissing := func(rel string) bool {
-		if folder == "" || rel == "" {
+		if rel == "" {
 			return false
 		}
-		_, err := os.Stat(filepath.Join(folder, rel))
-		return err != nil
+		checked := false
+		for _, folder := range folders {
+			if folder == "" {
+				continue
+			}
+			checked = true
+			if _, err := os.Stat(filepath.Join(folder, rel)); err == nil {
+				return false
+			}
+		}
+		return checked
 	}
 
 	if s.SchemaVersion > CurrentSchemaVersion {

@@ -237,6 +237,10 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 	if err := os.MkdirAll(filepath.Join(folder, "images"), 0o755); err != nil {
 		return nil, err
 	}
+	art, err := cardArtTarget(ws, id, folder, "tcgdex", tset.ID, lang, opt)
+	if err != nil {
+		return nil, err
+	}
 	set := setfmt.NewSet(id, tset.Name)
 	set.RenderMode = "FullImage"
 	meta := &project.Meta{Source: "tcgdex", SetCode: tset.ID, Lang: lang, ReleasedAt: tset.ReleaseDate,
@@ -258,7 +262,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		}
 		used[CardID(c.LocalID)]++
 
-		rel := "images/" + cid + ".png"
+		rel := art.rel(cid)
 		play := setfmt.DefaultPlay()
 		play.Element = pokemonElement(c.Types)
 		card := setfmt.Card{ID: cid, Name: c.Name, Description: c.Text(), Artist: c.Illustrator,
@@ -267,7 +271,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		card.Price = RealPrice(cm)
 		set.Cards = append(set.Cards, card)
 		meta.Cards[cid] = cm
-		jobs = append(jobs, imageJob{url: img, path: filepath.Join(folder, filepath.FromSlash(rel))})
+		jobs = append(jobs, art.job(img, cid))
 	}
 	if len(set.Cards) == 0 {
 		_ = os.RemoveAll(folder)
@@ -297,7 +301,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		return nil, err
 	}
 
-	p := &project.Project{ID: id, Folder: folder, Set: set, Meta: meta}
+	p := &project.Project{ID: id, Folder: folder, LibFolder: ws.LibFolder(id), Set: set, Meta: meta}
 	if err := ws.Save(p); err != nil {
 		return nil, err
 	}

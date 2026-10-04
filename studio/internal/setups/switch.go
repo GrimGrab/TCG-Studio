@@ -125,7 +125,7 @@ func applyGame(dir, gameDir string) ([]string, error) {
 		return nil, err
 	}
 	var warnings []string
-	ws := project.Workspace{Root: dir}
+	ws := project.Workspace{Root: dir, Library: project.LibraryDir(filepath.Dir(filepath.Dir(dir)))} // dir = <workspace>\setups\<id>
 	for _, id := range in.InstalledSets {
 		p, err := ws.Load(id)
 		if err == nil {

@@ -56,6 +56,10 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		return nil, fmt.Errorf("%s is already imported — open it and use Refresh prices, or delete it first", in.ID)
 	}
 	folder := ws.Folder(in.ID)
+	art, err := cardArtTarget(ws, in.ID, folder, in.Source, in.Code, in.Lang, opt)
+	if err != nil {
+		return nil, err
+	}
 	set := setfmt.NewSet(in.ID, in.Name)
 	set.RenderMode = "FullImage"
 	meta := &project.Meta{Source: in.Source, SetCode: in.Code, Lang: in.Lang, ReleasedAt: in.ReleasedAt,
@@ -81,14 +85,16 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		if c.Element != "" {
 			play.Element = c.Element
 		}
-		rel := "images/" + cid + ".png"
+		rel := art.rel(cid)
 		cm := project.CardMeta{SourceID: c.SourceID, Name: c.Name, TypeLine: c.TypeLine, Colors: c.Colors, SrcRarity: c.SrcRarity,
 			Variant: c.Variant, CMC: c.Cost, Power: c.Power, USD: c.USD, USDFoil: c.USDFoil, EUR: c.EUR}
 		card := setfmt.Card{ID: cid, Name: name, Description: c.Text, Artist: c.Artist, Rarity: in.Rarity(c.SrcRarity),
 			Number: c.Number, Image: rel, Play: play, Price: RealPrice(cm)}
 		set.Cards = append(set.Cards, card)
 		meta.Cards[cid] = cm
-		jobs = append(jobs, imageJob{url: c.Image, path: filepath.Join(folder, filepath.FromSlash(rel)), rotate: in.Rotate, aspect: in.Aspect})
+		j := art.job(c.Image, cid)
+		j.rotate, j.aspect = in.Rotate, in.Aspect
+		jobs = append(jobs, j)
 	}
 	if len(set.Cards) == 0 {
 		if in.ReleasedAt > time.Now().Format("2006-01-02") {
@@ -135,7 +141,7 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		pack.Slots = fitSlots(in.Slots, set.Cards)
 		set.Packs[0] = pack
 	}
-	p := &project.Project{ID: in.ID, Folder: folder, Set: set, Meta: meta}
+	p := &project.Project{ID: in.ID, Folder: folder, LibFolder: ws.LibFolder(in.ID), Set: set, Meta: meta}
 	if err := ws.Save(p); err != nil {
 		return nil, err
 	}

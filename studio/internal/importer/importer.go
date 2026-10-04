@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"image"
-	_ "image/jpeg"
+	"image/jpeg"
 	"image/png"
 	"math"
 	"os"
@@ -31,6 +31,11 @@ type Options struct {
 	ImageWidth      int               `json:"imageWidth"`      // resize width (0 = keep 745)
 	RarityMap       map[string]string `json:"rarityMap"`       // source rarity → game rarity
 	Lang            string            `json:"lang,omitempty"`  // card language, for sources with several
+	// ImageFormat of the card art: "png" (default, lossless) or "jpg" (about 6x smaller; transparent corners filled).
+	ImageFormat string `json:"imageFormat,omitempty"`
+	// UseLibrary: the shared library already has this set made with another format or width, and the player chose to use
+	// that art (nothing downloaded) instead of a separate copy for this setup.
+	UseLibrary bool `json:"useLibrary,omitempty"`
 }
 
 func DefaultOptions() Options {
@@ -86,6 +91,10 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	if err := os.MkdirAll(filepath.Join(folder, "images"), 0o755); err != nil {
 		return nil, err
 	}
+	art, err := cardArtTarget(ws, id, folder, "scryfall", sfSet.Code, "", opt)
+	if err != nil {
+		return nil, err
+	}
 	set := setfmt.NewSet(id, sfSet.Name)
 	set.RenderMode = "FullImage"
 	meta := &project.Meta{Source: "scryfall", ScryfallCode: sfSet.Code, ReleasedAt: sfSet.ReleasedAt,
@@ -115,7 +124,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 			rarity = "Common"
 		}
 		tags := VariantTags(&c)
-		rel := "images/" + cid + ".png"
+		rel := art.rel(cid)
 		name := c.Name
 		if len(tags) > 0 {
 			name += " (" + strings.Join(tags, ", ") + ")"
@@ -141,7 +150,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		if u == "" {
 			u = img.Large
 		}
-		jobs = append(jobs, imageJob{url: u, path: filepath.Join(folder, filepath.FromSlash(rel))})
+		jobs = append(jobs, art.job(u, cid))
 	}
 	if len(set.Cards) == 0 {
 		return nil, fmt.Errorf("no printable cards found in set %s", code)
@@ -171,7 +180,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		return nil, ctx.Err()
 	}
 
-	p := &project.Project{ID: id, Folder: folder, Set: set, Meta: meta}
+	p := &project.Project{ID: id, Folder: folder, LibFolder: ws.LibFolder(id), Set: set, Meta: meta}
 	project.FillMtg(p)
 	if err := ws.Save(p); err != nil {
 		return nil, err
@@ -290,6 +299,8 @@ func RealPrice(m project.CardMeta) setfmt.CardPrice {
 
 type imageJob struct {
 	url, path string
+	format    string // "jpg" = save as JPEG, else PNG
+	keep      bool   // shared library: an existing file is already this image (another setup downloaded it)
 	rotate    bool    // turn landscape art upright
 	aspect    float64 // > 0: stretch to this width/height (cards narrower than the game's 63×88 slot, e.g. Yu-Gi-Oh! 59×86)
 }
@@ -298,13 +309,15 @@ type imageJob struct {
 // own aspect, so narrower art leaves the frame showing on both sides.
 const CardAspect = 63.0 / 88.0
 
-// downloadImages saves the jobs' images with a few workers (resized to width), reporting "images" progress.
-// Returns the file names that failed; the caller checks ctx for a cancel.
+// downloadImages saves the jobs' images with a few workers (resized to width), reporting "images" progress. Images the
+// shared library already has (job.keep) aren't downloaded again. Returns the file names that failed; the caller checks ctx
+// for a cancel.
 func downloadImages(ctx context.Context, get func(context.Context, string) ([]byte, error), jobs []imageJob, width int, report func(Progress)) []string {
 	var (
 		wg     sync.WaitGroup
 		mu     sync.Mutex
 		done   int
+		have   int
 		failed []string
 	)
 	ch := make(chan imageJob)
@@ -313,13 +326,25 @@ func downloadImages(ctx context.Context, get func(context.Context, string) ([]by
 		go func() {
 			defer wg.Done()
 			for j := range ch {
-				err := saveImage(ctx, get, j, width)
+				var err error
+				_, statErr := os.Stat(j.path)
+				exists := j.keep && statErr == nil
+				if !exists {
+					err = saveImage(ctx, get, j, width)
+				}
 				mu.Lock()
 				done++
+				if exists {
+					have++
+				}
 				if err != nil {
 					failed = append(failed, filepath.Base(j.path))
 				}
-				report(Progress{Stage: "images", Done: done, Total: len(jobs), Message: fmt.Sprintf("Downloaded %d / %d images", done, len(jobs))})
+				msg := fmt.Sprintf("Downloaded %d / %d images", done, len(jobs))
+				if have > 0 {
+					msg += fmt.Sprintf(" (%d already on this PC)", have)
+				}
+				report(Progress{Stage: "images", Done: done, Total: len(jobs), Message: msg})
 				mu.Unlock()
 			}
 		}()
@@ -335,8 +360,10 @@ func downloadImages(ctx context.Context, get func(context.Context, string) ([]by
 	return failed
 }
 
-// saveImage downloads a card image and writes it as PNG (the game and the pack-art tools read PNG/JPG; AVIF/WebP
-// sources are converted). Landscape cards are turned upright when job.rotate is set; width > 0 shrinks wider images.
+// saveImage downloads a card image and writes it as PNG, or JPEG when job.format is "jpg" (the game and the pack-art tools
+// read PNG/JPG; AVIF/WebP sources are converted). Landscape cards are turned upright when job.rotate is set; width > 0
+// shrinks wider images. Written via a temp file, so an interrupted import never leaves a half image (the shared library
+// keeps files for later imports).
 func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, error), job imageJob, width int) error {
 	b, err := get(ctx, job.url)
 	if err != nil {
@@ -345,7 +372,7 @@ func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, e
 	img, format, err := image.Decode(bytes.NewReader(b))
 	if err != nil {
 		if bytes.HasPrefix(b, []byte{0x89, 'P', 'N', 'G'}) {
-			return os.WriteFile(job.path, b, 0o644) // undecodable but already PNG: keep as is
+			return writeFileAtomic(job.path, b) // undecodable but already PNG: keep as is
 		}
 		return fmt.Errorf("%s: %w", job.url, err)
 	}
@@ -357,14 +384,35 @@ func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, e
 	if fitted, ok := fitImage(img, job.aspect, width); ok {
 		img, changed = fitted, true
 	}
-	if changed {
+	switch {
+	case job.format == "jpg":
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, Opaque(img), &jpeg.Options{Quality: JPEGQuality}); err != nil {
+			return err
+		}
+		b = buf.Bytes()
+	case changed:
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, img); err != nil {
 			return err
 		}
 		b = buf.Bytes()
 	}
-	return os.WriteFile(job.path, b, 0o644)
+	return writeFileAtomic(job.path, b)
+}
+
+// writeFileAtomic writes path via a temp file + rename.
+func writeFileAtomic(path string, b []byte) error {
+	tmp := path + ".part"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // fitImage stretches img to aspect (when set and more than half a percent off) and shrinks it to width (when > 0).
@@ -392,7 +440,7 @@ func fitImage(img image.Image, aspect float64, width int) (image.Image, bool) {
 func FitCardImages(p *project.Project, aspect float64) (int, error) {
 	n := 0
 	for _, c := range p.Set.Cards {
-		path := filepath.Join(p.Folder, filepath.FromSlash(c.Image))
+		path := p.ImagePath(c.Image) // shared library art is fixed once for every setup with the set
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -406,10 +454,15 @@ func FitCardImages(p *project.Project, aspect float64) (int, error) {
 			continue
 		}
 		var buf bytes.Buffer
-		if err := png.Encode(&buf, fitted); err != nil {
+		if strings.EqualFold(filepath.Ext(path), ".jpg") {
+			err = jpeg.Encode(&buf, Opaque(fitted), &jpeg.Options{Quality: JPEGQuality})
+		} else {
+			err = png.Encode(&buf, fitted)
+		}
+		if err != nil {
 			return n, err
 		}
-		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		if err := writeFileAtomic(path, buf.Bytes()); err != nil {
 			return n, err
 		}
 		n++

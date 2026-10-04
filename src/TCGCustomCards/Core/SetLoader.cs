@@ -79,7 +79,7 @@ namespace TCGCustomCards.Core
                 if (c.Play == null) c.Play = new PlayDef();
                 if (c.Play.LaneAttack == null || c.Play.LaneAttack.Length != 4) errors.Add($"{where}: play.laneAttack must have 4 entries");
                 if (string.IsNullOrEmpty(c.Image)) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: no image");
-                else if (!File.Exists(Path.Combine(set.FolderPath, c.Image))) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{c.Image}'");
+                else if (!File.Exists(set.Resolve(c.Image))) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{c.Image}'");
             }
             foreach (var c in set.Cards ?? new List<CardDef>())
                 if (!string.IsNullOrEmpty(c.Play?.EvolvesFrom) && !ids.Contains(c.Play.EvolvesFrom))
@@ -106,7 +106,7 @@ namespace TCGCustomCards.Core
                 foreach (var id in p.Cards ?? new List<string>())
                     if (!ids.Contains(id)) errors.Add($"{where}: card '{id}' not in set");
                 foreach (var img in new[] { p.PackTexture, p.PackIcon, p.BoxTexture, p.BoxIcon })
-                    if (!string.IsNullOrEmpty(img) && !File.Exists(Path.Combine(set.FolderPath, img)))
+                    if (!string.IsNullOrEmpty(img) && !File.Exists(set.Resolve(img)))
                         Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{img}' (vanilla art used)");
             }
             return errors;

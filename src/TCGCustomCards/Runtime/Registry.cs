@@ -22,7 +22,7 @@ namespace TCGCustomCards.Runtime
         private bool _cardBackResolved;
 
         public CardDef Card(int pos) => Def.Cards[pos];
-        public string ImagePath(CardDef card) => string.IsNullOrEmpty(card.Image) ? null : Path.Combine(Def.FolderPath, card.Image);
+        public string ImagePath(CardDef card) => string.IsNullOrEmpty(card.Image) ? null : Def.Resolve(card.Image);
         public Sprite CardImage(int pos) => ImageCache.Get(ImagePath(Card(pos)));
 
         private bool _trimLogged;
@@ -84,7 +84,7 @@ namespace TCGCustomCards.Runtime
                 if (!_cardBackPathResolved)
                 {
                     _cardBackPathResolved = true;
-                    string own = string.IsNullOrEmpty(Def.CardBack) ? null : Path.Combine(Def.FolderPath, Def.CardBack);
+                    string own = string.IsNullOrEmpty(Def.CardBack) ? null : Def.Resolve(Def.CardBack);
                     string global = Path.Combine(Plugin.PluginDir, GlobalCardBackFile);
                     _cardBackPath = own != null && File.Exists(own) ? own : File.Exists(global) ? global : null;
                 }
@@ -102,7 +102,7 @@ namespace TCGCustomCards.Runtime
                 {
                     // Priority: the set's own back → the global back (<plugin>\card_back.png) → the frame template's back.
                     _cardBackResolved = true;
-                    if (!string.IsNullOrEmpty(Def.CardBack)) _cardBack = ImageCache.GetCardBack(Path.Combine(Def.FolderPath, Def.CardBack));
+                    if (!string.IsNullOrEmpty(Def.CardBack)) _cardBack = ImageCache.GetCardBack(Def.Resolve(Def.CardBack));
                     if (_cardBack == null) _cardBack = ImageCache.GetCardBack(Path.Combine(Plugin.PluginDir, GlobalCardBackFile));
                 }
                 return _cardBack ?? CSingleton<InventoryBase>.Instance.m_MonsterData_SO.m_CardBackImageList[(int)Def.FrameTemplate];

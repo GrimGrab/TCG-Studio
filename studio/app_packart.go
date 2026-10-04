@@ -247,7 +247,7 @@ func (a *App) DetectBoxFaces(id, rel string) (art.DisplayFaces, error) {
 	if !setfmt.SafeID(id) {
 		return art.DisplayFaces{}, errors.New("bad project id")
 	}
-	img, err := loadProjectImage(a.ws().Folder(id), rel)
+	img, err := loadImageFile(a.ws().ImagePath(id, rel))
 	if err != nil {
 		return art.DisplayFaces{}, err
 	}
@@ -270,7 +270,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 		}
 	}
 	for _, rel := range []string{"images/set_icon.svg", "images/set_logo.png"} {
-		if _, err := os.Stat(filepath.Join(p.Folder, filepath.FromSlash(rel))); err == nil {
+		if _, err := os.Stat(p.ImagePath(rel)); err == nil {
 			out.Icon = rel
 			break
 		}
@@ -291,7 +291,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 				out.Notes = append(out.Notes, "Box photo: "+err.Error())
 				return
 			}
-			if img, err := loadProjectImage(p.Folder, rel); err == nil {
+			if img, err := loadImageFile(p.ImagePath(rel)); err == nil {
 				f := art.DetectDisplay(img)
 				out.BoxPhoto, out.BoxName, out.Box = rel, box.Name, &f
 				if !f.Confident && !choice.Manual {
@@ -360,7 +360,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 			break
 		}
 		w, h := 0, 0
-		if cfg, err := imageConfig(filepath.Join(p.Folder, filepath.FromSlash(c.Image))); err == nil {
+		if cfg, err := imageConfig(p.ImagePath(c.Image)); err == nil {
 			w, h = cfg.Width, cfg.Height
 		}
 		out.Cards = append(out.Cards, SmartArtCard{Name: c.Name, Image: c.Image, Window: art.ArtWindow(p.Meta.Source, w, h)})
@@ -368,8 +368,8 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 	return out, nil
 }
 
-func loadProjectImage(folder, rel string) (image.Image, error) {
-	f, err := os.Open(filepath.Join(folder, filepath.FromSlash(rel)))
+func loadImageFile(path string) (image.Image, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
@@ -41,6 +42,27 @@ namespace TCGCustomCards.Core
 
         /// <summary>Absolute folder the set was loaded from (not serialized).</summary>
         [JsonIgnore] public string FolderPath;
+
+        /// <summary>
+        /// Absolute path of a file the set refers to: the set's own folder first, then the shared card-art library
+        /// &lt;plugin&gt;\Library\&lt;set folder name&gt;\ that TCG Studio fills (card art shared by every setup with this set).
+        /// Returns the set-folder path when neither exists (callers report it as missing).
+        /// </summary>
+        /// <summary>
+        /// Marker TCG Studio looks for in this DLL (as text) to know the mod reads the shared card-art library; until it finds
+        /// it, Studio keeps copying card art into each set folder. Logged at load so the literal stays in the build.
+        /// </summary>
+        public const string LibraryCapability = "tcgcc-capability:shared-card-art-library";
+
+        public string Resolve(string relative)
+        {
+            if (string.IsNullOrEmpty(relative)) return null;
+            string own = Path.Combine(FolderPath, relative);
+            if (File.Exists(own)) return own;
+            string plugin = Path.GetDirectoryName(Path.GetDirectoryName(FolderPath));
+            string shared = plugin == null ? null : Path.Combine(Path.Combine(plugin, "Library"), Path.Combine(Path.GetFileName(FolderPath), relative));
+            return shared != null && File.Exists(shared) ? shared : own;
+        }
     }
 
     public class PriceDefaults

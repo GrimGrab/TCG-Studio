@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"tcgstudio/internal/project"
 )
 
 // Ext is the file extension of an exported setup (a zip).
@@ -81,6 +83,30 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	if err != nil {
 		return err
 	}
+	// Card art in the shared library goes into the file at the project path it is used under, so the format is unchanged
+	// and the receiver needs no library.
+	src := map[string]string{} // zip name → file outside the setup folder
+	have := map[string]bool{}
+	for _, f := range files {
+		have[f] = true
+	}
+	ws := project.Workspace{Root: dir, Library: project.LibraryDir(h.Root)}
+	projects, _ := os.ReadDir(filepath.Join(dir, "projects"))
+	for _, e := range projects {
+		p, err := ws.Load(e.Name())
+		if err != nil {
+			continue
+		}
+		for _, c := range p.Set.Cards {
+			name := "projects/" + e.Name() + "/" + c.Image
+			if c.Image == "" || have[name] || !p.InLibrary(c.Image) {
+				continue
+			}
+			have[name] = true
+			files = append(files, name)
+			src[name] = p.ImagePath(c.Image)
+		}
+	}
 	m := Manifest{Format: archiveFormat, FormatVersion: FormatVersion, Name: in.Name, Description: in.Description,
 		StudioVersion: studioVersion, Exported: time.Now().UTC()}
 	if list, err := h.List(); err == nil {
@@ -109,7 +135,11 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 		return err
 	}
 	for i, rel := range files {
-		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		file := filepath.Join(dir, filepath.FromSlash(rel))
+		if f, ok := src[rel]; ok {
+			file = f
+		}
+		b, err := os.ReadFile(file)
 		if err != nil {
 			return err
 		}

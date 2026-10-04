@@ -51,6 +51,9 @@ type Settings struct {
 	Workspace string `json:"workspace"`
 	// SyncedVersion = the Studio version that last brought the installed sets up to date (SyncInstalledSets).
 	SyncedVersion string `json:"syncedVersion,omitempty"`
+	// ImageFormat is the default card image format for imports: "png" (default) or "jpg" (about 6x smaller). The Import
+	// page starts from it and can still pick the other one for a single import.
+	ImageFormat string `json:"imageFormat,omitempty"`
 }
 
 func NewApp() *App {
@@ -81,7 +84,9 @@ func (a *App) WaitReady() bool {
 }
 
 // ws is the active setup's studio root (projects + accessory library); see app_setups.go.
-func (a *App) ws() project.Workspace { return project.Workspace{Root: a.root()} }
+func (a *App) ws() project.Workspace {
+	return project.Workspace{Root: a.root(), Library: project.LibraryDir(a.settings.Workspace)}
+}
 
 // ---------------------------------------------------------------- settings & game
 
@@ -365,7 +370,12 @@ func (a *App) DefaultImportOptions(source string) (importer.Options, error) {
 	if err != nil {
 		return importer.Options{}, err
 	}
-	return src.DefaultOptions(), nil
+	opt := src.DefaultOptions()
+	opt.ImageFormat = "png"
+	if a.settings.ImageFormat == "jpg" {
+		opt.ImageFormat = "jpg"
+	}
+	return opt, nil
 }
 
 // ImportSet runs an import from a source, emitting "import:progress" events. Returns the new project id.
@@ -563,7 +573,7 @@ func (a *App) SaveProject(p project.Project) (SaveResult, error) {
 	if err := a.ws().Save(&p); err != nil {
 		return SaveResult{}, err
 	}
-	r := SaveResult{Issues: issues(p.Set.Validate(p.Folder))}
+	r := SaveResult{Issues: issues(p.Set.Validate(p.Folder, p.LibFolder))}
 	if !game.IsGameDir(a.settings.GameDir) {
 		r.InstallState = project.StateNone
 		return r, nil
@@ -606,7 +616,7 @@ func (a *App) ValidateProject(id string) ([]setfmt.Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	return issues(p.Set.Validate(p.Folder)), nil
+	return issues(p.Set.Validate(p.Folder, p.LibFolder)), nil
 }
 
 // InstallProject validates and copies the set into the game. Refuses when there are errors.
@@ -615,7 +625,7 @@ func (a *App) InstallProject(id string) (SaveResult, error) {
 	if err != nil {
 		return SaveResult{}, err
 	}
-	r := SaveResult{Issues: issues(p.Set.Validate(p.Folder))}
+	r := SaveResult{Issues: issues(p.Set.Validate(p.Folder, p.LibFolder))}
 	if hasErrors(r.Issues) {
 		r.InstallState = project.InstallState(p, a.settings.GameDir)
 		return r, errors.New("fix the errors before installing")
@@ -826,7 +836,7 @@ func (a *App) fileHandler() http.Handler {
 				http.NotFound(w, r)
 				return
 			}
-			file = filepath.Join(a.ws().Folder(parts[0]), filepath.FromSlash(parts[1]))
+			file = a.ws().ImagePath(parts[0], parts[1]) // card art may live in the shared library
 		case strings.HasPrefix(path, "templates/"):
 			name := strings.TrimPrefix(path, "templates/")
 			if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {

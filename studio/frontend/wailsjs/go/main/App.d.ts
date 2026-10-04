@@ -13,6 +13,7 @@ import {forge} from '../models';
 import {gamify} from '../models';
 import {modconfig} from '../models';
 import {installer} from '../models';
+import {library} from '../models';
 
 export function Accessories():Promise<main.AccessoryView>;
 
@@ -33,6 +34,8 @@ export function BrowseGameFolder():Promise<game.Status>;
 export function CancelForgeInstall():Promise<void>;
 
 export function CancelImport():Promise<void>;
+
+export function CancelStorage():Promise<void>;
 
 export function CheckForUpdate():Promise<updater.Release>;
 
@@ -59,6 +62,8 @@ export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
 export function DeleteProject(arg1:string):Promise<void>;
 
 export function DeleteSetup(arg1:string):Promise<main.SetupsView>;
+
+export function DeleteUnusedArt(arg1:string,arg2:Array<string>):Promise<number>;
 
 export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
 
@@ -112,6 +117,8 @@ export function InstallUpdate():Promise<void>;
 
 export function LaunchGame():Promise<void>;
 
+export function LibraryArt(arg1:string,arg2:string,arg3:string):Promise<main.LibraryArtInfo>;
+
 export function ListProjects():Promise<Array<project.Summary>>;
 
 export function ListSetups():Promise<main.SetupsView>;
@@ -125,6 +132,8 @@ export function ModSettings():Promise<main.ModSettingsView>;
 export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryView>;
 
 export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
+
+export function MoveToLibrary():Promise<main.StorageResult>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
 
@@ -192,11 +201,19 @@ export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
 
+export function ShrinkPreview(arg1:string,arg2:string):Promise<library.ShrinkPreview>;
+
+export function ShrinkSets(arg1:Record<string, Array<string>>):Promise<main.StorageResult>;
+
 export function SmartArtSources(arg1:string,arg2:string,arg3:main.SmartChoice):Promise<main.SmartArtSources>;
 
 export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SourceSets(arg1:string,arg2:string,arg3:boolean):Promise<Array<main.ImportableSet>>;
+
+export function StorageReport():Promise<library.Report>;
+
+export function StorageTask():Promise<main.StorageTaskInfo>;
 
 export function SwitchSetup(arg1:string):Promise<main.SwitchResult>;
 

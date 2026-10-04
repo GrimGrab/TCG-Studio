@@ -9,7 +9,7 @@
   let tpl = $state<any>(null); // game templates (read from the game files, or the mod's in-game export)
 
   async function load() {
-    settings = await App.GetSettings();
+    settings = await App.GetSettings(); settings.imageFormat ||= 'png';
     status = await App.GameStatus();
     tpl = await App.TemplatesStatus();
     globalBack = await App.GlobalCardBack();
@@ -21,7 +21,7 @@
 
   async function locate() {
     status = await App.LocateGame();
-    settings = await App.GetSettings();
+    settings = await App.GetSettings(); settings.imageFormat ||= 'png';
     tpl = await App.TemplatesStatus();
     notify(status.found ? 'Game found' : 'Game not found in Steam libraries — use Browse', status.found ? 'ok' : 'error');
     onchange();
@@ -30,7 +30,7 @@
   async function browse() {
     try {
       status = await App.BrowseGameFolder();
-      settings = await App.GetSettings();
+      settings = await App.GetSettings(); settings.imageFormat ||= 'png';
       tpl = await App.TemplatesStatus();
       onchange();
     } catch (e) {
@@ -102,6 +102,17 @@
       </div>
     </section>
     <section>
+      <h3>Downloads</h3>
+      <label class="field">Default card image format for imports
+        <select bind:value={settings.imageFormat} onchange={saveWorkspace}>
+          <option value="png">PNG — best quality (default)</option>
+          <option value="jpg">JPEG — about 6× smaller, card scans lose a little detail</option>
+        </select>
+      </label>
+      <p class="muted small">The Import page starts with this format; you can still pick the other one for a single import.
+        Existing sets can be converted on the Storage page.</p>
+    </section>
+    <section>
       <h3>Workspace</h3>
       <p class="muted">The folder that holds all your setups (each with its sets, images and accessories) — see My Setups.</p>
       <div class="row"><input class="grow" bind:value={settings.workspace} /><button onclick={saveWorkspace}>Save</button></div>
@@ -117,5 +128,6 @@
   .back { width: 130px; height: 130px; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .back img { max-width: 100%; max-height: 100%; }
   .col { display: flex; flex-direction: column; gap: 6px; }
+  .small { font-size: 12px; margin: 0; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }
 </style>

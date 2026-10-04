@@ -236,6 +236,7 @@ namespace TCGCustomCards
             _harmony.PatchAll(typeof(Plugin).Assembly);
 
             Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s)");
+            Log.LogInfo("Supports " + Core.SetDef.LibraryCapability + " (shared card art in the plugin's Library folder)");
             WatchConfig();
         }
 

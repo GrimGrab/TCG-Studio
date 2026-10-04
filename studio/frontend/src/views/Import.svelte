@@ -68,11 +68,32 @@
     load();
   }
 
+  // The shared library already has this set made another way (other format or size): ask what to do.
+  let choice = $state<any>(null); // { set, art, resolve }
+  const fmtName = (f: string) => (f === 'jpg' ? 'JPEG' : 'PNG');
+  const widthName = (w: number) => (w ? `${w} px` : 'original size');
+
+  function askLibrary(set: any, art: any): Promise<'use' | 'download' | ''> {
+    return new Promise((resolve) => (choice = { set, art, resolve }));
+  }
+  function answer(v: 'use' | 'download' | '') {
+    choice?.resolve(v);
+    choice = null;
+  }
+
   async function doImport(s: any) {
+    const l = langs.length ? lang : '';
+    let useLibrary = false;
+    const art = await App.LibraryArt(sourceId, s.code, l).catch(() => null);
+    if (art && (art.format !== (options.imageFormat || 'png') || art.width !== options.imageWidth)) {
+      const v = await askLibrary(s, art);
+      if (!v) return;
+      useLibrary = v === 'use';
+    }
     importing = s.code;
     progress = { stage: 'cards', done: 0, total: s.cards, message: 'Starting…' };
     try {
-      const id = await App.ImportSet(sourceId, s.code, { ...options, lang: langs.length ? lang : '' });
+      const id = await App.ImportSet(sourceId, s.code, { ...options, lang: l, useLibrary });
       const done = progress?.message ?? 'Imported';
       // Pack & box art from the set's product photos (or its best card art); the import's simple art stays if this fails.
       try {
@@ -134,6 +155,11 @@
           <option value={384}>384</option><option value={512}>512</option><option value={0}>Original</option>
         </select>
       </label>
+      <label class="check" title="JPEG card art is about 6× smaller; card scans lose a little detail. Pack art always stays PNG. The default is set in Settings → Downloads.">Card image format
+        <select bind:value={options.imageFormat}>
+          <option value="png">PNG (best quality)</option><option value="jpg">JPEG (about 6× smaller)</option>
+        </select>
+      </label>
     {/if}
   </div>
 
@@ -172,7 +198,30 @@
   {/if}
 </div>
 
+
+{#if choice}
+  <div class="backdrop" role="presentation">
+    <div class="dialog">
+      <h3>{choice.set.name} is already on this PC</h3>
+      <p>Its card art is in the shared library as <b>{fmtName(choice.art.format)}</b> ({widthName(choice.art.width)},
+        {choice.art.cards} images), used by your other setups. You picked <b>{fmtName(options.imageFormat || 'png')}</b>
+        ({widthName(options.imageWidth)}).</p>
+      <div class="col">
+        <button class="primary" onclick={() => answer('use')}>Use the {fmtName(choice.art.format)} art on this PC <span class="muted">— nothing to download, no extra space</span></button>
+        <button onclick={() => answer('download')}>Download {fmtName(options.imageFormat || 'png')} <span class="muted">— a separate copy for this setup only</span></button>
+        <button onclick={() => answer('')}>Cancel</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .dialog { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; max-width: 520px; display: flex; flex-direction: column; gap: 10px; }
+  .dialog h3 { margin: 0; }
+  .dialog p { margin: 0; }
+  .col { display: flex; flex-direction: column; gap: 6px; }
+  .col button { text-align: left; }
   .page { padding: 20px 24px; overflow: auto; height: 100%; }
   header { margin-bottom: 12px; }
   .sources { margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }

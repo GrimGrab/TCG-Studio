@@ -42,6 +42,10 @@ export function CancelImport() {
   return window['go']['main']['App']['CancelImport']();
 }
 
+export function CancelStorage() {
+  return window['go']['main']['App']['CancelStorage']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -92,6 +96,10 @@ export function DeleteProject(arg1) {
 
 export function DeleteSetup(arg1) {
   return window['go']['main']['App']['DeleteSetup'](arg1);
+}
+
+export function DeleteUnusedArt(arg1, arg2) {
+  return window['go']['main']['App']['DeleteUnusedArt'](arg1, arg2);
 }
 
 export function DetectBoxFaces(arg1, arg2) {
@@ -198,6 +206,10 @@ export function LaunchGame() {
   return window['go']['main']['App']['LaunchGame']();
 }
 
+export function LibraryArt(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LibraryArt'](arg1, arg2, arg3);
+}
+
 export function ListProjects() {
   return window['go']['main']['App']['ListProjects']();
 }
@@ -224,6 +236,10 @@ export function MoveAccessory(arg1, arg2) {
 
 export function MoveSetup(arg1, arg2) {
   return window['go']['main']['App']['MoveSetup'](arg1, arg2);
+}
+
+export function MoveToLibrary() {
+  return window['go']['main']['App']['MoveToLibrary']();
 }
 
 export function NewAccessory(arg1, arg2, arg3) {
@@ -358,6 +374,14 @@ export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
 }
 
+export function ShrinkPreview(arg1, arg2) {
+  return window['go']['main']['App']['ShrinkPreview'](arg1, arg2);
+}
+
+export function ShrinkSets(arg1) {
+  return window['go']['main']['App']['ShrinkSets'](arg1);
+}
+
 export function SmartArtSources(arg1, arg2, arg3) {
   return window['go']['main']['App']['SmartArtSources'](arg1, arg2, arg3);
 }
@@ -368,6 +392,14 @@ export function SnapshotPackBase(arg1, arg2, arg3, arg4) {
 
 export function SourceSets(arg1, arg2, arg3) {
   return window['go']['main']['App']['SourceSets'](arg1, arg2, arg3);
+}
+
+export function StorageReport() {
+  return window['go']['main']['App']['StorageReport']();
+}
+
+export function StorageTask() {
+  return window['go']['main']['App']['StorageTask']();
 }
 
 export function SwitchSetup(arg1) {

@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.14.0 - 2026-10-04
+
+Your sets take much less disk space: card art is shared between setups and can be stored as JPEG.
+
+- New: Storage page (sidebar). See how much space your workspace, each setup and each set use. Move card art into a shared library so a set that is in several setups is stored once. Shrink card art to JPEG (about 6× smaller) per set, with a before/after preview. Delete the card art of sets no setup uses any more.
+- New: a set's card art is kept once and shared by every setup that has it. Importing a set you already have in another setup downloads nothing, and switching setups copies far less into the game.
+- New: Settings → Downloads → default card image format (PNG or JPEG). The Import page offers the same choice for each import, and asks before downloading a separate copy of a set that is already on your PC in the other format.
+- Changed: card art you change in one setup stays that setup's own; your other setups keep the original.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.13.3 - 2026-10-03
 
 Shop lists no longer cut off when you have many sets.

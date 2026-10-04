@@ -11,10 +11,12 @@
   import Furniture from './views/Furniture.svelte';
   import ModSettings from './views/ModSettings.svelte';
   import Setups from './views/Setups.svelte';
+  import Storage from './views/Storage.svelte';
 
-  type View = 'setup' | 'setups' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'setups' | 'storage' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
+  let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
   let gameStatus = $state<any>(null);
   let setupReady = $state(true);
   let version = $state<any>(null);
@@ -109,6 +111,8 @@
     await App.WaitReady(); // the backend's startup runs alongside the page load
     ready = true;
     EventsOn('update:progress', (f: number) => (updateProgress = f));
+    EventsOn('storage:progress', () => (storageBusy = true));
+    EventsOn('storage:done', () => (storageBusy = false));
     version = await App.AppVersion();
     await refreshStatus();
     refreshSetup();
@@ -154,6 +158,7 @@
     <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
     <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
     <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
+    <button class:active={view === 'storage'} onclick={() => (view = 'storage')}>Storage{#if storageBusy}<span class="dot busy" title="A storage task is running"></span>{/if}</button>
     <button class:active={view === 'settings'} onclick={() => (view = 'settings')}>Settings</button>
     <div class="grow"></div>
     <button class="discord" title="Opens {DISCORD_URL} in your browser" onclick={() => BrowserOpenURL(DISCORD_URL)}>
@@ -210,6 +215,8 @@
       <Gamify {notify} />
     {:else if view === 'modsettings'}
       <ModSettings {notify} />
+    {:else if view === 'storage'}
+      <Storage {notify} />
     {:else if view === 'settings'}
       <Settings {notify} onchange={refreshStatus} />
     {:else if view === 'editor'}
@@ -264,6 +271,8 @@
   .discord-title { font-weight: 700; text-align: center; }
   .discord-sub { font-size: 11px; line-height: 1.3; opacity: 0.9; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d9a400; margin-left: 8px; vertical-align: middle; }
+  .dot.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
   .linkish { cursor: pointer; }
   .version { padding: 4px 8px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
   .version button { font-size: 12px; padding: 4px 8px; }

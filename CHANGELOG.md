@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.13.3 - 2026-10-03
+
+Shop lists no longer cut off when you have many sets.
+
+- Fixed: the phone's stock shop stopped after about 24 rows, so packs and boxes of later sets couldn't be bought. All items now show, however many sets you install.
+- Fixed: the same limit in Check Price → Items, the board game tab of the stock shop and the furniture shop.
+- Fixed: the cart no longer reports "full" early when it holds many different products.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.13.2 - 2026-10-03
 
 Union Arena sets can now be imported.

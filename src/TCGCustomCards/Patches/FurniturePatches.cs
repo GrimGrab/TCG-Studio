@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection.Emit;
 using HarmonyLib;
 using TCGCustomCards.Runtime;
+using TCGCustomCards.UI;
 using UnityEngine;
 
 namespace TCGCustomCards.Patches
@@ -73,18 +74,8 @@ namespace TCGCustomCards.Patches
     {
         private static void Prefix(FurnitureShopUIScreen __instance)
         {
-            var panels = __instance.m_FurnitureShopPanelUIList;
             int count = CSingleton<InventoryBase>.Instance.m_ObjectData_SO.m_FurniturePurchaseDataList.Count;
-            if (panels == null || panels.Count == 0 || panels.Count >= count) return;
-            var template = panels[panels.Count - 1];
-            int before = panels.Count;
-            while (panels.Count < count)
-            {
-                var clone = Object.Instantiate(template.gameObject, template.transform.parent, false).GetComponent<FurnitureShopPanelUI>();
-                clone.name = $"{template.name}_TCGCC_{panels.Count}";
-                panels.Add(clone);
-            }
-            Plugin.Log.LogInfo($"Furniture shop: panel pool grown {before} → {panels.Count}");
+            UiPool.Grow(__instance.m_FurnitureShopPanelUIList, count, "Furniture shop");
         }
 
         private static void Postfix(FurnitureShopUIScreen __instance)

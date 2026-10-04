@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using HarmonyLib;
 using TCGCustomCards.Runtime;
+using TCGCustomCards.UI;
 
 namespace TCGCustomCards.Patches
 {
@@ -151,23 +152,20 @@ namespace TCGCustomCards.Patches
 
     // ---- Restock screen: grow the fixed panel pool when rows would be cut off ----
 
-    [HarmonyPatch(typeof(RestockItemScreen), "EvaluateRestockItemPanelUI")]
+    [HarmonyPatch]
     internal static class RestockPanelPoolPatch
     {
+        // The board-game screen overrides the method without calling base.
+        private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(RestockItemScreen), "EvaluateRestockItemPanelUI");
+            yield return AccessTools.Method(typeof(RestockItemBoardGameScreen), "EvaluateRestockItemPanelUI");
+        }
+
         private static void Prefix(RestockItemScreen __instance)
         {
-            var panels = __instance.m_RestockItemPanelUIList;
             int rows = CSingleton<InventoryBase>.Instance.m_StockItemData_SO.m_RestockDataList.Count;
-            if (panels == null || panels.Count == 0 || panels.Count >= rows) return;
-            var template = panels[panels.Count - 1];
-            int before = panels.Count;
-            while (panels.Count < rows)
-            {
-                var clone = UnityEngine.Object.Instantiate(template.gameObject, template.transform.parent, false).GetComponent<RestockItemPanelUI>();
-                clone.name = $"{template.name}_TCGCC_{panels.Count}";
-                panels.Add(clone);
-            }
-            Plugin.Log.LogInfo($"Restock screen: panel pool grown {before} → {panels.Count}");
+            UiPool.Grow(__instance.m_RestockItemPanelUIList, rows, __instance.GetType().Name);
         }
     }
 

@@ -5,7 +5,9 @@
 TCG Studio is a Windows app that installs the mod for you and lets you build custom card sets, booster packs, deck boxes, playmats, figurines, shelves and more. Everything you make shows up in the game as new items. Your vanilla cards and shop are left alone unless you choose to hide them.
 
 [![Support me on Ko-fi](https://storage.ko-fi.com/cdn/kofi2.png?v=3)](https://ko-fi.com/Z4N327UCRH)
-&nbsp; 💬 **[Join our Discord](https://discord.gg/Pf75vnuN6B)**: share setups, request features and get help.
+&nbsp; 
+
+💬 **[Join our Discord](https://discord.gg/Pf75vnuN6B)**: share setups, request features and get help.
 
 ---
 

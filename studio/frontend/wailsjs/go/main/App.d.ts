@@ -7,6 +7,7 @@ import {figurine} from '../models';
 import {game} from '../models';
 import {updater} from '../models';
 import {project} from '../models';
+import {debuglog} from '../models';
 import {importer} from '../models';
 import {art} from '../models';
 import {forge} from '../models';
@@ -50,6 +51,8 @@ export function Confirm(arg1:string):Promise<boolean>;
 export function CreateProject(arg1:string,arg2:string):Promise<project.Project>;
 
 export function CreateSetup(arg1:string,arg2:string,arg3:boolean):Promise<main.SetupsView>;
+
+export function DebugReport():Promise<debuglog.Report>;
 
 export function DefaultArtColor(arg1:string):Promise<string>;
 
@@ -182,6 +185,8 @@ export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
+export function SaveDebugReport():Promise<string>;
 
 export function SaveFurniture(arg1:setfmt.Furniture,arg2:string,arg3:string):Promise<main.AccessoryView>;
 

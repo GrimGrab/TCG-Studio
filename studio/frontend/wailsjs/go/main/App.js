@@ -74,6 +74,10 @@ export function CreateSetup(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateSetup'](arg1, arg2, arg3);
 }
 
+export function DebugReport() {
+  return window['go']['main']['App']['DebugReport']();
+}
+
 export function DefaultArtColor(arg1) {
   return window['go']['main']['App']['DefaultArtColor'](arg1);
 }
@@ -336,6 +340,10 @@ export function SaveAccessorySourceImage(arg1, arg2) {
 
 export function SaveAutoArt(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveAutoArt'](arg1, arg2, arg3, arg4);
+}
+
+export function SaveDebugReport() {
+  return window['go']['main']['App']['SaveDebugReport']();
 }
 
 export function SaveFurniture(arg1, arg2, arg3) {

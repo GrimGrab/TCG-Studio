@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { App, EventsOn, EventsOff, errText, ask } from '../lib/api';
+  import DebugLog from './DebugLog.svelte';
 
   let { notify, onchange }: { notify: (t: string, k?: string) => void; onchange: () => void } = $props();
 
@@ -171,6 +172,8 @@
           {#if check.errors?.length}<pre class="log">{check.errors.join('\n')}</pre>{/if}
         {/if}
       </section>
+
+      <DebugLog {notify} />
 
       <section class="danger-zone">
         <h3>Remove</h3>

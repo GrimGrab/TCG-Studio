@@ -61,6 +61,75 @@ export namespace art {
 
 }
 
+export namespace debuglog {
+	
+	export class Note {
+	    level: string;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Note(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.level = source["level"];
+	        this.text = source["text"];
+	    }
+	}
+	export class Report {
+	    path: string;
+	    found: boolean;
+	    when: string;
+	    size: number;
+	    truncated: boolean;
+	    bepinex: string;
+	    loadedVersion: string;
+	    errors: number;
+	    notes: Note[];
+	    header: string;
+	    log: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Report(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.found = source["found"];
+	        this.when = source["when"];
+	        this.size = source["size"];
+	        this.truncated = source["truncated"];
+	        this.bepinex = source["bepinex"];
+	        this.loadedVersion = source["loadedVersion"];
+	        this.errors = source["errors"];
+	        this.notes = this.convertValues(source["notes"], Note);
+	        this.header = source["header"];
+	        this.log = source["log"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace figurine {
 	
 	export class Placement {

@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.15.1 - 2026-10-04
+
+Setup now has a Debug log to help us sort out problems.
+
+- New: Setup → Debug log shows the game's log from its last session, with Copy to clipboard and Save as file buttons. If something doesn't work in game, close the game, copy it and send it to us on Discord. Your Windows user name is hidden in it.
+- New: the Debug log tells you when the game loaded a different mod version than this TCG Studio installs (for example when Studio is set to a different game folder than the one Steam starts), when the game hasn't run since the mod was updated, or when the mod didn't load.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.15.0 - 2026-10-04
 
 Paint your own high-resolution textures for accessories, packs and boxes in any image editor.

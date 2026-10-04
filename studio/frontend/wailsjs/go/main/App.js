@@ -330,6 +330,10 @@ export function RetrySetups() {
   return window['go']['main']['App']['RetrySetups']();
 }
 
+export function RotateCardImages(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RotateCardImages'](arg1, arg2, arg3, arg4);
+}
+
 export function SaveAccessory(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveAccessory'](arg1, arg2, arg3, arg4);
 }

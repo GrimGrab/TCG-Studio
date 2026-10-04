@@ -180,6 +180,8 @@ export function RestoreModDefaults(arg1:string):Promise<number>;
 
 export function RetrySetups():Promise<main.SetupsView>;
 
+export function RotateCardImages(arg1:string,arg2:Array<string>,arg3:number,arg4:boolean):Promise<number>;
+
 export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4:string):Promise<main.AccessoryView>;
 
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;

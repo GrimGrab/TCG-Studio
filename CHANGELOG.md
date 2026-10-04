@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.15.2 - 2026-10-04
+
+Rotate card pictures right in TCG Studio, and delete single cards.
+
+- New: ⟲ / ⟳ buttons next to "Change image…" turn a card's picture. With several cards selected you can rotate them all, or click "Turn landscape cards upright" to fix only the sideways ones. The game is updated automatically; restart the game to see it.
+- New: Delete card button when one card is selected (before, delete only showed with two or more selected).
+- Fixed: pictures turned with the Rotate button in Windows Photos (or taken sideways on a phone) showed upright in Studio but sideways in the game. They are now turned upright when you add them or use "Change image…". Cards added before this update: use the new rotate buttons.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.15.1 - 2026-10-04
 
 Setup now has a Debug log to help us sort out problems.

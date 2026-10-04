@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"os"
 	"os/exec"
@@ -778,7 +782,86 @@ func (a *App) copyIntoProject(id, file string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if b, err = uprightJPEG(b); err != nil {
+		return "", fmt.Errorf("%s: %w", filepath.Base(file), err)
+	}
 	return a.writeIntoProject(id, filepath.Base(file), b)
+}
+
+// uprightJPEG turns a JPEG whose EXIF orientation tag says "show rotated" (Windows Photos' Rotate button, phone photos)
+// into one whose pixels are upright: the game ignores the tag while Studio's preview honours it. Other files are unchanged.
+func uprightJPEG(b []byte) ([]byte, error) {
+	o := art.ExifOrientation(b)
+	if o == 1 {
+		return b, nil
+	}
+	img, err := jpeg.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, art.ApplyOrientation(img, o), &jpeg.Options{Quality: importer.JPEGQuality}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// RotateCardImages turns card images of project id by turns quarter turns clockwise (negative = anticlockwise); with
+// onlyLandscape, only images wider than tall are turned. The result is written to the project's own folder under the same
+// path, so art from the shared library becomes this setup's own copy and the library stays as it was. set.json does not
+// change; the next save re-installs the set because the image changed. Returns how many images were turned.
+func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscape bool) (int, error) {
+	if !setfmt.SafeID(id) {
+		return 0, errors.New("bad project id")
+	}
+	folder := a.ws().Folder(id)
+	done := map[string]bool{}
+	n := 0
+	for _, rel := range rels {
+		if rel == "" || done[rel] {
+			continue
+		}
+		done[rel] = true
+		dst := filepath.Join(folder, filepath.FromSlash(rel))
+		if !strings.HasPrefix(dst, folder+string(filepath.Separator)) {
+			return n, fmt.Errorf("%s: not in the project", rel)
+		}
+		b, err := os.ReadFile(a.ws().ImagePath(id, rel))
+		if err != nil {
+			return n, err
+		}
+		img, format, err := image.Decode(bytes.NewReader(b))
+		if err != nil {
+			return n, fmt.Errorf("%s: %w", rel, err)
+		}
+		img = art.ApplyOrientation(img, art.ExifOrientation(b))
+		if onlyLandscape && img.Bounds().Dx() <= img.Bounds().Dy() {
+			continue
+		}
+		img = art.RotateQuarter(img, turns)
+		var buf bytes.Buffer
+		if format == "jpeg" {
+			err = jpeg.Encode(&buf, importer.Opaque(img), &jpeg.Options{Quality: importer.JPEGQuality})
+		} else {
+			err = png.Encode(&buf, img)
+		}
+		if err != nil {
+			return n, err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return n, err
+		}
+		tmp := dst + ".tmp"
+		if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+			return n, err
+		}
+		if err := os.Rename(tmp, dst); err != nil {
+			os.Remove(tmp)
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // writeIntoProject stores an image under images/ with a free name based on name and returns its relative path.

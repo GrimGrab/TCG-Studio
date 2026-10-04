@@ -1,7 +1,20 @@
 <script lang="ts">
-  import { RARITIES, ELEMENTS, LANES, money } from '../../lib/api';
+  import { App, RARITIES, ELEMENTS, LANES, money, errText } from '../../lib/api';
 
-  let { project, cards, notify, ondelete }: { project: any; cards: any[]; notify: (t: string, k?: string) => void; ondelete: () => void } = $props();
+  let { project, cards, notify, onimages, ondelete }: {
+    project: any; cards: any[]; notify: (t: string, k?: string) => void; onimages: (what: string) => Promise<void>; ondelete: () => void;
+  } = $props();
+
+  let rotating = $state(false);
+  async function rotate(turns: number, onlyLandscape: boolean) {
+    rotating = true;
+    try {
+      const n = await App.RotateCardImages(project.id, cards.map((c) => c.image).filter(Boolean), turns, onlyLandscape);
+      if (n) await onimages(`Rotated ${n} image(s).`);
+      else notify(onlyLandscape ? 'No landscape images among the selected cards.' : 'Nothing to rotate.', 'ok');
+    } catch (e) { notify(errText(e), 'error'); }
+    rotating = false;
+  }
 
   let rarity = $state('');
   let element = $state('');
@@ -95,6 +108,15 @@
       <div class="muted small">A pack with an empty card list draws from the whole set.</div>
     </section>
   {/if}
+
+  <section>
+    <b>Image</b>
+    <div class="row">
+      <button disabled={rotating} onclick={() => rotate(-1, false)}>⟲ Rotate left</button>
+      <button disabled={rotating} onclick={() => rotate(1, false)}>⟳ Rotate right</button>
+    </div>
+    <button disabled={rotating} onclick={() => rotate(1, true)} title="Turns only the images that are wider than tall">Turn landscape cards upright</button>
+  </section>
 
   <section>
     <button class="danger" onclick={ondelete}>Delete {cards.length} cards</button>

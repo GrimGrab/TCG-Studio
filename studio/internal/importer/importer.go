@@ -21,6 +21,7 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
+	"tcgstudio/internal/art"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/scryfall"
 	"tcgstudio/internal/setfmt"
@@ -378,7 +379,7 @@ func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, e
 	}
 	changed := format != "png"
 	if job.rotate && img.Bounds().Dx() > img.Bounds().Dy() {
-		img = rotateCW(img)
+		img = art.RotateQuarter(img, 1)
 		changed = true
 	}
 	if fitted, ok := fitImage(img, job.aspect, width); ok {
@@ -470,17 +471,6 @@ func FitCardImages(p *project.Project, aspect float64) (int, error) {
 	return n, nil
 }
 
-// rotateCW turns an image a quarter turn clockwise (landscape cards → portrait card slots).
-func rotateCW(src image.Image) image.Image {
-	b := src.Bounds()
-	dst := image.NewNRGBA(image.Rect(0, 0, b.Dy(), b.Dx()))
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			dst.Set(b.Max.Y-1-y, x-b.Min.X, src.At(x, y))
-		}
-	}
-	return dst
-}
 
 // VariantTags names what makes a printing special (empty for a regular printing).
 func VariantTags(c *scryfall.Card) []string {

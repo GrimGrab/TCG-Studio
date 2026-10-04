@@ -1,7 +1,10 @@
 <script lang="ts">
   import { App, projectFile, money, RARITIES, ELEMENTS, BORDERS, LANES, errText } from '../../lib/api';
 
-  let { project, card, imgBust, notify }: { project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void } = $props();
+  let { project, card, imgBust, notify, onimages, ondelete }: {
+    project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void;
+    onimages: (what: string) => Promise<void>; ondelete: () => void;
+  } = $props();
 
   const meta = $derived(project.meta?.cards?.[card.id]);
   let effectText = $state('');
@@ -52,6 +55,16 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
+  let rotating = $state(false);
+  async function rotate(turns: number) {
+    rotating = true;
+    try {
+      await App.RotateCardImages(project.id, [card.image], turns, false);
+      await onimages('Rotated the card image.');
+    } catch (e) { notify(errText(e), 'error'); }
+    rotating = false;
+  }
+
   const variantKeys = BORDERS.flatMap((b) => [b, b + '_foil']);
   const others = $derived(project.set.cards.filter((c: any) => c.id !== card.id));
   const preview = $derived(
@@ -69,7 +82,12 @@
   <div class="preview" class:framed={project.set.renderMode === 'Framed'}>
     {#if card.image}<img src={projectFile(project.id, card.image, imgBust)} alt={card.name} />{/if}
   </div>
-  <div class="row"><button class="small" onclick={changeImage}>Change image…</button><span class="muted small">{card.image}</span></div>
+  <div class="row">
+    <button class="small" onclick={changeImage}>Change image…</button>
+    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(-1)} title="Rotate left">⟲</button>
+    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(1)} title="Rotate right">⟳</button>
+    <span class="muted small path">{card.image}</span>
+  </div>
 
   <label class="field">Name<input bind:value={card.name} /></label>
   <div class="row">
@@ -136,6 +154,8 @@
       placeholder={'{ "playEffectQueueDataList": [ { "playEffectType": "DrawCard", "playEffectTypeSecondary": "None", "countList": [1] } ] }'}></textarea>
   </label>
   {#if effectError}<div class="err small">{effectError}</div>{/if}
+
+  <div class="delete"><button class="danger" onclick={ondelete}>Delete card</button></div>
 </div>
 
 <style>
@@ -152,4 +172,6 @@
   .mono { font-family: Consolas, monospace; font-size: 12px; }
   .err { color: var(--danger); }
   h3 { margin-top: 8px; }
+  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .delete { padding-top: 10px; border-top: 1px solid var(--line); }
 </style>

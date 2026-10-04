@@ -70,6 +70,15 @@
     }
   }
 
+  /** Card image files changed on disk (e.g. rotated): reload them and bring the game up to date like a save would. */
+  async function imagesChanged(what: string) {
+    imgBust = Date.now();
+    try { installState = (await App.ProjectInstallState(id)) as any; } catch {}
+    if (dirty) notify(`${what} Save to update the game.`, 'ok');
+    else if (installState === 'stale' && !errors) await install();
+    else notify(what, 'ok');
+  }
+
   async function leave() {
     await flushAll();
     if (dirty && !(await ask('Discard unsaved changes?'))) return;
@@ -144,7 +153,7 @@
 
     <div class="body">
       {#if tab === 'cards'}
-        <CardsTab {project} {notify} {imgBust} />
+        <CardsTab {project} {notify} {imgBust} onimages={imagesChanged} />
       {:else if tab === 'packs'}
         <PacksTab {project} {notify} {imgBust} {save} {hooks} />
       {:else}

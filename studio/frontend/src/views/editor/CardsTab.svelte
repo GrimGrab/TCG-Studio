@@ -3,7 +3,9 @@
   import CardDetail from './CardDetail.svelte';
   import BulkEdit from './BulkEdit.svelte';
 
-  let { project, notify, imgBust }: { project: any; notify: (t: string, k?: string) => void; imgBust: number } = $props();
+  let { project, notify, imgBust, onimages }: {
+    project: any; notify: (t: string, k?: string) => void; imgBust: number; onimages: (what: string) => Promise<void>;
+  } = $props();
 
   let query = $state('');
   let rarity = $state('');
@@ -121,7 +123,7 @@
   }
 
   async function deleteSelected() {
-    if (!(await ask(`Delete ${selected.length} card(s) from this set? Players who own them keep the data (it comes back if a card with the same id is re-added).`))) return;
+    if (!(await ask(`Delete ${selected.length === 1 ? 'this card' : `${selected.length} cards`} from this set? Players who own them keep the data (it comes back if a card with the same id is re-added).`))) return;
     project.set.cards = project.set.cards.filter((c: any) => !selected.includes(c.id));
     for (const p of project.set.packs) p.cards = (p.cards ?? []).filter((id: string) => !selected.includes(id));
     selected = [];
@@ -183,9 +185,9 @@
 
   <aside>
     {#if selectedCards.length === 1}
-      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} />
+      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {onimages} ondelete={deleteSelected} />
     {:else if selectedCards.length > 1}
-      <BulkEdit {project} cards={selectedCards} {notify} ondelete={deleteSelected} />
+      <BulkEdit {project} cards={selectedCards} {notify} {onimages} ondelete={deleteSelected} />
     {:else}
       <div class="summary">
         <h3>Set summary</h3>

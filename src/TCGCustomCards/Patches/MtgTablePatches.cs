@@ -9,8 +9,9 @@ namespace TCGCustomCards.Patches
     /// MTG mode: right-clicking a play table with a deck that contains MTG cards asks which game to play.
     /// "Magic (Forge)" in-game mode runs the vanilla sit (customer, deck and seat checks) and <see cref="MtgDelayStart"/> swaps the
     /// Tetramon board for an MTG game against Forge's AI that ends in the vanilla win/lose flow. [MTG] PlayMode = ForgeWindow instead
-    /// exports the deck and opens Forge's own window (P0). "Tetramon" re-runs the vanilla sit. Tournament days, a missing Forge
-    /// install or [MTG] MtgMode off = vanilla only.
+    /// exports the deck and opens Forge's own window (P0). "Tetramon" re-runs the vanilla sit. A missing Forge install or
+    /// [MTG] MtgMode off = vanilla only. Tournament days take the same path: the vanilla sit does the tournament checks (registered,
+    /// right table, round not reported) and vanilla StopTableGame records the round result that ReportWinner set.
     /// </summary>
     [HarmonyPatch(typeof(InteractablePlayTable), nameof(InteractablePlayTable.OnRightMouseButtonUp))]
     internal static class MtgTableChoice
@@ -22,8 +23,6 @@ namespace TCGCustomCards.Patches
             if (_vanilla) return true;
             if (ChoicePopup.IsOpen) return false; // held right mouse button repeats the call
             if (!MtgMode.Enabled || !ForgeLauncher.IsInstalled) return true;
-            var t = CPlayerData.m_TournamentData;
-            if (t != null && t.m_IsTournamentDay && !t.m_IsTournamentDayOver) return true;
             if (!MtgMode.SelectedDeckHasMtg()) return true;
 
             var table = __instance;

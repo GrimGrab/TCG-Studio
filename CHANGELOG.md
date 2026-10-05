@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v0.15.3 - 2026-10-05
+
+Magic games now work in tournaments.
+
+- Fixed: with Magic mode on, sitting at your tournament table said "deck incomplete" and you couldn't play your round. Tournament tables now offer Magic (Forge) like any other table, and your win or loss counts for the tournament.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.15.2 - 2026-10-04
 
 Rotate card pictures right in TCG Studio, and delete single cards.

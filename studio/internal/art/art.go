@@ -37,8 +37,11 @@ type Options struct {
 	// NoPackText leaves the title and "7 CARDS" off the pack (Smart generate's fallback); the box keeps its title.
 	NoPackText bool `json:"noPackText"`
 	// Resolve finds a project file to read (the icon, FrontImage) by its relative path; nil = inside projectFolder. Sets
-	// whose files live in the shared library pass Project.ImagePath. Generated files are always written to projectFolder.
+	// whose files live in the shared library pass Project.ImagePath.
 	Resolve func(rel string) string `json:"-"`
+	// Target picks where a generated file goes (the path to store, the file to write); nil = inside projectFolder.
+	// Projects pass Project.WriteTarget (the set's shared folder).
+	Target func(rel string) (string, string) `json:"-"`
 }
 
 // InFolder resolves relative paths inside a folder (Options.Resolve's default).
@@ -185,10 +188,18 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 		drawScaled(bIcon, image.Rect(x, 172+i*4, x+132, 172+i*4+254), packOnly)
 	}
 
-	for rel, img := range map[string]*image.NRGBA{res.PackTexture: pack, res.PackIcon: pIcon, res.BoxTexture: box, res.BoxIcon: bIcon} {
-		if err := savePNG(filepath.Join(projectFolder, filepath.FromSlash(rel)), img); err != nil {
+	if o.Target == nil {
+		o.Target = func(rel string) (string, string) { return rel, filepath.Join(projectFolder, filepath.FromSlash(rel)) }
+	}
+	for _, f := range []struct {
+		rel *string
+		img *image.NRGBA
+	}{{&res.PackTexture, pack}, {&res.PackIcon, pIcon}, {&res.BoxTexture, box}, {&res.BoxIcon, bIcon}} {
+		rel, file := o.Target(*f.rel)
+		if err := savePNG(file, f.img); err != nil {
 			return res, err
 		}
+		*f.rel = rel
 	}
 	return res, nil
 }

@@ -96,11 +96,29 @@ type Report struct {
 	Setups        []SetupInfo   `json:"setups"`
 	MoveSaves     int64         `json:"moveSaves"` // bytes Move everything frees (copies already shared, leftovers)
 	MoveFiles     int           `json:"moveFiles"` // files it moves, drops or deletes (set and accessory files)
+	MoveBytes     int64         `json:"moveBytes"` // bytes it moves into shared folders (stay on disk, just elsewhere)
+	MoveList      []MoveFile    `json:"moveList"`  // every file of MoveFiles, for the page to list
 	Differ        []Differ      `json:"differ"`    // sets whose files differ from the shared ones: the player's choice
 	Unused        []UnusedEntry `json:"unused"`    // everything no setup uses, whatever the kind
 	// Accessories: the shared asset store and each setup's own older accessory files.
 	Accessories AccessoryStorage `json:"accessories"`
 }
+
+// MoveFile is one file Move everything touches.
+type MoveFile struct {
+	Setup  string `json:"setup"`  // setup name ("Catalog" for the catalog's templates)
+	Owner  string `json:"owner"`  // set name, or "Accessories & furniture"
+	File   string `json:"file"`   // path in the setup's set (or accessories) folder
+	Bytes  int64  `json:"bytes"`  //
+	Action string `json:"action"` // MoveTo (moved to shared), MoveDrop (same file already shared: deleted), MoveLeftover (unused: deleted)
+}
+
+// MoveFile actions.
+const (
+	MoveTo       = "move"
+	MoveDrop     = "duplicate"
+	MoveLeftover = "leftover"
+)
 
 // loc is one setup's copy of a set.
 type loc struct {
@@ -109,17 +127,20 @@ type loc struct {
 }
 
 // catalogSetup is the loc.setup of the shared catalog's set templates (not a setup id: those never contain ':'). They
-// count as users of library art and take part in Move/Shrink like a setup's copy, but aren't listed as a setup.
+// count as users of library art and take part in Move/Shrink like a setup's copy, but aren't listed as a setup. A
+// template's file that differs from a setup's is a stale copy (templated before the setup changed it, e.g. by Smart
+// generate after an import): Move drops it and the template uses the shared file.
 const catalogSetup = ":catalog"
 
-// sets loads every project of every setup and of the catalog, grouped by set id.
+// sets loads every project of every setup and of the catalog, grouped by set id. The catalog comes last, so a setup's
+// file becomes the shared one rather than the template's older copy.
 func sets(h setups.Home) (map[string][]loc, []setups.Summary, error) {
 	list, err := h.List()
 	if err != nil {
 		return nil, nil, err
 	}
 	out := map[string][]loc{}
-	dirs := append([]setups.Summary{{ID: catalogSetup, Folder: filepath.Join(h.Root, catalog.DirName)}}, list...)
+	dirs := append(append([]setups.Summary{}, list...), setups.Summary{ID: catalogSetup, Folder: filepath.Join(h.Root, catalog.DirName)})
 	for _, s := range dirs {
 		ws := project.Workspace{Root: s.Folder, Library: project.LibraryDir(h.Root)}
 		entries, _ := os.ReadDir(ws.ProjectsDir())
@@ -224,7 +245,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Setups: []SetupInfo{}, Unused: []UnusedEntry{}, Differ: []Differ{}}
+	r := &Report{Setups: []SetupInfo{}, Unused: []UnusedEntry{}, Differ: []Differ{}, MoveList: []MoveFile{}}
 	r.Workspace, _ = dirSize(h.Root)
 	r.Library, _ = dirSize(project.LibraryDir(h.Root))
 	r.Assets, _ = dirSize(filepath.Join(h.Root, assets.DirName))
@@ -236,7 +257,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 		r.GameLibrary, _ = dirSize(project.GameLibraryDir(gameDir))
 	}
 
-	names := map[string]string{}
+	names := map[string]string{catalogSetup: "Catalog"}
 	for _, sm := range list {
 		names[sm.ID] = sm.Name
 	}
@@ -256,23 +277,33 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 				continue
 			}
 			n := 0
+			add := func(file string, bytes int64, action string) {
+				n++
+				r.MoveList = append(r.MoveList, MoveFile{Setup: names[l.setup], Owner: l.p.Set.Name, File: file, Bytes: bytes, Action: action})
+				if action == MoveTo {
+					r.MoveBytes += bytes
+				} else {
+					r.MoveSaves += bytes
+				}
+			}
 			for _, rel := range ownFilesOf(l.p) {
 				own := filepath.Join(l.p.Folder, filepath.FromSlash(rel))
 				switch cp := counterpart(l.p, rel); {
 				case cp == "" && claimed[rel] == "":
 					claimed[rel] = own
-					n++
+					add(rel, size(own), MoveTo)
 				case cp == "" && sameFile(own, claimed[rel]):
-					n++
-					r.MoveSaves += size(own)
+					add(rel, size(own), MoveDrop)
 				case cp == rel && sameFile(own, filepath.Join(l.p.LibFolder, filepath.FromSlash(rel))):
-					n++
-					r.MoveSaves += size(own)
+					add(rel, size(own), MoveDrop)
+				case l.setup == catalogSetup && (cp == rel || cp == "" && claimed[rel] != ""):
+					// A template's stale copy: the shared file (or the setup's, moved first) wins.
+					add(rel, size(own), MoveDrop)
 				}
 			}
 			for _, f := range setLeftovers(l.p) {
-				n++
-				r.MoveSaves += size(f)
+				rel, _ := filepath.Rel(l.p.Folder, f)
+				add(filepath.ToSlash(rel), size(f), MoveLeftover)
 			}
 			r.MoveFiles += n
 			if movable[l.setup] == nil {
@@ -341,6 +372,15 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	}
 
 	r.Accessories = analyzeAccessories(h, list)
+	for _, f := range r.Accessories.list { // Move everything takes these too
+		r.MoveList = append(r.MoveList, f)
+		r.MoveFiles++
+		if f.Action == MoveTo {
+			r.MoveBytes += f.Bytes
+		} else {
+			r.MoveSaves += f.Bytes
+		}
+	}
 	r.Unused = unusedEntries(h, gameDirIf(r.GameFound, gameDir), bySet, list)
 	return r, nil
 }

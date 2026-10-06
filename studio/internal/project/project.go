@@ -109,6 +109,32 @@ func (p *Project) InLibrary(rel string) bool {
 	return p.LibFolder != "" && p.ImagePath(rel) != filepath.Join(p.Folder, filepath.FromSlash(rel))
 }
 
+// WriteTarget is where Studio writes a set file it makes or changes (pack/box art, Smart-art parts, card back, photos,
+// rotated card art) given as rel ("images/…"). New and edited files go to the set's shared folder, so a setup keeps only
+// its game info and an edit shows in every setup using the shared art; a set kept as its own art (ArtFolder) writes
+// into that named folder, never over the ordinary shared files. A file this setup still keeps itself (an own copy the
+// Storage page hasn't moved yet) is written there, so the setup never starts reading a different file. Returns the path
+// to store in set.json / studio.json and the file to write; without a library both are in the project folder.
+func (p *Project) WriteTarget(rel string) (string, string) {
+	if af := p.ArtFolder(); af != "" && !strings.HasPrefix(rel, af+"/") {
+		rel = af + "/" + rel
+	}
+	own := filepath.Join(p.Folder, filepath.FromSlash(rel))
+	if p.LibFolder == "" || fileExists(own) {
+		return rel, own
+	}
+	return rel, filepath.Join(p.LibFolder, filepath.FromSlash(rel))
+}
+
+// WriteFile writes a set file through WriteTarget (folders created) and returns the path to store.
+func (p *Project) WriteFile(rel string, b []byte) (string, error) {
+	rel, f := p.WriteTarget(rel)
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		return "", err
+	}
+	return rel, os.WriteFile(f, b, 0o644)
+}
+
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 type Summary struct {

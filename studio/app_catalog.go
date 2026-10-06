@@ -34,6 +34,18 @@ func (a *App) CatalogList(kind string) ([]catalog.Entry, error) {
 	return list, err
 }
 
+// inCatalog reports whether set id can be added from the catalog (a template, or another setup has it) while the active
+// setup doesn't have it.
+func (a *App) inCatalog(id string) bool {
+	list, _ := a.CatalogList(catalog.KindSet)
+	for _, e := range list {
+		if e.ID == id && !e.Here {
+			return true
+		}
+	}
+	return false
+}
+
 // AddFromCatalog copies catalog items into the active setup. Sets are added (Install them on the Sets page as usual);
 // accessories and furniture are added at the end of the library, which is installed like any edit.
 func (a *App) AddFromCatalog(kind string, ids []string) (*catalog.AddResult, error) {

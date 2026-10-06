@@ -486,9 +486,12 @@
           {:else}
             <span class="grow"></span>
             <div class="btnstack">
-              <button class="primary" disabled={!!importing || !preview.cards}
-                onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>Import</button>
-              {#if inCatalog[preview.projectId]}<button onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>{/if}
+              {#if inCatalog[preview.projectId]}
+                <button class="primary" onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
+              {:else}
+                <button class="primary" disabled={!!importing || !preview.cards}
+                  onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>Import</button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -536,8 +539,11 @@
             <button onclick={() => open(s.projectId)}>Open</button>
           {:else}
             <div class="btnstack">
-              <button class="primary" disabled={!!importing} onclick={() => doImport(s)}>Import</button>
-              {#if inCatalog[s.projectId]}<button onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>{/if}
+              {#if inCatalog[s.projectId]}
+                <button class="primary" onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
+              {:else}
+                <button class="primary" disabled={!!importing} onclick={() => doImport(s)}>Import</button>
+              {/if}
             </div>
           {/if}
         </div>

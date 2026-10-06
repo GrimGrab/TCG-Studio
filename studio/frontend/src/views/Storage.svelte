@@ -59,15 +59,37 @@
     notify(parts.join(' '), 'ok');
   }
 
+  // What Move everything does, in words: bytes moved (they stay on disk, in shared folders) and bytes freed (copies
+  // already shared, leftovers nothing uses).
+  const actionText: Record<string, string> = { move: 'moves to shared', duplicate: 'already shared — deleted here', leftover: 'unused — deleted' };
+  function moveSummary(r: any): string {
+    const list: any[] = r.moveList ?? [];
+    const n = (a: string) => list.filter((f) => f.action === a).length;
+    const parts: string[] = [];
+    if (n('move')) parts.push(`${n('move')} move to shared folders (${size(r.moveBytes)})`);
+    if (n('duplicate')) parts.push(`${n('duplicate')} already shared, deleted here`);
+    if (n('leftover')) parts.push(`${n('leftover')} unused, deleted`);
+    if (r.moveSaves > 0) parts.push(`about ${size(r.moveSaves)} freed`);
+    return parts.join(', ');
+  }
+  function moveGroups(list: any[]) {
+    const out: { key: string; setup: string; owner: string; files: any[] }[] = [];
+    for (const f of list) {
+      const key = `${f.setup}/${f.owner}`;
+      let g = out.find((x) => x.key === key);
+      if (!g) out.push((g = { key, setup: f.setup, owner: f.owner, files: [] }));
+      g.files.push(f);
+    }
+    return out;
+  }
+
   // Move everything: every setup's set files into the set's shared folder, accessory & furniture files into the shared
   // store, leftovers deleted. Files that differ from the shared ones wait for the player's choice (below).
   async function moveEverything() {
     const r = report;
     if (!(await ask(
       `Move everything to shared storage?\n\n` +
-      `• ${r.moveFiles} files (card art, pack & box art, photos, accessory files) move from your setups into shared folders; ` +
-      `copies already shared are stored once and leftovers nothing uses are deleted` +
-      (r.moveSaves > 0 ? ` — about ${size(r.moveSaves)} freed.\n` : '.\n') +
+      `• ${r.moveFiles} files: ${moveSummary(r)}.\n` +
       `• Afterwards your setups keep only their game info (names, prices, tiers) and saves.\n` +
       `• Files that differ from the shared ones are NOT touched: you decide for each set afterwards.\n` +
       `\nYour sets and items look the same. You can cancel at any time.`))) return;
@@ -314,9 +336,19 @@
     <section>
       <h3>Move everything to shared</h3>
       {#if report.moveFiles > 0}
-        <p class="small">{report.moveFiles} files (card art, pack &amp; box art, accessory files, leftovers) are still kept inside your
-          setups. Moving them puts them in shared folders so setups keep only their game info{#if report.moveSaves > 0}, and frees
-          about <b>{size(report.moveSaves)}</b>{/if}.</p>
+        <p class="small">{report.moveFiles} files are still kept inside your setups: {moveSummary(report)}. Afterwards setups keep
+          only their game info.</p>
+        <details class="movelist">
+          <summary>Show the files</summary>
+          {#each moveGroups(report.moveList ?? []) as g (g.key)}
+            <div class="mg"><b>{g.owner}</b> <span class="muted">in {g.setup}</span></div>
+            <table>
+              <tbody>{#each g.files as f (f.file)}
+                <tr><td class="f">{f.file}</td><td class="muted">{size(f.bytes)}</td><td class={f.action}>{actionText[f.action] ?? f.action}</td></tr>
+              {/each}</tbody>
+            </table>
+          {/each}
+        </details>
         <div class="row"><button class="primary" onclick={moveEverything} disabled={!!running}>Move everything to shared…</button></div>
       {:else}
         <p class="small ok">✓ Everything that can be shared is shared. New imports go there too.</p>
@@ -485,6 +517,13 @@
   .group { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
   .pick { display: flex; gap: 8px; align-items: center; font-size: 13px; }
   .num { text-align: right; white-space: nowrap; }
+  .movelist { font-size: 12px; }
+  .movelist summary { cursor: pointer; color: var(--muted); }
+  .movelist .mg { margin-top: 8px; }
+  .movelist table { border-collapse: collapse; width: 100%; max-height: 320px; }
+  .movelist td { padding: 1px 8px 1px 0; white-space: nowrap; }
+  .movelist td.f { width: 100%; white-space: normal; word-break: break-all; }
+  .movelist .duplicate, .movelist .leftover { color: var(--muted); }
   .preview { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
   .pair { display: flex; gap: 12px; flex-wrap: wrap; }
   .pair figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }

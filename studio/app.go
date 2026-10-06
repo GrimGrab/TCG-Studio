@@ -403,11 +403,16 @@ func (a *App) DefaultImportOptions(source string) (importer.Options, error) {
 	return opt, nil
 }
 
-// ImportSet runs an import from a source, emitting "import:progress" events. Returns the new project id.
+// ImportSet runs an import from a source, emitting "import:progress" events. Returns the new project id. A set the
+// catalog (or another setup) already has is added from there instead (Import page), never imported again: an import
+// would generate pack art over the shared art other setups use.
 func (a *App) ImportSet(source, code string, opt importer.Options) (string, error) {
 	src, err := a.sources.Get(source)
 	if err != nil {
 		return "", err
+	}
+	if id := src.ProjectID(code, opt.Lang); a.inCatalog(id) {
+		return "", fmt.Errorf("%s is already in your catalog (imported in another setup or earlier) — use Add from catalog", id)
 	}
 	a.mu.Lock()
 	if a.cancel != nil {
@@ -432,7 +437,7 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 	// Brand the default booster with generated art when the game's templates are available (not when the import brought
 	// its own pack art, e.g. an EPL mod).
 	if len(p.Set.Packs) > 0 && p.Set.Packs[0].PackTexture == "" && a.templatesReady() {
-		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{NoPackText: true, Resolve: p.ImagePath}); err == nil {
+		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{NoPackText: true, Resolve: p.ImagePath, Target: p.WriteTarget}); err == nil {
 			applyArt(&p.Set.Packs[0], res)
 			_ = a.ws().Save(p)
 		}
@@ -461,6 +466,7 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 		o.FilePrefix = packID + "_"
 	}
 	o.Resolve = p.ImagePath // the set icon / front image may live in the shared library
+	o.Target = p.WriteTarget
 	return art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, o)
 }
 
@@ -474,8 +480,12 @@ func (a *App) ChooseSetCardBack(id string) (string, error) {
 	if err != nil || file == "" {
 		return "", err
 	}
-	rel := "images/card_back.png"
-	return rel, art.CardBackFromFile(file, filepath.Join(a.ws().Folder(id), filepath.FromSlash(rel)))
+	p, err := a.ws().Load(id)
+	if err != nil {
+		return "", err
+	}
+	rel, out := p.WriteTarget("images/card_back.png")
+	return rel, art.CardBackFromFile(file, out)
 }
 
 // GenerateSetCardBack makes a card back from a colour, the set icon and a title.
@@ -483,10 +493,12 @@ func (a *App) GenerateSetCardBack(id, color, title string) (string, error) {
 	if !setfmt.SafeID(id) {
 		return "", errors.New("bad project id")
 	}
-	rel := "images/card_back.png"
-	folder := a.ws().Folder(id)
-	return rel, art.GenerateCardBackFrom(func(r string) string { return a.ws().ImagePath(id, r) }, "", color, title,
-		filepath.Join(folder, filepath.FromSlash(rel)))
+	p, err := a.ws().Load(id)
+	if err != nil {
+		return "", err
+	}
+	rel, out := p.WriteTarget("images/card_back.png")
+	return rel, art.GenerateCardBackFrom(p.ImagePath, "", color, title, out)
 }
 
 func (a *App) globalBackPath() (string, error) {
@@ -562,17 +574,18 @@ func (a *App) boxArtFromPack(p *project.Project, pk *setfmt.Pack) (BoxArt, error
 	if pk.PackTexture == "" {
 		return BoxArt{}, errors.New("this pack has no pack texture to take the front from")
 	}
-	front := "images/" + pk.ID + "_box_front.png"
-	if err := art.CropPackFront(p.ImagePath(pk.PackTexture), filepath.Join(p.Folder, filepath.FromSlash(front))); err != nil {
+	front, frontFile := p.WriteTarget("images/" + pk.ID + "_box_front.png")
+	if err := art.CropPackFront(p.ImagePath(pk.PackTexture), frontFile); err != nil {
 		return BoxArt{}, err
 	}
-	r, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{FilePrefix: pk.ID + "_box_", FrontImage: front, Resolve: p.ImagePath})
+	r, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name,
+		art.Options{FilePrefix: pk.ID + "_box_", FrontImage: front, Resolve: p.ImagePath, Target: p.WriteTarget})
 	if err != nil {
 		return BoxArt{}, err
 	}
 	for _, f := range []string{r.PackTexture, r.PackIcon} { // only the box is wanted
 		if f != "" && f != pk.PackTexture && f != pk.PackIcon {
-			_ = os.Remove(filepath.Join(p.Folder, filepath.FromSlash(f)))
+			_ = os.Remove(p.ImagePath(f))
 		}
 	}
 	layout, _ := json.Marshal(map[string]any{"version": 2, "layers": []any{}, "base": "vanilla",
@@ -884,9 +897,9 @@ func uprightJPEG(b []byte) ([]byte, error) {
 }
 
 // RotateCardImages turns card images of project id by turns quarter turns clockwise (negative = anticlockwise); with
-// onlyLandscape, only images wider than tall are turned. The result is written to the project's own folder under the same
-// path, so art from the shared library becomes this setup's own copy and the library stays as it was. set.json does not
-// change; the next save re-installs the set because the image changed. Returns how many images were turned.
+// onlyLandscape, only images wider than tall are turned. The result replaces the file the setup reads (its own copy, or the
+// shared file — every setup using the shared art shows the turned image). set.json does not change; the next save
+// re-installs the set because the image changed. Returns how many images were turned.
 func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscape bool) (int, error) {
 	if !setfmt.SafeID(id) {
 		return 0, errors.New("bad project id")
@@ -899,11 +912,11 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 			continue
 		}
 		done[rel] = true
-		dst := filepath.Join(folder, filepath.FromSlash(rel))
-		if !strings.HasPrefix(dst, folder+string(filepath.Separator)) {
+		if !strings.HasPrefix(filepath.Join(folder, filepath.FromSlash(rel)), folder+string(filepath.Separator)) {
 			return n, fmt.Errorf("%s: not in the project", rel)
 		}
-		b, err := os.ReadFile(a.ws().ImagePath(id, rel))
+		dst := a.ws().ImagePath(id, rel)
+		b, err := os.ReadFile(dst)
 		if err != nil {
 			return n, err
 		}
@@ -941,33 +954,31 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 	return n, nil
 }
 
-// writeIntoProject stores an image under images/ with a free name based on name and returns its relative path.
+// writeIntoProject stores an image under images/ (in the set's shared folder, Project.WriteTarget) with a free name based
+// on name and returns its relative path.
 func (a *App) writeIntoProject(id, name string, b []byte) (string, error) {
 	if !setfmt.SafeID(id) {
 		return "", errors.New("bad project id")
 	}
-	dir := filepath.Join(a.ws().Folder(id), "images")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	p, err := a.ws().Load(id)
+	if err != nil {
 		return "", err
 	}
 	base := strings.ReplaceAll(filepath.Base(name), " ", "_")
 	ext := filepath.Ext(base)
 	name = base
-	lib := filepath.Join(a.ws().LibFolder(id), "images")
 	for n := 2; ; n++ {
-		// Free in the project and in the set's shared library folder: a project file shadows the library file of the
-		// same name, which other references of this set may still use.
-		_, errOwn := os.Stat(filepath.Join(dir, name))
-		_, errLib := os.Stat(filepath.Join(lib, name))
-		if os.IsNotExist(errOwn) && os.IsNotExist(errLib) {
+		// Free in the project and in the set's shared folder: a project file shadows the shared file of the same name,
+		// which other references of this set (or other setups) may still use.
+		rel, _ := p.WriteTarget("images/" + name)
+		_, errOwn := os.Stat(filepath.Join(p.Folder, filepath.FromSlash(rel)))
+		_, errLib := os.Stat(filepath.Join(p.LibFolder, filepath.FromSlash(rel)))
+		if os.IsNotExist(errOwn) && (p.LibFolder == "" || os.IsNotExist(errLib)) {
 			break
 		}
 		name = fmt.Sprintf("%s-%d%s", strings.TrimSuffix(base, ext), n, ext)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
-		return "", err
-	}
-	return "images/" + name, nil
+	return p.WriteFile("images/"+name, b)
 }
 
 // SaveProjectImage stores an image made in the studio (data URL, e.g. a straightened photo) in the project; returns its path.

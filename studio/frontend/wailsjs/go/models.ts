@@ -1088,6 +1088,26 @@ export namespace library {
 	        this.shared = source["shared"];
 	    }
 	}
+	export class MoveFile {
+	    setup: string;
+	    owner: string;
+	    file: string;
+	    bytes: number;
+	    action: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MoveFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setup = source["setup"];
+	        this.owner = source["owner"];
+	        this.file = source["file"];
+	        this.bytes = source["bytes"];
+	        this.action = source["action"];
+	    }
+	}
 	export class Progress {
 	    message: string;
 	    done: number;
@@ -1230,6 +1250,8 @@ export namespace library {
 	    setups: SetupInfo[];
 	    moveSaves: number;
 	    moveFiles: number;
+	    moveBytes: number;
+	    moveList: MoveFile[];
 	    differ: Differ[];
 	    unused: UnusedEntry[];
 	    accessories: AccessoryStorage;
@@ -1251,6 +1273,8 @@ export namespace library {
 	        this.setups = this.convertValues(source["setups"], SetupInfo);
 	        this.moveSaves = source["moveSaves"];
 	        this.moveFiles = source["moveFiles"];
+	        this.moveBytes = source["moveBytes"];
+	        this.moveList = this.convertValues(source["moveList"], MoveFile);
 	        this.differ = this.convertValues(source["differ"], Differ);
 	        this.unused = this.convertValues(source["unused"], UnusedEntry);
 	        this.accessories = this.convertValues(source["accessories"], AccessoryStorage);

@@ -24,6 +24,7 @@ type AccessoryStorage struct {
 	MoveFiles   int            `json:"moveFiles"`   //
 	UnusedBytes int64          `json:"unusedBytes"` // store files no setup refers to
 	UnusedFiles int            `json:"unusedFiles"`
+	list        []MoveFile     // the files of MoveFiles (Report.MoveList)
 }
 
 type AccessorySet struct {
@@ -102,13 +103,21 @@ func analyzeAccessories(h setups.Home, list []setups.Summary) AccessoryStorage {
 			continue
 		}
 		as := AccessorySet{ID: s.ID, Name: s.Name}
+		item := func(file string, bytes int64, action string) {
+			out.list = append(out.list, MoveFile{Setup: s.Name, Owner: "Accessories & furniture", File: file, Bytes: bytes, Action: action})
+		}
 		for _, rel := range ownFiles(l) {
+			n := size(l.Resolve(rel))
 			as.Files++
-			as.Bytes += size(l.Resolve(rel))
+			as.Bytes += n
+			item(rel, n, MoveTo)
 		}
 		for _, p := range leftovers(l) {
+			n := size(p)
 			as.LeftoverFiles++
-			as.LeftoverBytes += size(p)
+			as.LeftoverBytes += n
+			rel, _ := filepath.Rel(l.Folder, p)
+			item(filepath.ToSlash(rel), n, MoveLeftover)
 		}
 		if as.Files+as.LeftoverFiles > 0 {
 			out.Setups = append(out.Setups, as)

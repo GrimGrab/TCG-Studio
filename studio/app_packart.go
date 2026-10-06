@@ -20,6 +20,7 @@ import (
 
 	"tcgstudio/internal/art"
 	"tcgstudio/internal/importer"
+	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -53,18 +54,20 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 	if err != nil {
 		return PackArtFiles{}, err
 	}
-	folder := a.ws().Folder(id)
+	p, err := a.ws().Load(id)
+	if err != nil {
+		return PackArtFiles{}, err
+	}
 	out := PackArtFiles{Texture: pre + which + "_texture.png", Icon: pre + which + "_icon.png"}
-	for _, f := range []struct{ data, rel string }{{texturePNG, out.Texture}, {iconPNG, out.Icon}} {
+	for _, f := range []struct {
+		data string
+		rel  *string
+	}{{texturePNG, &out.Texture}, {iconPNG, &out.Icon}} {
 		b, err := decodeDataURL(f.data)
 		if err != nil {
 			return PackArtFiles{}, err
 		}
-		dst := filepath.Join(folder, filepath.FromSlash(f.rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return PackArtFiles{}, err
-		}
-		if err := os.WriteFile(dst, b, 0o644); err != nil {
+		if *f.rel, err = p.WriteFile(*f.rel, b); err != nil {
 			return PackArtFiles{}, err
 		}
 	}
@@ -81,17 +84,18 @@ func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	folder := a.ws().Folder(id)
-	src := filepath.Join(folder, filepath.FromSlash(rel))
-	if r, err := filepath.Rel(folder, src); err != nil || r == ".." || filepath.IsAbs(r) || len(r) > 2 && r[:3] == ".."+string(filepath.Separator) {
+	if !project.IsRelFile(rel) {
 		return "", errors.New("image must be inside the project")
 	}
-	b, err := os.ReadFile(src)
+	p, err := a.ws().Load(id)
 	if err != nil {
 		return "", err
 	}
-	out := pre + which + "_base.png"
-	return out, os.WriteFile(filepath.Join(folder, filepath.FromSlash(out)), b, 0o644)
+	b, err := os.ReadFile(p.ImagePath(rel)) // the project's own copy or the shared file
+	if err != nil {
+		return "", err
+	}
+	return p.WriteFile(pre+which+"_base.png", b)
 }
 
 // ---------------------------------------------------------------- product photos (TCGplayer)
@@ -351,6 +355,8 @@ func imageConfig(path string) (image.Config, error) {
 
 // SaveAutoArt stores an image Smart generate made (data URL) as images/auto_<pack>_<part>_<time>.png and removes the
 // earlier versions of that part (a new name each time, so the editor never shows a cached old image). Returns its path.
+// In the set's shared folder earlier versions stay, as another setup's layout may still use them; the Storage page
+// deletes them once nothing does.
 func (a *App) SaveAutoArt(id, packID, part, dataURL string) (string, error) {
 	if !setfmt.SafeID(id) || !setfmt.SafeID(part) || (packID != "" && !setfmt.SafeID(packID)) {
 		return "", errors.New("bad arguments")
@@ -359,18 +365,18 @@ func (a *App) SaveAutoArt(id, packID, part, dataURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(a.ws().Folder(id), "images")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	p, err := a.ws().Load(id)
+	if err != nil {
 		return "", err
 	}
 	stem := "auto_" + packID + "_" + part + "_"
-	old, _ := filepath.Glob(filepath.Join(dir, stem+"*.png"))
-	name := fmt.Sprintf("%s%d.png", stem, time.Now().UnixMilli())
-	if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+	old, _ := filepath.Glob(filepath.Join(p.Folder, "images", stem+"*.png")) // this setup's own copies only
+	rel, err := p.WriteFile(fmt.Sprintf("images/%s%d.png", stem, time.Now().UnixMilli()), b)
+	if err != nil {
 		return "", err
 	}
 	for _, f := range old {
 		_ = os.Remove(f)
 	}
-	return "images/" + name, nil
+	return rel, nil
 }

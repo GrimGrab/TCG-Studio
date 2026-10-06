@@ -179,7 +179,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	// Set icon (used by the pack art generator).
 	if sfSet.IconSVGURI != "" {
 		if b, err := sf.Download(ctx, sfSet.IconSVGURI); err == nil {
-			_ = os.WriteFile(filepath.Join(folder, "images", "set_icon.svg"), b, 0o644)
+			_ = os.WriteFile(filepath.Join(art.dir, "set_icon.svg"), b, 0o644) // next to the card art (the set's shared folder)
 		}
 	}
 

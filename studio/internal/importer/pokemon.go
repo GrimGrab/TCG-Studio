@@ -291,7 +291,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 	// Set logo (a layer for the pack art editor).
 	if tset.Logo != "" {
 		if b, err := s.tc.Download(ctx, tset.Logo+".png"); err == nil {
-			_ = os.WriteFile(filepath.Join(folder, "images", "set_logo.png"), b, 0o644)
+			_ = os.WriteFile(filepath.Join(art.dir, "set_logo.png"), b, 0o644) // next to the card art (the set's shared folder)
 		}
 	}
 

@@ -165,7 +165,8 @@ func MoveAll(ctx context.Context, h setups.Home, progress func(Progress)) (*Resu
 					if err := moveFile(own, lib); err != nil {
 						return res, err
 					}
-				case cp == rel && sameFile(own, lib):
+				case cp == rel && (sameFile(own, lib) || l.setup == catalogSetup):
+					// The same file is shared already, or a catalog template's stale copy (see catalogSetup).
 					n := size(own)
 					if err := os.Remove(own); err != nil {
 						return res, err

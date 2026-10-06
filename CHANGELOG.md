@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.0.1 - 2026-10-06
+
+Imported sets no longer leave files behind in your setup, and the Storage page now shows exactly what it will move.
+
+- Fixed: Importing a set kept its pack & box art and set icon inside the setup, so Storage asked you to "Move everything to shared" after every import. New and edited pack/box art, Smart generate images, card backs, product photos and rotated card images now go straight to the set's shared folder.
+- Fixed: "Move everything to shared" could keep the catalog's older pack art instead of the art made in your setup, and list yours as "differs". Your setup's art now wins.
+- Changed: A set that's already in your catalog (imported in another setup or earlier) is added with "Add from catalog" instead of being imported again: no second download, and the shared art other setups use is never overwritten. To import it again, remove it on the Catalog page first.
+- Changed: Editing the pack/box art of a set, or rotating its card images, updates it in every setup that uses that set. Sets you kept as their own art keep their own copy.
+- New: Storage → Move everything to shared → "Show the files" lists every file it will move or delete, and the summary shows how much is moved and how much is freed. Accessory files are now included in the count.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.0.0 - 2026-10-06
 
 TCG Studio 1.0: bring in content from other mods and your own card pictures, and reuse everything you've imported across all your setups.

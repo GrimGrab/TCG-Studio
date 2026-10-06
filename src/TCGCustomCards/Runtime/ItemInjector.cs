@@ -43,19 +43,19 @@ namespace TCGCustomCards.Runtime
             foreach (var pack in Registry.Packs)
             {
                 var def = pack.Def;
-                string folder = pack.Set.Def.FolderPath;
+                var set = pack.Set.Def; // paths through Resolve: the set's folder, then the shared Library\<set>
 
                 // --- Pack item ---
                 pack.PackItem = (EItemType)nextItem++;
                 var packData = Clone(vPackData);
                 packData.name = def.Name;
-                packData.icon = Icon(folder, def.PackIcon, vPackData.icon) ?? vPackData.icon;
+                packData.icon = Icon(set.Resolve(def.PackIcon), vPackData.icon) ?? vPackData.icon;
                 packData.baseCost = def.PackCost;
                 packData.marketPriceMinPercent = def.MarketMin;
                 packData.marketPriceMaxPercent = def.MarketMax;
                 packData.boxFollowItemPrice = EItemType.None;
                 packData.isHideItemUntilUnlocked = false;
-                AddItem(so, pack.PackItem, packData, MeshData(vPackMesh, def.Name, folder, def.PackTexture));
+                AddItem(so, pack.PackItem, packData, MeshData(vPackMesh, def.Name, set.Resolve(def.PackTexture)));
                 Registry.RegisterItem(pack.PackItem, pack);
 
                 // --- Box item (pack int < box int so the box price can follow the pack price) ---
@@ -64,7 +64,7 @@ namespace TCGCustomCards.Runtime
                     pack.BoxItem = (EItemType)nextItem++;
                     var boxData = Clone(vBoxData);
                     boxData.name = def.BoxName;
-                    boxData.icon = Icon(folder, def.BoxIcon, vBoxData.icon) ?? vBoxData.icon;
+                    boxData.icon = Icon(set.Resolve(def.BoxIcon), vBoxData.icon) ?? vBoxData.icon;
                     boxData.isHideItemUntilUnlocked = false;
                     if (def.BoxCost.HasValue)
                     {
@@ -74,7 +74,7 @@ namespace TCGCustomCards.Runtime
                         boxData.marketPriceMaxPercent = def.MarketMax;
                     }
                     else boxData.boxFollowItemPrice = pack.PackItem;
-                    AddItem(so, pack.BoxItem, boxData, MeshData(vBoxMesh, def.BoxName, folder, def.BoxTexture));
+                    AddItem(so, pack.BoxItem, boxData, MeshData(vBoxMesh, def.BoxName, set.Resolve(def.BoxTexture)));
                     Registry.RegisterItem(pack.BoxItem, pack);
                 }
 
@@ -134,7 +134,7 @@ namespace TCGCustomCards.Runtime
                 acc.Item = (EItemType)nextItem++;
                 var data = Clone(vData);
                 data.name = def.Name;
-                data.icon = Icon(def.FolderPath, def.Icon, vData.icon) ?? vData.icon;
+                data.icon = Icon(string.IsNullOrEmpty(def.Icon) ? null : Path.Combine(def.FolderPath, def.Icon), vData.icon) ?? vData.icon;
                 if (def.Cost.HasValue) data.baseCost = def.Cost.Value;
                 if (def.MarketMin.HasValue) data.marketPriceMinPercent = def.MarketMin.Value;
                 if (def.MarketMax.HasValue) data.marketPriceMaxPercent = def.MarketMax.Value;
@@ -266,10 +266,10 @@ namespace TCGCustomCards.Runtime
             return new[] { Find(EItemType.BasicCardPack, false), Find(EItemType.BasicCardPack, true), Find(EItemType.BasicCardBox, false), Find(EItemType.BasicCardBox, true) };
         }
 
-        private static ItemMeshData MeshData(ItemMeshData vanilla, string name, string folder, string texturePath)
+        private static ItemMeshData MeshData(ItemMeshData vanilla, string name, string texturePath)
         {
             var md = Clone(vanilla);
-            var tex = string.IsNullOrEmpty(texturePath) ? null : ImageCache.Get(Path.Combine(folder, texturePath))?.texture;
+            var tex = string.IsNullOrEmpty(texturePath) ? null : ImageCache.Get(texturePath)?.texture;
             if (tex != null && vanilla.material != null)
             {
                 md.material = new Material(vanilla.material) { name = $"TCGCC_{name}", mainTexture = tex, hideFlags = HideFlags.DontUnloadUnusedAsset };
@@ -279,11 +279,12 @@ namespace TCGCustomCards.Runtime
         }
 
         /// <summary>Custom icon padded to the vanilla icon's shape (vanilla pack icon: 1024² sprite with the pack centered).</summary>
-        private static Sprite Icon(string folder, string path, Sprite vanilla)
+        /// <param name="path">absolute file, or null for none</param>
+        private static Sprite Icon(string path, Sprite vanilla)
         {
             if (string.IsNullOrEmpty(path)) return null;
             float aspect = vanilla != null ? vanilla.rect.width / vanilla.rect.height : 0f;
-            return ImageCache.GetPadded(Path.Combine(folder, path), aspect);
+            return ImageCache.GetPadded(path, aspect);
         }
 
         private static void PadTo<T>(List<T> list, int count, System.Func<int, T> make)

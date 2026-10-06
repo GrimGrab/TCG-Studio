@@ -47,7 +47,7 @@
 
   async function measure() {
     const r = await run('Measuring…', () => App.StorageReport());
-    if (r) report = lastReport = r;
+    if (r) { report = lastReport = r; staleUnused = false; }
   }
 
   function done(r: any, what: string) {
@@ -59,17 +59,93 @@
     notify(parts.join(' '), 'ok');
   }
 
-  async function move() {
+  // Move everything: every setup's set files into the set's shared folder, accessory & furniture files into the shared
+  // store, leftovers deleted. Files that differ from the shared ones wait for the player's choice (below).
+  async function moveEverything() {
     const r = report;
     if (!(await ask(
-      `Move card art into the shared library?\n\n` +
-      `• ${r.moveFiles} card images move from your setups into one shared folder per set.\n` +
-      (r.moveSaves > 0 ? `• Copies of the same art in several setups are stored once: about ${size(r.moveSaves)} freed.\n` : '') +
-      `• Card art you changed in a setup stays that setup's own.\n` +
-      (r.modHasLibrary ? `• The game keeps card art across setup switches, so switching copies far less.\n` : '') +
-      `\nNothing is lost and your sets look the same. You can cancel at any time.`))) return;
-    done(await run('Moving card art…', () => App.MoveToLibrary()), 'Card art moved to the shared library.');
+      `Move everything to shared storage?\n\n` +
+      `• ${r.moveFiles} files (card art, pack & box art, photos, accessory files) move from your setups into shared folders; ` +
+      `copies already shared are stored once and leftovers nothing uses are deleted` +
+      (r.moveSaves > 0 ? ` — about ${size(r.moveSaves)} freed.\n` : '.\n') +
+      `• Afterwards your setups keep only their game info (names, prices, tiers) and saves.\n` +
+      `• Files that differ from the shared ones are NOT touched: you decide for each set afterwards.\n` +
+      `\nYour sets and items look the same. You can cancel at any time.`))) return;
+    done(await run('Moving everything to shared…', () => App.MoveEverything()), 'Moved to shared storage.');
     if (alive) await measure();
+  }
+
+  // Sets whose files differ from the shared ones: the player says whether it's the same art or different art.
+  let differPv = $state<Record<string, any>>({});
+  let differName = $state<Record<string, string>>({});
+  let keeping = $state(''); // set whose "keep both" name field is open
+  const dkey = (d: any) => `${d.setup}/${d.set}`;
+
+  async function loadDifferPreview(d: any) {
+    try { differPv[dkey(d)] = await App.DifferPreview(d.setup, d.set); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  $effect(() => {
+    for (const d of report?.differ ?? []) {
+      const k = dkey(d);
+      if (!(k in differPv)) { differPv[k] = null; loadDifferPreview(d); }
+      if (!(k in differName)) differName[k] = `${d.setName} (${d.setupName})`;
+    }
+  });
+
+  // A choice changes one setup's set: update the report here instead of measuring everything again. (On failure the page
+  // re-measures. After "replace" the old shared files become unused, which only a new measure lists: the page says so.)
+  let staleUnused = $state(false);
+  function applied(d: any, r: any, choice: string, name = '') {
+    if (!r) { if (alive) measure(); return; }
+    report.differ = report.differ.filter((x: any) => dkey(x) !== dkey(d));
+    const s = report.setups.find((x: any) => x.id === d.setup);
+    if (s) {
+      s.size -= d.bytes;
+      s.cardArt -= d.cardBytes;
+      s.setFiles -= d.bytes - d.cardBytes;
+      const x = s.sets.find((x: any) => x.id === d.set);
+      if (x) {
+        x.own -= d.bytes;
+        x.shared += d.bytes;
+        x.differs = 0;
+        if (choice === 'own') x.artFolder = name;
+      }
+    }
+    if (choice === 'shared') report.workspace -= d.bytes;
+    if (choice === 'replace') staleUnused = true;
+  }
+
+  async function useShared(d: any) {
+    if (!(await ask(`Use the shared art for “${d.setName}” in ${d.setupName}?
+
+` +
+      `Its ${d.files} differing file${d.files === 1 ? '' : 's'} (${size(d.bytes)}) are deleted from ${d.setupName}; the set then ` +
+      `shows the shared art, like your other setups.`))) return;
+    const r = await run('Applying your choice…', () => App.ResolveDiffering(d.setup, d.set, 'shared', ''));
+    done(r, `${d.setName} in ${d.setupName} now uses the shared art.`);
+    applied(d, r, 'shared');
+  }
+
+  async function replaceShared(d: any) {
+    if (!(await ask(`Make ${d.setupName}'s art the shared art for “${d.setName}”?
+
+` +
+      `Its ${d.files} differing file${d.files === 1 ? '' : 's'} replace the shared ones, so EVERY setup that uses the shared art of ` +
+      `this set shows ${d.setupName}'s version from now on (setups with their own copies keep theirs). The old shared files then ` +
+      `show up under “Not used by any setup”, where you can delete them.`))) return;
+    const r = await run('Applying your choice…', () => App.ResolveDiffering(d.setup, d.set, 'replace', ''));
+    done(r, `${d.setName}: ${d.setupName}'s art is now the shared art.`);
+    applied(d, r, 'replace');
+  }
+
+  async function keepOwn(d: any) {
+    const name = (differName[dkey(d)] ?? '').trim();
+    if (!name) { notify('Give its shared folder a name first.', 'error'); return; }
+    const r = await run('Applying your choice…', () => App.ResolveDiffering(d.setup, d.set, 'own', name));
+    done(r, `${d.setName} in ${d.setupName} keeps its own art, now shared as “${name}”.`);
+    keeping = '';
+    applied(d, r, 'own', name);
   }
 
   // Shrink: sets with PNG card art, per setup.
@@ -127,12 +203,38 @@
     if (alive) await measure();
   }
 
-  async function deleteUnused(where: string, ids: string[]) {
-    const what = ids.length === 1 ? `the card art of ${ids[0]}` : 'all unused card art';
-    const place = where === 'game' ? ' in the game folder' : '';
-    if (!(await ask(`Delete ${what}${place}?\n\nNo setup uses it. Importing the set again downloads its art again.`))) return;
+  // Not used by any setup: one list whatever the kind.
+  const KIND: Record<string, string> = {
+    'set-art': 'Card art of a set no setup has',
+    'set-files': 'Unused files in a set\'s shared folder',
+    'game-art': 'Card art in the game folder',
+    'shared-files': 'Accessory & furniture files',
+    'catalog-set': 'Set kept only in the catalog',
+    'catalog-item': 'Accessory / furniture kept only in the catalog',
+  };
+  const unusedTotal = $derived((report?.unused ?? []).reduce((n: number, u: any) => n + u.size, 0));
+
+  async function deleteUnused(u: any) {
+    const what = u.inCatalog
+      ? `Delete “${u.name}” from the catalog?\n\nNo setup uses it; deleting removes it from the catalog (Add from catalog won't offer it) and frees its files.`
+      : `Delete ${KIND[u.kind]?.toLowerCase() ?? 'these files'}: ${u.name} (${u.files} file${u.files === 1 ? '' : 's'}, ${size(u.size)})?\n\nNo setup uses ${u.files === 1 ? 'it' : 'them'}.`;
+    if (!(await ask(what))) return;
     try {
-      const freed = await App.DeleteUnusedArt(where, ids);
+      const freed = await App.DeleteUnused(u.kind, u.kind === 'shared-files' ? [] : [u.id]);
+      notify(`Freed ${size(freed)}.`, 'ok');
+    } catch (e) { notify(errText(e), 'error'); }
+    if (alive) await measure();
+  }
+
+  async function deleteAllUnused() {
+    const list = (report?.unused ?? []).filter((u: any) => !u.inCatalog);
+    if (!list.length) return;
+    if (!(await ask(`Delete everything no setup uses (${list.length} entr${list.length === 1 ? 'y' : 'ies'}, ${size(list.reduce((n: number, u: any) => n + u.size, 0))})?\n\n` +
+      `Catalog entries are kept (delete those one by one).`))) return;
+    let freed = 0;
+    try {
+      for (const kind of [...new Set(list.map((u: any) => u.kind))] as string[])
+        freed += await App.DeleteUnused(kind, kind === 'shared-files' ? [] : list.filter((u: any) => u.kind === kind).map((u: any) => u.id));
       notify(`Freed ${size(freed)}.`, 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     if (alive) await measure();
@@ -180,8 +282,9 @@
     <button onclick={measure} disabled={!!running}>Refresh</button>
   </header>
   <p class="muted intro">
-    How much space your sets take, and ways to make them smaller. A set's card art is kept once in a shared library and used by
-    every setup that has the set; each setup only keeps its own changes. Nothing here runs until you press its button.
+    How much space everything takes, and ways to make it smaller. Card art, pack &amp; box art and accessory files are kept once in
+    shared storage and used by every setup that has them; each setup keeps its game info (names, prices, tiers) and saves.
+    Nothing here runs until you press its button.
   </p>
 
   {#if running}
@@ -197,7 +300,7 @@
   {#if report}
     <div class="tiles">
       <div class="tile"><div class="k">Workspace</div><div class="v">{size(report.workspace)}</div>
-        <div class="muted small">{size(report.library)} of it is the shared card-art library</div></div>
+        <div class="muted small">shared: sets {size(report.library)} · accessory files {size(report.assets)} · catalog {size(report.catalog)}</div></div>
       {#if report.gameFound}
         <div class="tile"><div class="k">Game folder</div><div class="v">{size(report.gameSets + report.gameLibrary)}</div>
           <div class="muted small">sets {size(report.gameSets)} · shared card art {size(report.gameLibrary)}</div></div>
@@ -209,21 +312,53 @@
     {/if}
 
     <section>
-      <h3>Shared card-art library</h3>
+      <h3>Move everything to shared</h3>
       {#if report.moveFiles > 0}
-        <p class="small">{report.moveFiles} card images are still kept inside your setups.
-          {#if report.moveSaves > 0}Moving them stores copies of the same art once and frees about <b>{size(report.moveSaves)}</b>.{/if}
-          {#if report.modHasLibrary}Afterwards switching setups copies far less into the game.{/if}</p>
-        <div class="row"><button class="primary" onclick={move} disabled={!!running}>Move card art to the shared library…</button></div>
+        <p class="small">{report.moveFiles} files (card art, pack &amp; box art, accessory files, leftovers) are still kept inside your
+          setups. Moving them puts them in shared folders so setups keep only their game info{#if report.moveSaves > 0}, and frees
+          about <b>{size(report.moveSaves)}</b>{/if}.</p>
+        <div class="row"><button class="primary" onclick={moveEverything} disabled={!!running}>Move everything to shared…</button></div>
       {:else}
-        <p class="small ok">✓ All card art is in the shared library. New imports go there too, and importing a set another setup already has downloads nothing.</p>
+        <p class="small ok">✓ Everything that can be shared is shared. New imports go there too.</p>
+      {/if}
+      {#if report.differ?.length}
+        <h4>Differs from the shared art — your choice</h4>
+        <p class="muted small">These sets have their own copy of art that's also shared (imported separately, or changed by hand).
+          <b>Click the one to keep</b> — or keep both.</p>
+        {#each report.differ as d (dkey(d))}
+          <div class="group differ">
+            <div class="row"><b class="grow">{d.setName} <span class="muted">in {d.setupName}</span></b>
+              <span class="muted small">{d.files} file{d.files === 1 ? '' : 's'}{d.cards ? ` (${d.cards} cards)` : ''} · {size(d.bytes)}</span></div>
+            {#if differPv[dkey(d)]}
+              <div class="choose">
+                <button class="pick-img" onclick={() => useShared(d)} disabled={!!running}
+                  title="Keep the shared art: {d.setupName} uses it too, its copies are deleted">
+                  <img src={differPv[dkey(d)].shared} alt="" /><span>Shared</span></button>
+                <button class="pick-img" onclick={() => replaceShared(d)} disabled={!!running}
+                  title="Keep {d.setupName}'s art: it replaces the shared art for every setup using it">
+                  <img src={differPv[dkey(d)].own} alt="" /><span>{d.setupName}'s</span></button>
+              </div>
+              <div class="row keepboth">
+                {#if keeping === dkey(d)}
+                  <span class="small">Save {d.setupName}'s as</span>
+                  <input class="name" bind:value={differName[dkey(d)]} disabled={!!running} />
+                  <button class="small" onclick={() => keepOwn(d)} disabled={!!running}>Save</button>
+                  <button class="small link" onclick={() => (keeping = '')}>Cancel</button>
+                {:else}
+                  <button class="small link" onclick={() => (keeping = dkey(d))} disabled={!!running}
+                    title="Keep both: {d.setupName}'s art is saved separately under its own name">or keep both — save {d.setupName}'s separately…</button>
+                {/if}
+              </div>
+            {:else}<div class="muted small">Loading preview…</div>{/if}
+          </div>
+        {/each}
       {/if}
     </section>
 
     <section>
       <h3>Shrink card art (JPEG)</h3>
       <p class="muted small">Optional. JPEG card art is about 6× smaller than PNG; card scans lose a little detail. New imports can
-        use JPEG too (Import sets → Card image format).</p>
+        use JPEG too (Import → Card image format).</p>
       {#if preview}
         <div class="preview">
           <div class="row"><span class="grow small"><b>{preview.card}</b> <span class="muted">· {preview.setName}</span></span>
@@ -271,50 +406,62 @@
     </section>
 
     <section>
-      <h3>Setups and sets</h3>
-      <table>
-        <thead><tr><th>Setup / set</th><th class="num">Own files</th><th class="num">Shared card art used</th></tr></thead>
-        <tbody>
-          {#each report.setups as s (s.id)}
-            <tr class="setup">
-              <td><button class="link" onclick={() => (open[s.id] = !open[s.id])} disabled={!s.sets.length}>
-                {s.sets.length ? (open[s.id] ? '▾' : '▸') : '·'} {s.name}</button>
-                {#if s.active}<span class="badge ok">In the game</span>{/if}
-                <span class="muted small">· {s.sets.length} set{s.sets.length === 1 ? '' : 's'}</span></td>
-              <td class="num">{size(s.size)}</td>
-              <td class="num muted">{size(s.sets.reduce((n: number, x: any) => n + x.library, 0))}</td>
-            </tr>
-            {#if open[s.id]}
-              {#each s.sets as x (x.id)}
-                <tr class="set"><td>{x.name} <span class="muted small">· {x.id}</span></td>
-                  <td class="num">{size(x.own)}</td><td class="num muted">{size(x.library)}</td></tr>
-              {/each}
-            {/if}
-          {/each}
-        </tbody>
-      </table>
-      <p class="muted small">Shared card art is stored once however many setups use it.</p>
+      <h3>Setups</h3>
+      <p class="muted small">What each setup's own folder holds, and everything it uses. Shared files are stored once however many
+        setups use them.</p>
+      {#each report.setups as s (s.id)}
+        <div class="setup">
+          <div class="row">
+            <button class="link grow" onclick={() => (open[s.id] = !open[s.id])}>{open[s.id] ? '▾' : '▸'} {s.name}
+              {#if s.active}<span class="badge ok">In the game</span>{/if}
+              <span class="muted small">· {s.sets.length} set{s.sets.length === 1 ? '' : 's'} · {s.items.length} item{s.items.length === 1 ? '' : 's'}</span></button>
+            <b class="num">{size(s.size)}</b>
+          </div>
+          <div class="parts small muted">
+            {#each [['Game info', s.info], ['Card art kept here', s.cardArt], ['Pack & box art, photos', s.setFiles], ['Leftovers', s.leftovers],
+              ['Accessory files kept here', s.itemFiles], ['Saves', s.saves], ['Game settings', s.game], ['Other', s.other]].filter((x) => x[1] > 0) as [label, n]}
+              <span>{label} <b>{size(n as number)}</b></span>
+            {/each}
+          </div>
+          {#if open[s.id]}
+            <table>
+              <thead><tr><th>Set / item</th><th class="num">Kept in this setup</th><th class="num">Shared</th></tr></thead>
+              <tbody>
+                {#each s.sets as x (x.id)}
+                  <tr><td>{x.name} <span class="muted small">· {x.id}{x.artFolder ? ` · own art “${x.artFolder}”` : ''}{x.differs ? ` · ${x.differs} files differ` : ''}</span></td>
+                    <td class="num">{size(x.own)}</td><td class="num muted">{size(x.shared)}</td></tr>
+                {/each}
+                {#each s.items as it (it.id)}
+                  <tr><td>{it.name} <span class="muted small">· {it.kind}</span></td>
+                    <td class="num">{size(it.own)}</td><td class="num muted">{size(it.shared)}</td></tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+      {/each}
     </section>
 
-    {#if report.unused.length || report.gameUnused.length}
-      <section>
-        <h3>Card art no setup uses</h3>
-        <p class="muted small">Sets you deleted from every setup. Keeping their art makes importing them again instant.</p>
-        {#each [['workspace', report.unused, 'Workspace'], ['game', report.gameUnused, 'Game folder']] as [where, list, title]}
-          {#if (list as any[]).length}
-            <div class="group">
-              <div class="row"><b class="grow">{title}</b>
-                <button class="small danger" onclick={() => deleteUnused(where as string, [])} disabled={!!running}>Delete all</button></div>
-              {#each list as any[] as u (u.id)}
-                <div class="row pick"><span class="grow">{u.id} <span class="muted small">· {u.files} files</span></span>
-                  <span class="num">{size(u.size)}</span>
-                  <button class="small" onclick={() => deleteUnused(where as string, [u.id])} disabled={!!running}>Delete</button></div>
-              {/each}
-            </div>
-          {/if}
+    <section>
+      <div class="row"><h3 class="grow">Not used by any setup</h3>
+        {#if report.unused.some((u: any) => !u.inCatalog)}<button class="small danger" onclick={deleteAllUnused} disabled={!!running}>Delete all…</button>{/if}</div>
+      {#if staleUnused}<p class="small">The art you replaced is now unused — <button class="small link" onclick={measure}
+        disabled={!!running}>Refresh</button> to list it here.</p>{/if}
+      {#if report.unused.length}
+        <p class="muted small">{size(unusedTotal)} in all. Entries “kept in the catalog” can still be added to a setup with Add from
+          catalog; deleting them removes them from the catalog too.</p>
+        {#each report.unused as u (u.kind + '/' + u.id)}
+          <div class="row pick">
+            <span class="grow">{u.name} <span class="muted small">· {KIND[u.kind] ?? u.kind} · {u.files} file{u.files === 1 ? '' : 's'}{u.note ? ` · ${u.note}` : ''}</span>
+              {#if u.inCatalog}<span class="badge">kept in the catalog</span>{/if}</span>
+            <span class="num">{size(u.size)}</span>
+            <button class="small" onclick={() => deleteUnused(u)} disabled={!!running}>Delete…</button>
+          </div>
         {/each}
-      </section>
-    {/if}
+      {:else}
+        <p class="small ok">✓ Nothing stored that no setup uses.</p>
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -351,10 +498,24 @@
   .zoomhint { position: absolute; bottom: 1.5vh; left: 0; right: 0; text-align: center; color: #aaa; font-size: 12px; }
   .pair figcaption { font-size: 12px; color: var(--muted); }
   button.on { border-color: var(--accent); }
+  h4 { margin: 6px 0 0; font-size: 13px; }
+  .setup { border-top: 1px solid var(--line); padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+  .parts { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-left: 18px; }
+  .choose { display: flex; gap: 14px; flex-wrap: wrap; }
+  .pick-img { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; height: auto; background: var(--bg);
+    border: 2px solid var(--line); border-radius: 10px; cursor: pointer; transition: border-color 0.12s, transform 0.12s; }
+  .pick-img img { width: 150px; border-radius: 6px; display: block; }
+  .pick-img span { font-size: 12px; color: var(--muted); }
+  .pick-img:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-2px); }
+  .pick-img:hover:not(:disabled) span { color: var(--text); }
+  .pick-img:hover:not(:disabled) span::after { content: ' — keep this'; }
+  .keepboth { gap: 8px; align-items: center; min-height: 28px; }
+  button.link.small { font-weight: normal; color: var(--muted); text-decoration: underline; }
+  input.name { width: 240px; }
+  .badge { font-size: 11px; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; margin-left: 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); padding: 4px 6px; }
   td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
-  tr.set td:first-child { padding-left: 28px; }
   button.link { background: none; border: none; padding: 0; color: var(--text); font-weight: 600; cursor: pointer; }
   button.link:disabled { cursor: default; opacity: 1; }
 </style>

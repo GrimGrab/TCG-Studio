@@ -4,7 +4,7 @@
   // points the pack at them and saves the set (which updates an installed set in the game). Unapplied edits are applied
   // automatically before any save, and before closing the editor or switching pack/box/tab (flush), so nothing is lost.
   import { App, projectFile, errText, ask } from '../../lib/api';
-  import { applySmartArt, hasOwnLayers, type SmartSources } from '../../lib/smartArt';
+  import { applySmartArt, boxFromPackArt, hasOwnLayers, packIconFromTexture, type SmartSources } from '../../lib/smartArt';
   import SmartGenerate from './SmartGenerate.svelte';
   import { newLayout, edgeColors, loadImage, type Layout, type Model } from '../../lib/accessoryArt';
   import AccessoryEditor from '../AccessoryEditor.svelte';
@@ -201,11 +201,28 @@
       const r = await App.GeneratePackArt(project.id, pack.id,
         { color: classicColor, title: classicTitle, icon: '', filePrefix: '', frontImage: classicFront, titleOnImage: classicTitleOnImage } as any);
       pack.packTexture = r.packTexture; pack.packIcon = r.packIcon; pack.boxTexture = r.boxTexture; pack.boxIcon = r.boxIcon;
+      await packIconFromTexture(project.id, pack, models.Pack ?? (await App.AccessoryModel('Pack') as any));
       onapplied();
       generating = 'Saving…';
       await save();
       classicOpen = false;
       notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated');
+    } catch (e) { notify(errText(e), 'error'); }
+    generating = '';
+  }
+
+  /** A box for a pack that has its own art but none for a box (e.g. an EPL mod selling only packs): the game's box with
+   *  the pack's front on it. Turns the box on, keeps the pack's art, saves; the 3D editor starts from that box. */
+  async function boxFromPack() {
+    try {
+      await flush();
+      open = false;
+      generating = 'Making the box…';
+      await boxFromPackArt(project, pack, models.Box);
+      onapplied();
+      generating = 'Saving…';
+      await save();
+      notify('Box made from the pack art — open “Edit box in 3D editor” to adjust it.');
     } catch (e) { notify(errText(e), 'error'); }
     generating = '';
   }
@@ -224,6 +241,10 @@
   <button class:primary={!open || which !== 'pack'} class:on={open && which === 'pack'} onclick={() => show('pack')}>Edit pack in 3D editor</button>
   {#if pack.hasBox}
     <button class:primary={!open || which !== 'box'} class:on={open && which === 'box'} onclick={() => show('box')}>Edit box in 3D editor</button>
+  {/if}
+  {#if pack.hasBox && pack.packTexture && !pack.boxTexture}
+    <button disabled={!!generating} onclick={boxFromPack}
+      title="The game's booster box with this pack's front on it (the pack's art stays)">Make box art from the pack</button>
   {/if}
   {#if open}
     <div class="grow"></div>

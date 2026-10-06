@@ -1,13 +1,17 @@
 package importer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"tcgstudio/internal/art"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 )
@@ -16,7 +20,8 @@ import (
 type cardIn struct {
 	SourceID  string // unique per printing at the source; matches prices on refresh
 	Name      string // shown name (variant tags are added by buildProject)
-	Number    string // collector number / printing code; also the card id
+	Number    string // collector number / printing code; also the card id unless ID is set
+	ID        string // card id when it shouldn't come from Number (image folder: the file name)
 	Text      string
 	Artist    string
 	SrcRarity string
@@ -27,6 +32,7 @@ type cardIn struct {
 	Power     string   // "power" sort
 	Element   string   // vanilla play element (Fire/Earth/Water/Wind)
 	Image     string
+	Aspect    float64 // > 0: this card's own stretch target (overrides setIn.Aspect)
 	USD       *float64
 	USDFoil   *float64
 	EUR       *float64
@@ -48,6 +54,22 @@ type setIn struct {
 	Aspect     float64 // > 0: stretch card art to this width/height (CardAspect for cards narrower than the game's slot)
 	Get        func(context.Context, string) ([]byte, error)
 	Rarity     func(src string) string // source rarity → game rarity
+	// Local: images come from the player's own folder, so they are always copied again (a library file from an
+	// earlier import of that folder may be an older picture).
+	Local       bool
+	SourceDir   string   // meta.sourceDir: the folder a local import read
+	RarityOrder []string // meta.rarityOrder: this set's own rarities, lowest first (sources without a fixed list)
+	// Packs replaces the default booster (EPL mods bring their own packs and art); slots are fitted to the cards.
+	Packs []setfmt.Pack
+	// Extra images written into the project folder through Get (pack/box art, the card back).
+	Extra      []extraImage
+	RenderMode string // "" = FullImage
+}
+
+// extraImage is a non-card image of an import: saved as PNG at Rel, or composed into the set's card back.
+type extraImage struct {
+	URL, Rel string
+	CardBack bool
 }
 
 // buildProject writes a new project from a source's set: set.json with a default booster, images, studio.json.
@@ -62,8 +84,12 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 	}
 	set := setfmt.NewSet(in.ID, in.Name)
 	set.RenderMode = "FullImage"
+	if in.RenderMode != "" {
+		set.RenderMode = in.RenderMode
+	}
 	meta := &project.Meta{Source: in.Source, SetCode: in.Code, Lang: in.Lang, ReleasedAt: in.ReleasedAt,
-		ImportedAt: time.Now(), PricesUpdated: time.Now(), Cards: map[string]project.CardMeta{}}
+		ImportedAt: time.Now(), PricesUpdated: time.Now(), Cards: map[string]project.CardMeta{},
+		SourceDir: in.SourceDir, RarityOrder: in.RarityOrder}
 
 	var jobs []imageJob
 	used := map[string]int{}
@@ -72,6 +98,9 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 			continue
 		}
 		base := CardID(c.Number)
+		if c.ID != "" {
+			base = c.ID
+		}
 		cid := base
 		if n := used[base]; n > 0 {
 			cid = fmt.Sprintf("%s-%d", base, n+1)
@@ -94,6 +123,12 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		meta.Cards[cid] = cm
 		j := art.job(c.Image, cid)
 		j.rotate, j.aspect = in.Rotate, in.Aspect
+		if c.Aspect > 0 {
+			j.aspect = c.Aspect
+		}
+		if in.Local {
+			j.keep = false
+		}
 		jobs = append(jobs, j)
 	}
 	if len(set.Cards) == 0 {
@@ -106,10 +141,17 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		return nil, err
 	}
 
-	pack := setfmt.NewPack("booster", in.Name+" Booster")
-	pack.Slots = fitSlots(in.Slots, set.Cards)
-	pack.FoilChance = in.FoilChance
-	set.Packs = append(set.Packs, pack)
+	packs := in.Packs
+	if len(packs) == 0 {
+		pack := setfmt.NewPack("booster", in.Name+" Booster")
+		pack.Slots, pack.FoilChance = in.Slots, in.FoilChance
+		packs = []setfmt.Pack{pack}
+	}
+	for _, pk := range packs {
+		fitted := pk
+		fitted.Slots = fitSlots(pk.Slots, set.Cards)
+		set.Packs = append(set.Packs, fitted)
+	}
 
 	if in.Logo != "" {
 		_ = saveImage(ctx, in.Get, imageJob{url: in.Logo, path: filepath.Join(folder, "images", "set_logo.png")}, 0)
@@ -138,9 +180,11 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 			_ = os.RemoveAll(folder)
 			return nil, fmt.Errorf("no card images could be downloaded for %s", in.Name)
 		}
-		pack.Slots = fitSlots(in.Slots, set.Cards)
-		set.Packs[0] = pack
+		for i := range set.Packs {
+			set.Packs[i].Slots = fitSlots(packs[i].Slots, set.Cards)
+		}
 	}
+	failed = append(failed, writeExtras(ctx, in, folder, set)...)
 	p := &project.Project{ID: in.ID, Folder: folder, LibFolder: ws.LibFolder(in.ID), Set: set, Meta: meta}
 	if err := ws.Save(p); err != nil {
 		return nil, err
@@ -268,4 +312,43 @@ func slug(s string) string {
 		}
 	}
 	return strings.TrimSuffix(b.String(), "-")
+}
+
+// writeExtras saves an import's pack/box art and card back into the project folder. An image that fails leaves its
+// field empty (generated art is used instead) and is reported with the failed images.
+func writeExtras(ctx context.Context, in setIn, folder string, set *setfmt.Set) []string {
+	var failed []string
+	for _, e := range in.Extra {
+		out := filepath.Join(folder, filepath.FromSlash(e.Rel))
+		err := func() error {
+			b, err := in.Get(ctx, e.URL)
+			if err != nil {
+				return err
+			}
+			if e.CardBack {
+				img, _, err := image.Decode(bytes.NewReader(b))
+				if err != nil {
+					return err
+				}
+				return art.ComposeCardBack(img, out)
+			}
+			return writeFileAtomic(out, b)
+		}()
+		if err == nil {
+			if e.CardBack {
+				set.CardBack = e.Rel
+			}
+			continue
+		}
+		failed = append(failed, path.Base(e.Rel))
+		for i := range set.Packs {
+			pk := &set.Packs[i]
+			for _, f := range []*string{&pk.PackTexture, &pk.PackIcon, &pk.BoxTexture, &pk.BoxIcon} {
+				if *f == e.Rel {
+					*f = ""
+				}
+			}
+		}
+	}
+	return failed
 }

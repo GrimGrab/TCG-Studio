@@ -16,12 +16,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	astore "tcgstudio/internal/assets"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/art"
+	"tcgstudio/internal/catalog"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/gamify"
@@ -369,6 +371,25 @@ func (a *App) SourceSets(source, lang string, refresh bool) ([]ImportableSet, er
 	return out, nil
 }
 
+// PickImportFolder asks for a folder of card images (the "Image folder" source); "" when cancelled.
+func (a *App) PickImportFolder() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Select a folder of card images"})
+}
+
+// PreviewImportFolder reads a folder of card images: what an image-folder import would make of it.
+func (a *App) PreviewImportFolder(dir string, opt importer.Options) (importer.FolderPreview, error) {
+	if opt.RarityMap == nil {
+		opt.RarityMap = importer.DefaultFolderRarityMap()
+	}
+	p, err := importer.ScanFolder(dir, opt)
+	if err != nil {
+		return p, err
+	}
+	_, err = os.Stat(a.ws().Folder(p.ProjectID))
+	p.Imported = err == nil
+	return p, nil
+}
+
 func (a *App) DefaultImportOptions(source string) (importer.Options, error) {
 	src, err := a.sources.Get(source)
 	if err != nil {
@@ -408,13 +429,15 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 	if err != nil {
 		return "", err
 	}
-	// Brand the default booster with generated art when the game's templates are available.
-	if len(p.Set.Packs) > 0 && a.templatesReady() {
-		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{NoPackText: true}); err == nil {
+	// Brand the default booster with generated art when the game's templates are available (not when the import brought
+	// its own pack art, e.g. an EPL mod).
+	if len(p.Set.Packs) > 0 && p.Set.Packs[0].PackTexture == "" && a.templatesReady() {
+		if res, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{NoPackText: true, Resolve: p.ImagePath}); err == nil {
 			applyArt(&p.Set.Packs[0], res)
 			_ = a.ws().Save(p)
 		}
 	}
+	a.catalogSet(p.ID) // available to every setup from now on
 	return p.ID, nil
 }
 
@@ -437,6 +460,7 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 	if packID != "" && packID != "booster" && setfmt.SafeID(packID) {
 		o.FilePrefix = packID + "_"
 	}
+	o.Resolve = p.ImagePath // the set icon / front image may live in the shared library
 	return art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, o)
 }
 
@@ -461,7 +485,8 @@ func (a *App) GenerateSetCardBack(id, color, title string) (string, error) {
 	}
 	rel := "images/card_back.png"
 	folder := a.ws().Folder(id)
-	return rel, art.GenerateCardBack(folder, "", color, title, filepath.Join(folder, filepath.FromSlash(rel)))
+	return rel, art.GenerateCardBackFrom(func(r string) string { return a.ws().ImagePath(id, r) }, "", color, title,
+		filepath.Join(folder, filepath.FromSlash(rel)))
 }
 
 func (a *App) globalBackPath() (string, error) {
@@ -521,6 +546,55 @@ func (a *App) RemoveGlobalCardBack() error {
 	return nil
 }
 
+// BoxArt is a generated box for a pack: its texture and icon, and the 3D editor layout starting from that texture.
+type BoxArt struct {
+	BoxTexture string `json:"boxTexture"`
+	BoxIcon    string `json:"boxIcon"`
+	Layout     string `json:"layout"` // JSON for project.meta.packArt[pack].box
+}
+
+// boxArtFromPack renders a box from the game template with the pack texture's front panel on it (files written into the
+// project folder; the pack's own files are untouched).
+func (a *App) boxArtFromPack(p *project.Project, pk *setfmt.Pack) (BoxArt, error) {
+	if !a.templatesReady() {
+		return BoxArt{}, errors.New("the game templates aren't available yet — check Settings → Game (TCG Studio reads them from the game folder)")
+	}
+	if pk.PackTexture == "" {
+		return BoxArt{}, errors.New("this pack has no pack texture to take the front from")
+	}
+	front := "images/" + pk.ID + "_box_front.png"
+	if err := art.CropPackFront(p.ImagePath(pk.PackTexture), filepath.Join(p.Folder, filepath.FromSlash(front))); err != nil {
+		return BoxArt{}, err
+	}
+	r, err := art.Generate(a.templatesDir(), p.Folder, p.ID, p.Set.Name, art.Options{FilePrefix: pk.ID + "_box_", FrontImage: front, Resolve: p.ImagePath})
+	if err != nil {
+		return BoxArt{}, err
+	}
+	for _, f := range []string{r.PackTexture, r.PackIcon} { // only the box is wanted
+		if f != "" && f != pk.PackTexture && f != pk.PackIcon {
+			_ = os.Remove(filepath.Join(p.Folder, filepath.FromSlash(f)))
+		}
+	}
+	layout, _ := json.Marshal(map[string]any{"version": 2, "layers": []any{}, "base": "vanilla",
+		"baseColor": "#3a3a3a", "baseItem": "file", "baseFile": r.BoxTexture})
+	return BoxArt{BoxTexture: r.BoxTexture, BoxIcon: r.BoxIcon, Layout: string(layout)}, nil
+}
+
+// BoxFromPack makes box art for a pack from its own pack art (packs that came without a box). The caller puts the result
+// into the pack and project.meta.packArt and saves.
+func (a *App) BoxFromPack(id, packID string) (BoxArt, error) {
+	p, err := a.ws().Load(id)
+	if err != nil {
+		return BoxArt{}, err
+	}
+	for i := range p.Set.Packs {
+		if p.Set.Packs[i].ID == packID {
+			return a.boxArtFromPack(p, &p.Set.Packs[i])
+		}
+	}
+	return BoxArt{}, errors.New("pack " + packID + " not found (save the set first)")
+}
+
 func applyArt(pk *setfmt.Pack, r art.Result) {
 	pk.PackTexture, pk.PackIcon, pk.BoxTexture, pk.BoxIcon = r.PackTexture, r.PackIcon, r.BoxTexture, r.BoxIcon
 }
@@ -549,6 +623,9 @@ func (a *App) CreateProject(id, name string) (*project.Project, error) {
 // DeleteProject removes the project and, if installed, its copy in the game (so no orphaned set is left behind).
 // Player saves keep their data for the set; it comes back if a set with the same id is installed again.
 func (a *App) DeleteProject(id string) error {
+	if err := a.keepInCatalog(catalog.KindSet, []string{id}, nil); err != nil {
+		return err
+	}
 	if game.IsGameDir(a.settings.GameDir) {
 		if err := project.Uninstall(id, a.settings.GameDir); err != nil {
 			return err
@@ -876,8 +953,13 @@ func (a *App) writeIntoProject(id, name string, b []byte) (string, error) {
 	base := strings.ReplaceAll(filepath.Base(name), " ", "_")
 	ext := filepath.Ext(base)
 	name = base
+	lib := filepath.Join(a.ws().LibFolder(id), "images")
 	for n := 2; ; n++ {
-		if _, err := os.Stat(filepath.Join(dir, name)); os.IsNotExist(err) {
+		// Free in the project and in the set's shared library folder: a project file shadows the library file of the
+		// same name, which other references of this set may still use.
+		_, errOwn := os.Stat(filepath.Join(dir, name))
+		_, errLib := os.Stat(filepath.Join(lib, name))
+		if os.IsNotExist(errOwn) && os.IsNotExist(errLib) {
 			break
 		}
 		name = fmt.Sprintf("%s-%d%s", strings.TrimSuffix(base, ext), n, ext)
@@ -948,6 +1030,9 @@ func (a *App) fileHandler() http.Handler {
 				return
 			}
 			file = filepath.Join(accessories.Folder(a.root()), filepath.FromSlash(rel))
+			if astore.IsAsset(rel) { // the shared store
+				file = a.store().Path(rel)
+			}
 		case path == "globalback/"+globalBackFile:
 			file = filepath.Join(game.PluginDir(a.settings.GameDir), globalBackFile)
 		default:

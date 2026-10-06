@@ -1,6 +1,6 @@
 // Thin helpers over the generated Wails bindings.
 export * as App from '../../wailsjs/go/main/App';
-export { EventsOn, EventsOff, BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+export { EventsOn, EventsOff, BrowserOpenURL, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime';
 import { Confirm, ImportSources } from '../../wailsjs/go/main/App';
 
 // SuperLegend exists in the game's enum but has no rarity icon (shows as Common), so the studio doesn't offer it.
@@ -23,7 +23,7 @@ export function money(v: number | undefined | null): string {
 
 /** Display name of an import source (project meta.source). */
 export function sourceName(source: string | undefined): string {
-  return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex', ygoprodeck: 'YGOPRODeck', optcg: 'TCGplayer', swudb: 'SWU-DB', lorcast: 'Lorcast', fab: 'TCGplayer', unionarena: 'TCGplayer' } as Record<string, string>)[source ?? ''] ?? source ?? '';
+  return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex', ygoprodeck: 'YGOPRODeck', optcg: 'TCGplayer', swudb: 'SWU-DB', lorcast: 'Lorcast', fab: 'TCGplayer', unionarena: 'TCGplayer', folder: 'Image folder', epl: 'EPL mod' } as Record<string, string>)[source ?? ''] ?? source ?? '';
 }
 
 let sourcesPromise: Promise<any[]> | null = null;

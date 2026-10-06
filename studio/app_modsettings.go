@@ -7,6 +7,7 @@ import (
 
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/modconfig"
+	"tcgstudio/internal/setups"
 )
 
 // ---------------------------------------------------------------- mod settings (the in-game F1 menu, edited from the studio)
@@ -16,6 +17,7 @@ type ModSettingsView struct {
 	Sections    []modconfig.Section           `json:"sections"`
 	GameRunning bool                          `json:"gameRunning"`
 	ShowWhen    map[string]modconfig.ShowWhen `json:"showWhen"` // settings shown only for some value of another (settings-meta.json)
+	Setup       string                        `json:"setup"`    // name of the active setup: each setup keeps its own copy of these settings
 }
 
 func (a *App) modConfigPath() (string, error) {
@@ -67,7 +69,13 @@ func (a *App) ModSettings() (ModSettingsView, error) {
 	if err != nil {
 		return ModSettingsView{}, err
 	}
-	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen}, nil
+	setup := ""
+	if id := a.activeID(); id != "" {
+		if in, err := setups.LoadInfo(a.home().Dir(id)); err == nil {
+			setup = in.Name
+		}
+	}
+	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen, Setup: setup}, nil
 }
 
 // SetModSetting changes one value (validated against the setting's type/range). A running game reloads it right away.

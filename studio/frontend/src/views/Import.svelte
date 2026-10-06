@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { App, EventsOn, EventsOff, errText } from '../lib/api';
-  import { smartArtForProject } from '../lib/smartArt';
+  import { App, EventsOn, EventsOff, OnFileDrop, OnFileDropOff, errText, ask } from '../lib/api';
+  import { smartArtForProject, boxesFromPacks } from '../lib/smartArt';
+  import { renderAccessoryIcon } from '../lib/accessoryArt';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
 
@@ -23,6 +24,18 @@
   let group = $state('main');
   let options = $state<any>(null);
   let importing = $state<string | null>(null);
+  // Sets the shared catalog has but this setup doesn't: added instantly instead of imported again.
+  let inCatalog = $state<Record<string, boolean>>({});
+  async function loadCatalog() {
+    try { inCatalog = Object.fromEntries((await App.CatalogList('set')).filter((e: any) => !e.here).map((e: any) => [e.id, true])); } catch { /* optional */ }
+  }
+  async function addFromCatalog(row: any) {
+    try {
+      const r = await App.AddFromCatalog('set', [row.projectId]);
+      if (r.added?.length) { row.imported = true; notify(`Added "${row.name ?? row.projectId}" from the catalog — Install it on the Sets page to play.`, 'ok'); }
+      await loadCatalog();
+    } catch (e) { notify(errText(e), 'error'); }
+  }
   let progress = $state<any>(null);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -40,6 +53,11 @@
 
   async function load(refresh = false) {
     if (!source) return;
+    if (source.local) {
+      sets = []; loading = false;
+      if (source.id === 'epl') { if (eplPath) previewEPL(); } else if (folderPath) previewFolder();
+      return;
+    }
     loading = true;
     const id = sourceId, l = langs.length ? lang : '';
     try {
@@ -68,6 +86,151 @@
     load();
   }
 
+  // Image folder (the player's own card images): pick a folder, preview what it makes, import.
+  let folderPath = $state(remembered('folder', ''));
+  let folderName = $state('');
+  let preview = $state<any>(null);
+  let previewErr = $state('');
+  let stripNumbers = $state(remembered('stripNumbers', '') === '1');
+
+  function toggleStrip() {
+    remember('stripNumbers', stripNumbers ? '1' : '');
+    if (folderPath) previewFolder();
+  }
+
+  async function chooseFolder() {
+    try {
+      const dir = await App.PickImportFolder();
+      if (!dir) return;
+      folderPath = dir;
+      folderName = '';
+      remember('folder', dir);
+      await previewFolder();
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  async function previewFolder() {
+    const dir = folderPath;
+    try {
+      const p = await App.PreviewImportFolder(dir, { ...options, setName: folderName.trim(), stripNumbers } as any);
+      if (dir !== folderPath) return;
+      preview = p;
+      previewErr = '';
+      if (!folderName) folderName = p.name;
+    } catch (e) {
+      preview = null;
+      previewErr = errText(e);
+    }
+  }
+
+  // EPL mod (experimental): a mod made for Enhanced Prefab Loader, converted once into Studio sets.
+  let eplPath = $state(remembered('epl', ''));
+  let epl = $state<any>(null);
+  let eplErr = $state('');
+  let eplBusy = $state(false);
+  let rarityChoice = $state<Record<string, Record<string, string>>>({}); // set code → tier → game rarity
+  let pickSets = $state<Record<string, boolean>>({}); // set code → import it
+  let pickItems = $state<Record<string, boolean>>({}); // item key → convert it
+  // Where the content came from, saved with everything the import makes (shown as "from <mod>" and used by the Source sort).
+  let originMod = $state('');
+  let originAuthor = $state('');
+  let originLink = $state('');
+  let originFor = ''; // the mod path these were filled for
+  const eplCount = $derived(Object.values(pickSets).filter(Boolean).length + Object.values(pickItems).filter(Boolean).length);
+  const GAME_RARITIES = ['Common', 'Rare', 'Epic', 'Legendary', 'SuperLegend'];
+
+  async function useEPL(path: string) {
+    if (!path) return;
+    eplPath = path;
+    remember('epl', path);
+    await previewEPL();
+  }
+
+  async function chooseEPL() {
+    try { await useEPL(await App.PickEPLMod()); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  // Dropping the mod's folder or .zip (or a file inside the folder) anywhere on the page while EPL mod is chosen.
+  async function dropped(paths: string[]) {
+    if (source?.id !== 'epl' || importing || eplBusy || !paths?.length) return;
+    try { await useEPL(await App.EPLModPath(paths[0])); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  async function previewEPL() {
+    const path = eplPath;
+    eplBusy = true;
+    try {
+      const p = await App.PreviewEPL(path, stripNumbers);
+      if (path !== eplPath) return;
+      epl = p;
+      eplErr = '';
+      const rc: Record<string, Record<string, string>> = {};
+      for (const set of p.sets ?? []) rc[set.code] = Object.fromEntries((set.tiers ?? []).map((t: any) => [t.name, t.rarity]));
+      rarityChoice = rc;
+      await loadCatalog();
+      pickSets = Object.fromEntries((p.sets ?? []).map((x: any) => [x.code, !x.imported && !inCatalog[x.projectId]]));
+      if (originFor !== path) { originMod = p.modName ?? ''; originAuthor = ''; originLink = ''; originFor = path; }
+      pickItems = Object.fromEntries((p.items ?? []).map((x: any) => [x.key, !x.exists]));
+    } catch (e) {
+      epl = null;
+      eplErr = errText(e);
+    }
+    eplBusy = false;
+    progress = null;
+  }
+
+  // Import EPL mod: every ticked set (one after another) and accessory in one go.
+  async function importEPL() {
+    const sets = (epl?.sets ?? []).filter((x: any) => pickSets[x.code]);
+    const items = (epl?.items ?? []).filter((x: any) => pickItems[x.key]).map((x: any) => x.key);
+    if (sets.some((x: any) => x.imported) && !(await ask('Some ticked sets are already imported. Delete them first to import them again — they will be skipped now. Continue?'))) return;
+    importing = epl.name;
+    progress = { stage: 'cards', done: 0, total: 0, message: 'Starting…' };
+    try {
+      const r: any = await App.ImportEPL(eplPath, { sets: sets.filter((x: any) => !x.imported).map((x: any) => x.code), rarity: rarityChoice, items,
+        options: { ...options, stripNumbers, originMod: originMod.trim(), originAuthor: originAuthor.trim(), originLink: originLink.trim() } } as any);
+      const parts = [];
+      if (r.sets.length) parts.push(`${r.sets.length} set${r.sets.length === 1 ? '' : 's'}`);
+      if (r.items) parts.push(`${r.items} accessor${r.items === 1 ? 'y' : 'ies'}`);
+      notify(parts.length ? `Imported ${parts.join(' and ')} from ${epl.name}` : 'Nothing was imported', parts.length ? 'ok' : 'error');
+      for (const msg of r.problems ?? []) notify(msg, 'error');
+      // Texture variants (e.g. each comic cover) get a shop icon of their own, rendered from their texture.
+      if ((r.icons ?? []).length) {
+        const tpl = await App.AccessoryTemplates().then((raw: string) => (raw ? JSON.parse(raw) : null)).catch(() => null);
+        const models: Record<string, any> = {};
+        const icons: Record<string, string> = {};
+        let made = 0;
+        for (const job of r.icons) {
+          progress = { stage: 'items', done: made, total: r.icons.length, message: `Making icons… ${made + 1} / ${r.icons.length}` };
+          try {
+            models[job.kind] ??= await App.AccessoryModel(job.kind);
+            const size = tpl?.items?.find((i: any) => i.type === job.base)?.iconRect ?? [512, 512];
+            const url = `/acc/${job.texture.split('/').map(encodeURIComponent).join('/')}`;
+            icons[job.id] = await renderAccessoryIcon(models[job.kind], url, size[0], size[1]);
+            made++;
+          } catch (e) { notify(`Icon for ${job.id}: ${errText(e)}`, 'error'); }
+        }
+        if (made) await App.SetAccessoryIcons(icons).catch((e: any) => notify('Saving icons: ' + errText(e), 'error'));
+      }
+      // Packs the mod sells without a box get one with the pack's front on it.
+      for (const [k, id] of r.sets.entries()) {
+        progress = { stage: 'art', done: k, total: r.sets.length, message: `Making boxes… ${k + 1} / ${r.sets.length}` };
+        try {
+          const p: any = await App.LoadProject(id);
+          if (await boxesFromPacks(p)) await App.SaveProject(p);
+        } catch (e) { notify(`Box art for ${id}: ${errText(e)}`, 'error'); }
+      }
+      if (r.sets.length === 1 && !r.items) open(r.sets[0]);
+    } catch (e) {
+      notify(errText(e), 'error');
+    }
+    importing = null;
+    progress = null;
+    await previewEPL();
+  }
+
+  const pct = (v: number) => (v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4));
+
   // The shared library already has this set made another way (other format or size): ask what to do.
   let choice = $state<any>(null); // { set, art, resolve }
   const fmtName = (f: string) => (f === 'jpg' ? 'JPEG' : 'PNG');
@@ -84,19 +247,23 @@
   async function doImport(s: any) {
     const l = langs.length ? lang : '';
     let useLibrary = false;
-    const art = await App.LibraryArt(sourceId, s.code, l).catch(() => null);
+    const art = source?.local ? null : await App.LibraryArt(sourceId, s.code, l).catch(() => null);
     if (art && (art.format !== (options.imageFormat || 'png') || art.width !== options.imageWidth)) {
       const v = await askLibrary(s, art);
       if (!v) return;
       useLibrary = v === 'use';
     }
-    importing = s.code;
+    importing = source?.local ? s.name : s.code;
     progress = { stage: 'cards', done: 0, total: s.cards, message: 'Starting…' };
     try {
-      const id = await App.ImportSet(sourceId, s.code, { ...options, lang: l, useLibrary });
+      const folder = source?.id === 'folder';
+      const id = await App.ImportSet(sourceId, s.code, { ...options, lang: l, useLibrary,
+        setName: folder ? folderName.trim() : '', stripNumbers: folder && stripNumbers,
+        rarityMap: source?.id === 'epl' ? rarityChoice[s.code] : options.rarityMap });
       const done = progress?.message ?? 'Imported';
       // Pack & box art from the set's product photos (or its best card art); the import's simple art stays if this fails.
-      try {
+      // Sources that bring their own pack art (EPL mods) keep it.
+      if (!source?.ownArt) try {
         const p: any = await App.LoadProject(id);
         await smartArtForProject(p, (m) => (progress = { ...progress, stage: 'art', message: m }));
         await App.SaveProject(p);
@@ -112,18 +279,20 @@
   }
 
   onMount(async () => {
+    loadCatalog();
     EventsOn('import:progress', (p: any) => (progress = p));
     sources = await App.ImportSources();
     if (!sources.some((s) => s.id === sourceId)) sourceId = sources[0]?.id;
     await pickSource(sourceId);
   });
-  onDestroy(() => EventsOff('import:progress'));
+  onMount(() => OnFileDrop((_x: number, _y: number, paths: string[]) => dropped(paths), false));
+  onDestroy(() => { EventsOff('import:progress'); OnFileDropOff(); });
 </script>
 
 <div class="page">
   <header class="row">
-    <h2 class="grow">Import sets</h2>
-    <button onclick={() => load(true)} disabled={loading}>Refresh list</button>
+    <h2 class="grow">Import</h2>
+    {#if !source?.local}<button onclick={() => load(true)} disabled={loading}>Refresh list</button>{/if}
   </header>
 
   <div class="sources row">
@@ -135,12 +304,14 @@
   </div>
 
   <div class="filters row">
-    <input class="grow" placeholder="Search sets by name or code…" bind:value={query} />
-    <select bind:value={group}>
-      <option value="main">Main sets</option>
-      <option value="all">All sets</option>
-      {#each groups as g}<option value={g}>{g}</option>{/each}
-    </select>
+    {#if !source?.local}
+      <input class="grow" placeholder="Search sets by name or code…" bind:value={query} />
+      <select bind:value={group}>
+        <option value="main">Main sets</option>
+        <option value="all">All sets</option>
+        {#each groups as g}<option value={g}>{g}</option>{/each}
+      </select>
+    {/if}
     {#if langs.length}
       <select bind:value={lang} onchange={pickLang} title="Card language">
         {#each langs as l}<option value={l}>{LANG_NAMES[l] ?? l}</option>{/each}
@@ -165,13 +336,187 @@
 
   {#if progress}
     <div class="progress">
-      <div class="row"><b class="grow">Importing {importing?.toUpperCase()}</b><button class="small" onclick={() => App.CancelImport()}>Cancel</button></div>
+      <div class="row"><b class="grow">Importing {source?.local ? importing : importing?.toUpperCase()}</b><button class="small" onclick={() => App.CancelImport()}>Cancel</button></div>
       <div class="bar"><div style="width:{progress.total ? (100 * progress.done) / progress.total : 5}%"></div></div>
-      <div class="muted">{progress.stage === 'cards' ? 'Card list' : 'Images'} — {progress.message}</div>
+      <div class="muted">{progress.stage === 'cards' ? 'Card list' : progress.stage === 'items' ? 'Accessories' : 'Images'} — {progress.message}</div>
     </div>
   {/if}
 
-  {#if loading}
+  {#if source?.id === 'epl'}
+    <div class="folder">
+      <p class="note"><b>Experimental.</b> Converts the card sets of a mod made for Enhanced Prefab Loader into Studio sets, once:
+        cards, the mod's pack &amp; box art and card back with its pack odds turned into ours, plus its accessories, figurines and
+        furniture. EPL isn't needed in the game.
+        The art belongs to the mod's authors, so converted sets stay on this PC (they're left out of setup exports).</p>
+      <div class="row">
+        <button class="primary" disabled={!!importing || eplBusy} onclick={chooseEPL}
+          title="Pick the mod's .zip/.rar/.7z, or any .json inside the mod's folder — or drop the folder or download on this page">Choose mod…</button>
+        <span class="grow path" title={eplPath}>{eplPath || 'No mod chosen'}</span>
+        {#if eplPath}<button class="small" disabled={!!importing || eplBusy} onclick={previewEPL}>Re-read</button>{/if}
+      </div>
+      <p class="muted small">Pick the mod's download (<b>.zip</b>, <b>.rar</b> or <b>.7z</b>), or any <b>.json</b> inside its folder — or just drag the mod's folder or download onto this page.</p>
+      <label class="check opt">
+        <input type="checkbox" bind:checked={stripNumbers} onchange={() => { remember('stripNumbers', stripNumbers ? '1' : ''); if (eplPath) previewEPL(); }} disabled={!!importing || eplBusy} />
+        <span><b>Strip leading numbers</b><br />
+          <span class="muted small">Leaves out the number many mods put before their names (“001 - 2019 Base Playmat” → “2019 Base Playmat”)
+            for the sets, packs, boxes, accessories, figurines and furniture. Only a number followed by a separator (- : . ) |) counts,
+            so names like “2019 Base” stay whole. Card names are never changed.</span></span>
+      </label>
+      {#if eplBusy}<p class="muted">Reading the mod… {progress?.stage === 'unpack' && progress.total ? `(${progress.done} / ${progress.total} MB unpacked)` : ''}</p>{/if}
+      {#if eplErr}<p class="err">{eplErr}</p>{/if}
+      {#if epl}
+        <div class="eplset">
+          <b>About this mod</b>
+          <p class="muted small">Saved with everything this import makes, so you can tell later where it came from (shown as “from …”,
+            used by the Source sort). The name starts as the one inside the mod.</p>
+          <div class="row origin">
+            <label class="field grow">Mod name<input bind:value={originMod} placeholder={epl.modName} disabled={!!importing} /></label>
+            <label class="field">Author<input bind:value={originAuthor} placeholder="optional" disabled={!!importing} /></label>
+          </div>
+          <label class="field">Link<input bind:value={originLink} placeholder="optional, e.g. the mod's Nexus page" disabled={!!importing} /></label>
+        </div>
+        {#each epl.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
+        {#if !(epl.sets ?? []).length}<p class="muted">This mod has no card sets.</p>{/if}
+        {#each epl.sets ?? [] as set (set.code)}
+          <div class="eplset">
+            <div class="row">
+              <label class="check grow"><input type="checkbox" bind:checked={pickSets[set.code]} disabled={!!importing || set.imported} /> <b>{set.name}</b></label>
+              <span class="muted small">{set.cards} cards · {set.renderMode === 'FullImage' ? 'full card images' : 'art in the game frame'} · project {set.projectId}</span>
+            </div>
+            {#each set.packs ?? [] as pk}
+              <div class="muted small">Pack <b>{pk.name}</b>{pk.box ? ` + box ${pk.box}` : ''} · {pk.strategy} odds · foil {pk.foilChance}% per card</div>
+            {/each}
+            {#each set.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
+            {#if set.problemCount}
+              <p class="warn">⚠ {set.problemCount} card(s) can't be read and will be left out: {(set.problems ?? []).join('; ')}{set.problemCount > (set.problems ?? []).length ? ' …' : ''}</p>
+            {/if}
+            <details>
+              <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod → our 4)</summary>
+              <p class="muted small">Picked by how often the mod's packs give a card of each tier; change any of them. Per pack = cards of that tier in an average pack.</p>
+              <table class="rar">
+                <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th><th>Game rarity</th></tr></thead>
+                <tbody>
+                  {#each set.tiers ?? [] as t}
+                    <tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td>
+                      <td><select bind:value={rarityChoice[set.code][t.name]} disabled={!!importing}>
+                        {#each GAME_RARITIES as r}<option value={r}>{r}</option>{/each}
+                      </select></td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            </details>
+            {#if set.imported}
+              <div class="row">
+                <span class="muted grow">Already imported — open it, or delete it first to import it again.</span>
+                <button onclick={() => open(set.projectId)}>Open</button>
+              </div>
+            {:else if inCatalog[set.projectId]}
+              <div class="row">
+                <span class="muted grow">In the catalog already (imported in another setup or earlier) — add it instantly instead of converting again.</span>
+                <button onclick={() => addFromCatalog(set)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
+              </div>
+            {/if}
+          </div>
+        {/each}
+        {#if (epl.items ?? []).length}
+          <div class="eplset">
+            <b>Accessories, figurines &amp; furniture ({epl.items.length})</b>
+            <p class="muted small">Go to the Accessories and Furniture pages with the mod's own textures and models; fine-tune them there
+              (figurine size on the shelf, furniture item spots).</p>
+            {#each epl.items as it (it.key)}
+              <label class="check"><input type="checkbox" bind:checked={pickItems[it.key]} disabled={!!importing} />
+                {it.name} <span class="muted small">— {it.kind}{it.note ? ` (${it.note})` : ''}{it.exists ? ' · already converted (replaced)' : ''}</span></label>
+            {/each}
+          </div>
+        {/if}
+        <div class="row">
+          <span class="grow muted">{eplCount} selected</span>
+          <button class="primary" disabled={!!importing || eplBusy || !eplCount} onclick={importEPL}>Import EPL mod</button>
+        </div>
+        {#if (epl.skipped ?? []).length}
+          <details>
+            <summary>Not imported ({epl.skipped.length})</summary>
+            <ul>{#each epl.skipped as k}<li>{k.kind}: {k.name} <span class="muted">— {k.reason}</span></li>{/each}</ul>
+          </details>
+        {/if}
+      {/if}
+    </div>
+  {:else if source?.id === 'folder'}
+    <div class="folder">
+      <div class="row">
+        <button class="primary" disabled={!!importing} onclick={chooseFolder}>Choose folder…</button>
+        <span class="grow path" title={folderPath}>{folderPath || 'No folder chosen'}</span>
+        {#if folderPath}<button class="small" disabled={!!importing} onclick={previewFolder} title="Read the folder again">Re-read</button>{/if}
+      </div>
+      <label class="check opt">
+        <input type="checkbox" bind:checked={stripNumbers} onchange={toggleStrip} disabled={!!importing} />
+        <span><b>Strip leading numbers</b><br />
+          <span class="muted small">For files named with a card number first, like <code>001 Captain Marvel.png</code>: that number
+            becomes the card's number and is left out of its name (“Captain Marvel”, card 001). Leave it off when the file names are
+            just the card names: names that start with a number then stay whole (<code>2099 Spider-Man.png</code> stays
+            “2099 Spider-Man”) and cards are numbered 1, 2, 3… in file-name order.</span></span>
+      </label>
+      {#if previewErr}<p class="err">{previewErr}</p>{/if}
+      {#if preview}
+        <div class="row">
+          <label class="check grow">Set name <input class="grow" bind:value={folderName} disabled={!!importing} /></label>
+          <span class="muted small">project {preview.projectId}</span>
+        </div>
+        <div class="muted">
+          <b>{preview.cards}</b> card images{preview.logo ? ' · set logo' : ''}{preview.csv ? ` · cards.csv: ${preview.csvMatched} of ${preview.csvRows} rows matched` : ''}{preview.rotated ? ` · ${preview.rotated} landscape (turned upright)` : ''}
+        </div>
+        {#if preview.samples?.length}
+          <table class="rar">
+            <thead><tr><th>File</th><th>Card #</th><th>Name</th></tr></thead>
+            <tbody>{#each preview.samples as c}<tr><td class="muted">{c.file}</td><td>{c.number}</td><td>{c.name}</td></tr>{/each}
+              {#if preview.cards > preview.samples.length}<tr><td class="muted" colspan="3">… {preview.cards - preview.samples.length} more</td></tr>{/if}</tbody>
+          </table>
+        {/if}
+        <table class="rar">
+          <thead><tr><th>Rarity</th><th>Cards</th><th>In game</th></tr></thead>
+          <tbody>{#each preview.rarities as r}<tr><td>{r.name}</td><td>{r.cards}</td><td>{r.game}</td></tr>{/each}</tbody>
+        </table>
+        {#each preview.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
+        {#if preview.unmatched?.length}<p class="muted small">Not found: {preview.unmatched.slice(0, 8).join(', ')}{preview.unmatched.length > 8 ? '…' : ''}</p>{/if}
+        {#if preview.skipped?.length}<p class="muted small">Skipped: {preview.skipped.slice(0, 8).join(', ')}{preview.skipped.length > 8 ? '…' : ''}</p>{/if}
+        <div class="row">
+          {#if preview.imported}
+            <span class="muted grow">Already imported — open it, or delete it first to import again.</span>
+            <button onclick={() => open(preview.projectId)}>Open</button>
+          {:else}
+            <span class="grow"></span>
+            <div class="btnstack">
+              <button class="primary" disabled={!!importing || !preview.cards}
+                onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>Import</button>
+              {#if inCatalog[preview.projectId]}<button onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>{/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
+      <details open={!folderPath}>
+        <summary>How to set up the folder</summary>
+        <p>Use card images you own (scans or screenshots). Studio copies them into a new set; your folder isn't changed.</p>
+        <pre>My Set\                  ← set name = folder name
+  logo.png               ← optional: set logo for the pack art
+  cards.csv              ← optional, see below
+  1 Common\  Captain Marvel.png …
+  2 Rare\    …
+  3 Legendary\ …</pre>
+        <ul>
+          <li><b>Rarity</b> = the subfolder, lowest first by name (a leading number like “1 ” is dropped). Images not in a
+            subfolder are Common. Common, Uncommon, Rare, Epic, Legendary, Mythic, Secret… are known; other names are spread
+            over the game's rarities in folder order.</li>
+          <li><b>Name</b> = the file name (<code>Captain Marvel.png</code> → “Captain Marvel”; underscores become spaces).
+            Cards are numbered 1, 2, 3… in file-name order — or tick <b>Strip leading numbers</b> when the files start with
+            the card number. Adding or renaming other images later never changes which card is which in saves.</li>
+          <li><b>cards.csv</b> (comma or semicolon separated): a <code>file</code> column plus any of <code>name, number,
+            rarity, price, foilPrice, artist, text, type</code>. Its values beat the folder and file name; <code>price</code>
+            (USD) is the real price Gamify uses, read again by Refresh prices.</li>
+          <li>Card-shaped images (5:7, like 63×88 mm) fill the card; landscape ones are turned upright.</li>
+        </ul>
+      </details>
+    </div>
+  {:else if loading}
     <p class="muted">Loading sets from {source?.name ?? '…'}…</p>
   {:else}
     <p class="muted">{shown.length} sets</p>
@@ -190,7 +535,10 @@
           {#if s.imported}
             <button onclick={() => open(s.projectId)}>Open</button>
           {:else}
-            <button class="primary" disabled={!!importing} onclick={() => doImport(s)}>Import</button>
+            <div class="btnstack">
+              <button class="primary" disabled={!!importing} onclick={() => doImport(s)}>Import</button>
+              {#if inCatalog[s.projectId]}<button onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>{/if}
+            </div>
           {/if}
         </div>
       {/each}
@@ -232,6 +580,7 @@
   .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .bar div { height: 100%; background: var(--accent); transition: width 0.2s; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }
+  .btnstack { display: flex; flex-direction: column; gap: 6px; }
   .set { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   .set img.mono { width: 32px; height: 32px; filter: invert(1) opacity(0.85); }
   .set img.logo { width: 64px; height: 32px; object-fit: contain; }
@@ -239,4 +588,18 @@
   .name { font-weight: 600; }
   .upcoming { margin-left: 8px; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--accent-2); color: var(--muted, #aaa); }
   .small { font-size: 12px; }
+  .folder { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 820px; }
+  .folder .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder .err { color: var(--danger, #e66); }
+  .folder p { margin: 0; }
+  .folder .note { color: var(--muted, #aaa); }
+  .origin .field:last-child { width: 220px; }
+  .eplset { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .folder .opt { align-items: flex-start; gap: 8px; max-width: 720px; }
+  .folder .opt input { margin-top: 2px; width: 18px; height: 18px; }
+  .rar { border-collapse: collapse; width: max-content; }
+  .rar th, .rar td { text-align: left; padding: 2px 14px 2px 0; }
+  .rar th { font-weight: 500; color: var(--muted, #aaa); }
+  .folder pre { margin: 6px 0; padding: 8px; background: var(--bg); border-radius: 4px; }
+  .folder ul { margin: 6px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 </style>

@@ -101,11 +101,34 @@ type StorageResult struct {
 	Note        string `json:"note"`
 }
 
-// MoveToLibrary moves card art from the setups into the shared library (byte-identical copies stored once).
-func (a *App) MoveToLibrary() (*StorageResult, error) {
-	return a.storageAction("Moving card art", func(ctx context.Context) (*library.Result, error) {
-		return library.Move(ctx, a.home(), a.storageProgress)
+// MoveEverything moves every setup's set files into the shared library and accessory/furniture files into the shared
+// store, and deletes leftovers nothing refers to. Files that differ from the shared ones stay until the player chooses
+// (ResolveDiffering). Then the active setup's accessories are reinstalled so the game reads the new paths.
+func (a *App) MoveEverything() (*StorageResult, error) {
+	return a.storageAction("Moving everything to shared", func(ctx context.Context) (*library.Result, error) {
+		res, err := library.MoveAll(ctx, a.home(), a.storageProgress)
+		if err == nil && game.IsGameDir(a.settings.GameDir) {
+			if l, lerr := a.accLib(); lerr == nil && (len(l.Lib.Accessories) > 0 || len(l.Lib.Furniture) > 0) {
+				a.storageProgress(library.Progress{Message: "Updating accessories in the game…"})
+				err = l.Install(a.settings.GameDir)
+			}
+		}
+		return res, err
 	})
+}
+
+// ResolveDiffering applies the player's choice for a setup's set whose files differ from the shared ones: choice
+// "shared" (the same art — use the shared files), "own" (different art — kept in the named shared folder name) or
+// "replace" (different art — this setup's becomes the shared art for every setup using it).
+func (a *App) ResolveDiffering(setupID, setID, choice, name string) (*StorageResult, error) {
+	return a.storageAction("Applying your choice", func(ctx context.Context) (*library.Result, error) {
+		return library.ResolveDiffering(a.home(), setupID, setID, choice, name)
+	})
+}
+
+// DifferPreview shows a setup's differing file next to the shared one.
+func (a *App) DifferPreview(setupID, setID string) (*library.DifferPreview, error) {
+	return library.PreviewDiffer(a.home(), setupID, setID)
 }
 
 // ShrinkSets converts the PNG card art of the picked sets to JPEG: picks maps a setup id to its set ids. One task, so it
@@ -183,24 +206,27 @@ func (a *App) refreshInstalled() (int, string) {
 	return n, ""
 }
 
-// DeleteUnusedArt deletes library sets no setup uses: where "workspace" or "game"; ids empty = all of them.
-func (a *App) DeleteUnusedArt(where string, ids []string) (int64, error) {
+// DeleteUnused deletes things no setup uses, of one kind (library.Unused* kinds; ids empty = all of that kind). The game
+// folder is only touched for the game's copies (game closed). Returns bytes freed.
+func (a *App) DeleteUnused(kind string, ids []string) (int64, error) {
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
 	if err := a.storageReady(); err != nil {
 		return 0, err
 	}
-	root := project.LibraryDir(a.settings.Workspace)
-	if where == "game" {
+	gameDir := ""
+	if kind == library.UnusedGameArt {
 		if !game.IsGameDir(a.settings.GameDir) {
 			return 0, errors.New("game folder not set")
 		}
 		if game.IsRunning() {
 			return 0, errors.New("close the game first — its files are in use")
 		}
-		root = project.GameLibraryDir(a.settings.GameDir)
+		gameDir = a.settings.GameDir
 	}
-	return library.DeleteUnused(a.home(), root, ids)
+	catalogMu.Lock()
+	defer catalogMu.Unlock()
+	return library.DeleteUnused(a.home(), gameDir, kind, ids)
 }
 
 // ShrinkPreview shows one card of a set before (PNG) and after (JPEG) conversion; nothing is written.

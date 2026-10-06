@@ -28,6 +28,10 @@ type SourceInfo struct {
 	Sorts []Facet `json:"sorts"`
 	// Variants: the source has alternate printings the "Include variant printings" option can leave out.
 	Variants bool `json:"variants"`
+	// Local: the player's own files, not a card database — the Import page asks for a folder instead of listing sets.
+	Local bool `json:"local"`
+	// OwnArt: imports bring their own pack/box art (EPL mods), so the Import page doesn't run Smart generate.
+	OwnArt bool `json:"ownArt"`
 }
 
 type Facet struct {
@@ -62,7 +66,7 @@ type Registry struct{ list []Source }
 
 func NewRegistry(sf *scryfall.Client, tc *tcgdex.Client) *Registry {
 	return &Registry{list: []Source{&scryfallSource{sf}, &tcgdexSource{tc}, newYGOSource(), newOnePieceSource(),
-		newSWUSource(), newLorcanaSource(), newFabSource(), newUnionArenaSource()}}
+		newSWUSource(), newLorcanaSource(), newFabSource(), newUnionArenaSource(), folderSource{}, eplSource{}}}
 }
 
 func (r *Registry) All() []Source { return r.list }

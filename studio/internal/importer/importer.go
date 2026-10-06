@@ -37,6 +37,15 @@ type Options struct {
 	// UseLibrary: the shared library already has this set made with another format or width, and the player chose to use
 	// that art (nothing downloaded) instead of a separate copy for this setup.
 	UseLibrary bool `json:"useLibrary,omitempty"`
+	// SetName overrides the set's name (image-folder imports; empty = the folder's name).
+	SetName string `json:"setName,omitempty"`
+	// StripNumbers (image-folder imports): a number at the start of a file name is the card's number, not part of its
+	// name ("001 Captain Marvel.png" → #001 "Captain Marvel"). Off: the whole file name is the card's name.
+	StripNumbers bool `json:"stripNumbers,omitempty"`
+	// Origin of converted mod content as the player names it on the Import page (EPL mods; "" = the mod's own name).
+	OriginMod    string `json:"originMod,omitempty"`
+	OriginAuthor string `json:"originAuthor,omitempty"`
+	OriginLink   string `json:"originLink,omitempty"`
 }
 
 func DefaultOptions() Options {
@@ -300,8 +309,8 @@ func RealPrice(m project.CardMeta) setfmt.CardPrice {
 
 type imageJob struct {
 	url, path string
-	format    string // "jpg" = save as JPEG, else PNG
-	keep      bool   // shared library: an existing file is already this image (another setup downloaded it)
+	format    string  // "jpg" = save as JPEG, else PNG
+	keep      bool    // shared library: an existing file is already this image (another setup downloaded it)
 	rotate    bool    // turn landscape art upright
 	aspect    float64 // > 0: stretch to this width/height (cards narrower than the game's 63×88 slot, e.g. Yu-Gi-Oh! 59×86)
 }
@@ -470,7 +479,6 @@ func FitCardImages(p *project.Project, aspect float64) (int, error) {
 	}
 	return n, nil
 }
-
 
 // VariantTags names what makes a printing special (empty for a regular printing).
 func VariantTags(c *scryfall.Card) []string {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { App, projectFile, errText, ask, sourceName } from '../lib/api';
+  import CatalogPicker from './CatalogPicker.svelte';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
 
@@ -18,12 +19,20 @@
   $effect(() => { try { localStorage.setItem('sets.view', JSON.stringify({ show, sort })); } catch {} });
 
   const byName = (a: any, b: any) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  /** Where a set came from, for the Source sort: converted mods by name, then each import source, then hand-made sets. */
+  function sourceKey(p: any): string {
+    if (p.origin) return '0 ' + p.origin.toLowerCase();
+    if (p.source && p.source !== 'manual') return '1 ' + sourceName(p.source).toLowerCase();
+    return '2';
+  }
+
   const SORTS: Record<string, [string, (a: any, b: any) => number]> = {
     installed: ['Installed first', (a, b) => Number(b.installed) - Number(a.installed) || byName(a, b)],
     name: ['Name', byName],
     newest: ['Release date (newest)', (a, b) => (b.releasedAt || '').localeCompare(a.releasedAt || '') || byName(a, b)],
     oldest: ['Release date (oldest)', (a, b) => (a.releasedAt || '9999').localeCompare(b.releasedAt || '9999') || byName(a, b)],
     tier: ['Gamify tier', (a, b) => (a.tier || 1e9) - (b.tier || 1e9) || byName(a, b)],
+    source: ['Source (where it came from)', (a, b) => sourceKey(a).localeCompare(sourceKey(b)) || byName(a, b)],
     modified: ['Recently edited', (a, b) => String(b.modified).localeCompare(String(a.modified))]
   };
 
@@ -38,8 +47,18 @@
       .sort(SORTS[sort]?.[1] ?? byName);
   });
 
-  async function load() {
-    loading = true;
+  /** Reloads the list. Only the first load shows "Loading…": refreshes after install/uninstall update the rows in place,
+   *  so the page keeps its scroll position. */
+  let fromCatalog = $state(false);
+
+  async function addedFromCatalog(ids: string[]) {
+    fromCatalog = false;
+    await load();
+    if (ids.length) notify(`Added ${ids.length} set${ids.length === 1 ? '' : 's'} from the catalog — Install ${ids.length === 1 ? 'it' : 'them'} to play.`, 'ok');
+  }
+
+  async function load(first = false) {
+    if (first) loading = true;
     try {
       projects = await App.ListProjects();
     } catch (e) {
@@ -97,7 +116,7 @@
   }
 
   async function remove(p: any) {
-    if (!(await ask(`Delete "${p.name}"? This removes the project and its images${p.installed ? ' and uninstalls it from the game' : ''}. Player saves keep their data and get it back if you re-import the set.`))) return;
+    if (!(await ask(`Delete "${p.name}"? This removes it from this setup${p.installed ? ' and the game' : ''}; it stays in the catalog (Add from catalog… brings it back). Player saves keep their data and get it back if you re-import the set.`))) return;
     try {
       await App.DeleteProject(p.id);
       notify(`Deleted "${p.name}"${p.installed ? ' and removed it from the game' : ''}`, 'ok');
@@ -107,12 +126,13 @@
     load();
   }
 
-  onMount(load);
+  onMount(() => load(true));
 </script>
 
 <div class="page">
   <header class="row">
     <h2 class="grow">Sets</h2>
+    <button onclick={() => (fromCatalog = true)} title="Sets from your other setups and earlier imports — no re-import">Add from catalog…</button>
     <button onclick={() => (creating = !creating)}>New empty set</button>
   </header>
 
@@ -129,7 +149,7 @@
   {:else if projects.length === 0}
     <div class="empty">
       <p>No sets yet.</p>
-      <p class="muted">Use <b>Import sets</b> to pull in a whole set (Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana, Flesh and Blood, Union Arena), or create an empty set.</p>
+      <p class="muted">Use <b>Import</b> to pull in a whole set (Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana, Flesh and Blood, Union Arena), or create an empty set.</p>
     </div>
   {:else}
     <div class="toolbar row">
@@ -158,7 +178,8 @@
             <button class="name" onclick={() => open(p.id)}>{p.name}</button>
             <div class="muted small">
               {p.id} · {p.cards} cards · {p.packs} pack{p.packs === 1 ? '' : 's'}
-              {#if p.code} · {sourceName(p.source)} {p.code.toUpperCase()}{p.releasedAt ? ` (${p.releasedAt})` : ''}{/if}
+              {#if p.origin} · from EPL mod “{p.origin}”
+              {:else if p.code} · {sourceName(p.source)} {p.code.toUpperCase()}{p.releasedAt ? ` (${p.releasedAt})` : ''}{/if}
             </div>
             <div class="row" style="margin-top:6px">
               {#if p.installState === 'stale'}<span class="badge warn" title="Edited since it was installed — the game has an older version">Outdated in game</span>
@@ -178,6 +199,8 @@
     </div>
   {/if}
 </div>
+
+{#if fromCatalog}<CatalogPicker kind="set" onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
 
 <style>
   .page { padding: 20px 24px; overflow: auto; height: 100%; }

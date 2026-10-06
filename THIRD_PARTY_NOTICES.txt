@@ -40,6 +40,9 @@ WHAT IS INCLUDED IN THE DOWNLOAD
      https://github.com/AOMediaCodec/libavif), dav1d (BSD-2-Clause, https://code.videolan.org/videolan/dav1d),
      libaom (BSD-2-Clause, https://aomedia.googlesource.com/aom) and libyuv (BSD-3-Clause,
      https://chromium.googlesource.com/libyuv/libyuv). Full texts below.
+   - Texture decoding for mod asset bundles (decoders.wasm): Unity's crunch transcoder (crn_decomp.h, zlib license,
+     https://github.com/Unity-Technologies/crunch, unity branch; full text below) and bcdec's BC7 decoder (used under
+     The Unlicense, public domain, https://github.com/iOrange/bcdec).
    - Go modules (license in brackets; full texts below):
      - git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 [MIT]
      - github.com/bep/debounce v1.2.1 [MIT]
@@ -50,6 +53,7 @@ WHAT IS INCLUDED IN THE DOWNLOAD
      - github.com/leaanthony/go-ansi-parser v1.6.1 [MIT]
      - github.com/leaanthony/slicer v1.6.0 [MIT]
      - github.com/leaanthony/u v1.1.1 [MIT]
+     - github.com/pierrec/lz4/v4 v4.1.33 [BSD]
      - github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c [BSD]
      - github.com/pkg/errors v0.9.1 [BSD]
      - github.com/rivo/uniseg v0.4.7 [MIT]
@@ -2023,6 +2027,32 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+----- crunch (zlib; inside decoders.wasm) -----
+
+crunch/crnlib uses the ZLIB license:
+http://opensource.org/licenses/Zlib
+
+Copyright (c) 2010-2016 Richard Geldreich, Jr. and Binomial LLC
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+claim that you wrote the original software. If you use this software
+in a product, an acknowledgment in the product documentation would be
+appreciated but is not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.
+
+
 ----- git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 (LICENSE) -----
 
 This project is dual-licensed under the UNLICENSE or
@@ -2464,6 +2494,36 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+----- github.com/pierrec/lz4/v4 v4.1.33 (LICENSE) -----
+
+Copyright (c) 2015, Pierre Curto
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of xxHash nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----- github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c (LICENSE) -----
 

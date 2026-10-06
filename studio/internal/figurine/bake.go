@@ -2,8 +2,10 @@ package figurine
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"image"
+	"io"
 	"image/png"
 	"math"
 	"os"
@@ -47,7 +49,7 @@ func WriteSource(base string, m *Mesh, img image.Image) error {
 	if err := writePNG(base+".png", img); err != nil {
 		return err
 	}
-	return writeOBJ(base+".obj", "TCG Studio figurine source (right-handed, Y up, UV origin bottom-left)", m)
+	return writeOBJ(base+".obj", sourceHeader, m)
 }
 
 // ReadSource reads a source OBJ written by WriteSource (one index per vertex, "f a/a/a"), keeping the vertex order; UVs go
@@ -189,7 +191,31 @@ func Place(src *Mesh, p Placement) (*Mesh, error) {
 
 // WriteGame writes the placed model for the mod (Unity space, UV origin bottom-left).
 func WriteGame(path string, m *Mesh) error {
-	return writeOBJ(path, "TCG Studio figurine for TCG Custom Cards (Unity mesh space: left-handed, Y up, UV origin bottom-left)", m)
+	return writeOBJ(path, gameHeader, m)
+}
+
+const (
+	sourceHeader = "TCG Studio figurine source (right-handed, Y up, UV origin bottom-left)"
+	gameHeader   = "TCG Studio figurine for TCG Custom Cards (Unity mesh space: left-handed, Y up, UV origin bottom-left)"
+)
+
+// SourceOBJ is a source model as WriteSource writes it (for the shared asset store).
+func SourceOBJ(m *Mesh) []byte { return encodeOBJ(sourceHeader, m) }
+
+// GameOBJ is a placed model as WriteGame writes it (for the shared asset store).
+func GameOBJ(m *Mesh) []byte { return encodeOBJ(gameHeader, m) }
+
+// PNG encodes an image as WriteSource writes its texture.
+func PNG(img image.Image) ([]byte, error) {
+	var b bytes.Buffer
+	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, img)
+	return b.Bytes(), err
+}
+
+func encodeOBJ(header string, m *Mesh) []byte {
+	var b bytes.Buffer
+	_ = writeOBJTo(&b, header, m)
+	return b.Bytes()
 }
 
 func writeOBJ(path, header string, m *Mesh) error {
@@ -200,7 +226,15 @@ func writeOBJ(path, header string, m *Mesh) error {
 	if err != nil {
 		return err
 	}
-	w := bufio.NewWriterSize(fh, 1<<20)
+	if err := writeOBJTo(fh, header, m); err != nil {
+		fh.Close()
+		return err
+	}
+	return fh.Close()
+}
+
+func writeOBJTo(out io.Writer, header string, m *Mesh) error {
+	w := bufio.NewWriterSize(out, 1<<20)
 	f := func(v float64) string { return strconv.FormatFloat(v, 'g', 7, 64) }
 	fmt.Fprintf(w, "# %s\n# vertices %d, triangles %d\n", header, len(m.Pos), m.Triangles())
 	for _, v := range m.Pos {
@@ -216,11 +250,7 @@ func writeOBJ(path, header string, m *Mesh) error {
 		a, b, c := m.Idx[t]+1, m.Idx[t+1]+1, m.Idx[t+2]+1
 		fmt.Fprintf(w, "f %d/%d/%d %d/%d/%d %d/%d/%d\n", a, a, a, b, b, b, c, c, c)
 	}
-	if err := w.Flush(); err != nil {
-		fh.Close()
-		return err
-	}
-	return fh.Close()
+	return w.Flush()
 }
 
 func writePNG(path string, img image.Image) error {

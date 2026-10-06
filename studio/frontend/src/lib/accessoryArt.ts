@@ -1,10 +1,13 @@
 // Accessory art: an editor "net" (the model unfolded, each face upright as seen from outside) with layers on top, mapped into
 // the game texture through the model's face → texture targets (internal/uvmap/models.go).
 
+import { renderMeshIcon } from './meshView';
+
 export interface Target { rect: number[]; src: number[]; flipX?: boolean; flipY?: boolean; transpose?: boolean; bleed?: boolean }
 export interface Face { id: string; label: string; net: number[]; hidden?: boolean; targets: Target[] }
 export interface Base { id: string; label: string; texture: string; targets?: Record<string, Target[]> }
-export interface Model { kind: string; mesh: string; textureSize: number; size: number[]; faces: Face[]; palette?: boolean; icon: string; bases?: Base[] }
+export interface PreviewPart { mesh: string; texture?: 'main' | 'secondary'; glass?: boolean }
+export interface Model { kind: string; mesh: string; textureSize: number; size: number[]; faces: Face[]; palette?: boolean; icon: string; bases?: Base[]; preview?: PreviewPart[] }
 
 export type LayerKind = 'image' | 'fill' | 'text';
 export interface Layer {
@@ -30,6 +33,15 @@ export interface Layout {
 }
 
 export const newLayout = (): Layout => ({ version: 2, layers: [], base: 'vanilla', baseColor: '#3a3a3a' });
+
+/** The shop icon of an accessory whose whole texture is given (an imported or painted texture, no layers): the faces are
+ *  read straight from that texture, as the editor does with a painted texture. Same output as the editor's export. */
+export async function renderAccessoryIcon(m: Model, textureUrl: string, w = 512, h = 512): Promise<string> {
+  const tex = await loadImage(textureUrl);
+  const S = netScale(m), net = document.createElement('canvas');
+  await renderNet(net, m, newLayout(), tex, () => '', S);
+  return composeIcon(m, net, S, w, h).toDataURL('image/png');
+}
 
 /** Net bounds in object units. */
 export function netBounds(m: Model) {
@@ -421,4 +433,11 @@ function bandColors(img: Picture, edges: boolean): { top: string; bottom: string
     return '#' + best.slice(0, 3).map((v) => Math.round(v / best![3]).toString(16).padStart(2, '0')).join('');
   };
   return edges ? { top: band(0.12, 0.35), bottom: band(0.65, 0.88) } : { top: band(0, 0.5), bottom: band(0.5, 1) };
+}
+
+/** Shop icon of a model whose icon is 'pack': the real game mesh rendered with the finished texture (1024², like vanilla). */
+export function meshIcon(m: Model, texture: TexImageSource): Promise<string> {
+  const parts = (m.preview ?? [{ mesh: m.mesh }]).filter((p) => !p.glass && p.texture !== 'secondary')
+    .map((p) => ({ url: `/acctemplates/${encodeURIComponent(p.mesh + '.obj')}`, texture: p.texture }));
+  return renderMeshIcon(parts, texture, [1024, 1024]);
 }

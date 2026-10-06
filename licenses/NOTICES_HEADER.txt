@@ -40,6 +40,9 @@ WHAT IS INCLUDED IN THE DOWNLOAD
      https://github.com/AOMediaCodec/libavif), dav1d (BSD-2-Clause, https://code.videolan.org/videolan/dav1d),
      libaom (BSD-2-Clause, https://aomedia.googlesource.com/aom) and libyuv (BSD-3-Clause,
      https://chromium.googlesource.com/libyuv/libyuv). Full texts below.
+   - Texture decoding for mod asset bundles (decoders.wasm): Unity's crunch transcoder (crn_decomp.h, zlib license,
+     https://github.com/Unity-Technologies/crunch, unity branch; full text below) and bcdec's BC7 decoder (used under
+     The Unlicense, public domain, https://github.com/iOrange/bcdec).
    - Go modules (license in brackets; full texts below):
 {{GO_MODULES}}
 

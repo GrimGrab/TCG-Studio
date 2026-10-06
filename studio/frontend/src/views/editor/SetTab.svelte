@@ -22,6 +22,10 @@
       notify('Card back generated — save to keep it', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
   }
+  async function saveToCatalog() {
+    try { await App.SaveToCatalog('set', [project.set.id]); notify(`The catalog now has this setup's saved version of "${project.set.name}".`, 'ok'); }
+    catch (e) { notify(errText(e), 'error'); }
+  }
 </script>
 
 <div class="form">
@@ -30,6 +34,10 @@
       <label class="field grow">Set name<input bind:value={project.set.name} /></label>
       <label class="field" style="width:200px">Id (stable)<input value={project.set.id} readonly /></label>
       <label class="field" style="width:110px" title="Progression order used by Gamify">Tier<input type="number" min="0" bind:value={project.meta.tier} /></label>
+    </div>
+    <div class="row">
+      <span class="muted small grow">This setup's own copy: names, prices and tiers you change here don't affect your other setups.</span>
+      <button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button>
     </div>
     <div class="row">
       <label class="field grow">Card style

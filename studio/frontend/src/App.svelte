@@ -12,8 +12,9 @@
   import ModSettings from './views/ModSettings.svelte';
   import Setups from './views/Setups.svelte';
   import Storage from './views/Storage.svelte';
+  import Catalog from './views/Catalog.svelte';
 
-  type View = 'setup' | 'setups' | 'storage' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
   let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
@@ -153,9 +154,10 @@
     {/if}
     <button class:active={view === 'setup'} onclick={() => (view = 'setup')}>Setup{#if !setupReady}<span class="dot" title="Something needs installing"></span>{/if}</button>
     <button class:active={view === 'projects' || view === 'editor'} onclick={() => (view = 'projects')}>Sets</button>
-    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import sets</button>
+    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import</button>
     <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
     <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
+    <button class:active={view === 'catalog'} onclick={() => (view = 'catalog')}>Catalog</button>
     <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
     <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
     <button class:active={view === 'storage'} onclick={() => (view = 'storage')}>Storage{#if storageBusy}<span class="dot busy" title="A storage task is running"></span>{/if}</button>
@@ -217,6 +219,8 @@
       <ModSettings {notify} />
     {:else if view === 'storage'}
       <Storage {notify} />
+    {:else if view === 'catalog'}
+      <Catalog {notify} />
     {:else if view === 'settings'}
       <Settings {notify} onchange={refreshStatus} />
     {:else if view === 'editor'}

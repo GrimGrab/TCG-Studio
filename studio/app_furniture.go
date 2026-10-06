@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/figurine"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gameextract"
@@ -115,7 +114,25 @@ func (a *App) DeleteFurniture(id string) (AccessoryView, error) {
 	if err != nil {
 		return AccessoryView{}, err
 	}
+	if err := a.keepInCatalog("", []string{id}, l); err != nil {
+		return AccessoryView{}, err
+	}
 	l.DeleteFurniture(id)
+	return a.saveAndInstall(l)
+}
+
+// DeleteFurnitureMany removes several pieces at once (one save and install).
+func (a *App) DeleteFurnitureMany(ids []string) (AccessoryView, error) {
+	l, err := a.accLib()
+	if err != nil {
+		return AccessoryView{}, err
+	}
+	if err := a.keepInCatalog("", ids, l); err != nil {
+		return AccessoryView{}, err
+	}
+	for _, id := range ids {
+		l.DeleteFurniture(id)
+	}
 	return a.saveAndInstall(l)
 }
 
@@ -138,7 +155,7 @@ func (a *App) BakeFurnitureModel(id, model, texture string, p figurine.Placement
 	if err != nil {
 		return FurnitureBake{}, err
 	}
-	src, err := figurine.ReadSource(libPath(l, model))
+	src, err := figurine.ReadSource(l.Resolve(model))
 	if err != nil {
 		return FurnitureBake{}, err
 	}
@@ -146,17 +163,13 @@ func (a *App) BakeFurnitureModel(id, model, texture string, p figurine.Placement
 	if err != nil {
 		return FurnitureBake{}, err
 	}
-	meshRel := accessories.ImagesDir + "/" + id + "_model.obj"
-	if err := figurine.WriteGame(libPath(l, meshRel), g); err != nil {
+	meshRel, err := l.PutBytes(figurine.GameOBJ(g), ".obj")
+	if err != nil {
 		return FurnitureBake{}, err
 	}
-	tex, err := os.ReadFile(libPath(l, texture))
+	texRel, err := storedTexture(l, texture)
 	if err != nil {
 		return FurnitureBake{}, errors.New("model texture missing: " + err.Error())
-	}
-	texRel, err := l.WriteImage(id, "texture", tex)
-	if err != nil {
-		return FurnitureBake{}, err
 	}
 	lo, hi := g.Bounds()
 	return FurnitureBake{Mesh: meshRel, Texture: texRel, Triangles: g.Triangles(),

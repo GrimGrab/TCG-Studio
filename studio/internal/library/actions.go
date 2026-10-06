@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/setups"
 )
 
@@ -20,73 +19,6 @@ type Result struct {
 	Files int   `json:"files"` // card images moved or converted
 	Freed int64 `json:"freed"` // bytes freed in the workspace
 	Sets  int   `json:"sets"`  // sets changed
-}
-
-// Move takes card art from the setups' project folders into the shared library. For each set and image the first copy
-// moves; copies with the same bytes in other setups are deleted; copies that differ stay (that setup's own art).
-func Move(ctx context.Context, h setups.Home, progress func(Progress)) (*Result, error) {
-	if progress == nil {
-		progress = func(Progress) {}
-	}
-	bySet, _, err := sets(h)
-	if err != nil {
-		return nil, err
-	}
-	res := &Result{}
-	ids := sortedIDs(bySet)
-	for i, id := range ids {
-		if err := ctx.Err(); err != nil {
-			return res, err
-		}
-		progress(Progress{Message: fmt.Sprintf("Moving card art of %s…", id), Done: i, Total: len(ids)})
-		locs := bySet[id]
-		// The first shareable copy defines the library folder's import settings when it has none yet.
-		for _, l := range locs {
-			if m, ok := shareable(l.p); ok && project.LoadLibMeta(l.p.LibFolder) == nil {
-				if err := project.SaveLibMeta(l.p.LibFolder, &m); err != nil {
-					return res, err
-				}
-				break
-			}
-		}
-		var share []loc
-		for _, l := range locs {
-			if _, ok := shareable(l.p); ok {
-				share = append(share, l)
-			}
-		}
-		changed := false
-		for _, rel := range unionImages(share) {
-			lib := filepath.Join(share[0].p.LibFolder, filepath.FromSlash(rel))
-			for _, l := range share {
-				own := filepath.Join(l.p.Folder, filepath.FromSlash(rel))
-				if !fileExists(own) {
-					continue
-				}
-				switch {
-				case !fileExists(lib):
-					if err := moveFile(own, lib); err != nil {
-						return res, err
-					}
-				case sameFile(own, lib):
-					n := size(own)
-					if err := os.Remove(own); err != nil {
-						return res, err
-					}
-					res.Freed += n
-				default:
-					continue // this setup's own version of the card: stays
-				}
-				res.Files++
-				changed = true
-			}
-		}
-		if changed {
-			res.Sets++
-		}
-	}
-	progress(Progress{Message: "Done", Done: len(ids), Total: len(ids)})
-	return res, nil
 }
 
 // Shrink converts the PNG card art of the given sets of setup setupID to JPEG. Art in the shared library is converted once
@@ -264,32 +196,6 @@ func usesPNGFromLib(locs []loc) bool {
 		}
 	}
 	return false
-}
-
-// DeleteUnused removes library sets (folders under root) that no setup uses. ids empty = every unused one.
-func DeleteUnused(h setups.Home, root string, ids []string) (int64, error) {
-	bySet, _, err := sets(h)
-	if err != nil {
-		return 0, err
-	}
-	want := map[string]bool{}
-	for _, id := range ids {
-		want[id] = true
-	}
-	var freed int64
-	for _, u := range unused(root, bySet) {
-		if len(ids) > 0 && !want[u.ID] {
-			continue
-		}
-		if !setfmt.SafeID(u.ID) {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(root, u.ID)); err != nil {
-			return freed, err
-		}
-		freed += u.Size
-	}
-	return freed, nil
 }
 
 func sortedIDs(m map[string][]loc) []string {

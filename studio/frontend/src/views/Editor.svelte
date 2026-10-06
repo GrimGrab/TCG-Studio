@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, errText, ask, sourceName, sourceCode } from '../lib/api';
+  import { App, errText, ask, sourceName, sourceCode, BrowserOpenURL } from '../lib/api';
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
   import SetTab from './editor/SetTab.svelte';
@@ -116,7 +116,7 @@
       <button onclick={leave}>← Sets</button>
       <div class="grow title">
         <h2>{project.set.name}</h2>
-        <span class="muted">{project.id}{sourceCode(project.meta) ? ` · ${sourceName(project.meta.source)} ${sourceCode(project.meta).toUpperCase()}` : ''}</span>
+        <span class="muted">{project.id}{project.meta?.origin?.mod ? ` · from EPL mod “${project.meta.origin.mod}”${project.meta.origin.author ? ` by ${project.meta.origin.author}` : ''}` : sourceCode(project.meta) ? ` · ${sourceName(project.meta.source)} ${sourceCode(project.meta).toUpperCase()}` : ''}</span>{#if project.meta?.origin?.link}<button class="link small" onclick={() => BrowserOpenURL(project.meta.origin.link)} title={project.meta.origin.link}>Mod page ↗</button>{/if}
       </div>
       <button class="issues" onclick={() => (showIssues = !showIssues)}>
         {#if errors}<span class="badge err">{errors} errors</span>{/if}

@@ -50,6 +50,7 @@ section() { printf '\n----- %s -----\n\n' "$1"; tr -d '\r' < "$lic/$2"; printf '
   section "dav1d (BSD-2-Clause; inside github.com/gen2brain/avif)" dav1d-BSD-2-Clause.txt
   section "libaom (BSD-2-Clause; inside github.com/gen2brain/avif)" aom-BSD-2-Clause.txt
   section "libyuv (BSD-3-Clause; inside github.com/gen2brain/avif)" libyuv-BSD-3-Clause.txt
+  section "crunch (zlib; inside decoders.wasm)" crunch-Zlib.txt
   printf '%s' "$texts"
 } > "$out"
 echo "Wrote $out ($(wc -l < "$out") lines)"

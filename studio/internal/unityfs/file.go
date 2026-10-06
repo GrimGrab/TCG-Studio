@@ -28,7 +28,8 @@ const (
 type File struct {
 	Name       string // base name, lower case
 	path       string
-	f          *os.File
+	f          io.ReaderAt
+	closer     io.Closer // nil for files inside a bundle
 	be         bool
 	version    uint32
 	dataOffset int64
@@ -60,11 +61,17 @@ func openFile(path string) (sf *File, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err != nil {
-			f.Close()
-		}
-	}()
+	sf, err = openReader(path, f)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	sf.closer = f
+	return sf, nil
+}
+
+// openReader parses a serialized file from any random-access source (a file on disk or a node inside a bundle).
+func openReader(path string, f io.ReaderAt) (sf *File, err error) {
 	defer catch(&err, filepath.Base(path))
 
 	head := make([]byte, 48)
@@ -187,9 +194,11 @@ func (o *Object) Name() (name string, err error) {
 
 func (sf *File) String() string { return sf.Name }
 
-// Env is the game's data folder (<game>\Card Shop Simulator_Data): files opened on demand and references resolved across them.
+// Env is the game's data folder (<game>\Card Shop Simulator_Data) or an asset bundle: files opened on demand and
+// references resolved across them.
 type Env struct {
 	Dir     string
+	bundle  *Bundle // set: files and .resS data come from this bundle instead of Dir
 	mu      sync.Mutex
 	files   map[string]*File
 	scripts map[*Object]string // MonoScript → class name
@@ -210,6 +219,19 @@ func (e *Env) File(name string) (*File, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if f, ok := e.files[name]; ok {
+		return f, nil
+	}
+	if e.bundle != nil {
+		n := e.bundle.Node(name)
+		if n == nil || !n.Serialized {
+			e.files[name] = nil
+			return nil, nil
+		}
+		f, err := openReader(n.Name, n)
+		if err != nil {
+			return nil, err
+		}
+		e.files[name] = f
 		return f, nil
 	}
 	path := filepath.Join(e.Dir, name)
@@ -233,8 +255,8 @@ func (e *Env) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, f := range e.files {
-		if f != nil {
-			f.f.Close()
+		if f != nil && f.closer != nil {
+			f.closer.Close()
 		}
 	}
 	e.files = map[string]*File{}

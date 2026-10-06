@@ -36,7 +36,7 @@ func TestSourcesConsistent(t *testing.T) {
 				t.Errorf("%s: %q is in RarityOrder but not mapped", info.ID, r)
 			}
 		}
-		if len(info.Colors) == 0 || info.ColorLabel == "" {
+		if (len(info.Colors) == 0 || info.ColorLabel == "") && !info.Local { // local files have no fixed colours
 			t.Errorf("%s: no colour/type filter", info.ID)
 		}
 		for _, f := range info.Sorts {

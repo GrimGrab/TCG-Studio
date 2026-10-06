@@ -45,6 +45,8 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 22, G: 24, B: 30, A: 1},
 		OnStartup:        app.startup,
 		Bind:             []interface{}{app},
+		// Dropped files/folders reach the page as paths (Import → EPL mod); the webview never opens a dropped file itself.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true},
 	})
 	if err != nil {
 		println("Error:", err.Error())

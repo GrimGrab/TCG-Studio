@@ -1,0 +1,9 @@
+// Minimal stand-in for decoders.wasm: placement new (crn_decomp.h) and the allocating forms defined in decoders.cpp.
+#pragma once
+#include <stddef.h>
+void* operator new(size_t n);
+void* operator new[](size_t n);
+inline void* operator new(size_t, void* p) noexcept { return p; }
+inline void* operator new[](size_t, void* p) noexcept { return p; }
+void operator delete(void* p) noexcept;
+void operator delete[](void* p) noexcept;

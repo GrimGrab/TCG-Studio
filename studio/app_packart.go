@@ -1,13 +1,12 @@
 package main
 
 // Pack / box art editor: the accessory face editor on the card pack and card box models (uvmap "Pack" / "Box"). The editor
-// composes the textures in the frontend; these methods store them in the project (same file names as the generator) and
-// render the pack's shop icon from the finished texture. Layouts live in studio.json (project.Meta.PackArt).
+// composes the textures and the pack's shop icon (the game mesh, lib/meshView.ts renderMeshIcon) in the frontend; these
+// methods store them in the project (same file names as the generator). Layouts live in studio.json (project.Meta.PackArt).
 
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"image"
@@ -22,7 +21,6 @@ import (
 	"tcgstudio/internal/art"
 	"tcgstudio/internal/importer"
 	"tcgstudio/internal/setfmt"
-	"tcgstudio/internal/uvmap"
 )
 
 // PackArtFiles are project-relative paths of one pack's (or box's) texture and icon.
@@ -71,43 +69,6 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 		}
 	}
 	return out, nil
-}
-
-// PackIconFromTexture renders a pack shop icon (data URL) from a composed pack texture (data URL): the vanilla pack icon with
-// the front face warped in.
-func (a *App) PackIconFromTexture(texturePNG string) (string, error) {
-	if !a.templatesReady() {
-		return "", errors.New("the game templates aren't available yet — check Settings → Game")
-	}
-	b, err := decodeDataURL(texturePNG)
-	if err != nil {
-		return "", err
-	}
-	tex, _, err := image.Decode(bytes.NewReader(b))
-	if err != nil {
-		return "", err
-	}
-	m, _ := uvmap.ModelFor("Pack")
-	var front image.Rectangle
-	for _, f := range m.Faces {
-		if f.ID != "front" {
-			continue
-		}
-		for _, t := range f.Targets {
-			if !t.Bleed {
-				front = image.Rect(int(t.Rect[0]), int(t.Rect[1]), int(t.Rect[2]), int(t.Rect[3]))
-			}
-		}
-	}
-	icon, err := art.PackIconFromTexture(a.templatesDir(), tex, front)
-	if err != nil {
-		return "", err
-	}
-	var buf bytes.Buffer
-	if err := art.EncodePNG(&buf, icon); err != nil {
-		return "", err
-	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // SnapshotPackBase copies a project image (the pack's current art) to <prefix><which>_base.png so the editor can start from it
@@ -181,7 +142,7 @@ func (a *App) UseProductPhoto(id string, p importer.SealedProduct) (string, erro
 		return "", errors.New("bad project id")
 	}
 	rel := fmt.Sprintf("images/photo_%d.png", p.ID)
-	if _, err := os.Stat(filepath.Join(a.ws().Folder(id), filepath.FromSlash(rel))); err == nil {
+	if _, err := os.Stat(a.ws().ImagePath(id, rel)); err == nil { // downloaded before (here or in the shared library)
 		return rel, nil
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, time.Minute)

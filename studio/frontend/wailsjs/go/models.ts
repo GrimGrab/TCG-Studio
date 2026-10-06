@@ -61,6 +61,113 @@ export namespace art {
 
 }
 
+export namespace catalog {
+	
+	export class AddResult {
+	    added: string[];
+	    skipped: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AddResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.added = source["added"];
+	        this.skipped = source["skipped"];
+	    }
+	}
+	export class Deleted {
+	    setups: string[];
+	    setIds: string[];
+	    removed: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Deleted(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setups = source["setups"];
+	        this.setIds = source["setIds"];
+	        this.removed = source["removed"];
+	    }
+	}
+	export class SetupRef {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetupRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	export class Entry {
+	    kind: string;
+	    key: string;
+	    id: string;
+	    name: string;
+	    sub: string;
+	    detail: string;
+	    origin: string;
+	    author: string;
+	    source: string;
+	    saved: boolean;
+	    from: string;
+	    here: boolean;
+	    usedBy: SetupRef[];
+	    cover: string;
+	    icon: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.key = source["key"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sub = source["sub"];
+	        this.detail = source["detail"];
+	        this.origin = source["origin"];
+	        this.author = source["author"];
+	        this.source = source["source"];
+	        this.saved = source["saved"];
+	        this.from = source["from"];
+	        this.here = source["here"];
+	        this.usedBy = this.convertValues(source["usedBy"], SetupRef);
+	        this.cover = source["cover"];
+	        this.icon = source["icon"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace debuglog {
 	
 	export class Note {
@@ -126,6 +233,31 @@ export namespace debuglog {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace epl {
+	
+	export class Tier {
+	    name: string;
+	    cards: number;
+	    perPack: number;
+	    perCard: number;
+	    rarity: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Tier(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.cards = source["cards"];
+	        this.perPack = source["perPack"];
+	        this.perCard = source["perCard"];
+	        this.rarity = source["rarity"];
+	    }
 	}
 
 }
@@ -346,6 +478,158 @@ export namespace gamify {
 
 export namespace importer {
 	
+	export class EPLItem {
+	    key: string;
+	    id: string;
+	    name: string;
+	    kind: string;
+	    base: string;
+	    exists: boolean;
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.base = source["base"];
+	        this.exists = source["exists"];
+	        this.note = source["note"];
+	    }
+	}
+	export class EPLPack {
+	    name: string;
+	    box: string;
+	    strategy: string;
+	    foilChance: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLPack(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.box = source["box"];
+	        this.strategy = source["strategy"];
+	        this.foilChance = source["foilChance"];
+	    }
+	}
+	export class EPLSkipped {
+	    name: string;
+	    kind: string;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLSkipped(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.reason = source["reason"];
+	    }
+	}
+	export class EPLSet {
+	    code: string;
+	    projectId: string;
+	    imported: boolean;
+	    name: string;
+	    cards: number;
+	    tiers: epl.Tier[];
+	    packs: EPLPack[];
+	    renderMode: string;
+	    problems: string[];
+	    problemCount: number;
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLSet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.projectId = source["projectId"];
+	        this.imported = source["imported"];
+	        this.name = source["name"];
+	        this.cards = source["cards"];
+	        this.tiers = this.convertValues(source["tiers"], epl.Tier);
+	        this.packs = this.convertValues(source["packs"], EPLPack);
+	        this.renderMode = source["renderMode"];
+	        this.problems = source["problems"];
+	        this.problemCount = source["problemCount"];
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EPLPreview {
+	    mod: string;
+	    name: string;
+	    modName: string;
+	    sets: EPLSet[];
+	    items: EPLItem[];
+	    skipped: EPLSkipped[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mod = source["mod"];
+	        this.name = source["name"];
+	        this.modName = source["modName"];
+	        this.sets = this.convertValues(source["sets"], EPLSet);
+	        this.items = this.convertValues(source["items"], EPLItem);
+	        this.skipped = this.convertValues(source["skipped"], EPLSkipped);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class Facet {
 	    value: string;
 	    label: string;
@@ -360,6 +644,117 @@ export namespace importer {
 	        this.label = source["label"];
 	    }
 	}
+	export class FolderSample {
+	    file: string;
+	    number: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FolderSample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.number = source["number"];
+	        this.name = source["name"];
+	    }
+	}
+	export class RarityCount {
+	    name: string;
+	    game: string;
+	    cards: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RarityCount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.game = source["game"];
+	        this.cards = source["cards"];
+	    }
+	}
+	export class FolderPreview {
+	    dir: string;
+	    name: string;
+	    projectId: string;
+	    imported: boolean;
+	    cards: number;
+	    rarities: RarityCount[];
+	    csv: boolean;
+	    csvRows: number;
+	    csvMatched: number;
+	    unmatched: string[];
+	    skipped: string[];
+	    logo: boolean;
+	    rotated: number;
+	    offShape: number;
+	    warnings: string[];
+	    samples: FolderSample[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FolderPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dir = source["dir"];
+	        this.name = source["name"];
+	        this.projectId = source["projectId"];
+	        this.imported = source["imported"];
+	        this.cards = source["cards"];
+	        this.rarities = this.convertValues(source["rarities"], RarityCount);
+	        this.csv = source["csv"];
+	        this.csvRows = source["csvRows"];
+	        this.csvMatched = source["csvMatched"];
+	        this.unmatched = source["unmatched"];
+	        this.skipped = source["skipped"];
+	        this.logo = source["logo"];
+	        this.rotated = source["rotated"];
+	        this.offShape = source["offShape"];
+	        this.warnings = source["warnings"];
+	        this.samples = this.convertValues(source["samples"], FolderSample);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class IconJob {
+	    id: string;
+	    kind: string;
+	    base: string;
+	    texture: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IconJob(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.base = source["base"];
+	        this.texture = source["texture"];
+	    }
+	}
 	export class Options {
 	    includeVariants: boolean;
 	    imageWidth: number;
@@ -367,6 +762,11 @@ export namespace importer {
 	    lang?: string;
 	    imageFormat?: string;
 	    useLibrary?: boolean;
+	    setName?: string;
+	    stripNumbers?: boolean;
+	    originMod?: string;
+	    originAuthor?: string;
+	    originLink?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Options(source);
@@ -380,8 +780,14 @@ export namespace importer {
 	        this.lang = source["lang"];
 	        this.imageFormat = source["imageFormat"];
 	        this.useLibrary = source["useLibrary"];
+	        this.setName = source["setName"];
+	        this.stripNumbers = source["stripNumbers"];
+	        this.originMod = source["originMod"];
+	        this.originAuthor = source["originAuthor"];
+	        this.originLink = source["originLink"];
 	    }
 	}
+	
 	export class SealedGame {
 	    category: number;
 	    name: string;
@@ -444,6 +850,8 @@ export namespace importer {
 	    rarityOrder: string[];
 	    sorts: Facet[];
 	    variants: boolean;
+	    local: boolean;
+	    ownArt: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SourceInfo(source);
@@ -460,6 +868,8 @@ export namespace importer {
 	        this.rarityOrder = source["rarityOrder"];
 	        this.sorts = this.convertValues(source["sorts"], Facet);
 	        this.variants = source["variants"];
+	        this.local = source["local"];
+	        this.ownArt = source["ownArt"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -550,6 +960,134 @@ export namespace installer {
 
 export namespace library {
 	
+	export class AccessorySet {
+	    id: string;
+	    name: string;
+	    files: number;
+	    bytes: number;
+	    leftoverFiles: number;
+	    leftoverBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccessorySet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.files = source["files"];
+	        this.bytes = source["bytes"];
+	        this.leftoverFiles = source["leftoverFiles"];
+	        this.leftoverBytes = source["leftoverBytes"];
+	    }
+	}
+	export class AccessoryStorage {
+	    storeBytes: number;
+	    storeFiles: number;
+	    setups: AccessorySet[];
+	    moveBytes: number;
+	    moveFiles: number;
+	    unusedBytes: number;
+	    unusedFiles: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccessoryStorage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.storeBytes = source["storeBytes"];
+	        this.storeFiles = source["storeFiles"];
+	        this.setups = this.convertValues(source["setups"], AccessorySet);
+	        this.moveBytes = source["moveBytes"];
+	        this.moveFiles = source["moveFiles"];
+	        this.unusedBytes = source["unusedBytes"];
+	        this.unusedFiles = source["unusedFiles"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Differ {
+	    setup: string;
+	    setupName: string;
+	    set: string;
+	    setName: string;
+	    files: number;
+	    bytes: number;
+	    cards: number;
+	    cardBytes: number;
+	    sample: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Differ(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.setup = source["setup"];
+	        this.setupName = source["setupName"];
+	        this.set = source["set"];
+	        this.setName = source["setName"];
+	        this.files = source["files"];
+	        this.bytes = source["bytes"];
+	        this.cards = source["cards"];
+	        this.cardBytes = source["cardBytes"];
+	        this.sample = source["sample"];
+	    }
+	}
+	export class DifferPreview {
+	    file: string;
+	    own: string;
+	    shared: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DifferPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.own = source["own"];
+	        this.shared = source["shared"];
+	    }
+	}
+	export class ItemInfo {
+	    id: string;
+	    name: string;
+	    kind: string;
+	    own: number;
+	    shared: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.own = source["own"];
+	        this.shared = source["shared"];
+	    }
+	}
 	export class Progress {
 	    message: string;
 	    done: number;
@@ -566,20 +1104,28 @@ export namespace library {
 	        this.total = source["total"];
 	    }
 	}
-	export class Unused {
+	export class UnusedEntry {
+	    kind: string;
 	    id: string;
+	    name: string;
 	    size: number;
 	    files: number;
+	    inCatalog: boolean;
+	    note?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new Unused(source);
+	        return new UnusedEntry(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
 	        this.id = source["id"];
+	        this.name = source["name"];
 	        this.size = source["size"];
 	        this.files = source["files"];
+	        this.inCatalog = source["inCatalog"];
+	        this.note = source["note"];
 	    }
 	}
 	export class SetInfo {
@@ -587,11 +1133,14 @@ export namespace library {
 	    name: string;
 	    own: number;
 	    library: number;
+	    shared: number;
+	    differs: number;
 	    png: number;
 	    pngFiles: number;
 	    shrinkTo: number;
 	    movable: number;
 	    shareable: boolean;
+	    artFolder: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SetInfo(source);
@@ -603,11 +1152,14 @@ export namespace library {
 	        this.name = source["name"];
 	        this.own = source["own"];
 	        this.library = source["library"];
+	        this.shared = source["shared"];
+	        this.differs = source["differs"];
 	        this.png = source["png"];
 	        this.pngFiles = source["pngFiles"];
 	        this.shrinkTo = source["shrinkTo"];
 	        this.movable = source["movable"];
 	        this.shareable = source["shareable"];
+	        this.artFolder = source["artFolder"];
 	    }
 	}
 	export class SetupInfo {
@@ -615,7 +1167,16 @@ export namespace library {
 	    name: string;
 	    active: boolean;
 	    size: number;
+	    info: number;
+	    cardArt: number;
+	    setFiles: number;
+	    leftovers: number;
+	    itemFiles: number;
+	    saves: number;
+	    game: number;
+	    other: number;
 	    sets: SetInfo[];
+	    items: ItemInfo[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SetupInfo(source);
@@ -627,7 +1188,16 @@ export namespace library {
 	        this.name = source["name"];
 	        this.active = source["active"];
 	        this.size = source["size"];
+	        this.info = source["info"];
+	        this.cardArt = source["cardArt"];
+	        this.setFiles = source["setFiles"];
+	        this.leftovers = source["leftovers"];
+	        this.itemFiles = source["itemFiles"];
+	        this.saves = source["saves"];
+	        this.game = source["game"];
+	        this.other = source["other"];
 	        this.sets = this.convertValues(source["sets"], SetInfo);
+	        this.items = this.convertValues(source["items"], ItemInfo);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -651,6 +1221,8 @@ export namespace library {
 	export class Report {
 	    workspace: number;
 	    library: number;
+	    assets: number;
+	    catalog: number;
 	    gameSets: number;
 	    gameLibrary: number;
 	    gameFound: boolean;
@@ -658,8 +1230,9 @@ export namespace library {
 	    setups: SetupInfo[];
 	    moveSaves: number;
 	    moveFiles: number;
-	    unused: Unused[];
-	    gameUnused: Unused[];
+	    differ: Differ[];
+	    unused: UnusedEntry[];
+	    accessories: AccessoryStorage;
 	
 	    static createFrom(source: any = {}) {
 	        return new Report(source);
@@ -669,6 +1242,8 @@ export namespace library {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspace = source["workspace"];
 	        this.library = source["library"];
+	        this.assets = source["assets"];
+	        this.catalog = source["catalog"];
 	        this.gameSets = source["gameSets"];
 	        this.gameLibrary = source["gameLibrary"];
 	        this.gameFound = source["gameFound"];
@@ -676,8 +1251,9 @@ export namespace library {
 	        this.setups = this.convertValues(source["setups"], SetupInfo);
 	        this.moveSaves = source["moveSaves"];
 	        this.moveFiles = source["moveFiles"];
-	        this.unused = this.convertValues(source["unused"], Unused);
-	        this.gameUnused = this.convertValues(source["gameUnused"], Unused);
+	        this.differ = this.convertValues(source["differ"], Differ);
+	        this.unused = this.convertValues(source["unused"], UnusedEntry);
+	        this.accessories = this.convertValues(source["accessories"], AccessoryStorage);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -729,6 +1305,7 @@ export namespace main {
 	    accessories: setfmt.Accessory[];
 	    furniture: setfmt.Furniture[];
 	    layouts: Record<string, string>;
+	    origins: Record<string, origin.Origin>;
 	    installed: boolean;
 	    warnings: string[];
 	    errors: string[];
@@ -742,9 +1319,98 @@ export namespace main {
 	        this.accessories = this.convertValues(source["accessories"], setfmt.Accessory);
 	        this.furniture = this.convertValues(source["furniture"], setfmt.Furniture);
 	        this.layouts = source["layouts"];
+	        this.origins = this.convertValues(source["origins"], origin.Origin, true);
 	        this.installed = source["installed"];
 	        this.warnings = source["warnings"];
 	        this.errors = source["errors"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BoxArt {
+	    boxTexture: string;
+	    boxIcon: string;
+	    layout: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoxArt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.boxTexture = source["boxTexture"];
+	        this.boxIcon = source["boxIcon"];
+	        this.layout = source["layout"];
+	    }
+	}
+	export class EPLResult {
+	    sets: string[];
+	    items: number;
+	    icons: importer.IconJob[];
+	    problems: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sets = source["sets"];
+	        this.items = source["items"];
+	        this.icons = this.convertValues(source["icons"], importer.IconJob);
+	        this.problems = source["problems"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EPLSelection {
+	    sets: string[];
+	    rarity: Record<string, any>;
+	    items: string[];
+	    options: importer.Options;
+	
+	    static createFrom(source: any = {}) {
+	        return new EPLSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sets = source["sets"];
+	        this.rarity = source["rarity"];
+	        this.items = source["items"];
+	        this.options = this.convertValues(source["options"], importer.Options);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -895,6 +1561,7 @@ export namespace main {
 	    sections: modconfig.Section[];
 	    gameRunning: boolean;
 	    showWhen: Record<string, modconfig.ShowWhen>;
+	    setup: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ModSettingsView(source);
@@ -905,6 +1572,7 @@ export namespace main {
 	        this.sections = this.convertValues(source["sections"], modconfig.Section);
 	        this.gameRunning = source["gameRunning"];
 	        this.showWhen = this.convertValues(source["showWhen"], modconfig.ShowWhen, true);
+	        this.setup = source["setup"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1421,6 +2089,58 @@ export namespace modconfig {
 
 }
 
+export namespace origin {
+	
+	export class Origin {
+	    kind: string;
+	    mod: string;
+	    author?: string;
+	    link?: string;
+	    package?: string;
+	    path?: string;
+	    bundle?: string;
+	    item?: string;
+	    // Go type: time
+	    imported: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Origin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.mod = source["mod"];
+	        this.author = source["author"];
+	        this.link = source["link"];
+	        this.package = source["package"];
+	        this.path = source["path"];
+	        this.bundle = source["bundle"];
+	        this.item = source["item"];
+	        this.imported = this.convertValues(source["imported"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace project {
 	
 	export class CardMeta {
@@ -1487,6 +2207,9 @@ export namespace project {
 	    source: string;
 	    scryfallCode?: string;
 	    setCode?: string;
+	    sourceDir?: string;
+	    rarityOrder?: string[];
+	    origin?: origin.Origin;
 	    lang?: string;
 	    releasedAt?: string;
 	    // Go type: time
@@ -1507,6 +2230,9 @@ export namespace project {
 	        this.source = source["source"];
 	        this.scryfallCode = source["scryfallCode"];
 	        this.setCode = source["setCode"];
+	        this.sourceDir = source["sourceDir"];
+	        this.rarityOrder = source["rarityOrder"];
+	        this.origin = this.convertValues(source["origin"], origin.Origin);
 	        this.lang = source["lang"];
 	        this.releasedAt = source["releasedAt"];
 	        this.importedAt = this.convertValues(source["importedAt"], null);
@@ -1588,6 +2314,7 @@ export namespace project {
 	    installed: boolean;
 	    installState: string;
 	    cover: string;
+	    origin?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Summary(source);
@@ -1607,6 +2334,7 @@ export namespace project {
 	        this.installed = source["installed"];
 	        this.installState = source["installState"];
 	        this.cover = source["cover"];
+	        this.origin = source["origin"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

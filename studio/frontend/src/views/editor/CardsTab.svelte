@@ -25,7 +25,8 @@
     sourceInfo(id).then((s) => { if (project.meta?.source === id) source = s; });
   });
   const colors = $derived<any[]>(source?.colors ?? []);
-  const srcOrder = $derived<string[]>(source?.rarityOrder ?? []);
+  // A set's own order (image-folder imports: its rarity subfolders) beats the source's fixed list.
+  const srcOrder = $derived<string[]>(project.meta?.rarityOrder?.length ? project.meta.rarityOrder : source?.rarityOrder ?? []);
   // Unknown source rarities rank in the middle of the ladder.
   const srcRank = (r: string | undefined) => {
     const i = r ? srcOrder.indexOf(r) : -1;
@@ -100,6 +101,11 @@
 
   function selectAll() { selected = shown.map((c: any) => c.id); }
 
+  // Strip leading numbers: "001 Captain Marvel.png" → card 001 "Captain Marvel" (shared with the Import page's image-folder
+  // option). Off: the whole file name is the name, so "2099 Spider-Man" stays whole.
+  let stripNumbers = $state((() => { try { return localStorage.getItem('import.stripNumbers') === '1'; } catch { return false; } })());
+  function rememberStrip() { try { localStorage.setItem('import.stripNumbers', stripNumbers ? '1' : ''); } catch {} }
+
   async function addCards() {
     try {
       const images: string[] = await App.PickImages(project.id);
@@ -107,11 +113,16 @@
       const added: string[] = [];
       for (const rel of images) {
         const stem = rel.replace(/^images\//, '').replace(/\.[^.]+$/, '');
-        let id = stem.toLowerCase().replace(/[\s:/|\\]+/g, '-');
-        for (let n = 2; ids.has(id); n++) id = `${stem.toLowerCase()}-${n}`;
+        const base = stem.toLowerCase().replace(/[\s:/|\\]+/g, '-');
+        let id = base;
+        for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
         ids.add(id);
+        let name = stem, number = '';
+        const m = stripNumbers ? stem.match(/^#?(\d{1,5}[a-zA-Z]?)(?:\s*[-_.)]\s*|\s+)(.+)$/) : null;
+        if (m) { number = m[1]; name = m[2]; }
+        name = name.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim(); // hyphens stay (Spider-Man)
         project.set.cards.push({
-          id, name: stem.replace(/[-_]+/g, ' '), description: '', artist: '', rarity: 'Common', image: rel,
+          id, name, ...(number ? { number } : {}), description: '', artist: '', rarity: 'Common', image: rel,
           price: { base: 0.25 }, play: { laneAttack: [1, 1, 1, 1], element: 'Fire' }
         });
         added.push(id);
@@ -164,6 +175,8 @@
       <button class="small" onclick={selectAll}>Select all shown</button>
       <button class="small" onclick={() => (selected = [])} disabled={!selected.length}>Clear</button>
       <button class="small" onclick={addCards}>+ Add cards from images</button>
+      <label class="check small" title="For files named with a card number first, like “001 Captain Marvel.png”: the number becomes the card's number and is left out of its name. Off: the whole file name is the name.">
+        <input type="checkbox" bind:checked={stripNumbers} onchange={rememberStrip} /> Strip leading numbers</label>
     </div>
     <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))">
       {#each shown as c, i (c.id)}

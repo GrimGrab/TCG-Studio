@@ -3,6 +3,7 @@
   import { App, EventsOn, errText, ask } from '../lib/api';
   import { newLayout, type Layout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
+  import CatalogPicker from './CatalogPicker.svelte';
   import FigurineEditor, { newFigLayout, type FigLayout } from './FigurineEditor.svelte';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
@@ -10,10 +11,25 @@
   let view = $state<any>(null);          // AccessoryView from Go
   let templates = $state<any>(null);     // mod export (templates\accessories\accessories.json), null if missing
   let selectedId = $state('');
+  // Ticked in the list for Delete (Ctrl+click adds/removes, Shift+click a range); the open accessory is selectedId.
+  let picked = $state<string[]>([]);
+  let anchor = $state('');
   let TABS = $state<any[]>([]);           // accessory kinds from Go (setfmt.AccessoryKinds): kind, title, one, toggle, bases
   const kindInfo = (k: string) => TABS.find((tb) => tb.kind === k);
   let kind = $state('Deckbox');          // current tab
   let items = $derived((view?.accessories ?? []).filter((a: any) => a.kind === kind));
+  // Display order of the list (the library order itself stays the Gamify ladder order): library order, name, or source
+  // (where it came from: converted mods grouped by mod, then things made in Studio).
+  const SORT_LABELS: Record<string, string> = { order: 'List order', name: 'Name', source: 'Source' };
+  const originOf = (x: any) => view?.origins?.[x.id];
+  const sourceKey = (x: any) => (originOf(x) ? '0 ' + (originOf(x).mod || '').toLowerCase() : '1');
+  function sortShown(list: any[], by: string): any[] {
+    if (by === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (by === 'source') return [...list].sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)) || a.name.localeCompare(b.name));
+    return list;
+  }
+  let sortBy = $state((() => { try { return localStorage.getItem('accessories.sort') || 'order'; } catch { return 'order'; } })());
+  let shown = $derived(sortShown(items, sortBy));
   let acc = $state<any>(null);           // working copy of the selected accessory
   let layout = $state<Layout>(newLayout());
   let figLayout = $state<FigLayout>(newFigLayout()); // figurines: own model instead of a texture design
@@ -38,6 +54,8 @@
 
   function select(id: string) {
     selectedId = id;
+    picked = id ? [id] : [];
+    anchor = id;
     const a = view?.accessories.find((x: any) => x.id === id);
     acc = a ? JSON.parse(JSON.stringify(a)) : null;
     let l: any = null;
@@ -63,9 +81,54 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
+  let fromCatalog = $state(false);
+
+  async function addedFromCatalog(ids: string[]) {
+    fromCatalog = false;
+    await load();
+    if (ids.length) notify(`Added ${ids.length} item${ids.length === 1 ? '' : 's'} from the catalog.`, 'ok');
+  }
+
+  async function saveToCatalog() {
+    if (!acc) return;
+    if (dirty) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
+    try { await App.SaveToCatalog('accessory', [acc.id]); notify(`"${acc.name}" is now the catalog's version.`, 'ok'); }
+    catch (e) { notify(errText(e), 'error'); }
+  }
+
   async function remove() {
-    if (!acc || !(await ask(`Delete "${acc.name}"? Decks using it will show no deck box / playmat.`))) return;
+    if (!acc || !(await ask(`Delete "${acc.name}"? Decks using it will show no deck box / playmat. It stays in the catalog (Add from catalog… brings it back).`))) return;
     try { view = await App.DeleteAccessory(acc.id); dirty = false; await load(false); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  /** List click: plain = open it; Ctrl = add/remove it from the selection; Shift = select the range from the last click. */
+  async function clickItem(e: MouseEvent, id: string) {
+    if (e.ctrlKey || e.metaKey) {
+      picked = picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id];
+      anchor = id;
+      return;
+    }
+    if (e.shiftKey && anchor) {
+      const ids = shown.map((a: any) => a.id);
+      const [i, j] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
+      if (i >= 0) { picked = ids.slice(i, j + 1); return; }
+    }
+    await trySelect(id);
+  }
+
+  /** Delete key in the list: deletes the selected accessories after one confirmation. */
+  async function listKey(e: KeyboardEvent) {
+    if (e.key !== 'Delete' || !picked.length) return;
+    e.preventDefault(); // the texture editor's Delete (remove layer) must not run too
+    const names = items.filter((a: any) => picked.includes(a.id)).map((a: any) => a.name);
+    const what = names.length === 1 ? `"${names[0]}"` : `${names.length} accessories`;
+    if (!(await ask(`Delete ${what}? Decks using them will show no deck box / playmat.`))) return;
+    try {
+      view = await App.DeleteAccessories(picked);
+      dirty = false;
+      await load(false);
+      notify(`Deleted ${what}.`, 'ok');
+    } catch (err) { notify(errText(err), 'error'); }
   }
 
   /** Swap with the previous/next accessory of the same kind (both kinds share one library order). */
@@ -151,6 +214,7 @@
 <div class="page">
   <header class="row">
     <h2 class="grow">Accessories</h2>
+    <button onclick={() => (fromCatalog = true)} title="Accessories from your other setups and earlier imports — no re-import">Add from catalog…</button>
     <button onclick={() => App.OpenAccessoriesFolder()}>Open folder</button>
   </header>
   <p class="muted small">
@@ -178,11 +242,15 @@
   </div>
 
   <div class="wrap">
-    <div class="list">
-      {#each items as a (a.id)}
-        <button class:active={a.id === selectedId} onclick={() => trySelect(a.id)}>
+    <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
+      <label class="sortby small">Sort
+        <select bind:value={sortBy} onchange={() => { try { localStorage.setItem('accessories.sort', sortBy); } catch {} }}>
+          {#each Object.entries(SORT_LABELS) as [k, label]}<option value={k}>{label}</option>{/each}
+        </select></label>
+      {#each shown as a (a.id)}
+        <button class:active={a.id === selectedId} class:picked={picked.includes(a.id) && a.id !== selectedId} onclick={(e) => clickItem(e, a.id)}>
           <span class="ico">{#if a.icon}<img src={accUrl(a.icon)} alt="" />{:else if tplItem(a)?.icon}<img src={tplUrl(tplItem(a).icon)} alt="" />{/if}</span>
-          <span class="grow">{a.name}<br /><span class="muted small">Level {a.license.level}</span></span>
+          <span class="grow">{a.name}<br /><span class="muted small">Level {a.license.level}{originOf(a) ? ` · from ${originOf(a).mod}${originOf(a).author ? ` (${originOf(a).author})` : ''}` : ''}</span></span>
         </button>
       {/each}
       <button onclick={() => add(kind)}>+ New {TABS.find((tb) => tb.kind === kind)?.one}</button>
@@ -203,10 +271,12 @@
             <label class="field" style="width:150px">Id<input value={acc.id} readonly /></label>
           </div>
           <div class="row">
-            <button class="small" onclick={() => move(-1)} disabled={items[0]?.id === acc.id}>▲ Earlier</button>
-            <button class="small" onclick={() => move(1)} disabled={items.at(-1)?.id === acc.id}>▼ Later</button>
-            <span class="muted small">List order = this type's ladder order in Gamify → Accessories.</span>
+            <button class="small" onclick={() => move(-1)} disabled={sortBy !== 'order' || items[0]?.id === acc.id}>▲ Earlier</button>
+            <button class="small" onclick={() => move(1)} disabled={sortBy !== 'order' || items.at(-1)?.id === acc.id}>▼ Later</button>
+            <span class="muted small">{sortBy === 'order' ? "List order = this type's ladder order in Gamify → Accessories."
+              : 'Sorted by ' + SORT_LABELS[sortBy].toLowerCase() + ' — choose “List order” to reorder the ladder.'}</span>
             <div class="grow"></div>
+            <button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button>
             <button class="danger small" onclick={remove}>Delete</button>
           </div>
         </section>
@@ -262,6 +332,8 @@
   </div>
 </div>
 
+{#if fromCatalog}<CatalogPicker kind="accessory" sub={kind} onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
+
 <style>
   .page { padding: 16px 20px; height: 100%; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
   .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
@@ -270,6 +342,9 @@
   .list { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
   .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
   .list button.active { border-color: var(--accent); background: #22304d; }
+  .list button.picked { border-color: var(--accent); background: #1c2740; }
+  .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .sortby select { flex: 1; }
   .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .ico img { max-width: 100%; max-height: 100%; }
   .form { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }

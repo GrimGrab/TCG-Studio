@@ -18,6 +18,10 @@ export function AccessoryTemplates() {
   return window['go']['main']['App']['AccessoryTemplates']();
 }
 
+export function AddFromCatalog(arg1, arg2) {
+  return window['go']['main']['App']['AddFromCatalog'](arg1, arg2);
+}
+
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
@@ -28,6 +32,10 @@ export function BakeFigurine(arg1, arg2, arg3, arg4) {
 
 export function BakeFurnitureModel(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BakeFurnitureModel'](arg1, arg2, arg3, arg4);
+}
+
+export function BoxFromPack(arg1, arg2) {
+  return window['go']['main']['App']['BoxFromPack'](arg1, arg2);
 }
 
 export function BrowseGameFolder() {
@@ -44,6 +52,14 @@ export function CancelImport() {
 
 export function CancelStorage() {
   return window['go']['main']['App']['CancelStorage']();
+}
+
+export function CatalogAll(arg1) {
+  return window['go']['main']['App']['CatalogAll'](arg1);
+}
+
+export function CatalogList(arg1) {
+  return window['go']['main']['App']['CatalogList'](arg1);
 }
 
 export function CheckForUpdate() {
@@ -86,12 +102,24 @@ export function DefaultImportOptions(arg1) {
   return window['go']['main']['App']['DefaultImportOptions'](arg1);
 }
 
+export function DeleteAccessories(arg1) {
+  return window['go']['main']['App']['DeleteAccessories'](arg1);
+}
+
 export function DeleteAccessory(arg1) {
   return window['go']['main']['App']['DeleteAccessory'](arg1);
 }
 
+export function DeleteFromCatalog(arg1, arg2) {
+  return window['go']['main']['App']['DeleteFromCatalog'](arg1, arg2);
+}
+
 export function DeleteFurniture(arg1) {
   return window['go']['main']['App']['DeleteFurniture'](arg1);
+}
+
+export function DeleteFurnitureMany(arg1) {
+  return window['go']['main']['App']['DeleteFurnitureMany'](arg1);
 }
 
 export function DeleteProject(arg1) {
@@ -102,12 +130,20 @@ export function DeleteSetup(arg1) {
   return window['go']['main']['App']['DeleteSetup'](arg1);
 }
 
-export function DeleteUnusedArt(arg1, arg2) {
-  return window['go']['main']['App']['DeleteUnusedArt'](arg1, arg2);
+export function DeleteUnused(arg1, arg2) {
+  return window['go']['main']['App']['DeleteUnused'](arg1, arg2);
 }
 
 export function DetectBoxFaces(arg1, arg2) {
   return window['go']['main']['App']['DetectBoxFaces'](arg1, arg2);
+}
+
+export function DifferPreview(arg1, arg2) {
+  return window['go']['main']['App']['DifferPreview'](arg1, arg2);
+}
+
+export function EPLModPath(arg1) {
+  return window['go']['main']['App']['EPLModPath'](arg1);
 }
 
 export function ExportSetup(arg1) {
@@ -174,6 +210,10 @@ export function GlobalCardBack() {
   return window['go']['main']['App']['GlobalCardBack']();
 }
 
+export function ImportEPL(arg1, arg2) {
+  return window['go']['main']['App']['ImportEPL'](arg1, arg2);
+}
+
 export function ImportFigurineModel() {
   return window['go']['main']['App']['ImportFigurineModel']();
 }
@@ -238,12 +278,12 @@ export function MoveAccessory(arg1, arg2) {
   return window['go']['main']['App']['MoveAccessory'](arg1, arg2);
 }
 
-export function MoveSetup(arg1, arg2) {
-  return window['go']['main']['App']['MoveSetup'](arg1, arg2);
+export function MoveEverything() {
+  return window['go']['main']['App']['MoveEverything']();
 }
 
-export function MoveToLibrary() {
-  return window['go']['main']['App']['MoveToLibrary']();
+export function MoveSetup(arg1, arg2) {
+  return window['go']['main']['App']['MoveSetup'](arg1, arg2);
 }
 
 export function NewAccessory(arg1, arg2, arg3) {
@@ -270,12 +310,12 @@ export function OpenSetupFolder(arg1) {
   return window['go']['main']['App']['OpenSetupFolder'](arg1);
 }
 
-export function PackIconFromTexture(arg1) {
-  return window['go']['main']['App']['PackIconFromTexture'](arg1);
-}
-
 export function PickAccessoryImage() {
   return window['go']['main']['App']['PickAccessoryImage']();
+}
+
+export function PickEPLMod() {
+  return window['go']['main']['App']['PickEPLMod']();
 }
 
 export function PickImage(arg1, arg2) {
@@ -286,12 +326,24 @@ export function PickImages(arg1) {
   return window['go']['main']['App']['PickImages'](arg1);
 }
 
+export function PickImportFolder() {
+  return window['go']['main']['App']['PickImportFolder']();
+}
+
 export function PickPackAndBox(arg1, arg2) {
   return window['go']['main']['App']['PickPackAndBox'](arg1, arg2);
 }
 
 export function PickSetupFile() {
   return window['go']['main']['App']['PickSetupFile']();
+}
+
+export function PreviewEPL(arg1, arg2) {
+  return window['go']['main']['App']['PreviewEPL'](arg1, arg2);
+}
+
+export function PreviewImportFolder(arg1, arg2) {
+  return window['go']['main']['App']['PreviewImportFolder'](arg1, arg2);
 }
 
 export function ProductPhotoSets(arg1, arg2) {
@@ -318,8 +370,16 @@ export function RemoveForge() {
   return window['go']['main']['App']['RemoveForge']();
 }
 
+export function RemoveFromCatalog(arg1, arg2) {
+  return window['go']['main']['App']['RemoveFromCatalog'](arg1, arg2);
+}
+
 export function RemoveGlobalCardBack() {
   return window['go']['main']['App']['RemoveGlobalCardBack']();
+}
+
+export function ResolveDiffering(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ResolveDiffering'](arg1, arg2, arg3, arg4);
 }
 
 export function RestoreModDefaults(arg1) {
@@ -372,6 +432,14 @@ export function SaveSettings(arg1) {
 
 export function SaveTemplateImage(arg1, arg2) {
   return window['go']['main']['App']['SaveTemplateImage'](arg1, arg2);
+}
+
+export function SaveToCatalog(arg1, arg2) {
+  return window['go']['main']['App']['SaveToCatalog'](arg1, arg2);
+}
+
+export function SetAccessoryIcons(arg1) {
+  return window['go']['main']['App']['SetAccessoryIcons'](arg1);
 }
 
 export function SetModSetting(arg1, arg2, arg3) {

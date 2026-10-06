@@ -24,6 +24,7 @@
   import { onMount, untrack } from 'svelte';
   import { App, EventsOn, errText, ask } from '../lib/api';
   import { loadImage } from '../lib/accessoryArt';
+  import CatalogPicker from './CatalogPicker.svelte';
   import {
     FigurineView, loadGeom, type Geom, type Mat, type Box, type SceneObj, ident, mul, translate, scale, rotX, rotY, rotZ, point, boxLines, MIRROR_Z,
   } from '../lib/figurineView';
@@ -36,6 +37,9 @@
   let tplStatus = $state<any>(null);
   let view = $state<any>(null);          // AccessoryView (furniture list)
   let selectedId = $state('');
+  // Selected in the list for Delete (Ctrl+click adds/removes, Shift+click a range); the open piece is selectedId.
+  let picked = $state<string[]>([]);
+  let anchor = $state('');
   let f = $state<any>(null);             // working copy
   let layout = $state<FurLayout>(newFurLayout());
   let dirty = $state(false);
@@ -227,6 +231,18 @@
   const baseOf = (x: any) => x?.base || typeInfo(x?.type)?.defaultBase || '';
   const tplOf = (x: any) => pieces.find((p) => p.base === baseOf(x));
   let list = $derived<any[]>(view?.furniture ?? []);
+  // Display order of the list (the library order itself stays the Gamify ladder order): library order, name, or source
+  // (where it came from: converted mods grouped by mod, then things made in Studio).
+  const SORT_LABELS: Record<string, string> = { order: 'List order', name: 'Name', source: 'Source' };
+  const originOf = (x: any) => view?.origins?.[x.id];
+  const sourceKey = (x: any) => (originOf(x) ? '0 ' + (originOf(x).mod || '').toLowerCase() : '1');
+  function sortShown(list: any[], by: string): any[] {
+    if (by === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (by === 'source') return [...list].sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)) || a.name.localeCompare(b.name));
+    return list;
+  }
+  let sortBy = $state((() => { try { return localStorage.getItem('furniture.sort') || 'order'; } catch { return 'order'; } })());
+  let shown = $derived(sortShown(list, sortBy));
   let t = $derived(tplOf(f));
   let info = $derived(typeInfo(f?.type));
   let spotKind = $derived<string>(info?.spots ?? '');
@@ -294,6 +310,21 @@
   let fillGeom: Geom | null = null;
   let loadedFill = '';
 
+  let fromCatalog = $state(false);
+
+  async function addedFromCatalog(ids: string[]) {
+    fromCatalog = false;
+    await load();
+    if (ids.length) notify(`Added ${ids.length} piece${ids.length === 1 ? '' : 's'} from the catalog.`, 'ok');
+  }
+
+  async function saveToCatalog() {
+    if (!f) return;
+    if (dirty) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
+    try { await App.SaveToCatalog('furniture', [f.id]); notify(`"${f.name}" is now the catalog's version.`, 'ok'); }
+    catch (e) { notify(errText(e), 'error'); }
+  }
+
   async function load(keep = true) {
     view = await App.Accessories();
     if (!keep || !list.some((x) => x.id === selectedId)) selectedId = list[0]?.id ?? '';
@@ -302,6 +333,8 @@
 
   function select(id: string) {
     selectedId = id;
+    picked = id ? [id] : [];
+    anchor = id;
     const x = list.find((p) => p.id === id);
     f = x ? JSON.parse(JSON.stringify(x)) : null;
     let l: any = null;
@@ -331,6 +364,37 @@
   async function remove() {
     if (!f || !(await ask(`Delete "${f.name}"? Placed copies disappear from saves the next time they load.`))) return;
     try { view = await App.DeleteFurniture(f.id); dirty = false; await load(false); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  /** List click: plain = open it; Ctrl = add/remove it from the selection; Shift = select the range from the last click. */
+  async function clickItem(e: MouseEvent, id: string) {
+    if (e.ctrlKey || e.metaKey) {
+      picked = picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id];
+      anchor = id;
+      return;
+    }
+    if (e.shiftKey && anchor) {
+      const ids = shown.map((x) => x.id);
+      const [i, j] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
+      if (i >= 0) { picked = ids.slice(i, j + 1); return; }
+    }
+    await trySelect(id);
+  }
+
+  /** Delete key in the list: deletes the selected pieces after one confirmation (not the spot shortcut of the 3D view). */
+  async function listKey(e: KeyboardEvent) {
+    if (e.key !== 'Delete' || !picked.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const names = list.filter((x) => picked.includes(x.id)).map((x) => x.name);
+    const what = names.length === 1 ? `"${names[0]}"` : `${names.length} pieces`;
+    if (!(await ask(`Delete ${what}? Placed copies disappear from saves the next time they load.`))) return;
+    try {
+      view = await App.DeleteFurnitureMany(picked);
+      dirty = false;
+      await load(false);
+      notify(`Deleted ${what}.`, 'ok');
+    } catch (err) { notify(errText(err), 'error'); }
   }
 
   // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
@@ -1143,8 +1207,10 @@
         f.mesh = b.mesh; f.texture = b.texture;
         if (!f.icon || layout.autoIcon) { icon = await renderIcon(t?.iconSize ?? [512, 512]); layout.autoIcon = true; }
       } else {
+        // A texture that belonged to a removed model goes with it (older libraries: its fixed file name).
+        const hadModel = !!f.mesh;
         f.mesh = '';
-        if (f.texture === `images/${f.id}_texture.png`) f.texture = '';
+        if (hadModel || f.texture === `images/${f.id}_texture.png`) f.texture = '';
       }
       // Every spot needs a customer point (customers can't take from a spot without one): refuse to save instead of guessing.
       const missing = (f.spots ?? []).map((q: any, i: number) => (q.customer?.length === 2 ? 0 : i + 1)).filter((n: number) => n);
@@ -1264,17 +1330,22 @@
 {/if}
 
 <div class="fwrap">
-  <div class="list">
-    {#each list as x (x.id)}
-      <button class:active={x.id === selectedId} onclick={() => trySelect(x.id)}>
+  <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
+    <label class="sortby small">Sort
+      <select bind:value={sortBy} onchange={() => { try { localStorage.setItem('furniture.sort', sortBy); } catch {} }}>
+        {#each Object.entries(SORT_LABELS) as [k, label]}<option value={k}>{label}</option>{/each}
+      </select></label>
+    {#each shown as x (x.id)}
+      <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
         <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{:else if tplOf(x)?.icon}<img src={furnUrl(tplOf(x).icon)} alt="" />{/if}</span>
-        <span class="grow">{x.name}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}</span></span>
+        <span class="grow">{x.name}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originOf(x).mod}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
       </button>
     {/each}
     <div class="row newrow">
       <select bind:value={newType}>{#each types as tp}<option value={tp.type}>{tp.one}</option>{/each}</select>
       <button onclick={add}>+ New</button>
     </div>
+    <button onclick={() => (fromCatalog = true)} title="Furniture from your other setups and earlier imports — no re-import">Add from catalog…</button>
   </div>
 
   {#if f}
@@ -1296,7 +1367,7 @@
         <label class="field" title="Text shown in the furniture shop's purchase window. Empty = the vanilla piece's description.">Description <span class="muted small">(empty = the vanilla piece's)</span>
           <input value={f.description ?? ''} oninput={(e) => { f.description = e.currentTarget.value; changed(); }} />
         </label>
-        <div class="row"><div class="grow"></div><button class="danger small" onclick={remove}>Delete</button></div>
+        <div class="row"><div class="grow"></div><button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button><button class="danger small" onclick={remove}>Delete</button></div>
       </section>
 
       <section>
@@ -1592,11 +1663,16 @@
   {/if}
 </div>
 
+{#if fromCatalog}<CatalogPicker kind="furniture" onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
+
 <style>
   .fwrap { display: flex; flex: 1; min-height: 0; }
   .list { width: 200px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
   .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
   .list button.active, .spotlist button.active { border-color: var(--accent); background: #22304d; }
+  .list button.picked { border-color: var(--accent); background: #1c2740; }
+  .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .sortby select { flex: 1; }
   .newrow select { flex: 1; min-width: 0; }
   .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .ico img { max-width: 100%; max-height: 100%; }

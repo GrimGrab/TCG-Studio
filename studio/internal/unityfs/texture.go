@@ -20,6 +20,10 @@ const (
 	FmtDXT5     = 12
 	FmtRGBA4444 = 13
 	FmtBGRA32   = 14
+	// Decoded by decoders.wasm (wasmdec.go): what mod asset bundles use besides DXT.
+	FmtBC7          = 25
+	FmtDXT1Crunched = 28
+	FmtDXT5Crunched = 29
 )
 
 type Texture2D struct {
@@ -131,8 +135,30 @@ func decode(b []byte, w, h, format int) (*image.NRGBA, error) {
 			v := uint16(p[0]) | uint16(p[1])<<8
 			return [4]byte{byte(v>>8&15) * 17, byte(v>>4&15) * 17, byte(v&15) * 17, byte(v>>12) * 17}
 		})
+	case FmtDXT1Crunched, FmtDXT5Crunched:
+		dxt, _, _, bpb, cerr := unpackCrunch(b)
+		if cerr != nil {
+			return nil, cerr
+		}
+		f := FmtDXT5
+		if bpb == 8 {
+			f = FmtDXT1
+		}
+		return decode(dxt, w, h, f)
+	case FmtBC7:
+		rgba, berr := decodeBC7(b, w, h)
+		if berr != nil {
+			return nil, berr
+		}
+		pw := (w + 3) / 4 * 4
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				i := (y*pw + x) * 4
+				set(x, y, [4]byte{rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]})
+			}
+		}
 	case FmtDXT1, FmtDXT5:
-		bs := 16 // BC7 (25) isn't decoded: no template texture uses it
+		bs := 16
 		if format == FmtDXT1 {
 			bs = 8
 		}
@@ -239,4 +265,14 @@ func openRaw(dir, name string) (*os.File, error) {
 		f, err = os.Open(filepath.Join(dir, "Resources", name))
 	}
 	return f, err
+}
+
+// Decodable reports whether TextureImage can decode a texture format.
+func Decodable(format int) bool {
+	switch format {
+	case FmtAlpha8, FmtARGB4444, FmtRGB24, FmtRGBA32, FmtARGB32, FmtRGB565, FmtDXT1, FmtDXT5, FmtRGBA4444, FmtBGRA32,
+		FmtBC7, FmtDXT1Crunched, FmtDXT5Crunched:
+		return true
+	}
+	return false
 }

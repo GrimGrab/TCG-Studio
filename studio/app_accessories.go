@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	astore "tcgstudio/internal/assets"
+	"tcgstudio/internal/origin"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -25,26 +27,45 @@ import (
 
 // AccessoryView is the library as the frontend sees it; layouts are the editor's own JSON, kept as strings.
 type AccessoryView struct {
-	Accessories []setfmt.Accessory `json:"accessories"`
-	Furniture   []setfmt.Furniture `json:"furniture"`
-	Layouts     map[string]string  `json:"layouts"`
-	Installed   bool               `json:"installed"`
-	Warnings    []string           `json:"warnings"`
-	Errors      []string           `json:"errors"`
+	Accessories []setfmt.Accessory       `json:"accessories"`
+	Furniture   []setfmt.Furniture       `json:"furniture"`
+	Layouts     map[string]string        `json:"layouts"`
+	Origins     map[string]origin.Origin `json:"origins"` // converted accessories/furniture: where they came from
+	Installed   bool                     `json:"installed"`
+	Warnings    []string                 `json:"warnings"`
+	Errors      []string                 `json:"errors"`
 }
 
-func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.root()) }
+func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.root(), a.store()) }
+
+// store is the workspace's shared asset store (accessory and furniture files; setups keep only the game info).
+func (a *App) store() astore.Store { return astore.For(a.settings.Workspace) }
 
 func (a *App) accView(l *accessories.Library) AccessoryView {
-	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Layouts: map[string]string{}}
+	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Layouts: map[string]string{},
+		Origins: map[string]origin.Origin{}}
+	for id, o := range l.Meta.Origins {
+		v.Origins[id] = o
+	}
+	// Converted before origins were recorded: at least say they came from a mod.
+	for _, a := range l.Lib.Accessories {
+		if _, ok := v.Origins[a.ID]; !ok && accessories.IsConverted(a.ID) {
+			v.Origins[a.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
+		}
+	}
+	for _, f := range l.Lib.Furniture {
+		if _, ok := v.Origins[f.ID]; !ok && accessories.IsConverted(f.ID) {
+			v.Origins[f.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
+		}
+	}
 	if v.Furniture == nil {
 		v.Furniture = []setfmt.Furniture{}
 	}
 	for id, raw := range l.Meta.Layouts {
 		v.Layouts[id] = string(raw)
 	}
-	v.Errors, v.Warnings = l.Lib.Validate(l.Folder)
-	fe, fw := l.Lib.ValidateFurniture(l.Folder, a.furnitureBases())
+	v.Errors, v.Warnings = l.Lib.Validate(l.Resolve)
+	fe, fw := l.Lib.ValidateFurniture(l.Resolve, a.furnitureBases())
 	v.Errors, v.Warnings = append(v.Errors, fe...), append(v.Warnings, fw...)
 	if game.IsGameDir(a.settings.GameDir) {
 		_, err := os.Stat(filepath.Join(accessories.InstalledDir(a.settings.GameDir), accessories.LibraryFile))
@@ -165,7 +186,25 @@ func (a *App) DeleteAccessory(id string) (AccessoryView, error) {
 	if err != nil {
 		return AccessoryView{}, err
 	}
+	if err := a.keepInCatalog("", []string{id}, l); err != nil {
+		return AccessoryView{}, err
+	}
 	l.Delete(id)
+	return a.saveAndInstall(l)
+}
+
+// DeleteAccessories removes several accessories at once (one save and install).
+func (a *App) DeleteAccessories(ids []string) (AccessoryView, error) {
+	l, err := a.accLib()
+	if err != nil {
+		return AccessoryView{}, err
+	}
+	if err := a.keepInCatalog("", ids, l); err != nil {
+		return AccessoryView{}, err
+	}
+	for _, id := range ids {
+		l.Delete(id)
+	}
 	return a.saveAndInstall(l)
 }
 

@@ -212,6 +212,16 @@ func (e *Env) streamData(f *File, inline []byte, s StreamRef) ([]byte, error) {
 		path = path[i+1:]
 	}
 	b := make([]byte, s.Size)
+	if e.bundle != nil {
+		n := e.bundle.Node(path)
+		if n == nil {
+			return nil, fmt.Errorf("%s is not in the bundle", path)
+		}
+		if _, err := n.ReadAt(b, int64(s.Offset)); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		return b, nil
+	}
 	rf, err := openRaw(e.Dir, path)
 	if err != nil {
 		return nil, err

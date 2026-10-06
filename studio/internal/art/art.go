@@ -36,6 +36,14 @@ type Options struct {
 	TitleOnImage bool `json:"titleOnImage"`
 	// NoPackText leaves the title and "7 CARDS" off the pack (Smart generate's fallback); the box keeps its title.
 	NoPackText bool `json:"noPackText"`
+	// Resolve finds a project file to read (the icon, FrontImage) by its relative path; nil = inside projectFolder. Sets
+	// whose files live in the shared library pass Project.ImagePath. Generated files are always written to projectFolder.
+	Resolve func(rel string) string `json:"-"`
+}
+
+// InFolder resolves relative paths inside a folder (Options.Resolve's default).
+func InFolder(folder string) func(string) string {
+	return func(rel string) string { return filepath.Join(folder, filepath.FromSlash(rel)) }
 }
 
 // Result lists generated files (relative to the project folder).
@@ -75,7 +83,10 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 		return Result{}, err
 	}
 	hue, _, _ := toHSL(base)
-	icon := loadIcon(projectFolder, o.Icon)
+	if o.Resolve == nil {
+		o.Resolve = InFolder(projectFolder)
+	}
+	icon := loadIcon(o.Resolve, o.Icon)
 	face := func(size float64) font.Face { return newFace(size) }
 
 	load := func(name string) (*image.NRGBA, error) {
@@ -99,7 +110,7 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	res := Result{PackTexture: pre + "pack_texture.png", PackIcon: pre + "pack_icon.png", BoxTexture: pre + "box_texture.png", BoxIcon: pre + "box_icon.png"}
 	var front image.Image
 	if o.FrontImage != "" {
-		if front, err = loadImage(filepath.Join(projectFolder, filepath.FromSlash(o.FrontImage))); err != nil {
+		if front, err = loadImage(o.Resolve(o.FrontImage)); err != nil {
 			return res, fmt.Errorf("front image: %w", err)
 		}
 	}
@@ -237,11 +248,11 @@ func drawIcon(img *image.NRGBA, icon func(size int) *image.Alpha, c image.Point,
 }
 
 // loadIcon returns a function rendering the set icon as an alpha mask of the requested size (aspect kept).
-func loadIcon(folder, rel string) func(int) *image.Alpha {
+func loadIcon(resolve func(string) string, rel string) func(int) *image.Alpha {
 	if rel == "" {
 		rel = "images/set_icon.svg"
 	}
-	path := filepath.Join(folder, filepath.FromSlash(rel))
+	path := resolve(rel)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -461,4 +472,20 @@ func savePNG(path string, img image.Image) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+// CropPackFront saves the front panel of a pack texture in the vanilla pack layout (e.g. a converted mod's pack) as
+// its own image, to put on a generated box's front.
+func CropPackFront(packTexture, out string) error {
+	src, err := loadImage(packTexture)
+	if err != nil {
+		return err
+	}
+	b := src.Bounds()
+	s := float64(b.Dx()) / 1024
+	r := image.Rect(int(float64(packFront.Min.X)*s), int(float64(packFront.Min.Y)*s),
+		int(float64(packFront.Max.X)*s), int(float64(packFront.Max.Y)*s)).Add(b.Min)
+	dst := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(dst, dst.Bounds(), src, r.Min, draw.Src)
+	return savePNG(out, dst)
 }

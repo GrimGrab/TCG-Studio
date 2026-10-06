@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"tcgstudio/internal/game"
+	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -25,8 +26,11 @@ const (
 type Meta struct {
 	Source        string              `json:"source"` // import source id ("scryfall", "tcgdex", …) or "manual"
 	ScryfallCode  string              `json:"scryfallCode,omitempty"`
-	SetCode       string              `json:"setCode,omitempty"` // the source's set id for sources other than Scryfall
-	Lang          string              `json:"lang,omitempty"`    // card language of the import, when the source has several
+	SetCode       string              `json:"setCode,omitempty"`     // the source's set id for sources other than Scryfall
+	SourceDir     string              `json:"sourceDir,omitempty"`   // image-folder imports: the folder read (Refresh prices re-reads its cards.csv)
+	RarityOrder   []string            `json:"rarityOrder,omitempty"` // the set's own rarities, lowest first, when the source has no fixed list
+	Origin        *origin.Origin      `json:"origin,omitempty"`      // converted content: where it came from (EPL mod)
+	Lang          string              `json:"lang,omitempty"`        // card language of the import, when the source has several
 	ReleasedAt    string              `json:"releasedAt,omitempty"`
 	ImportedAt    time.Time           `json:"importedAt"`
 	PricesUpdated time.Time           `json:"pricesUpdated"`
@@ -120,7 +124,20 @@ type Summary struct {
 	Installed  bool      `json:"installed"`
 	// InstallState: "none" (not in the game), "current" (the game has this version) or "stale" (edited since the last install).
 	InstallState string `json:"installState"`
-	Cover        string `json:"cover"` // relative image for the list thumbnail
+	Cover        string `json:"cover"`            // relative image for the list thumbnail
+	Origin       string `json:"origin,omitempty"` // converted content: the mod it came from (for display and sorting)
+}
+
+// OriginName is the mod a converted set came from ("" = not converted). Sets converted before origins were recorded show
+// their mod folder's name.
+func (m *Meta) OriginName() string {
+	switch {
+	case m.Origin != nil && m.Origin.Mod != "":
+		return m.Origin.Mod
+	case m.Source == "epl" && m.SourceDir != "":
+		return strings.TrimSuffix(filepath.Base(m.SourceDir), filepath.Ext(m.SourceDir))
+	}
+	return ""
 }
 
 // Workspace is one setup's projects. Library is the workspace-wide card-art library root (<workspace>\library), shared by
@@ -140,7 +157,9 @@ const (
 func LibraryDir(workspace string) string { return filepath.Join(workspace, LibraryDirName) }
 
 // GameLibraryDir is the mod's shared card-art folder.
-func GameLibraryDir(gameDir string) string { return filepath.Join(game.PluginDir(gameDir), GameLibraryDirName) }
+func GameLibraryDir(gameDir string) string {
+	return filepath.Join(game.PluginDir(gameDir), GameLibraryDirName)
+}
 
 // ImagePath resolves an image path of project id like Project.ImagePath (project folder, then the shared library).
 func (w Workspace) ImagePath(id, rel string) string {
@@ -185,7 +204,8 @@ func (w Workspace) List(gameDir string) ([]Summary, error) {
 		}
 		info, _ := os.Stat(filepath.Join(p.Folder, SetFile))
 		s := Summary{ID: p.ID, Name: p.Set.Name, Cards: len(p.Set.Cards), Packs: len(p.Set.Packs),
-			Source: p.Meta.Source, Code: p.Meta.SourceCode(), ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier}
+			Source: p.Meta.Source, Code: p.Meta.SourceCode(), ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier,
+			Origin: p.Meta.OriginName()}
 		if info != nil {
 			s.Modified = info.ModTime()
 		}
@@ -275,7 +295,7 @@ func (w Workspace) Install(p *Project, gameDir string) error {
 	}
 	for rel := range installFiles(p) {
 		src, dst := installPaths(p, gameDir, rel, shared)
-		if shared && p.InLibrary(rel) {
+		if toGameLibrary(p, rel, shared) {
 			if !upToDate(src, dst) { // the game's library copy: only what's missing or changed
 				if err := copyFile(src, dst); err != nil && !os.IsNotExist(err) {
 					return err
@@ -298,10 +318,25 @@ func (w Workspace) Install(p *Project, gameDir string) error {
 // folder, or <plugin>\Library\<id> for library art when the mod reads it (shared).
 func installPaths(p *Project, gameDir, rel string, shared bool) (src, dst string) {
 	src = p.ImagePath(rel)
-	if shared && p.InLibrary(rel) {
+	if toGameLibrary(p, rel, shared) {
 		return src, filepath.Join(GameLibraryDir(gameDir), p.ID, filepath.FromSlash(rel))
 	}
 	return src, filepath.Join(game.SetsDir(gameDir), p.ID, filepath.FromSlash(rel))
+}
+
+// toGameLibrary reports whether Install puts rel in the game's Library folder: shared library files the mod looks up
+// there (card images and the card back, through SetDef.Resolve). Pack/box art always goes into the set's folder — mods up
+// to 0.15.3 read it from there only — and it is only a few files.
+func toGameLibrary(p *Project, rel string, shared bool) bool {
+	if !shared || !p.InLibrary(rel) {
+		return false
+	}
+	for _, pk := range p.Set.Packs {
+		if rel == pk.PackTexture || rel == pk.PackIcon || rel == pk.BoxTexture || rel == pk.BoxIcon {
+			return false
+		}
+	}
+	return true
 }
 
 // upToDate reports whether dst is a current copy of src (same size, not older).

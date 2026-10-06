@@ -13,7 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"tcgstudio/internal/accessories"
+	"tcgstudio/internal/assets"
 	"tcgstudio/internal/project"
+	"tcgstudio/internal/setfmt"
 )
 
 // Ext is the file extension of an exported setup (a zip).
@@ -92,19 +95,53 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	}
 	ws := project.Workspace{Root: dir, Library: project.LibraryDir(h.Root)}
 	projects, _ := os.ReadDir(filepath.Join(dir, "projects"))
+	converted := map[string]bool{} // sets converted from another mod (EPL) carry its authors' art: they stay on this PC
 	for _, e := range projects {
 		p, err := ws.Load(e.Name())
 		if err != nil {
 			continue
 		}
-		for _, c := range p.Set.Cards {
-			name := "projects/" + e.Name() + "/" + c.Image
-			if c.Image == "" || have[name] || !p.InLibrary(c.Image) {
+		if p.Meta != nil && p.Meta.Source == "epl" {
+			converted[e.Name()] = true
+			continue
+		}
+		for _, rel := range p.Files() { // card art and every other file the set uses from the shared library
+			name := "projects/" + e.Name() + "/" + rel
+			if have[name] || !p.InLibrary(rel) {
 				continue
 			}
 			have[name] = true
 			files = append(files, name)
-			src[name] = p.ImagePath(c.Image)
+			src[name] = p.ImagePath(rel)
+		}
+	}
+	{ // converted sets and accessories stay on this PC
+		kept := files[:0]
+		for _, f := range files {
+			if strings.HasPrefix(f, "accessories/"+accessories.ImagesDir+"/"+accessories.ConvertedPrefix) {
+				continue
+			}
+			if top, rest, ok := strings.Cut(f, "/"); ok && top == "projects" {
+				if id, _, _ := strings.Cut(rest, "/"); converted[id] {
+					continue
+				}
+			}
+			kept = append(kept, f)
+		}
+		files = kept
+	}
+	// Accessory and furniture files in the shared store go into the zip under accessories/assets/, where the receiver's
+	// import puts them back into its own store (converted mod content stays out, like its entries).
+	store := assets.For(h.Root)
+	if lib, err := accessories.Open(dir, store); err == nil {
+		for _, rel := range lib.FilesWhere(func(id string) bool { return !accessories.IsConverted(id) }) {
+			name := "accessories/" + rel
+			if !assets.IsAsset(rel) || have[name] {
+				continue
+			}
+			have[name] = true
+			files = append(files, name)
+			src[name] = store.Path(rel)
 		}
 	}
 	m := Manifest{Format: archiveFormat, FormatVersion: FormatVersion, Name: in.Name, Description: in.Description,
@@ -112,7 +149,7 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	if list, err := h.List(); err == nil {
 		for _, s := range list {
 			if s.ID == id {
-				m.Sets, m.Accessories, m.Furniture = s.Sets, s.Accessories, s.Furniture
+				m.Sets, m.Accessories, m.Furniture = s.Sets-len(converted), s.Accessories, s.Furniture
 			}
 		}
 	}
@@ -148,6 +185,8 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 			b = scrubCfg(b)
 		case path.Base(rel) == "studio.json":
 			b = scrubJSON(b)
+		case rel == "accessories/"+accessories.LibraryFile:
+			b = withoutConverted(b)
 		}
 		if err := writeEntry(zw, rel, b); err != nil {
 			return err
@@ -352,6 +391,10 @@ func (h Home) Import(src, studioVersion string) (string, error) {
 	if err := SaveInfo(tmp, in); err != nil {
 		return fail(err)
 	}
+	// Shared accessory files travel in the zip under accessories/assets/: they go into this workspace's store (once).
+	if err := absorbAssets(filepath.Join(tmp, "accessories", assets.DirName), assets.For(h.Root)); err != nil {
+		return fail(err)
+	}
 	if err := os.Rename(tmp, h.Dir(id)); err != nil {
 		return fail(err)
 	}
@@ -380,4 +423,57 @@ func extract(f *zip.File, dst string) error {
 		err = fmt.Errorf("corrupt entry %q", f.Name)
 	}
 	return err
+}
+
+// withoutConverted drops accessories and furniture converted from another mod (their art belongs to its authors) from an
+// accessories.json; anything unreadable is passed through unchanged.
+func withoutConverted(b []byte) []byte {
+	var lib setfmt.AccessoryLibrary
+	if json.Unmarshal(b, &lib) != nil {
+		return b
+	}
+	n := len(lib.Accessories) + len(lib.Furniture)
+	acc := lib.Accessories[:0]
+	for _, a := range lib.Accessories {
+		if !accessories.IsConverted(a.ID) {
+			acc = append(acc, a)
+		}
+	}
+	fur := lib.Furniture[:0]
+	for _, f := range lib.Furniture {
+		if !accessories.IsConverted(f.ID) {
+			fur = append(fur, f)
+		}
+	}
+	if len(acc)+len(fur) == n {
+		return b
+	}
+	lib.Accessories, lib.Furniture = acc, fur
+	out, err := json.MarshalIndent(lib, "", "  ")
+	if err != nil {
+		return b
+	}
+	return out
+}
+
+// absorbAssets moves the store files of an imported setup (dir = its accessories/assets folder) into the workspace's
+// store and removes the folder. A file whose content doesn't match its name is stored under its real name; references to
+// it then simply resolve to nothing, as a missing file would.
+func absorbAssets(dir string, store assets.Store) error {
+	des, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, d := range des {
+		if d.IsDir() {
+			continue
+		}
+		if _, err := store.PutFile(filepath.Join(dir, d.Name())); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(dir)
 }

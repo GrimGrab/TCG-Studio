@@ -152,7 +152,7 @@
         <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {save} {hooks} onapplied={() => (artBust = Date.now())} />
         <p class="muted small">The finished images the pack uses (made by the editor above), or your own: 1024² in the vanilla layout. Empty = vanilla art.</p>
         <div class="art">
-          {#each [['packTexture', 'Pack texture'], ['packIcon', 'Pack icon'], ['boxTexture', 'Box texture'], ['boxIcon', 'Box icon']] as [field, label]}
+          {#each [['packTexture', 'Pack texture'], ['packIcon', 'Pack icon'], ...(pack.hasBox ? [['boxTexture', 'Box texture'], ['boxIcon', 'Box icon']] : [])] as [field, label]}
             <div class="artbox">
               <div class="thumb">{#if pack[field]}<img src={projectFile(project.id, pack[field], imgBust + artBust)} alt={label} />{:else}<span class="muted">vanilla</span>{/if}</div>
               <div class="small">{label}</div>

@@ -23,6 +23,9 @@ import (
 	"sort"
 	"strings"
 
+	"tcgstudio/internal/accessories"
+	"tcgstudio/internal/assets"
+	"tcgstudio/internal/catalog"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/importer"
 	"tcgstudio/internal/project"
@@ -40,44 +43,63 @@ type Progress struct {
 type SetInfo struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	Own       int64  `json:"own"`       // files in the setup's project folder
+	Own       int64  `json:"own"`       // files the set keeps in the setup's project folder (game info included)
 	Library   int64  `json:"library"`   // card art it uses from the shared library
+	Shared    int64  `json:"shared"`    // every file it uses from the shared library
+	Differs   int    `json:"differs"`   // files that differ from the shared ones (waiting for the player's choice)
 	PNG       int64  `json:"png"`       // PNG card art it uses (own + library), what Shrink would convert
 	PNGFiles  int    `json:"pngFiles"`  //
 	ShrinkTo  int64  `json:"shrinkTo"`  // estimated size of that art as JPEG
-	Movable   int    `json:"movable"`   // card images still in the project folder that Move would take
-	Shareable bool   `json:"shareable"` // its art can go into the library (no library version of it made differently)
+	Movable   int    `json:"movable"`   // files Move everything would take or drop (incl. leftovers)
+	Shareable bool   `json:"shareable"` // kept for older pages
+	ArtFolder string `json:"artFolder"` // its art is kept as its own in this named shared folder ("" = the set's shared art)
 }
 
-// SetupInfo is one setup.
+// ItemInfo is an accessory or furniture piece of a setup.
+type ItemInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`   // accessory kind (Playmat, …) or "Furniture"
+	Own    int64  `json:"own"`    // its files still in the setup
+	Shared int64  `json:"shared"` // its files in the shared store
+}
+
+// SetupInfo is one setup: its folder size broken down, and every set and item it uses.
 type SetupInfo struct {
-	ID     string    `json:"id"`
-	Name   string    `json:"name"`
-	Active bool      `json:"active"`
-	Size   int64     `json:"size"` // the setup's own folder
-	Sets   []SetInfo `json:"sets"`
-}
-
-// Unused is a library set no setup uses any more.
-type Unused struct {
-	ID    string `json:"id"`
-	Size  int64  `json:"size"`
-	Files int    `json:"files"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+	Size   int64  `json:"size"` // the setup's own folder (= the parts below)
+	// Breakdown of Size.
+	Info      int64      `json:"info"`      // game info: set.json, studio.json, accessories.json, setup.json
+	CardArt   int64      `json:"cardArt"`   // card images kept in the setup
+	SetFiles  int64      `json:"setFiles"`  // other set files kept in the setup (pack & box art, card back, photos, …)
+	Leftovers int64      `json:"leftovers"` // images in set folders nothing refers to
+	ItemFiles int64      `json:"itemFiles"` // older accessory & furniture files kept in the setup
+	Saves     int64      `json:"saves"`     // parked game saves (inactive setups)
+	Game      int64      `json:"game"`      // the setup's game state (mod settings, global card back, hand-installed content)
+	Other     int64      `json:"other"`
+	Sets      []SetInfo  `json:"sets"`
+	Items     []ItemInfo `json:"items"`
 }
 
 // Report is the Storage page.
 type Report struct {
-	Workspace     int64       `json:"workspace"`   // whole workspace folder
-	Library       int64       `json:"library"`     // <workspace>\library
-	GameSets      int64       `json:"gameSets"`    // <plugin>\Sets
-	GameLibrary   int64       `json:"gameLibrary"` // <plugin>\Library
-	GameFound     bool        `json:"gameFound"`
-	ModHasLibrary bool        `json:"modHasLibrary"`
-	Setups        []SetupInfo `json:"setups"`
-	MoveSaves     int64       `json:"moveSaves"` // bytes Move frees (copies of the same art in several setups)
-	MoveFiles     int         `json:"moveFiles"` // card images Move takes into the library
-	Unused        []Unused    `json:"unused"`
-	GameUnused    []Unused    `json:"gameUnused"`
+	Workspace     int64         `json:"workspace"`   // whole workspace folder
+	Library       int64         `json:"library"`     // <workspace>\library
+	Assets        int64         `json:"assets"`      // <workspace>\assets
+	Catalog       int64         `json:"catalog"`     // <workspace>\catalog
+	GameSets      int64         `json:"gameSets"`    // <plugin>\Sets
+	GameLibrary   int64         `json:"gameLibrary"` // <plugin>\Library
+	GameFound     bool          `json:"gameFound"`
+	ModHasLibrary bool          `json:"modHasLibrary"`
+	Setups        []SetupInfo   `json:"setups"`
+	MoveSaves     int64         `json:"moveSaves"` // bytes Move everything frees (copies already shared, leftovers)
+	MoveFiles     int           `json:"moveFiles"` // files it moves, drops or deletes (set and accessory files)
+	Differ        []Differ      `json:"differ"`    // sets whose files differ from the shared ones: the player's choice
+	Unused        []UnusedEntry `json:"unused"`    // everything no setup uses, whatever the kind
+	// Accessories: the shared asset store and each setup's own older accessory files.
+	Accessories AccessoryStorage `json:"accessories"`
 }
 
 // loc is one setup's copy of a set.
@@ -86,14 +108,19 @@ type loc struct {
 	p     *project.Project
 }
 
-// sets loads every project of every setup, grouped by set id.
+// catalogSetup is the loc.setup of the shared catalog's set templates (not a setup id: those never contain ':'). They
+// count as users of library art and take part in Move/Shrink like a setup's copy, but aren't listed as a setup.
+const catalogSetup = ":catalog"
+
+// sets loads every project of every setup and of the catalog, grouped by set id.
 func sets(h setups.Home) (map[string][]loc, []setups.Summary, error) {
 	list, err := h.List()
 	if err != nil {
 		return nil, nil, err
 	}
 	out := map[string][]loc{}
-	for _, s := range list {
+	dirs := append([]setups.Summary{{ID: catalogSetup, Folder: filepath.Join(h.Root, catalog.DirName)}}, list...)
+	for _, s := range dirs {
 		ws := project.Workspace{Root: s.Folder, Library: project.LibraryDir(h.Root)}
 		entries, _ := os.ReadDir(ws.ProjectsDir())
 		for _, e := range entries {
@@ -197,9 +224,11 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Setups: []SetupInfo{}, Unused: []Unused{}, GameUnused: []Unused{}}
+	r := &Report{Setups: []SetupInfo{}, Unused: []UnusedEntry{}, Differ: []Differ{}}
 	r.Workspace, _ = dirSize(h.Root)
 	r.Library, _ = dirSize(project.LibraryDir(h.Root))
+	r.Assets, _ = dirSize(filepath.Join(h.Root, assets.DirName))
+	r.Catalog, _ = dirSize(filepath.Join(h.Root, catalog.DirName))
 	if game.IsGameDir(gameDir) {
 		r.GameFound = true
 		r.ModHasLibrary = game.ModHasLibrary(gameDir)
@@ -207,66 +236,81 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 		r.GameLibrary, _ = dirSize(project.GameLibraryDir(gameDir))
 	}
 
-	// Move estimate: per set id and image, the copies in project folders that are byte-identical to the one kept.
-	ids := make([]string, 0, len(bySet))
-	for id := range bySet {
-		ids = append(ids, id)
+	names := map[string]string{}
+	for _, sm := range list {
+		names[sm.ID] = sm.Name
 	}
-	sort.Strings(ids)
-	movable := map[string]map[string]int{} // setup → set → movable files
+	ids := sortedIDs(bySet)
+	store := assets.For(h.Root)
+
+	// What Move everything does, per setup and set: files it takes or drops, leftovers it deletes.
+	movable := map[string]map[string]int{} // setup → set → files
 	for i, id := range ids {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		progress(Progress{Message: "Comparing card art…", Done: i + 1, Total: len(ids)})
-		locs := bySet[id]
-		var share []loc
-		for _, l := range locs {
-			if _, ok := shareable(l.p); ok {
-				share = append(share, l)
+		progress(Progress{Message: "Comparing workspace files…", Done: i + 1, Total: len(ids)})
+		claimed := map[string]string{} // rel → the setup file that will become the shared one (MoveAll's order)
+		for _, l := range bySet[id] {
+			if l.p.LibFolder == "" {
+				continue
 			}
-		}
-		for _, rel := range unionImages(share) {
-			var kept string // the file the library will have
-			if lib := filepath.Join(share[0].p.LibFolder, filepath.FromSlash(rel)); fileExists(lib) {
-				kept = lib
-			}
-			for _, l := range share {
+			n := 0
+			for _, rel := range ownFilesOf(l.p) {
 				own := filepath.Join(l.p.Folder, filepath.FromSlash(rel))
-				if !fileExists(own) {
-					continue
-				}
-				if movable[l.setup] == nil {
-					movable[l.setup] = map[string]int{}
-				}
-				switch {
-				case kept == "":
-					kept = own // moves into the library
-					movable[l.setup][id]++
-					r.MoveFiles++
-				case sameFile(own, kept):
-					movable[l.setup][id]++
-					r.MoveFiles++
+				switch cp := counterpart(l.p, rel); {
+				case cp == "" && claimed[rel] == "":
+					claimed[rel] = own
+					n++
+				case cp == "" && sameFile(own, claimed[rel]):
+					n++
+					r.MoveSaves += size(own)
+				case cp == rel && sameFile(own, filepath.Join(l.p.LibFolder, filepath.FromSlash(rel))):
+					n++
 					r.MoveSaves += size(own)
 				}
 			}
+			for _, f := range setLeftovers(l.p) {
+				n++
+				r.MoveSaves += size(f)
+			}
+			r.MoveFiles += n
+			if movable[l.setup] == nil {
+				movable[l.setup] = map[string]int{}
+			}
+			movable[l.setup][id] = n
 		}
 	}
+	r.Differ = differs(bySet, names)
+	differing := map[string]int{} // setup/set → files
+	for _, d := range r.Differ {
+		differing[d.Setup+"/"+d.Set] = d.Files
+	}
 
-	// Per setup and set sizes, PNG art and its JPEG estimate (a few cards encoded per set).
+	// Per setup: folder breakdown, sets (PNG art and its JPEG estimate for Shrink) and items.
 	ratio := map[string]float64{} // set id → jpeg/png size ratio
-	for _, s := range list {
-		si := SetupInfo{ID: s.ID, Name: s.Name, Active: s.Active, Sets: []SetInfo{}}
-		si.Size, _ = dirSize(s.Folder)
+	for _, sm := range list {
+		si := SetupInfo{ID: sm.ID, Name: sm.Name, Active: sm.Active, Sets: []SetInfo{}, Items: []ItemInfo{}}
+		cards := map[string]bool{} // project file (abs) → card image
+		used := map[string]bool{}  // project file (abs) → referenced
 		for _, id := range ids {
 			for _, l := range bySet[id] {
-				if l.setup != s.ID {
+				if l.setup != sm.ID {
 					continue
 				}
-				set := SetInfo{ID: id, Name: l.p.Set.Name, Movable: movable[s.ID][id]}
+				set := SetInfo{ID: id, Name: l.p.Set.Name, Movable: movable[sm.ID][id], Differs: differing[sm.ID+"/"+id]}
 				_, set.Shareable = shareable(l.p)
 				set.Own, _ = dirSize(l.p.Folder)
+				set.ArtFolder = artFolder(l.p)
+				for _, rel := range l.p.Files() {
+					f := filepath.Clean(filepath.Join(l.p.Folder, filepath.FromSlash(rel)))
+					used[f] = true
+					if l.p.InLibrary(rel) {
+						set.Shared += size(l.p.ImagePath(rel))
+					}
+				}
 				for _, rel := range cardImages(l.p) {
+					cards[filepath.Clean(filepath.Join(l.p.Folder, filepath.FromSlash(rel)))] = true
 					f := l.p.ImagePath(rel)
 					n := size(f)
 					if l.p.InLibrary(rel) {
@@ -288,29 +332,93 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 				si.Sets = append(si.Sets, set)
 			}
 		}
-		sort.Slice(si.Sets, func(i, j int) bool { return si.Sets[i].Own+si.Sets[i].Library > si.Sets[j].Own+si.Sets[j].Library })
+		sort.Slice(si.Sets, func(i, j int) bool { return si.Sets[i].Own+si.Sets[i].Shared > si.Sets[j].Own+si.Sets[j].Shared })
+		breakdown(&si, sm.Folder, cards, used)
+		if l, err := accessories.Open(sm.Folder, store); err == nil {
+			si.Items = itemsOf(l)
+		}
 		r.Setups = append(r.Setups, si)
 	}
 
-	// Unused library sets: library folders whose set id no setup has.
-	r.Unused = unused(project.LibraryDir(h.Root), bySet)
-	if r.GameFound {
-		r.GameUnused = unused(project.GameLibraryDir(gameDir), bySet)
-	}
+	r.Accessories = analyzeAccessories(h, list)
+	r.Unused = unusedEntries(h, gameDirIf(r.GameFound, gameDir), bySet, list)
 	return r, nil
 }
 
-func unused(root string, bySet map[string][]loc) []Unused {
-	out := []Unused{}
-	entries, _ := os.ReadDir(root)
-	for _, e := range entries {
-		if !e.IsDir() || len(bySet[e.Name()]) > 0 {
-			continue
-		}
-		n, files := dirSize(filepath.Join(root, e.Name()))
-		out = append(out, Unused{ID: e.Name(), Size: n, Files: files})
+func gameDirIf(ok bool, dir string) string {
+	if ok {
+		return dir
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Size > out[j].Size })
+	return ""
+}
+
+// artFolder is the named shared folder a set's art is kept in as its own, or "" (see project.Project.ArtFolder).
+func artFolder(p *project.Project) string { return p.ArtFolder() }
+
+// breakdown splits a setup folder's size into its parts (the parts add up to Size).
+func breakdown(si *SetupInfo, dir string, cards, used map[string]bool) {
+	_ = filepath.WalkDir(dir, func(f string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		n := info.Size()
+		si.Size += n
+		rel, _ := filepath.Rel(dir, f)
+		top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+		clean := filepath.Clean(f)
+		switch {
+		case top == setups.SavesDir || strings.HasPrefix(top, setups.SavesDir+"-"):
+			si.Saves += n
+		case top == setups.GameStateDir:
+			si.Game += n
+		case strings.EqualFold(filepath.Ext(f), ".json"):
+			si.Info += n
+		case top == "projects" && cards[clean]:
+			si.CardArt += n
+		case top == "projects" && used[clean]:
+			si.SetFiles += n
+		case top == "projects" && isImageName(f):
+			si.Leftovers += n
+		case top == "accessories":
+			si.ItemFiles += n
+		default:
+			si.Other += n
+		}
+		return nil
+	})
+}
+
+// itemsOf lists a setup's accessories and furniture with their own and shared file sizes.
+func itemsOf(l *accessories.Library) []ItemInfo {
+	out := []ItemInfo{}
+	sizes := func(rels ...string) (own, shared int64) {
+		for _, rel := range rels {
+			if rel == "" {
+				continue
+			}
+			n := size(l.Resolve(rel))
+			if assets.IsAsset(rel) {
+				shared += n
+			} else {
+				own += n
+			}
+		}
+		return
+	}
+	for _, a := range l.Lib.Accessories {
+		it := ItemInfo{ID: a.ID, Name: a.Name, Kind: a.Kind}
+		it.Own, it.Shared = sizes(a.Texture, a.Icon, a.Mesh)
+		out = append(out, it)
+	}
+	for _, f := range l.Lib.Furniture {
+		it := ItemInfo{ID: f.ID, Name: f.Name, Kind: "Furniture"}
+		it.Own, it.Shared = sizes(f.Texture, f.Icon, f.Mesh)
+		out = append(out, it)
+	}
 	return out
 }
 

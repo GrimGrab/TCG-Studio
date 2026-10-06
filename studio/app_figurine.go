@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	astore "tcgstudio/internal/assets"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -57,8 +58,16 @@ func (a *App) importFigurine(file string) (FigurineSource, error) {
 		return FigurineSource{}, err
 	}
 	name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
-	rel := l.FreeSourceBase(safeFileName(name) + ".fig")
-	if err := figurine.WriteSource(filepath.Join(l.Folder, filepath.FromSlash(rel)), m, img); err != nil {
+	model, err := l.PutBytes(figurine.SourceOBJ(m), ".obj")
+	if err != nil {
+		return FigurineSource{}, err
+	}
+	png, err := figurine.PNG(img)
+	if err != nil {
+		return FigurineSource{}, err
+	}
+	texture, err := l.PutBytes(png, ".png")
+	if err != nil {
 		return FigurineSource{}, err
 	}
 	lo, hi := m.Bounds()
@@ -66,7 +75,7 @@ func (a *App) importFigurine(file string) (FigurineSource, error) {
 		warns = []string{}
 	}
 	return FigurineSource{
-		Model: rel + ".obj", Texture: rel + ".png", Name: name, Triangles: m.Triangles(), Vertices: len(m.Pos),
+		Model: model, Texture: texture, Name: name, Triangles: m.Triangles(), Vertices: len(m.Pos),
 		Size: [3]float64{hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}, Warnings: warns,
 	}, nil
 }
@@ -88,7 +97,7 @@ func (a *App) BakeFigurine(id, model, texture string, p figurine.Placement) (Fig
 	if err != nil {
 		return FigurineBake{}, err
 	}
-	src, err := figurine.ReadSource(libPath(l, model))
+	src, err := figurine.ReadSource(l.Resolve(model))
 	if err != nil {
 		return FigurineBake{}, err
 	}
@@ -96,30 +105,33 @@ func (a *App) BakeFigurine(id, model, texture string, p figurine.Placement) (Fig
 	if err != nil {
 		return FigurineBake{}, err
 	}
-	meshRel := accessories.ImagesDir + "/" + id + "_model.obj"
-	if err := figurine.WriteGame(libPath(l, meshRel), g); err != nil {
+	meshRel, err := l.PutBytes(figurine.GameOBJ(g), ".obj")
+	if err != nil {
 		return FigurineBake{}, err
 	}
-	tex, err := os.ReadFile(libPath(l, texture))
+	texRel, err := storedTexture(l, texture)
 	if err != nil {
 		return FigurineBake{}, errors.New("figurine texture missing: " + err.Error())
-	}
-	texRel, err := l.WriteImage(id, "texture", tex)
-	if err != nil {
-		return FigurineBake{}, err
 	}
 	lo, hi := g.Bounds()
 	return FigurineBake{Mesh: meshRel, Texture: texRel, Triangles: g.Triangles(),
 		Size: [3]float64{hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}}, nil
 }
 
-// libPath resolves a library-relative path, refusing anything outside the library folder.
-func libPath(l *accessories.Library, rel string) string {
-	p := filepath.Join(l.Folder, filepath.FromSlash(rel))
-	if r, err := filepath.Rel(l.Folder, p); err != nil || strings.HasPrefix(r, "..") {
-		return filepath.Join(l.Folder, "invalid")
+// storedTexture is a model texture's path in the shared store: the texture itself when it's already there, else a stored
+// copy of the setup's own file.
+func storedTexture(l *accessories.Library, texture string) (string, error) {
+	if astore.IsAsset(texture) {
+		if _, err := os.Stat(l.Resolve(texture)); err != nil {
+			return "", err
+		}
+		return texture, nil
 	}
-	return p
+	b, err := os.ReadFile(l.Resolve(texture))
+	if err != nil {
+		return "", err
+	}
+	return l.PutBytes(b, filepath.Ext(texture))
 }
 
 func safeFileName(s string) string {

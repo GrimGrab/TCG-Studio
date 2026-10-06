@@ -169,7 +169,16 @@ func (a *App) MoveSetup(id string, to int) (SetupsView, error) {
 
 func (a *App) DeleteSetup(id string) (SetupsView, error) {
 	a.setups.mu.Lock()
-	err := a.home().Delete(id)
+	// Keep its sets and items available to the other setups (files are shared; only the game info is templated).
+	catalogMu.Lock()
+	err := a.catalog().KeepSetup(a.home().Dir(id))
+	if err != nil {
+		err = errors.New("couldn't keep its sets and items in the shared catalog, so it wasn't deleted: " + err.Error())
+	}
+	catalogMu.Unlock()
+	if err == nil {
+		err = a.home().Delete(id)
+	}
 	a.setups.mu.Unlock()
 	if err != nil {
 		return SetupsView{}, err

@@ -80,7 +80,7 @@ func TestMoveSharesIdenticalArt(t *testing.T) {
 	if rep.MoveFiles != 3 || rep.MoveSaves != int64(len(red)) {
 		t.Fatalf("estimate: files %d saves %d", rep.MoveFiles, rep.MoveSaves)
 	}
-	res, err := Move(context.Background(), h, nil)
+	res, err := MoveAll(context.Background(), h, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,8 +110,13 @@ func TestMoveSharesIdenticalArt(t *testing.T) {
 	if !bytes.Equal(got, blue) {
 		t.Fatal("setup A shows the wrong card 2")
 	}
-	if again, _ := Analyze(context.Background(), h, "", nil); again.MoveFiles != 0 {
+	again, _ := Analyze(context.Background(), h, "", nil)
+	if again.MoveFiles != 0 {
 		t.Fatalf("second estimate %d", again.MoveFiles)
+	}
+	// B's hand-changed card 2 differs from the shared one: listed for the player's choice, not moved.
+	if len(again.Differ) != 1 || again.Differ[0].Setup != b || again.Differ[0].Files != 1 || again.Differ[0].Sample != "images/2.png" {
+		t.Fatalf("differ %+v", again.Differ)
 	}
 
 	// Shrink setup A's set: library art converted once, both set.json updated; B's own card 2 untouched.
@@ -155,7 +160,7 @@ func TestUnusedLibrarySets(t *testing.T) {
 	if len(rep.Unused) != 1 || rep.Unused[0].ID != "old-set" {
 		t.Fatalf("unused %+v", rep.Unused)
 	}
-	freed, err := DeleteUnused(h, project.LibraryDir(h.Root), nil)
+	freed, err := DeleteUnused(h, "", UnusedSetArt, nil)
 	if err != nil || freed != int64(len(red)) {
 		t.Fatalf("freed %d %v", freed, err)
 	}
@@ -186,7 +191,7 @@ func TestShrinkDropsCopiesOfLibraryArt(t *testing.T) {
 	h, b := newHome(t)
 	red, blue := pngBytes(t, color.NRGBA{200, 0, 0, 255}), pngBytes(t, color.NRGBA{0, 0, 200, 255})
 	addSet(t, h, setups.DefaultID, red, blue)
-	if _, err := Move(context.Background(), h, nil); err != nil {
+	if _, err := MoveAll(context.Background(), h, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Shrink(context.Background(), h, setups.DefaultID, []string{"x-set"}, nil); err != nil {

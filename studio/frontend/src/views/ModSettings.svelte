@@ -9,6 +9,7 @@
   let sections = $state<any[]>([]);
   let showWhen = $state<Record<string, { setting: string; is: string[] }>>({});
   let gameRunning = $state(false);
+  let setup = $state('');
   let error = $state('');
   let loading = $state(true);
 
@@ -18,6 +19,7 @@
       sections = v.sections;
       showWhen = v.showWhen ?? {};
       gameRunning = v.gameRunning;
+      setup = v.setup;
       error = '';
     } catch (e) { error = errText(e); }
     loading = false;
@@ -159,6 +161,12 @@
     The same settings as the in-game <b>F1</b> menu (TCG Custom Cards), saved straight into the mod's config file. Changes save as you make
     them. {gameRunning ? 'The game is running: settings marked "Applies live" update right away, the rest on the next start.' : 'They take effect the next time the game starts.'}
   </p>
+  {#if setup}
+    <p class="intro">
+      Settings for setup <b>{setup}</b>. Each setup keeps its own copy: switching setups swaps them, so a change here doesn't carry over to
+      your other setups.
+    </p>
+  {/if}
 
   {#if loading}
     <p class="muted">Loading…</p>

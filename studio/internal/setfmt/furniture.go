@@ -6,7 +6,6 @@ package setfmt
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -145,7 +144,7 @@ var tintRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 // ValidateFurniture mirrors AccessoryLoader.LoadFurniture. bases maps a vanilla EObjectType name to its furniture type (from the
 // game templates; nil = not known yet, the base isn't checked).
-func (l *AccessoryLibrary) ValidateFurniture(folder string, bases map[string]string) (errs, warns []string) {
+func (l *AccessoryLibrary) ValidateFurniture(resolve func(rel string) string, bases map[string]string) (errs, warns []string) {
 	ids := map[string]bool{}
 	for i, f := range l.Furniture {
 		where := fmt.Sprintf("furniture %q", f.ID)
@@ -183,7 +182,7 @@ func (l *AccessoryLibrary) ValidateFurniture(folder string, bases map[string]str
 		}
 		for _, file := range []string{f.Texture, f.Icon, f.Mesh} {
 			if file != "" {
-				if _, err := os.Stat(filepath.Join(folder, filepath.FromSlash(file))); err != nil {
+				if _, err := os.Stat(resolve(file)); err != nil {
 					warns = append(warns, fmt.Sprintf("%s: file not found %q (base piece's used)", where, file))
 				}
 			}

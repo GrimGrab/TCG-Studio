@@ -3,6 +3,7 @@
 import {main} from '../models';
 import {setfmt} from '../models';
 import {uvmap} from '../models';
+import {catalog} from '../models';
 import {figurine} from '../models';
 import {game} from '../models';
 import {updater} from '../models';
@@ -10,11 +11,11 @@ import {project} from '../models';
 import {debuglog} from '../models';
 import {importer} from '../models';
 import {art} from '../models';
+import {library} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
 import {modconfig} from '../models';
 import {installer} from '../models';
-import {library} from '../models';
 
 export function Accessories():Promise<main.AccessoryView>;
 
@@ -24,11 +25,15 @@ export function AccessoryModel(arg1:string):Promise<uvmap.Model>;
 
 export function AccessoryTemplates():Promise<string>;
 
+export function AddFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.AddResult>;
+
 export function AppVersion():Promise<main.VersionInfo>;
 
 export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FigurineBake>;
 
 export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FurnitureBake>;
+
+export function BoxFromPack(arg1:string,arg2:string):Promise<main.BoxArt>;
 
 export function BrowseGameFolder():Promise<game.Status>;
 
@@ -37,6 +42,10 @@ export function CancelForgeInstall():Promise<void>;
 export function CancelImport():Promise<void>;
 
 export function CancelStorage():Promise<void>;
+
+export function CatalogAll(arg1:string):Promise<Array<catalog.Entry>>;
+
+export function CatalogList(arg1:string):Promise<Array<catalog.Entry>>;
 
 export function CheckForUpdate():Promise<updater.Release>;
 
@@ -58,17 +67,27 @@ export function DefaultArtColor(arg1:string):Promise<string>;
 
 export function DefaultImportOptions(arg1:string):Promise<importer.Options>;
 
+export function DeleteAccessories(arg1:Array<string>):Promise<main.AccessoryView>;
+
 export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
 
+export function DeleteFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.Deleted>;
+
 export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
+
+export function DeleteFurnitureMany(arg1:Array<string>):Promise<main.AccessoryView>;
 
 export function DeleteProject(arg1:string):Promise<void>;
 
 export function DeleteSetup(arg1:string):Promise<main.SetupsView>;
 
-export function DeleteUnusedArt(arg1:string,arg2:Array<string>):Promise<number>;
+export function DeleteUnused(arg1:string,arg2:Array<string>):Promise<number>;
 
 export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
+
+export function DifferPreview(arg1:string,arg2:string):Promise<library.DifferPreview>;
+
+export function EPLModPath(arg1:string):Promise<string>;
 
 export function ExportSetup(arg1:string):Promise<string>;
 
@@ -102,6 +121,8 @@ export function GetSettings():Promise<main.Settings>;
 
 export function GlobalCardBack():Promise<string>;
 
+export function ImportEPL(arg1:string,arg2:main.EPLSelection):Promise<main.EPLResult>;
+
 export function ImportFigurineModel():Promise<main.FigurineSource>;
 
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
@@ -134,9 +155,9 @@ export function ModSettings():Promise<main.ModSettingsView>;
 
 export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryView>;
 
-export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
+export function MoveEverything():Promise<main.StorageResult>;
 
-export function MoveToLibrary():Promise<main.StorageResult>;
+export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
 
@@ -150,17 +171,23 @@ export function OpenProjectFolder(arg1:string):Promise<void>;
 
 export function OpenSetupFolder(arg1:string):Promise<void>;
 
-export function PackIconFromTexture(arg1:string):Promise<string>;
-
 export function PickAccessoryImage():Promise<string>;
+
+export function PickEPLMod():Promise<string>;
 
 export function PickImage(arg1:string,arg2:string):Promise<string>;
 
 export function PickImages(arg1:string):Promise<Array<string>>;
 
+export function PickImportFolder():Promise<string>;
+
 export function PickPackAndBox(arg1:Array<importer.SealedProduct>,arg2:number):Promise<main.PickedProducts>;
 
 export function PickSetupFile():Promise<main.SetupFileInfo>;
+
+export function PreviewEPL(arg1:string,arg2:boolean):Promise<importer.EPLPreview>;
+
+export function PreviewImportFolder(arg1:string,arg2:importer.Options):Promise<importer.FolderPreview>;
 
 export function ProductPhotoSets(arg1:string,arg2:number):Promise<main.ProductPhotoSets>;
 
@@ -174,7 +201,11 @@ export function RefreshTemplates(arg1:boolean):Promise<main.TemplatesStatus>;
 
 export function RemoveForge():Promise<void>;
 
+export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
+
 export function RemoveGlobalCardBack():Promise<void>;
+
+export function ResolveDiffering(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.StorageResult>;
 
 export function RestoreModDefaults(arg1:string):Promise<number>;
 
@@ -201,6 +232,10 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
 export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
+
+export function SaveToCatalog(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
 
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 

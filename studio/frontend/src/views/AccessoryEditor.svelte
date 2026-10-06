@@ -12,7 +12,7 @@
   import { App, errText, ask } from '../lib/api';
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
-    recolorIcon, loadImage, layerId, renderTemplate, targetLabel,
+    recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon,
   } from '../lib/accessoryArt';
   import { MeshView } from '../lib/meshView';
   import Straighten from './Straighten.svelte';
@@ -153,8 +153,8 @@
     if (!model || !textureCanvas) throw new Error('editor not ready');
     let icon: HTMLCanvasElement;
     const texture = textureCanvas.toDataURL('image/png');
-    // Packs: the vanilla pack render with the front warped in (Go side, like the generator).
-    if (model.icon === 'pack') return { texture, icon: await App.PackIconFromTexture(texture) };
+    // Packs: the game mesh rendered with the finished texture (what the pack looks like in game).
+    if (model.icon === 'pack') return { texture, icon: await meshIcon(model, textureCanvas) };
     if (model.icon === 'recolor') {
       if (!vanilla || !vanillaIconUrl) throw new Error("the vanilla icon is needed to recolour it — the game templates aren't available yet (Settings → Game)");
       icon = recolorIcon(model, net, S, vanilla, await loadImage(vanillaIconUrl));

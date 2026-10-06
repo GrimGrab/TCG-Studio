@@ -142,7 +142,9 @@ func (l *AccessoryLibrary) Save(path string) error {
 }
 
 // Validate mirrors AccessoryLoader: errors reject an accessory in game; folder is used to check image files.
-func (l *AccessoryLibrary) Validate(folder string) (errs, warns []string) {
+// Validate checks the library; resolve turns an image/model path into the file to check (the shared store for
+// "assets/…", the library folder otherwise).
+func (l *AccessoryLibrary) Validate(resolve func(rel string) string) (errs, warns []string) {
 	ids := map[string]bool{}
 	for i, a := range l.Accessories {
 		where := fmt.Sprintf("accessory %q", a.ID)
@@ -167,7 +169,7 @@ func (l *AccessoryLibrary) Validate(folder string) (errs, warns []string) {
 		}
 		for _, img := range []string{a.Texture, a.Icon} {
 			if img != "" {
-				if _, err := os.Stat(filepath.Join(folder, filepath.FromSlash(img))); err != nil {
+				if _, err := os.Stat(resolve(img)); err != nil {
 					warns = append(warns, fmt.Sprintf("%s: image not found %q (vanilla art used)", where, img))
 				}
 			}
@@ -175,7 +177,7 @@ func (l *AccessoryLibrary) Validate(folder string) (errs, warns []string) {
 		if a.Mesh != "" {
 			if a.Kind != "Figurine" {
 				warns = append(warns, where+": 'mesh' is only used by figurines (ignored)")
-			} else if _, err := os.Stat(filepath.Join(folder, filepath.FromSlash(a.Mesh))); err != nil {
+			} else if _, err := os.Stat(resolve(a.Mesh)); err != nil {
 				warns = append(warns, fmt.Sprintf("%s: model not found %q (base toy's model used)", where, a.Mesh))
 			}
 		} else if a.Kind == "Figurine" {

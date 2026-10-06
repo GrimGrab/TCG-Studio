@@ -76,7 +76,7 @@
 
   async function remove(s: any) {
     const saves = s.hasSaves ? '\n\nIts game saves are deleted too — they exist nowhere else.' : '';
-    if (!(await ask(`Delete the setup "${s.name}" with all its sets and accessories?${saves}\n\nThis can't be undone.`))) return;
+    if (!(await ask(`Delete the setup "${s.name}" with its settings and its own prices, tiers and changes?${saves}\n\nIts sets, accessories and furniture stay in the shared catalog, so your other setups can still add them. This can't be undone.`))) return;
     try {
       view = await App.DeleteSetup(s.id);
       notify(`Deleted "${s.name}".`, 'ok');

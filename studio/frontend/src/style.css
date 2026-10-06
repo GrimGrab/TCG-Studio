@@ -57,6 +57,7 @@ textarea { resize: vertical; }
 label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 label.field > input, label.field > select, label.field > textarea { color: var(--text); font-size: 14px; }
 label.check { display: flex; align-items: center; gap: 6px; }
+label.check > input[type="checkbox"] { flex: none; } /* never squeezed by long label text */
 
 .row { display: flex; gap: 8px; align-items: center; }
 .grow { flex: 1; }

@@ -2,7 +2,7 @@
 // the set's own card art when there are none. Everything ends up as ordinary layers (named "Auto: …") that can be moved,
 // hidden or recoloured; box faces cut from the display photo keep their corners (layer.straighten) for Adjust straighten….
 import { App, projectFile } from './api';
-import { composeIcon, composeTexture, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, type Layer, type Layout, type Model } from './accessoryArt';
+import { composeIcon, composeTexture, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, type Layer, type Layout, type Model } from './accessoryArt';
 import { rectify, type Pt } from './perspective';
 
 export const AUTO = 'Auto: ';
@@ -304,9 +304,20 @@ export async function renderLayout(projectId: string, m: Model, layout: Layout):
   const vanilla = await loadImage(`/templates/${encodeURIComponent(b.texture)}`);
   const S = netScale(m), net = document.createElement('canvas');
   await renderNet(net, m, layout, vanilla, (rel) => projectFile(projectId, rel), S);
-  const texture = composeTexture(m, net, vanilla, S).toDataURL('image/png');
-  const icon = m.icon === 'pack' ? await App.PackIconFromTexture(texture) : composeIcon(m, net, S, 512, 512).toDataURL('image/png');
-  return { texture, icon };
+  const tex = composeTexture(m, net, vanilla, S);
+  const icon = m.icon === 'pack' ? await meshIcon(m, tex) : composeIcon(m, net, S, 512, 512).toDataURL('image/png');
+  return { texture: tex.toDataURL('image/png'), icon };
+}
+
+/** Re-renders a pack's shop icon from its texture file on the game mesh (after the Go generator, whose icon is the vanilla
+ *  pack picture with the front pasted in) and points the pack at it. */
+export async function packIconFromTexture(projectId: string, pack: any, m: Model) {
+  const img = await loadImage(projectFile(projectId, pack.packTexture));
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  c.getContext('2d')!.drawImage(img, 0, 0);
+  const f = await App.SavePackArt(projectId, pack.id, 'pack', c.toDataURL('image/png'), await meshIcon(m, c));
+  pack.packTexture = f.texture; pack.packIcon = f.icon;
 }
 
 /** Builds and applies one pack's art from its sources (automatic, or picked and adjusted in the dialog): stores the
@@ -325,6 +336,7 @@ export async function applySmartArt(project: any, pack: any, src: SmartSources, 
     const g: any = await App.GeneratePackArt(project.id, pack.id, { color: '', title: '', icon: '', filePrefix: '', frontImage: '', titleOnImage: false, noPackText: true } as any);
     pack.packTexture = g.packTexture; pack.packIcon = g.packIcon;
     pack.boxTexture = g.boxTexture; pack.boxIcon = g.boxIcon;
+    await packIconFromTexture(project.id, pack, packModel);
     delete project.meta.packArt[pack.id]; // earlier generated layouts no longer match the art
     return [`${pack.name || pack.id}: no product photos or card images — used a simple colour + set icon design.`];
   }
@@ -353,4 +365,30 @@ export async function smartArtForProject(project: any, status: (s: string) => vo
     notes.push(...(await applySmartArt(project, pk, src, { pack, box })));
   }
   return [...new Set(notes)];
+}
+
+/** A box for a pack that has its own art but none for a box (e.g. an EPL mod that sells only packs): the game's booster
+ *  box with the pack's front on it (App.BoxFromPack), its shop icon rendered from the box model like the 3D editor does.
+ *  Turns the box on and points the pack at the files; the pack's own art stays. The caller saves the project. */
+export async function boxFromPackArt(project: any, pack: any, boxModel?: Model): Promise<void> {
+  const m = boxModel ?? ((await App.AccessoryModel('Box')) as unknown as Model);
+  const r: any = await App.BoxFromPack(project.id, pack.id);
+  const layout = JSON.parse(r.layout) as Layout;
+  const b = await renderLayout(project.id, m, layout);
+  const bf = await App.SavePackArt(project.id, pack.id, 'box', b.texture, b.icon);
+  pack.hasBox = true;
+  pack.boxTexture = bf.texture; pack.boxIcon = bf.icon;
+  project.meta ??= {};
+  project.meta.packArt ??= {};
+  project.meta.packArt[pack.id] ??= {};
+  project.meta.packArt[pack.id].box = layout;
+}
+
+/** Boxes for every pack of a project that has pack art but no box art (see boxFromPackArt). Returns how many were made. */
+export async function boxesFromPacks(project: any): Promise<number> {
+  const todo = (project.set?.packs ?? []).filter((p: any) => p.packTexture && !p.boxTexture && p.hasBox);
+  if (!todo.length) return 0;
+  const m = (await App.AccessoryModel('Box')) as unknown as Model;
+  for (const pk of todo) await boxFromPackArt(project, pk, m);
+  return todo.length;
 }

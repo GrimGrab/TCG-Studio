@@ -10,6 +10,9 @@ import (
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/modconfig"
 	"tcgstudio/internal/project"
+	"tcgstudio/internal/accessories"
+	"tcgstudio/internal/assets"
+	"tcgstudio/internal/setfmt"
 )
 
 type env struct {
@@ -341,5 +344,55 @@ func TestDuplicateAndDelete(t *testing.T) {
 	}
 	if err := e.h.Delete(id); err != nil || exists(e.h.Dir(id)) {
 		t.Fatalf("delete: %v", err)
+	}
+}
+
+// Shared accessory files go into an export under accessories/assets/ and come back into the importing workspace's store;
+// converted mod content (eplmod-) stays out.
+func TestExportImportSharedAssets(t *testing.T) {
+	e := newEnv(t)
+	a, _ := e.h.Ensure("1.0")
+	store := assets.For(e.h.Root)
+	l, err := accessories.Open(a, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own, _ := l.WriteImage("mat", "texture", []byte("own playmat"))
+	conv, _ := l.WriteImage(accessories.ConvertedPrefix+"x", "texture", []byte("mod art"))
+	l.Put(setfmt.Accessory{ID: "mat", Kind: "Playmat", Name: "Mat", Texture: own})
+	l.Put(setfmt.Accessory{ID: accessories.ConvertedPrefix + "x", Kind: "Playmat", Name: "Mod", Texture: conv})
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "s"+Ext)
+	if err := e.h.Export(DefaultID, out, "1.0", nil); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	zr.Close()
+	if !names["accessories/"+own] || names["accessories/"+conv] {
+		t.Fatalf("export: own %v, converted %v", names["accessories/"+own], names["accessories/"+conv])
+	}
+	_ = os.Remove(store.Path(own)) // as on another PC: the store doesn't have it yet
+	id, err := e.h.Import(out, "1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists(store.Path(own)) {
+		t.Fatal("imported asset not in the store")
+	}
+	if exists(filepath.Join(e.h.Dir(id), "accessories", assets.DirName)) {
+		t.Fatal("imported setup kept its own assets folder")
+	}
+	l2, _ := accessories.Open(e.h.Dir(id), store)
+	if len(l2.Lib.Accessories) != 1 || l2.Lib.Accessories[0].Texture != own {
+		t.Fatalf("imported library %+v", l2.Lib.Accessories)
 	}
 }

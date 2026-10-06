@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"tcgstudio/internal/assets"
 	"time"
 
 	"tcgstudio/internal/accessories"
@@ -119,7 +120,7 @@ func clearGame(gameDir string) error {
 
 // applyGame installs a setup into a cleared game. A setup without a mod config leaves none, so the mod writes its defaults.
 // Returns warnings for projects that couldn't be installed.
-func applyGame(dir, gameDir string) ([]string, error) {
+func applyGame(dir, gameDir string, store assets.Store) ([]string, error) {
 	in, err := LoadInfo(dir)
 	if err != nil {
 		return nil, err
@@ -136,7 +137,7 @@ func applyGame(dir, gameDir string) ([]string, error) {
 		}
 	}
 	g := filepath.Join(dir, GameStateDir)
-	if lib, err := accessories.Open(dir); err != nil {
+	if lib, err := accessories.Open(dir, store); err != nil {
 		warnings = append(warnings, "accessories: "+err.Error())
 	} else if len(lib.Lib.Accessories) > 0 || len(lib.Lib.Furniture) > 0 {
 		if err := lib.Install(gameDir); err != nil {
@@ -260,7 +261,7 @@ func (h Home) finish(j *Journal, gameDir string, progress func(string)) ([]strin
 		return nil, errors.New("test: stopped during apply")
 	}
 	progress("Installing the new setup…")
-	warnings, err := applyGame(h.Dir(j.To), gameDir)
+	warnings, err := applyGame(h.Dir(j.To), gameDir, assets.For(h.Root))
 	if err != nil {
 		return warnings, err
 	}

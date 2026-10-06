@@ -208,15 +208,20 @@ func ComposeCardBack(src image.Image, out string) error {
 	return savePNG(out, img)
 }
 
-// GenerateCardBack makes a card back from a colour, the set icon and a title.
+// GenerateCardBack makes a card back from a colour, the set icon and a title (icon read inside projectFolder).
 func GenerateCardBack(projectFolder, iconRel, colorHex, title, out string) error {
+	return GenerateCardBackFrom(InFolder(projectFolder), iconRel, colorHex, title, out)
+}
+
+// GenerateCardBackFrom is GenerateCardBack with the icon found through resolve (e.g. Project.ImagePath).
+func GenerateCardBackFrom(resolve func(string) string, iconRel, colorHex, title, out string) error {
 	base, err := parseHex(colorHex)
 	if err != nil {
 		return err
 	}
 	art := image.NewNRGBA(backArt)
 	gradient(art, art.Bounds(), shade(base, 1.2), shade(base, 0.5))
-	drawIcon(art, loadIcon(projectFolder, iconRel), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
+	drawIcon(art, loadIcon(resolve, iconRel), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
 	if title != "" {
 		drawText(art, func(s float64) fontFace { return newFace(s) }, title, image.Rect(40, art.Bounds().Dy()-250, art.Bounds().Dx()-40, art.Bounds().Dy()-70), 70, color.White)
 	}
@@ -297,56 +302,6 @@ func CardBackFromFile(srcPath, out string) error {
 		return err
 	}
 	return ComposeCardBack(src, out)
-}
-
-// PackIconFromTexture renders a pack shop icon from a finished pack texture: the vanilla pack icon with the texture's front
-// panel (front, pixels in the 1024² texture) warped onto its printed face, and its other saturated parts turned to the
-// panel's dominant hue.
-func PackIconFromTexture(templatesDir string, texture image.Image, front image.Rectangle) (*image.NRGBA, error) {
-	f, err := os.Open(filepath.Join(templatesDir, "BasicCardPack_icon.png"))
-	if err != nil {
-		return nil, fmt.Errorf("template BasicCardPack_icon.png not found — the game templates aren't available yet (Settings → Game)")
-	}
-	defer f.Close()
-	src, err := png.Decode(f)
-	if err != nil {
-		return nil, err
-	}
-	icon := image.NewNRGBA(src.Bounds())
-	xdraw.Draw(icon, icon.Bounds(), src, src.Bounds().Min, xdraw.Src)
-	tex := image.NewNRGBA(image.Rect(0, 0, 1024, 1024))
-	xdraw.CatmullRom.Scale(tex, tex.Bounds(), texture, texture.Bounds(), xdraw.Src, nil)
-	panel := tex.SubImage(front.Intersect(tex.Bounds())).(*image.NRGBA)
-	m := measureFace(icon)
-	if hue, ok := dominantHue(panel); ok {
-		recolor(icon, icon.Bounds(), hue)
-	}
-	warpFront(icon, panel, m)
-	return icon, nil
-}
-
-// dominantHue is the saturation-weighted mean hue of an image (false when it is mostly grey).
-func dominantHue(img *image.NRGBA) (float64, bool) {
-	var sx, sy, w float64
-	b := img.Bounds()
-	for y := b.Min.Y; y < b.Max.Y; y += 4 {
-		for x := b.Min.X; x < b.Max.X; x += 4 {
-			h, s, l := toHSL(img.NRGBAAt(x, y))
-			k := s * (1 - math.Abs(2*l-1))
-			sx += math.Cos(h*2*math.Pi) * k
-			sy += math.Sin(h*2*math.Pi) * k
-			w += k
-		}
-	}
-	n := float64(b.Dx()*b.Dy()) / 16
-	if w < n*0.08 {
-		return 0, false
-	}
-	h := math.Atan2(sy, sx) / (2 * math.Pi)
-	if h < 0 {
-		h++
-	}
-	return h, true
 }
 
 // SavePNG writes an image as PNG (creating the folder).

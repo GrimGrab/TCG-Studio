@@ -3,6 +3,21 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.0.0 - 2026-10-06
+
+TCG Studio 1.0: bring in content from other mods and your own card pictures, and reuse everything you've imported across all your setups.
+
+- New: Import → Image folder. Turn a folder of your own card pictures into a set, with an optional cards.csv for names, rarities and prices. Handy for games that have no online card database.
+- New: Import → EPL mod (experimental). Converts an Enhanced Prefab Loader mod (folder or zip) into TCG Studio sets, with their pack and box art, card back and odds, plus their accessories, figurines and furniture, in one go.
+- New: Catalog page. Everything you've ever imported or made (sets, accessories, furniture) in any setup, and which setups use it. Delete something here to remove it everywhere.
+- New: Add from catalog… on the Sets, Accessories and Furniture pages, and on the Import page for sets you already imported somewhere else: adds it to this setup instantly, with no download or re-import. Prices and tiers stay per setup.
+- New: Storage → Move everything to shared. Card art, accessory and furniture files are kept once for all your setups instead of once per setup, which saves disk space. You choose what happens when two setups have different copies of the same file. Storage also lists files no setup uses, so you can delete them.
+- New: Sets, Accessories and Furniture can be sorted by source, and converted content shows which EPL mod it came from.
+- Changed: Mod settings now shows which setup the settings belong to. Each setup keeps its own mod settings, so switching setups also switches them (for example "Show vanilla cards").
+- Changed: on the Import page, "Add from catalog" sits under the Import button.
+- Fixed: custom packs and boxes showed the vanilla pack art in the game after their art was moved to the shared library.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v0.15.3 - 2026-10-05
 
 Magic games now work in tournaments.

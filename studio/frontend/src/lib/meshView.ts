@@ -57,11 +57,11 @@ void main() { vN = mat3(uModel) * aNrm; vUv = aUv; gl_Position = uMvp * vec4(aPo
 const FS = `
 precision mediump float;
 varying vec3 vN; varying vec2 vUv;
-uniform sampler2D uTex; uniform float uGlass; uniform float uTextured;
+uniform sampler2D uTex; uniform float uGlass; uniform float uTextured; uniform float uAmbient;
 void main() {
   vec3 n = normalize(vN);
   if (!gl_FrontFacing) n = -n;
-  float light = 0.62 + 0.38 * max(dot(n, normalize(vec3(0.35, 0.8, 0.55))), 0.0);
+  float light = uAmbient + (1.0 - uAmbient) * max(dot(n, normalize(vec3(0.35, 0.8, 0.55))), 0.0);
   vec4 base = uTextured > 0.5 ? texture2D(uTex, vUv) : vec4(0.85, 0.9, 0.95, 1.0);
   if (uGlass > 0.5) gl_FragColor = vec4(base.rgb * light, 0.22);
   else gl_FragColor = vec4(base.rgb * light, 1.0);
@@ -98,11 +98,14 @@ export class MeshView {
   rx = 0.4; // positive = looking down onto the top
   ry = -0.6;
   zoom = 1;
+  fov = 0.6;                            // vertical, radians
+  ambient = 0.62;                       // light on faces turned away from the lamp (1 = flat)
+  fixedSize = false;                    // true: render at the canvas's own width/height (off-screen), not its layout size
   private frame = 0;
   private disposed = false;
 
-  constructor(private canvas: HTMLCanvasElement, private pixelated = false) {
-    const gl = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: false, alpha: true });
+  constructor(private canvas: HTMLCanvasElement, private pixelated = false, preserve = false) {
+    const gl = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: preserve });
     if (!gl) throw new Error('WebGL is not available');
     this.gl = gl;
     const sh = (type: number, src: string) => {
@@ -173,11 +176,17 @@ export class MeshView {
     this.frame = requestAnimationFrame(() => { this.frame = 0; this.render(); });
   }
 
+  /** Draws at once (off-screen use: read the canvas right after). */
+  renderNow() { if (!this.disposed) this.render(); }
+
   private render() {
     const gl = this.gl, c = this.canvas;
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(1, Math.round(c.clientWidth * dpr)), h = Math.max(1, Math.round(c.clientHeight * dpr));
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    let w = c.width, h = c.height;
+    if (!this.fixedSize) {
+      const dpr = window.devicePixelRatio || 1;
+      w = Math.max(1, Math.round(c.clientWidth * dpr)); h = Math.max(1, Math.round(c.clientHeight * dpr));
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    }
     gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -187,11 +196,12 @@ export class MeshView {
 
     const model = mul(rotX(this.rx), mul(rotY(this.ry), mul(scale(1 / this.radius), translate(-this.center[0], -this.center[1], -this.center[2]))));
     const view = translate(0, 0, -3.1 / this.zoom);
-    const mvp = mul(perspective(0.6, w / h, 0.05, 50), mul(view, model));
+    const mvp = mul(perspective(this.fov, w / h, 0.05, 50), mul(view, model));
     const loc = (n: string) => gl.getUniformLocation(this.prog, n);
     gl.uniformMatrix4fv(loc('uMvp'), false, mvp);
     gl.uniformMatrix4fv(loc('uModel'), false, mul(rotX(this.rx), rotY(this.ry)));
     gl.uniform1i(loc('uTex'), 0);
+    gl.uniform1f(loc('uAmbient'), this.ambient);
     const aPos = gl.getAttribLocation(this.prog, 'aPos'), aNrm = gl.getAttribLocation(this.prog, 'aNrm'), aUv = gl.getAttribLocation(this.prog, 'aUv');
 
     // Opaque parts first, then glass (blended, no depth writes).
@@ -217,4 +227,43 @@ export class MeshView {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
+}
+
+/**
+ * Shop icon rendered from the real game mesh with the finished texture — what the item looks like in game, seen like the
+ * vanilla icons (front turned a little to show the right edge). The render is cropped to the model and fitted into the
+ * icon with a small margin (vanilla pack icons fill ~97% of their height).
+ */
+export async function renderMeshIcon(parts: MeshPart[], texture: TexImageSource, size: number[], pose = { rx: 0, ry: -0.35, fov: 1.2, ambient: 0.9 }): Promise<string> {
+  const W = size[0] || 1024, H = size[1] || 1024, k = 2;           // render at 2x, downscale = smooth edges
+  const c = document.createElement('canvas');
+  c.width = W * k; c.height = H * k;
+  const v = new MeshView(c, false, true);
+  try {
+    // Camera as close as the field of view allows without clipping (the model fits a unit sphere); the crop frames it.
+    v.fixedSize = true; v.ambient = pose.ambient; v.fov = pose.fov; v.zoom = (3.1 * Math.tan(pose.fov / 2)) / 1.25;
+    v.rx = pose.rx; v.ry = pose.ry;
+    await v.load(parts);
+    v.setTexture(texture);
+    v.renderNow();
+    const src = document.createElement('canvas');
+    src.width = c.width; src.height = c.height;
+    const sctx = src.getContext('2d')!;
+    sctx.drawImage(c, 0, 0);
+    const px = sctx.getImageData(0, 0, src.width, src.height).data;
+    let x0 = src.width, y0 = src.height, x1 = -1, y1 = -1;
+    for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) {
+      if (px[(y * src.width + x) * 4 + 3] < 8) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < 0) throw new Error('the model rendered empty');
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    const m = Math.round(Math.min(W, H) * 0.015), bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    const f = Math.min((W - 2 * m) / bw, (H - 2 * m) / bh), dw = bw * f, dh = bh * f;
+    const octx = out.getContext('2d')!;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(src, x0, y0, bw, bh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    return out.toDataURL('image/png');
+  } finally { v.dispose(); }
 }

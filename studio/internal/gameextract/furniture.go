@@ -28,6 +28,17 @@ var furnitureTypes = map[string]string{
 	"InteractableWorkbench": "Workbench", "InteractableCashierCounter": "CashCounter",
 }
 
+// FurnitureTypeOfScript is the furniture type a game script class gives a piece ("" = none), with the game's subclass
+// convention ("Shelf_…" is a Shelf). Also used for mod prefabs built on the game's components (EPL furniture).
+func FurnitureTypeOfScript(class string) string {
+	for c, t := range furnitureTypes {
+		if class == c || strings.HasPrefix(class, c+"_") {
+			return t
+		}
+	}
+	return ""
+}
+
 type furnitureSpot struct {
 	Kind     string      `json:"kind"`
 	Pos      [3]float32  `json:"pos"`

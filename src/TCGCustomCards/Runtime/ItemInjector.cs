@@ -22,13 +22,12 @@ namespace TCGCustomCards.Runtime
         {
             // Same moments as items: before saved objects spawn (furniture prefabs must exist by then).
             FurnitureInjector.EnsureInjected();
-            if (Registry.Packs.Count == 0 && Registry.Accessories.Count == 0) return;
             // Never touch CSingleton<InventoryBase>.Instance outside the shop scene: it would create an empty manager.
             var inv = Object.FindObjectOfType<InventoryBase>();
             if (inv == null || inv.m_StockItemData_SO == null) return;
             var so = inv.m_StockItemData_SO;
             if (_injectedInto == so) return;
-            _injectedInto = so;
+            _injectedInto = so; // also with no custom items: the hide-vanilla toggles filter these lists (VanillaFilter.Capture below)
 
             int nextItem = Mathf.Max(so.m_ItemDataList.Count, so.m_ItemMeshDataList.Count, (int)EItemType.Max);
             PadTo(so.m_ItemDataList, nextItem, i => Clone(so.m_ItemDataList[(int)EItemType.BasicCardPack]));

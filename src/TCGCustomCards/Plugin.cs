@@ -69,9 +69,9 @@ namespace TCGCustomCards
             DumpDiagnostics = Config.Bind("Debug", "DumpDiagnostics", true,
                 "Write runtime game data (list sizes, materials, restock entries) to diagnostics.txt once per session after a save loads.");
             ShowVanillaCards = Config.Bind("Content", "ShowVanillaCards", true,
-                "Show the vanilla card sets (binder tabs, set pickers, trade customers). Off = custom sets only. Nothing is deleted; turning it back on restores vanilla.");
+                "Show the vanilla card sets (binder tabs, set pickers, trade customers). Off = custom sets only (no card trades if you have none). Nothing is deleted; turning it back on restores vanilla.");
             ShowVanillaPacks = Config.Bind("Content", "ShowVanillaPacks", true,
-                "Sell vanilla card packs/boxes (restock list, customer demand, worker pack list, play-table prizes). Off = custom packs only. Items you already own stay.");
+                "Sell vanilla card packs/boxes (restock list, customer demand, worker pack list, play-table prizes). Off = custom packs only (none if you have none). Items you already own stay.");
             foreach (var (kind, key, what, where) in new[]
             {
                 (AccessoryKind.Deckbox, "ShowVanillaDeckBoxes", "deck boxes", "restock list, deck box picker, play tables, customer demand"),
@@ -85,8 +85,8 @@ namespace TCGCustomCards
             })
             {
                 var entry = Config.Bind("Content", key, true,
-                    $"Sell and use the vanilla {what} ({where}). Off = only your custom {what} from TCG Studio — needs at least one, " +
-                    "otherwise the vanilla ones stay. Items you already own stay.");
+                    $"Sell and use the vanilla {what} ({where}). Off = only your custom {what} from TCG Studio (none if you have none). " +
+                    "Items you already own stay.");
                 entry.SettingChanged += (_, __) => VanillaFilter.Apply();
                 ShowVanillaAccessory[kind] = entry;
             }

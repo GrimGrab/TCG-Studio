@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.0.2 - 2026-10-07
+
+Hide-vanilla settings now always work.
+
+- Fixed: turning off a Content → ShowVanilla… setting sometimes left the vanilla items in the shop even though you had custom content (for example with only custom sets or furniture installed, or when a custom item failed to load).
+- Changed: the Content → ShowVanilla… settings are now a plain switch: off always hides that vanilla content, even if you have no custom replacement. With no custom sets, customers stop coming to trade cards; with no custom packs, play-table matches give no pack prize.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.0.1 - 2026-10-06
 
 Imported sets no longer leave files behind in your setup, and the Storage page now shows exactly what it will move.

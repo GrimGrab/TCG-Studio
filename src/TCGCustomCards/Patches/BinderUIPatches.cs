@@ -25,9 +25,15 @@ namespace TCGCustomCards.Patches
             ButtonIndexByExpansion.Clear();
             _grid = null;
             var buttons = __instance.m_ExpansionBtnList;
-            if (Registry.Sets.Count == 0 || buttons == null || buttons.Count == 0) return;
+            if (buttons == null || buttons.Count == 0) return;
 
             var vanilla = buttons.Cast<RectTransform>().ToList();
+            _highlight = __instance.m_ExpansionSelectHighlightBtn != null ? __instance.m_ExpansionSelectHighlightBtn.transform : null;
+            if (Registry.Sets.Count == 0)
+            {
+                _grid = ButtonGrid.Plain(vanilla); // nothing to add; only for hiding vanilla sets
+                return;
+            }
             _grid = ButtonGrid.Build(vanilla, Registry.Sets.Count, (k, clone) =>
             {
                 var set = Registry.Sets[k];
@@ -39,7 +45,6 @@ namespace TCGCustomCards.Patches
                 buttons.Add(clone);
             });
 
-            _highlight = __instance.m_ExpansionSelectHighlightBtn != null ? __instance.m_ExpansionSelectHighlightBtn.transform : null;
             _grid.Scroll.onValueChanged.AddListener(_ => FollowSelected());
             SeparateGradedButton(_grid, __instance.m_GradedCardBtn);
         }
@@ -48,8 +53,11 @@ namespace TCGCustomCards.Patches
         internal static void OnSelectScreenOpened(CollectionBinderUI ui, int buttonIndex, bool isGraded)
         {
             _selected = null;
-            if (_grid == null || isGraded || buttonIndex < 0 || buttonIndex >= ui.m_ExpansionBtnList.Count) return;
-            var item = ui.m_ExpansionBtnList[buttonIndex] as RectTransform;
+            if (_grid == null) return;
+            var item = !isGraded && buttonIndex >= 0 && buttonIndex < ui.m_ExpansionBtnList.Count ? ui.m_ExpansionBtnList[buttonIndex] as RectTransform : null;
+            // The open set's button can be hidden (vanilla cards hidden, no custom set to switch to): no highlight on an empty spot.
+            if (_highlight != null) _highlight.gameObject.SetActive(item == null || item.gameObject.activeSelf);
+            if (item == null) return;
             _grid.ScrollTo(item);
             _selected = item;
             FollowSelected();

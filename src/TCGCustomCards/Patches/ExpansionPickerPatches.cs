@@ -30,7 +30,7 @@ namespace TCGCustomCards.Patches
             var screen = CSingleton<CardExpansionSelectScreen>.Instance;
             if (_builtFor != screen) Build(screen);
             _grid?.Relayout(item => !VanillaFilter.HideCards || item.name.StartsWith("TCGCC_"));
-            if (VanillaFilter.HideCards && !Registry.IsCustom(initCardExpansion)) initCardExpansion = VanillaFilter.FirstCustomExpansion;
+            if (VanillaFilter.TryRedirect(initCardExpansion, out var custom)) initCardExpansion = custom;
 
             int index = (int)initCardExpansion;
             CurrentIndex(screen) = index;
@@ -42,7 +42,7 @@ namespace TCGCustomCards.Patches
                 if (entry.highlight != null) entry.highlight.SetActive(true);
                 _grid?.ScrollTo(entry.button);
             }
-            else if (index >= 0 && index < screen.m_BtnHighlightList.Count && screen.m_BtnHighlightList[index] != null)
+            else if (!VanillaFilter.HideCards && index >= 0 && index < screen.m_BtnHighlightList.Count && screen.m_BtnHighlightList[index] != null)
             {
                 screen.m_BtnHighlightList[index].SetActive(true);
             }
@@ -58,7 +58,6 @@ namespace TCGCustomCards.Patches
             _builtFor = screen;
             _grid = null;
             Custom.Clear();
-            if (Registry.Sets.Count == 0) return;
 
             var byIndex = FindButtons(screen);
             if (byIndex.Count == 0)
@@ -70,6 +69,11 @@ namespace TCGCustomCards.Patches
             // deepest common ancestor; those are what we lay out and clone.
             var rowsByIndex = ToRows(byIndex);
             var vanilla = rowsByIndex.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+            if (Registry.Sets.Count == 0)
+            {
+                _grid = ButtonGrid.Plain(vanilla); // nothing to add; only for hiding vanilla sets
+                return;
+            }
 
             // Reference highlight: the one belonging to the lowest-index row that has a highlight.
             int refIndex = rowsByIndex.Keys.OrderBy(k => k).FirstOrDefault(k => k < screen.m_BtnHighlightList.Count && screen.m_BtnHighlightList[k] != null);

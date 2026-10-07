@@ -95,6 +95,35 @@ namespace TCGCustomCards.Patches
         }
     }
 
+    /// <summary>
+    /// Packs hidden and no custom pack: the card-pack list is empty and vanilla would index list[0] of an empty prize list. No prize then.
+    /// </summary>
+    [HarmonyPatch(typeof(PlayTableGame), nameof(PlayTableGame.EvaluateEndGameGift))]
+    internal static class PlayTableNoGiftWithoutPacks
+    {
+        private static readonly AccessTools.FieldRef<PlayTableGame, List<EItemType>> Gifts =
+            AccessTools.FieldRefAccess<PlayTableGame, List<EItemType>>("m_EndGameGiftItemTypeList");
+
+        private static bool Prefix(PlayTableGame __instance)
+        {
+            if (CSingleton<InventoryBase>.Instance.m_StockItemData_SO.m_CardPackItemTypeList.Count > 0) return true;
+            Gifts(__instance).Clear();
+            return false;
+        }
+    }
+
+    /// <summary>Vanilla cards hidden and no custom set: customers don't come to trade/sell cards.</summary>
+    [HarmonyPatch(typeof(ShelfManager), nameof(ShelfManager.GetCashierCounterToTradeCard))]
+    internal static class NoTradeCustomersWithoutCards
+    {
+        private static bool Prefix(ref InteractableCashierCounter __result)
+        {
+            if (!VanillaFilter.NoTradeCards) return true;
+            __result = null;
+            return false;
+        }
+    }
+
     /// <summary>Trade/sell customers pick Tetramon/Destiny/Ghost/Ascension; remap to a custom set just before it is used.</summary>
     [HarmonyPatch(typeof(CustomerTradeCardScreen), nameof(CustomerTradeCardScreen.SetCustomer))]
     internal static class TradeCustomerExpansion
@@ -145,8 +174,7 @@ namespace TCGCustomCards.Patches
 
         private static void Prefix(CollectionBinderFlipAnimCtrl __instance)
         {
-            if (VanillaFilter.HideCards && !Registry.IsCustom(Expansion(__instance)))
-                Expansion(__instance) = VanillaFilter.FirstCustomExpansion;
+            if (VanillaFilter.TryRedirect(Expansion(__instance), out var custom)) Expansion(__instance) = custom;
         }
     }
 
@@ -163,8 +191,7 @@ namespace TCGCustomCards.Patches
 
         private static void Prefix(CheckPriceScreen __instance, ref int cardPageIndex)
         {
-            if (!VanillaFilter.HideCards || Registry.IsCustom(Expansion(__instance))) return;
-            var exp = VanillaFilter.FirstCustomExpansion;
+            if (!VanillaFilter.TryRedirect(Expansion(__instance), out var exp)) return;
             Expansion(__instance) = exp;
             PageIndex(__instance) = 0;
             PageMax(__instance) = InventoryBase.GetShownMonsterList(exp).Count * CPlayerData.GetCardAmountPerMonsterType(exp) / __instance.m_MaxCardUICountPerPage - 1;

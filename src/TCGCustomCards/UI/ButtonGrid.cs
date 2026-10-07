@@ -32,7 +32,13 @@ namespace TCGCustomCards.UI
         /// </summary>
         public void Relayout(Func<RectTransform, bool> visible)
         {
-            if (Scroll == null) return;
+            if (Scroll == null)
+            {
+                // Plain grid: vanilla layout untouched, only show/hide.
+                for (int i = 0; i < _items.Count; i++)
+                    if (_items[i] != null) _items[i].gameObject.SetActive(_initiallyActive[i] && visible(_items[i]));
+                return;
+            }
             int slot = 0;
             var shown = new List<RectTransform>();
             for (int i = 0; i < _items.Count; i++)
@@ -62,6 +68,21 @@ namespace TCGCustomCards.UI
         }
 
         private static float HalfHeight(RectTransform r) => r.rect.height * r.localScale.y / 2f;
+
+        /// <summary>
+        /// No custom buttons to add: wraps the vanilla buttons without moving them or adding a scroll view, so the hide-vanilla
+        /// toggles can still show/hide them (Relayout; ScrollTo does nothing).
+        /// </summary>
+        public static ButtonGrid Plain(IEnumerable<RectTransform> vanilla)
+        {
+            var grid = new ButtonGrid();
+            foreach (var item in vanilla.Where(i => i != null))
+            {
+                grid._items.Add(item);
+                grid._initiallyActive.Add(item.gameObject.activeSelf);
+            }
+            return grid;
+        }
 
         /// <summary>Creates the grid. <paramref name="makeClone"/> is called per new button with the clone to customise.</summary>
         /// <param name="extraContent">Other objects that live beside the buttons (e.g. highlight frames) and must scroll with them;

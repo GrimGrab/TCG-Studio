@@ -11,19 +11,16 @@ namespace TCGCustomCards.Runtime
     ///    leave the restock lists, the deck picker, play tables and customer demand.
     ///  • Cards hidden: vanilla sets leave the binder and set pickers, screens default to a custom set, trade customers bring custom cards.
     ///  • Furniture hidden: vanilla pieces leave the furniture shop (applied when the shop opens); essential ones stay without a custom one.
-    /// Each requires at least one custom set/pack/accessory, otherwise they stay off.
+    /// Each toggle is a pure hide: it does not depend on custom content. Where the game needs a replacement (default set, trade
+    /// customer, play-table prize) a custom one is used when there is one; otherwise that feature simply has nothing to offer.
     /// </summary>
     internal static class VanillaFilter
     {
-        public static bool HideCards => !Plugin.ShowVanillaCards.Value && Registry.Sets.Count > 0;
-        public static bool HidePacks => !Plugin.ShowVanillaPacks.Value && Registry.Packs.Count > 0;
-        /// <summary>
-        /// Vanilla accessories are hidden per kind ([Content] ShowVanilla&lt;Kind&gt; off) and only when that kind has at least one
-        /// custom item, so a category is never left empty.
-        /// </summary>
+        public static bool HideCards => !Plugin.ShowVanillaCards.Value;
+        public static bool HidePacks => !Plugin.ShowVanillaPacks.Value;
+        /// <summary>Vanilla accessories are hidden per kind ([Content] ShowVanilla&lt;Kind&gt; off). The game copes with an empty category.</summary>
         public static bool HideKind(Core.AccessoryKind k) =>
-            Plugin.ShowVanillaAccessory.TryGetValue(k, out var show) && !show.Value &&
-            Registry.Accessories.Exists(a => a.Item != EItemType.None && a.Def.Kind == k);
+            Plugin.ShowVanillaAccessory.TryGetValue(k, out var show) && !show.Value;
 
         public static bool HideAccessories
         {
@@ -34,8 +31,8 @@ namespace TCGCustomCards.Runtime
             }
         }
 
-        /// <summary>Vanilla furniture leaves the furniture shop (placed pieces stay). Needs at least one custom piece.</summary>
-        public static bool HideFurniture => Plugin.ShowVanillaFurniture != null && !Plugin.ShowVanillaFurniture.Value && Registry.Furniture.Exists(f => f.Prefab != null);
+        /// <summary>Vanilla furniture leaves the furniture shop (placed pieces stay).</summary>
+        public static bool HideFurniture => Plugin.ShowVanillaFurniture != null && !Plugin.ShowVanillaFurniture.Value;
 
         /// <summary>
         /// Hidden from the furniture shop right now: a vanilla piece, unless it is an essential type (cash counter, workbench, trash bin,
@@ -54,7 +51,17 @@ namespace TCGCustomCards.Runtime
             return true;
         }
 
-        public static ECardExpansionType FirstCustomExpansion => Registry.Sets.Count > 0 ? Registry.Sets[0].Expansion : ECardExpansionType.Tetramon;
+        /// <summary>
+        /// A vanilla set while vanilla cards are hidden → the first custom set. False when nothing needs changing or there is no
+        /// custom set to switch to (the screen then stays where it is; its vanilla buttons are still hidden).
+        /// </summary>
+        public static bool TryRedirect(ECardExpansionType current, out ECardExpansionType custom)
+        {
+            custom = current;
+            if (!HideCards || Registry.IsCustom(current) || Registry.Sets.Count == 0) return false;
+            custom = Registry.Sets[0].Expansion;
+            return true;
+        }
 
         private static StockItemData_ScriptableObject _so;
         private static List<EItemType> _origShown, _origShownAll, _origPackList, _origShownAccessory, _origShownFigurine;
@@ -111,24 +118,29 @@ namespace TCGCustomCards.Runtime
         /// <summary>Saved "last used set" of workbench / quick-fill screens → a custom set while vanilla cards are hidden.</summary>
         public static void ApplyPlayerDefaults()
         {
-            if (!HideCards) return;
-            var first = FirstCustomExpansion;
-            if (!Registry.IsCustom(CPlayerData.m_WorkbenchCardExpansionType)) CPlayerData.m_WorkbenchCardExpansionType = first;
-            if (!Registry.IsCustom(CPlayerData.m_QuickFillCardExpansionType)) CPlayerData.m_QuickFillCardExpansionType = first;
-            if (!Registry.IsCustom(CPlayerData.m_DonationQuickFillCardExpansionType)) CPlayerData.m_DonationQuickFillCardExpansionType = first;
+            if (TryRedirect(CPlayerData.m_WorkbenchCardExpansionType, out var e)) CPlayerData.m_WorkbenchCardExpansionType = e;
+            if (TryRedirect(CPlayerData.m_QuickFillCardExpansionType, out e)) CPlayerData.m_QuickFillCardExpansionType = e;
+            if (TryRedirect(CPlayerData.m_DonationQuickFillCardExpansionType, out e)) CPlayerData.m_DonationQuickFillCardExpansionType = e;
         }
 
-        /// <summary>Replacement for the play-table prize's hardcoded AscensionCardPack.</summary>
+        /// <summary>
+        /// Replacement for the play-table prize's hardcoded AscensionCardPack: a pack still on offer. Only reached while the (filtered)
+        /// card-pack list has entries; an empty list skips the prize (PlayTableNoGiftWithoutPacks).
+        /// </summary>
         public static EItemType GiftPack()
         {
             if (!HidePacks) return EItemType.AscensionCardPack;
-            return Registry.Packs[Random.Range(0, Registry.Packs.Count)].PackItem;
+            var packs = _so != null ? _so.m_CardPackItemTypeList : null;
+            return packs != null && packs.Count > 0 ? packs[Random.Range(0, packs.Count)] : EItemType.AscensionCardPack;
         }
+
+        /// <summary>No set a trade/sell customer could bring: vanilla cards hidden and no custom set.</summary>
+        public static bool NoTradeCards => HideCards && Registry.Sets.Count == 0;
 
         /// <summary>Expansion a trade/sell customer brings: a random custom set while vanilla cards are hidden.</summary>
         public static ECardExpansionType TradeExpansion(ECardExpansionType rolled)
         {
-            if (!HideCards) return rolled;
+            if (!HideCards || Registry.Sets.Count == 0) return rolled;
             return Registry.Sets[Random.Range(0, Registry.Sets.Count)].Expansion;
         }
     }

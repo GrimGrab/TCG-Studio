@@ -189,6 +189,64 @@ namespace TCGCustomCards.Core
             return result;
         }
 
+        /// <summary>Custom decorations (surfaces, posters, objects) from the same library file.</summary>
+        public static List<DecorationDef> LoadDecorations(string pluginDir)
+        {
+            var result = new List<DecorationDef>();
+            string dir = Path.Combine(pluginDir, FolderName);
+            string file = Path.Combine(dir, FileName);
+            if (!File.Exists(file)) return result;
+            AccessoryLibraryDef lib;
+            try
+            {
+                lib = JsonConvert.DeserializeObject<AccessoryLibraryDef>(File.ReadAllText(file));
+            }
+            catch (Exception)
+            {
+                return result; // already reported by Load
+            }
+            if (lib?.Decorations == null || lib.SchemaVersion > AccessoryLibraryDef.CurrentSchemaVersion) return result;
+
+            var ids = new HashSet<string>();
+            foreach (var d in lib.Decorations)
+            {
+                if (d == null) continue;
+                string where = $"decoration '{d.Id}'";
+                var errors = new List<string>();
+                if (string.IsNullOrWhiteSpace(d.Id)) errors.Add("missing id");
+                else if (d.Id.IndexOfAny(new[] { ' ', '\t', ':', '/', '|' }) >= 0) errors.Add("id may not contain spaces, ':', '/' or '|'");
+                else if (!ids.Add(d.Id)) errors.Add("duplicate id");
+                if (string.IsNullOrWhiteSpace(d.Name)) d.Name = d.Id;
+                if (d.Price < 0) errors.Add("price must be ≥ 0");
+                if (!string.IsNullOrEmpty(d.Icon) && !File.Exists(Path.Combine(dir, d.Icon)))
+                    Plugin.Log.LogWarning($"Accessory library {where}: icon not found '{d.Icon}'");
+                if (d.IsSurface)
+                {
+                    if (string.IsNullOrEmpty(d.Texture) || !File.Exists(Path.Combine(dir, d.Texture))) errors.Add($"texture not found '{d.Texture}'");
+                    foreach (var map in new[] { d.NormalMap, d.RoughnessMap })
+                        if (!string.IsNullOrEmpty(map) && !File.Exists(Path.Combine(dir, map)))
+                            Plugin.Log.LogWarning($"Accessory library {where}: map not found '{map}' (left out)");
+                    if (!string.IsNullOrEmpty(d.Color) && !UnityEngine.ColorUtility.TryParseHtmlString(d.Color, out _)) errors.Add($"color '{d.Color}' is not a colour (#RRGGBB)");
+                    if (d.Smoothness < 0f || d.Smoothness > 1f) errors.Add("smoothness must be between 0 and 1");
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(d.Mesh) || !File.Exists(Path.Combine(dir, d.Mesh))) errors.Add($"model not found '{d.Mesh}'");
+                    if (!string.IsNullOrEmpty(d.Texture) && !File.Exists(Path.Combine(dir, d.Texture)))
+                        Plugin.Log.LogWarning($"Accessory library {where}: texture not found '{d.Texture}' (white used)");
+                }
+                if (errors.Count > 0)
+                {
+                    Plugin.Log.LogError($"Accessory library {where} rejected: " + string.Join("; ", errors));
+                    continue;
+                }
+                d.FolderPath = dir;
+                result.Add(d);
+            }
+            if (result.Count > 0) Plugin.Log.LogInfo($"Loaded {result.Count} custom decoration(s) from {file}");
+            return result;
+        }
+
         private static bool Vec(float[] v, int n) => v != null && v.Length == n;
     }
 }

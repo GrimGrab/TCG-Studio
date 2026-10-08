@@ -63,6 +63,7 @@ type Summary struct {
 	Sets        int       `json:"sets"`
 	Accessories int       `json:"accessories"`
 	Furniture   int       `json:"furniture"`
+	Decorations int       `json:"decorations"`
 	HasSaves    bool      `json:"hasSaves"` // parked saves (inactive setups only; the active one's saves are in the game)
 }
 
@@ -211,7 +212,7 @@ func (h Home) List() ([]Summary, error) {
 			}
 		}
 		if lib, err := setfmt.LoadAccessories(filepath.Join(dir, "accessories", "accessories.json")); err == nil {
-			s.Accessories, s.Furniture = len(lib.Accessories), len(lib.Furniture)
+			s.Accessories, s.Furniture, s.Decorations = len(lib.Accessories), len(lib.Furniture), len(lib.Decorations)
 		}
 		s.HasSaves = !s.Active && HasSaves(filepath.Join(dir, SavesDir))
 		out = append(out, s)

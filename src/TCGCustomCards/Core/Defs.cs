@@ -252,7 +252,57 @@ namespace TCGCustomCards.Core
         [JsonProperty("schemaVersion")] public int SchemaVersion = CurrentSchemaVersion;
         [JsonProperty("accessories")] public List<AccessoryDef> Accessories = new List<AccessoryDef>();
         [JsonProperty("furniture")] public List<FurnitureDef> Furniture = new List<FurnitureDef>();
+        [JsonProperty("decorations")] public List<DecorationDef> Decorations = new List<DecorationDef>();
         [JsonIgnore] public string FolderPath;
+    }
+
+    /// <summary>
+    /// Decorations sold in the phone's "Buy Decoration" app. Wall / Floor / Ceiling are surface looks (bought once, switched in the
+    /// Decorate screen); Poster and Object are placeable decorations (a model on a wall or on the floor; a poster is a model TCG Studio
+    /// builds from an image).
+    /// </summary>
+    public enum DecorationKind { Wall, Floor, Ceiling, Poster, Object }
+
+    public enum DecorationMount { Wall, Floor }
+
+    /// <summary>The shop tab a placeable decoration is listed on.</summary>
+    public enum DecorationTab { Poster, Other }
+
+    public class DecorationDef
+    {
+        /// <summary>Stable id (side-car keys "deco/&lt;id&gt;"). No spaces, ':', '/' or '|'.</summary>
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("kind"), JsonConverter(typeof(StringEnumConverter))] public DecorationKind Kind;
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("price")] public float Price = 500f;
+        [JsonProperty("icon")] public string Icon;
+
+        // ---- surfaces (Wall / Floor / Ceiling)
+        /// <summary>Surface: tiling colour texture (the game's material tiling). Placeable: the model's texture.</summary>
+        [JsonProperty("texture")] public string Texture;
+        /// <summary>Surface: optional normal map.</summary>
+        [JsonProperty("normalMap")] public string NormalMap;
+        /// <summary>Surface: optional metallic (R) / smoothness (A) map, Unity Standard layout. Null = not metallic, smoothness below.</summary>
+        [JsonProperty("roughnessMap")] public string RoughnessMap;
+        /// <summary>Surface: colour multiplied onto the texture, "#RRGGBB".</summary>
+        [JsonProperty("color")] public string Color;
+        [JsonProperty("smoothness")] public float Smoothness = 0.2f;
+
+        // ---- placeable (Poster / Object)
+        /// <summary>
+        /// Baked OBJ written by TCG Studio in the decoration's root space (Unity space, metres). Wall mount: the wall is the z = 0 plane,
+        /// the model faces +z. Floor mount: stands on y = 0, centred on x/z.
+        /// </summary>
+        [JsonProperty("mesh")] public string Mesh;
+        /// <summary>Object only (posters always hang on a wall).</summary>
+        [JsonProperty("mount"), JsonConverter(typeof(StringEnumConverter))] public DecorationMount Mount = DecorationMount.Floor;
+        /// <summary>Shop tab. Null = Poster for posters, Other for objects.</summary>
+        [JsonProperty("tab"), JsonConverter(typeof(StringEnumConverter))] public DecorationTab? Tab;
+
+        [JsonIgnore] public string FolderPath;
+        [JsonIgnore] public bool IsSurface => Kind == DecorationKind.Wall || Kind == DecorationKind.Floor || Kind == DecorationKind.Ceiling;
+        [JsonIgnore] public DecorationMount EffectiveMount => Kind == DecorationKind.Poster ? DecorationMount.Wall : Mount;
+        [JsonIgnore] public DecorationTab EffectiveTab => Tab ?? (Kind == DecorationKind.Poster ? DecorationTab.Poster : DecorationTab.Other);
     }
 
     /// <summary>What a custom furniture piece does: the vanilla behaviour (component) it is built on.</summary>

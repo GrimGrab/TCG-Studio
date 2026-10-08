@@ -41,7 +41,7 @@ func (w *prefabWalker) walk(o *unityfs.Object, parent mat4, isRoot bool, depth i
 	if err != nil {
 		return err
 	}
-	if !g.Active {
+	if !g.Active || (!isRoot && helperNode(g.Name)) {
 		return nil
 	}
 	env := w.a.env
@@ -312,4 +312,39 @@ func smoothNormals(pos [][3]float64, idx []uint32) [][3]float64 {
 		}
 	}
 	return n
+}
+
+// helperNode: GameObjects of a game-style prefab that aren't part of its look — the placement area (green box, dashed guide
+// lines), highlight shells and nav-mesh cutters (same words as gameextract's lookSkip).
+func helperNode(name string) bool {
+	n := strings.ToLower(name)
+	for _, w := range []string{"movestatevalidarea", "dashedline", "highlight", "hightlight", "navmeshcut"} {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// PrefabWallMounted reads the InteractableObject on a prefab's root (decorations: InteractableDecoration) and reports whether it
+// hangs on a wall (m_IsDecorationVertical). ok is false when the root has no such script.
+func (a *Assets) PrefabWallMounted(name string) (wall, ok bool) {
+	root := a.GameObject(name)
+	if root == nil {
+		return false, false
+	}
+	g, err := unityfs.ReadGameObject(root)
+	if err != nil {
+		return false, false
+	}
+	for _, c := range g.Components {
+		co, _ := a.env.Resolve(root.File, c)
+		if co == nil || co.ClassID != unityfs.ClassMonoBehaviour || !strings.HasPrefix(a.env.ScriptClass(co), "Interactable") {
+			continue
+		}
+		if io, err := unityfs.ReadInteractableObject(co); err == nil {
+			return io.IsDecorationVertical, true
+		}
+	}
+	return false, false
 }

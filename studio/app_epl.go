@@ -76,7 +76,7 @@ func (a *App) PreviewEPL(path string, strip bool) (importer.EPLPreview, error) {
 	}
 	if l, err := a.accLib(); err == nil {
 		for i := range pv.Items {
-			pv.Items[i].Exists = l.Index(pv.Items[i].ID) >= 0
+			pv.Items[i].Exists = l.HasItem(pv.Items[i].ID)
 		}
 	}
 	return pv, nil

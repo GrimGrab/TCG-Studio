@@ -29,6 +29,7 @@ import (
 type AccessoryView struct {
 	Accessories []setfmt.Accessory       `json:"accessories"`
 	Furniture   []setfmt.Furniture       `json:"furniture"`
+	Decorations []setfmt.Decoration      `json:"decorations"`
 	Layouts     map[string]string        `json:"layouts"`
 	Origins     map[string]origin.Origin `json:"origins"` // converted accessories/furniture: where they came from
 	Installed   bool                     `json:"installed"`
@@ -42,7 +43,7 @@ func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a
 func (a *App) store() astore.Store { return astore.For(a.settings.Workspace) }
 
 func (a *App) accView(l *accessories.Library) AccessoryView {
-	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Layouts: map[string]string{},
+	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Decorations: l.Lib.Decorations, Layouts: map[string]string{},
 		Origins: map[string]origin.Origin{}}
 	for id, o := range l.Meta.Origins {
 		v.Origins[id] = o
@@ -58,8 +59,16 @@ func (a *App) accView(l *accessories.Library) AccessoryView {
 			v.Origins[f.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
 		}
 	}
+	for _, d := range l.Lib.Decorations {
+		if _, ok := v.Origins[d.ID]; !ok && accessories.IsConverted(d.ID) {
+			v.Origins[d.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
+		}
+	}
 	if v.Furniture == nil {
 		v.Furniture = []setfmt.Furniture{}
+	}
+	if v.Decorations == nil {
+		v.Decorations = []setfmt.Decoration{}
 	}
 	for id, raw := range l.Meta.Layouts {
 		v.Layouts[id] = string(raw)
@@ -67,6 +76,8 @@ func (a *App) accView(l *accessories.Library) AccessoryView {
 	v.Errors, v.Warnings = l.Lib.Validate(l.Resolve)
 	fe, fw := l.Lib.ValidateFurniture(l.Resolve, a.furnitureBases())
 	v.Errors, v.Warnings = append(v.Errors, fe...), append(v.Warnings, fw...)
+	de, dw := l.Lib.ValidateDecorations(l.Resolve)
+	v.Errors, v.Warnings = append(v.Errors, de...), append(v.Warnings, dw...)
 	if game.IsGameDir(a.settings.GameDir) {
 		_, err := os.Stat(filepath.Join(accessories.InstalledDir(a.settings.GameDir), accessories.LibraryFile))
 		v.Installed = err == nil

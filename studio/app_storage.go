@@ -108,7 +108,7 @@ func (a *App) MoveEverything() (*StorageResult, error) {
 	return a.storageAction("Moving everything to shared", func(ctx context.Context) (*library.Result, error) {
 		res, err := library.MoveAll(ctx, a.home(), a.storageProgress)
 		if err == nil && game.IsGameDir(a.settings.GameDir) {
-			if l, lerr := a.accLib(); lerr == nil && (len(l.Lib.Accessories) > 0 || len(l.Lib.Furniture) > 0) {
+			if l, lerr := a.accLib(); lerr == nil && (len(l.Lib.Accessories) > 0 || len(l.Lib.Furniture) > 0 || len(l.Lib.Decorations) > 0) {
 				a.storageProgress(library.Progress{Message: "Updating accessories in the game…"})
 				err = l.Install(a.settings.GameDir)
 			}

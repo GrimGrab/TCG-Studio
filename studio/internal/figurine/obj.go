@@ -108,6 +108,11 @@ func LoadOBJ(path string) (*Scene, error) {
 					if d.mapKd != "" {
 						m.Image = loadImage(dir, d.mapKd, s)
 					}
+					if d.mapBump != "" {
+						if b := loadImage(dir, d.mapBump, s); b != nil {
+							m.Image = withDetail(m.Image, shadeFromNormal(b, d.bumpScale))
+						}
+					}
 				} else {
 					s.warn(fmt.Sprintf("material %q isn't in the .mtl file (drawn white)", name))
 				}
@@ -190,8 +195,10 @@ func LoadOBJ(path string) (*Scene, error) {
 }
 
 type objMtl struct {
-	kd    [4]float64
-	mapKd string
+	kd        [4]float64
+	mapKd     string
+	mapBump   string  // bump (height) or normal map, baked into the texture as shading
+	bumpScale float64 // -bm
 }
 
 func loadMTL(path string, s *Scene) map[string]objMtl {
@@ -224,6 +231,17 @@ func loadMTL(path string, s *Scene) map[string]objMtl {
 			if len(f) >= 2 && cur != "" {
 				m := out[cur]
 				m.kd[3] = num(f[1])
+				out[cur] = m
+			}
+		case "map_bump", "bump", "norm", "map_kn":
+			if cur != "" {
+				m := out[cur]
+				m.mapBump, m.bumpScale = mapFile(f[1:]), 1
+				for k := 1; k+1 < len(f); k++ {
+					if strings.EqualFold(f[k], "-bm") {
+						m.bumpScale = num(f[k+1])
+					}
+				}
 				out[cur] = m
 			}
 		case "map_kd":

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,16 @@ type FigurineSource struct {
 	Vertices  int        `json:"vertices"`
 	Size      [3]float64 `json:"size"` // bounds of the source model (its own units)
 	Warnings  []string   `json:"warnings"`
+	File      string     `json:"file"` // the picked model file (to import it again with textures the user picks)
+}
+
+// ModelTextures are textures the user picked for a model (library paths from PickAccessoryImage, "" = none): for models shared
+// without their material, or with maps the game can't draw. Normal map and ambient occlusion are baked into the colour texture.
+type ModelTextures struct {
+	Color         string `json:"color"`
+	Normal        string `json:"normal"`
+	NormalDirectX bool   `json:"normalDirectX"` // the user says the normal map is DirectX style (green down)
+	AO            string `json:"ao"`
 }
 
 // ImportFigurineModel lets the user pick a .glb/.gltf/.obj file and converts it. Returns an empty Model when cancelled.
@@ -45,11 +56,45 @@ func (a *App) ImportFigurineModel() (FigurineSource, error) {
 	return a.importFigurine(file)
 }
 
-func (a *App) importFigurine(file string) (FigurineSource, error) {
+func (a *App) importFigurine(file string) (FigurineSource, error) { return a.importFigurineWith(file, nil) }
+
+// ImportModelWithTextures imports a model file again with the textures the user picked (ModelTextures); no textures = as is.
+func (a *App) ImportModelWithTextures(file string, t ModelTextures) (FigurineSource, error) {
+	if _, err := os.Stat(file); err != nil {
+		return FigurineSource{}, errors.New("the model file isn't there any more (" + filepath.Base(file) + ") — import the model again")
+	}
+	l, err := a.accLib()
+	if err != nil {
+		return FigurineSource{}, err
+	}
+	load := func(rel string) (image.Image, error) {
+		if rel == "" {
+			return nil, nil
+		}
+		img, err := readImage(l.Resolve(rel))
+		if err != nil {
+			return nil, errors.New("texture couldn't be read: " + err.Error())
+		}
+		return img, nil
+	}
+	set := &figurine.TextureSet{NormalDirectX: t.NormalDirectX}
+	if set.Color, err = load(t.Color); err != nil {
+		return FigurineSource{}, err
+	}
+	if set.Normal, err = load(t.Normal); err != nil {
+		return FigurineSource{}, err
+	}
+	if set.AO, err = load(t.AO); err != nil {
+		return FigurineSource{}, err
+	}
+	return a.importFigurineWith(file, set)
+}
+
+func (a *App) importFigurineWith(file string, set *figurine.TextureSet) (FigurineSource, error) {
 	if strings.EqualFold(filepath.Ext(file), ".fbx") {
 		return FigurineSource{}, errors.New("FBX isn't supported yet — open it in Blender (File → Import → FBX) and export it as glTF 2.0 (.glb), then import that")
 	}
-	m, img, warns, err := figurine.Import(file)
+	m, img, warns, err := figurine.ImportWith(file, set)
 	if err != nil {
 		return FigurineSource{}, err
 	}
@@ -76,7 +121,7 @@ func (a *App) importFigurine(file string) (FigurineSource, error) {
 	}
 	return FigurineSource{
 		Model: model, Texture: texture, Name: name, Triangles: m.Triangles(), Vertices: len(m.Pos),
-		Size: [3]float64{hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}, Warnings: warns,
+		Size: [3]float64{hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}, Warnings: warns, File: file,
 	}, nil
 }
 

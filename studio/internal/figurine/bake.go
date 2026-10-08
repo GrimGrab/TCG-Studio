@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"io"
 	"image/png"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -15,7 +15,20 @@ import (
 )
 
 // Import reads a model file (.glb, .gltf, .obj) and combines it into one mesh + one texture.
-func Import(path string) (*Mesh, *image.NRGBA, []string, error) {
+func Import(path string) (*Mesh, *image.NRGBA, []string, error) { return ImportWith(path, nil) }
+
+// TextureSet is a model's textures chosen by the user (a PBR set shared next to the model, e.g. an OBJ without its .mtl). The game
+// draws one colour texture, so the normal map and ambient occlusion are baked into it as shading; other maps aren't used.
+type TextureSet struct {
+	Color         image.Image // base colour / albedo (nil = keep the model's own colours)
+	Normal        image.Image // tangent-space normal map (or a grey height map)
+	NormalDirectX bool        // green channel points down (DirectX convention)
+	AO            image.Image // ambient occlusion (grey, multiplied)
+}
+
+// ImportWith is Import with a texture set chosen by the user laid over the whole model: every part uses it through its own UVs;
+// parts without UVs keep their colour.
+func ImportWith(path string, texture *TextureSet) (*Mesh, *image.NRGBA, []string, error) {
 	var s *Scene
 	var err error
 	switch strings.ToLower(filepath.Ext(path)) {
@@ -28,6 +41,9 @@ func Import(path string) (*Mesh, *image.NRGBA, []string, error) {
 	}
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if texture != nil && (texture.Color != nil || texture.Normal != nil || texture.AO != nil) {
+		useTexture(s, texture)
 	}
 	m, img, err := Combine(s)
 	if err != nil {
@@ -263,4 +279,57 @@ func writePNG(path string, img image.Image) error {
 		return err
 	}
 	return fh.Close()
+}
+
+// useTexture puts the set on every part that has UVs, replacing the materials (and the "not found" warnings about them).
+func useTexture(s *Scene, t *TextureSet) {
+	img := t.Color
+	if t.Normal != nil {
+		n := t.Normal
+		if t.NormalDirectX {
+			n = flipGreen(n)
+		}
+		img = withDetail(img, shadeFromNormal(n, 1))
+	}
+	if t.AO != nil {
+		img = withDetail(img, aoShade(t.AO))
+	}
+	if t.Color == nil {
+		// Only shading maps: lay them over the model's own materials (their colours stay).
+		for i := range s.Materials {
+			if s.Materials[i].Image == nil {
+				s.Materials[i].Image = img
+			} else {
+				s.Materials[i].Image = multiplyImages(s.Materials[i].Image, img)
+			}
+		}
+		for i := range s.Parts {
+			if s.Parts[i].UV != nil && s.Parts[i].Mat < 0 {
+				s.Parts[i].Mat = len(s.Materials)
+			}
+		}
+		s.Materials = append(s.Materials, Material{Name: "shading", Image: img, Factor: [4]float64{1, 1, 1, 1}})
+		return
+	}
+	mi := len(s.Materials)
+	s.Materials = append(s.Materials, Material{Name: "texture", Image: img, Factor: [4]float64{1, 1, 1, 1}})
+	noUV := false
+	for i := range s.Parts {
+		if s.Parts[i].UV != nil {
+			s.Parts[i].Mat = mi
+			s.Parts[i].Color = nil
+		} else {
+			noUV = true
+		}
+	}
+	kept := s.Warnings[:0]
+	for _, w := range s.Warnings {
+		if !strings.Contains(w, "not found") && !strings.Contains(w, "isn't in the .mtl") && !strings.Contains(w, "couldn't be read") {
+			kept = append(kept, w)
+		}
+	}
+	s.Warnings = kept
+	if noUV {
+		s.warn("some parts have no texture coordinates (UVs), so the texture can't be laid on them; they keep their colour")
+	}
 }

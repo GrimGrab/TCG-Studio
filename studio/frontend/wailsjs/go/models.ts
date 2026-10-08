@@ -237,6 +237,29 @@ export namespace debuglog {
 
 }
 
+export namespace decoart {
+	
+	export class Poster {
+	    width: number;
+	    frame: number;
+	    color: string;
+	    depth: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Poster(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.frame = source["frame"];
+	        this.color = source["color"];
+	        this.depth = source["depth"];
+	    }
+	}
+
+}
+
 export namespace epl {
 	
 	export class Tier {
@@ -1330,6 +1353,7 @@ export namespace main {
 	export class AccessoryView {
 	    accessories: setfmt.Accessory[];
 	    furniture: setfmt.Furniture[];
+	    decorations: setfmt.Decoration[];
 	    layouts: Record<string, string>;
 	    origins: Record<string, origin.Origin>;
 	    installed: boolean;
@@ -1344,6 +1368,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.accessories = this.convertValues(source["accessories"], setfmt.Accessory);
 	        this.furniture = this.convertValues(source["furniture"], setfmt.Furniture);
+	        this.decorations = this.convertValues(source["decorations"], setfmt.Decoration);
 	        this.layouts = source["layouts"];
 	        this.origins = this.convertValues(source["origins"], origin.Origin, true);
 	        this.installed = source["installed"];
@@ -1383,6 +1408,24 @@ export namespace main {
 	        this.boxTexture = source["boxTexture"];
 	        this.boxIcon = source["boxIcon"];
 	        this.layout = source["layout"];
+	    }
+	}
+	export class DecorationBake {
+	    mesh: string;
+	    texture: string;
+	    triangles: number;
+	    size: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DecorationBake(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mesh = source["mesh"];
+	        this.texture = source["texture"];
+	        this.triangles = source["triangles"];
+	        this.size = source["size"];
 	    }
 	}
 	export class EPLResult {
@@ -1483,6 +1526,7 @@ export namespace main {
 	    vertices: number;
 	    size: number[];
 	    warnings: string[];
+	    file: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FigurineSource(source);
@@ -1497,6 +1541,7 @@ export namespace main {
 	        this.vertices = source["vertices"];
 	        this.size = source["size"];
 	        this.warnings = source["warnings"];
+	        this.file = source["file"];
 	    }
 	}
 	export class FurnitureBake {
@@ -1654,6 +1699,24 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ModelTextures {
+	    color: string;
+	    normal: string;
+	    normalDirectX: boolean;
+	    ao: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelTextures(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.color = source["color"];
+	        this.normal = source["normal"];
+	        this.normalDirectX = source["normalDirectX"];
+	        this.ao = source["ao"];
+	    }
 	}
 	export class PackArtFiles {
 	    texture: string;
@@ -2629,6 +2692,62 @@ export namespace setfmt {
 	}
 	
 	
+	export class Decoration {
+	    id: string;
+	    kind: string;
+	    name: string;
+	    price: number;
+	    icon?: string;
+	    texture?: string;
+	    normalMap?: string;
+	    roughnessMap?: string;
+	    color?: string;
+	    smoothness?: number;
+	    mesh?: string;
+	    mount?: string;
+	    tab?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Decoration(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.price = source["price"];
+	        this.icon = source["icon"];
+	        this.texture = source["texture"];
+	        this.normalMap = source["normalMap"];
+	        this.roughnessMap = source["roughnessMap"];
+	        this.color = source["color"];
+	        this.smoothness = source["smoothness"];
+	        this.mesh = source["mesh"];
+	        this.mount = source["mount"];
+	        this.tab = source["tab"];
+	    }
+	}
+	export class DecorationKind {
+	    kind: string;
+	    title: string;
+	    one: string;
+	    toggle: string;
+	    surface: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DecorationKind(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.title = source["title"];
+	        this.one = source["one"];
+	        this.toggle = source["toggle"];
+	        this.surface = source["surface"];
+	    }
+	}
 	export class FurniturePoint {
 	    role: string;
 	    pos: number[];
@@ -3097,6 +3216,7 @@ export namespace setups {
 	    sets: number;
 	    accessories: number;
 	    furniture: number;
+	    decorations?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Manifest(source);
@@ -3113,6 +3233,7 @@ export namespace setups {
 	        this.sets = source["sets"];
 	        this.accessories = source["accessories"];
 	        this.furniture = source["furniture"];
+	        this.decorations = source["decorations"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3144,6 +3265,7 @@ export namespace setups {
 	    sets: number;
 	    accessories: number;
 	    furniture: number;
+	    decorations: number;
 	    hasSaves: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -3161,6 +3283,7 @@ export namespace setups {
 	        this.sets = source["sets"];
 	        this.accessories = source["accessories"];
 	        this.furniture = source["furniture"];
+	        this.decorations = source["decorations"];
 	        this.hasSaves = source["hasSaves"];
 	    }
 	

@@ -64,9 +64,10 @@ func KindInfo(kind string) (AccessoryKind, bool) {
 }
 
 type AccessoryLibrary struct {
-	SchemaVersion int         `json:"schemaVersion"`
-	Accessories   []Accessory `json:"accessories"`
-	Furniture     []Furniture `json:"furniture,omitempty"`
+	SchemaVersion int          `json:"schemaVersion"`
+	Accessories   []Accessory  `json:"accessories"`
+	Furniture     []Furniture  `json:"furniture,omitempty"`
+	Decorations   []Decoration `json:"decorations,omitempty"`
 }
 
 type Accessory struct {

@@ -3,6 +3,25 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.3.0 - 2026-10-08
+
+Custom decorations: your own wall, floor and ceiling looks, posters and 3D decorations.
+
+- New: Decorations page in TCG Studio with tabs for Walls, Floors, Ceilings, Posters and Objects. Everything you make is sold in the phone's Buy Decoration app.
+- New: Wall, floor and ceiling looks from any repeating texture, with optional normal and shine maps, colour and smoothness. Buy them once and switch them in the Decorate screen, for both shop areas.
+- New: Posters from your own pictures: pick a picture, set the width and an optional frame and frame colour.
+- New: 3D decorations from your own models (GLB, glTF or OBJ), hung on a wall or stood on the floor, with height and rotation. A vanilla poster or plant is shown beside it for scale.
+- New: Textures for imported models can be picked separately (colour texture, normal map, ambient occlusion), for models that come without their textures. Normal and occlusion maps are baked in as shading.
+- New: Importing an EPL mod now also converts its decorations (placeable decorations and wall/floor/ceiling looks).
+- New: Decorations are in the catalog, Add from catalog, Storage page and setup sharing like furniture.
+- New: Mod settings → Content - Decorations: ShowVanillaPosters, ShowVanillaDecoObjects, ShowVanillaSurfaces hide the vanilla ones from the Buy Decoration app (what you own stays).
+- Fixed: Colours of GLB/glTF models came out much too dark (figurines, furniture and decorations).
+- Changed: Normal and bump maps that come with a model are now baked into its texture, so surface detail shows in game.
+- Changed: Furniture with its own model keeps its placement guides, and models with several materials draw all of them.
+- Changed: Your decorations stay out of the vanilla save, like other custom content, so the save still loads without the mod.
+
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.2.0 - 2026-10-08
 
 Custom rarities: sets can have rarities of their own, and imports keep the real ones.

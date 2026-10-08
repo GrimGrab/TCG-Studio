@@ -168,6 +168,9 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 			for _, f := range l.Lib.Furniture {
 				setupItems[f.ID] = true
 			}
+			for _, d := range l.Lib.Decorations {
+				setupItems[d.ID] = true
+			}
 		}
 	}
 	setupRefs := referencedBySetups(list)
@@ -191,6 +194,9 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 		}
 		for _, f := range cat.Lib.Furniture {
 			add(f.ID, f.Name, f)
+		}
+		for _, d := range cat.Lib.Decorations {
+			add(d.ID, d.Name, d)
 		}
 	}
 	if store, err := store.List(); err == nil {
@@ -294,6 +300,8 @@ func DeleteUnused(h setups.Home, gameDir, kind string, ids []string) (int64, err
 			var entry any
 			if i := cat.FurnitureIndex(e.ID); i >= 0 {
 				k, entry = catalog.KindFurniture, cat.Lib.Furniture[i]
+			} else if i := cat.DecorationIndex(e.ID); i >= 0 {
+				k, entry = catalog.KindDecoration, cat.Lib.Decorations[i]
 			} else if i := cat.Index(e.ID); i >= 0 {
 				entry = cat.Lib.Accessories[i]
 			}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Catalog: every set, accessory and furniture piece in this workspace (whatever setup it's in), which setups use it, and
+  // Catalog: every set, accessory, furniture piece and decoration in this workspace (whatever setup it's in), which setups use it, and
   // deleting — which removes it everywhere: from the catalog, every setup that has it, the game (active setup) and its
   // shared files. "Add to this setup" copies its game info into the active setup.
   import { onMount } from 'svelte';
@@ -8,7 +8,7 @@
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
-  const TABS = [{ kind: 'set', title: 'Sets' }, { kind: 'accessory', title: 'Accessories' }, { kind: 'furniture', title: 'Furniture' }];
+  const TABS = [{ kind: 'set', title: 'Sets' }, { kind: 'accessory', title: 'Accessories' }, { kind: 'furniture', title: 'Furniture' }, { kind: 'decoration', title: 'Decorations' }];
   let kind = $state('set');
   let lists = $state<Record<string, any[]>>({});
   let loading = $state(true);
@@ -21,8 +21,8 @@
   async function load() {
     loading = true;
     try {
-      const [s, a, f] = await Promise.all(TABS.map((t) => App.CatalogAll(t.kind)));
-      lists = { set: s, accessory: a, furniture: f };
+      const [s, a, f, d] = await Promise.all(TABS.map((t) => App.CatalogAll(t.kind)));
+      lists = { set: s, accessory: a, furniture: f, decoration: d };
     } catch (e) { notify(errText(e), 'error'); }
     loading = false;
     picked = picked.filter((k) => (lists[kind] ?? []).some((e) => e.key === k));
@@ -63,7 +63,8 @@
     if (ev.key === 'Escape') picked = [];
   }
 
-  const noun = (k: string, n: number) => k === 'set' ? (n === 1 ? 'set' : 'sets') : k === 'accessory' ? (n === 1 ? 'accessory' : 'accessories') : (n === 1 ? 'furniture piece' : 'furniture pieces');
+  const noun = (k: string, n: number) => k === 'set' ? (n === 1 ? 'set' : 'sets') : k === 'accessory' ? (n === 1 ? 'accessory' : 'accessories')
+    : k === 'decoration' ? (n === 1 ? 'decoration' : 'decorations') : (n === 1 ? 'furniture piece' : 'furniture pieces');
 
   async function remove() {
     const items = (lists[kind] ?? []).filter((e) => picked.includes(e.key));

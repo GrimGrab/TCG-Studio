@@ -111,6 +111,15 @@ type Prefab struct {
 	IsDecoFloorTexture     bool    `json:"IsDecoFloorTexture"`
 	IsDecoCeilingTexture   bool    `json:"IsDecoCeilingTexture"`
 	DecoType               string  `json:"DecoType"`
+	DecoObject             string  `json:"DecoObject"` // EDecoObject name EPL's prepatcher adds (not used: Studio allocates its own)
+	// Wall / floor / ceiling looks: texture names in the bundle, colour (0–1) and smoothness.
+	Texture      string  `json:"Texture"`
+	NormalMap    string  `json:"NormalMap"`
+	RoughnessMap string  `json:"RoughnessMap"`
+	Smoothness   float64 `json:"Smoothness"`
+	Color        *struct {
+		R, G, B, A float64
+	} `json:"Color"`
 }
 
 // ReadDescriptor parses an EPL descriptor file.

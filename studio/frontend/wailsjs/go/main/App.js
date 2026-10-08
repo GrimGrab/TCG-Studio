@@ -26,12 +26,20 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function BakeDecorationModel(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['BakeDecorationModel'](arg1, arg2, arg3, arg4);
+}
+
 export function BakeFigurine(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BakeFigurine'](arg1, arg2, arg3, arg4);
 }
 
 export function BakeFurnitureModel(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BakeFurnitureModel'](arg1, arg2, arg3, arg4);
+}
+
+export function BakePoster(arg1, arg2) {
+  return window['go']['main']['App']['BakePoster'](arg1, arg2);
 }
 
 export function BoxFromPack(arg1, arg2) {
@@ -94,6 +102,14 @@ export function DebugReport() {
   return window['go']['main']['App']['DebugReport']();
 }
 
+export function DecorationKinds() {
+  return window['go']['main']['App']['DecorationKinds']();
+}
+
+export function DecorationTemplates() {
+  return window['go']['main']['App']['DecorationTemplates']();
+}
+
 export function DefaultArtColor(arg1) {
   return window['go']['main']['App']['DefaultArtColor'](arg1);
 }
@@ -108,6 +124,14 @@ export function DeleteAccessories(arg1) {
 
 export function DeleteAccessory(arg1) {
   return window['go']['main']['App']['DeleteAccessory'](arg1);
+}
+
+export function DeleteDecoration(arg1) {
+  return window['go']['main']['App']['DeleteDecoration'](arg1);
+}
+
+export function DeleteDecorationMany(arg1) {
+  return window['go']['main']['App']['DeleteDecorationMany'](arg1);
 }
 
 export function DeleteFromCatalog(arg1, arg2) {
@@ -226,6 +250,10 @@ export function ImportFigurineModel() {
   return window['go']['main']['App']['ImportFigurineModel']();
 }
 
+export function ImportModelWithTextures(arg1, arg2) {
+  return window['go']['main']['App']['ImportModelWithTextures'](arg1, arg2);
+}
+
 export function ImportSet(arg1, arg2, arg3) {
   return window['go']['main']['App']['ImportSet'](arg1, arg2, arg3);
 }
@@ -296,6 +324,10 @@ export function MoveSetup(arg1, arg2) {
 
 export function NewAccessory(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewAccessory'](arg1, arg2, arg3);
+}
+
+export function NewDecoration(arg1, arg2) {
+  return window['go']['main']['App']['NewDecoration'](arg1, arg2);
 }
 
 export function NewFurniture(arg1, arg2, arg3) {
@@ -424,6 +456,10 @@ export function SaveAutoArt(arg1, arg2, arg3, arg4) {
 
 export function SaveDebugReport() {
   return window['go']['main']['App']['SaveDebugReport']();
+}
+
+export function SaveDecoration(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveDecoration'](arg1, arg2, arg3);
 }
 
 export function SaveFurniture(arg1, arg2, arg3) {

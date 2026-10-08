@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 9
+const Version = 10
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {
@@ -63,6 +63,7 @@ type extractor struct {
 	dir, acc  string
 	itemNames map[int32]string
 	objNames  map[int32]string
+	decoNames map[int32]string
 	catNames  map[int32]string
 	so        unityfs.StockItemData
 	warnings  []string
@@ -81,7 +82,7 @@ func Extract(gameDir, outDir string, progress func(string)) (info Info, err erro
 		return info, err
 	}
 	stamp, _ := Stamp(gameDir)
-	enums, err := unityfs.ReadEnums(filepath.Join(data, "Managed", "Assembly-CSharp.dll"), "EItemType", "EItemCategory", "EObjectType")
+	enums, err := unityfs.ReadEnums(filepath.Join(data, "Managed", "Assembly-CSharp.dll"), "EItemType", "EItemCategory", "EObjectType", "EDecoObject")
 	if err != nil {
 		return info, err
 	}
@@ -94,7 +95,7 @@ func Extract(gameDir, outDir string, progress func(string)) (info Info, err erro
 	tmp := outDir + ".new"
 	os.RemoveAll(tmp)
 	x := &extractor{env: env, dir: tmp, acc: filepath.Join(tmp, "accessories"), progress: progress,
-		itemNames: invert(enums["EItemType"]), catNames: invert(enums["EItemCategory"]), objNames: invert(enums["EObjectType"]), texNames: map[*unityfs.Object]unityfs.Texture2D{}}
+		itemNames: invert(enums["EItemType"]), catNames: invert(enums["EItemCategory"]), objNames: invert(enums["EObjectType"]), decoNames: invert(enums["EDecoObject"]), texNames: map[*unityfs.Object]unityfs.Texture2D{}}
 	if err := os.MkdirAll(x.acc, 0o755); err != nil {
 		return info, err
 	}
@@ -190,6 +191,10 @@ func (x *extractor) run() error {
 	if _, err := x.furniture(); err != nil {
 		// Furniture is optional for the other editors: keep the rest of the templates.
 		x.warn("furniture: %v", err)
+	}
+	x.progress("Extracting decorations…")
+	if err := x.decorations(x.decoNames); err != nil {
+		x.warn("decorations: %v", err) // optional, like furniture
 	}
 	acc := map[string]any{"version": 2, "items": items, "tables": tables, "itemPrefab": prefab, "shelves": shelves}
 	if err := writeJSON(filepath.Join(x.acc, "accessories.json"), acc); err != nil {

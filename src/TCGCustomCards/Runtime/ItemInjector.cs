@@ -22,6 +22,7 @@ namespace TCGCustomCards.Runtime
         {
             // Same moments as items: before saved objects spawn (furniture prefabs must exist by then).
             FurnitureInjector.EnsureInjected();
+            DecorationInjector.EnsureInjected();
             // Never touch CSingleton<InventoryBase>.Instance outside the shop scene: it would create an empty manager.
             var inv = Object.FindObjectOfType<InventoryBase>();
             if (inv == null || inv.m_StockItemData_SO == null) return;
@@ -223,6 +224,7 @@ namespace TCGCustomCards.Runtime
         /// <summary>CPlayerData item lists (indexed by EItemType) and license list (by restock row) must cover our ints.</summary>
         public static void EnsurePlayerListSizes()
         {
+            DecorationInjector.EnsurePlayerLists();
             if (_injectedInto == null) return;
             int items = _injectedInto.m_ItemDataList.Count, rows = _injectedInto.m_RestockDataList.Count;
             PadTo(CPlayerData.m_CurrentTotalItemCountList, items, _ => 0);

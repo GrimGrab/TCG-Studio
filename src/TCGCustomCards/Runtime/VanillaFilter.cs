@@ -11,6 +11,8 @@ namespace TCGCustomCards.Runtime
     ///    leave the restock lists, the deck picker, play tables and customer demand.
     ///  • Cards hidden: vanilla sets leave the binder and set pickers, screens default to a custom set, trade customers bring custom cards.
     ///  • Furniture hidden: vanilla pieces leave the furniture shop (applied when the shop opens); essential ones stay without a custom one.
+    ///  • Decorations hidden (posters / other decorations / wall-floor-ceiling looks): vanilla ones leave the Buy Decoration app;
+    ///    owned ones stay in the Decorate screen.
     /// Each toggle is a pure hide: it does not depend on custom content. Where the game needs a replacement (default set, trade
     /// customer, play-table prize) a custom one is used when there is one; otherwise that feature simply has nothing to offer.
     /// </summary>
@@ -30,6 +32,14 @@ namespace TCGCustomCards.Runtime
                 return false;
             }
         }
+
+        /// <summary>
+        /// Vanilla decorations leave the "Buy Decoration" app (Poster tab / Other tab / wall-floor-ceiling tabs). The Decorate screen still
+        /// lists what you own, placed decorations stay and the default wall/floor/ceiling (index 0) is never hidden (Patches/DecorationPatches).
+        /// </summary>
+        public static bool HidePosters => Plugin.ShowVanillaPosters != null && !Plugin.ShowVanillaPosters.Value;
+        public static bool HideDecoObjects => Plugin.ShowVanillaDecoObjects != null && !Plugin.ShowVanillaDecoObjects.Value;
+        public static bool HideSurfaces => Plugin.ShowVanillaSurfaces != null && !Plugin.ShowVanillaSurfaces.Value;
 
         /// <summary>Vanilla furniture leaves the furniture shop (placed pieces stay).</summary>
         public static bool HideFurniture => Plugin.ShowVanillaFurniture != null && !Plugin.ShowVanillaFurniture.Value;

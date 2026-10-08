@@ -9,12 +9,13 @@
   import Setup from './views/Setup.svelte';
   import Accessories from './views/Accessories.svelte';
   import Furniture from './views/Furniture.svelte';
+  import Decorations from './views/Decorations.svelte';
   import ModSettings from './views/ModSettings.svelte';
   import Setups from './views/Setups.svelte';
   import Storage from './views/Storage.svelte';
   import Catalog from './views/Catalog.svelte';
 
-  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'decorations' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
   let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
@@ -157,6 +158,7 @@
     <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import</button>
     <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
     <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
+    <button class:active={view === 'decorations'} onclick={() => (view = 'decorations')}>Decorations</button>
     <button class:active={view === 'catalog'} onclick={() => (view = 'catalog')}>Catalog</button>
     <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
     <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
@@ -213,6 +215,8 @@
       <Accessories {notify} />
     {:else if view === 'furniture'}
       <Furniture {notify} />
+    {:else if view === 'decorations'}
+      <Decorations {notify} />
     {:else if view === 'gamify'}
       <Gamify {notify} />
     {:else if view === 'modsettings'}

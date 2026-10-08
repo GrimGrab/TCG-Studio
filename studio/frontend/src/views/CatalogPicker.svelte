@@ -6,12 +6,12 @@
   import { grouped, groupOf as groupFor, sourceGames, OWN_GROUP } from '../lib/catalog';
 
   let { kind, sub = '', onadded, onclose }: {
-    kind: 'set' | 'accessory' | 'furniture';
-    sub?: string; // accessory kind to show first (the current tab), '' = all
+    kind: 'set' | 'accessory' | 'furniture' | 'decoration';
+    sub?: string; // accessory / decoration kind to show first (the current tab), '' = all
     onadded: (ids: string[]) => void; onclose: () => void;
   } = $props();
 
-  const noun = $derived(kind === 'set' ? 'sets' : kind === 'accessory' ? 'accessories' : 'furniture');
+  const noun = $derived(kind === 'set' ? 'sets' : kind === 'accessory' ? 'accessories' : kind === 'decoration' ? 'decorations' : 'furniture');
   let entries = $state<any[]>([]);
   let loading = $state(true);
   let error = $state('');
@@ -34,7 +34,7 @@
 
   const shown = $derived(entries.filter((e) => {
     if (e.here && !showHere) return false;
-    if (kind === 'accessory' && sub && onlyKind && e.sub !== sub) return false;
+    if ((kind === 'accessory' || kind === 'decoration') && sub && onlyKind && e.sub !== sub) return false;
     const q = filter.trim().toLowerCase();
     return !q || `${e.name} ${e.id} ${e.origin} ${e.author} ${e.sub} ${groupOf(e)}`.toLowerCase().includes(q);
   }));
@@ -69,7 +69,7 @@
       {kind === 'set' ? 'Added sets show up on the Sets page; Install them as usual.' : 'Added items go at the end of the list.'}</p>
     <div class="row pick">
       <label class="field grow">Search<input placeholder="Name, mod or author" bind:value={filter} /></label>
-      {#if kind === 'accessory' && sub}<label class="check"><input type="checkbox" bind:checked={onlyKind} /> Only {sub}</label>{/if}
+      {#if (kind === 'accessory' || kind === 'decoration') && sub}<label class="check"><input type="checkbox" bind:checked={onlyKind} /> Only {sub}</label>{/if}
       <label class="check"><input type="checkbox" bind:checked={showHere} /> Show what this setup already has</label>
     </div>
     {#if error}<p class="small err">{error}</p>{/if}

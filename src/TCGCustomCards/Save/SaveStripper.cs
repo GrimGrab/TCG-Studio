@@ -23,7 +23,9 @@ namespace TCGCustomCards.Save
             /// <summary>
             /// replace (list element / object at index), remove (appended back), removeAt (put back at its index: placed custom furniture,
             /// whose list order other save data may rely on), scalar (object or enum field), spawn (paired restock lists),
-            /// warehouseBox (a box stored on a custom warehouse shelf: appended back, its shelf index is the saved list's).
+            /// warehouseBox (a box stored on a custom warehouse shelf: appended back, its shelf index is the saved list's),
+            /// decoCount (owned custom decorations: "int,count"), surfaceUnlock (a bought custom wall/floor/ceiling: its index),
+            /// surfaceEquip (the equipped custom look: field = the CPlayerData index field, json = its index).
             /// </summary>
             public string mode;
             public string type;
@@ -40,7 +42,8 @@ namespace TCGCustomCards.Save
         private static readonly HashSet<string> RemoveLists = new HashSet<string>
         {
             "m_PackageBoxItemSaveDataList", "m_PackageBoxCardSaveDataList", "m_CustomerSaveDataList", "m_GradedCardInventoryList",
-            "m_HoldCardDataList", "m_HoldItemTypeList", "m_TargetBuyItemList", "m_CustomerReviewDataList"
+            "m_HoldCardDataList", "m_HoldItemTypeList", "m_TargetBuyItemList", "m_CustomerReviewDataList",
+            "m_DecoObjectSaveDataList"
         };
 
         private static readonly FieldInfo[] GameFields = typeof(CGameData).GetFields(BindingFlags.Instance | BindingFlags.Public);
@@ -54,7 +57,7 @@ namespace TCGCustomCards.Save
             var originals = new List<(FieldInfo f, object value)>();
             // Newest first: a field swapped twice (pre-pass, then the generic pass) ends with its true original.
             undo = () => { for (int i = originals.Count - 1; i >= 0; i--) originals[i].f.SetValue(g, originals[i].value); };
-            if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0) return stash;
+            if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0 && Registry.Decorations.Count == 0) return stash;
 
             StripSpawnWaiting(g, stash, originals);
             StripWarehouseBoxes(g, stash, originals);
@@ -94,6 +97,38 @@ namespace TCGCustomCards.Save
                 var copy = new List<bool>(licenses);
                 foreach (int r in rows) copy[r] = false;
                 return copy;
+            }
+            if (name == "m_DecorationInventoryList" && value is List<int> owned)
+            {
+                // Owned custom decorations (by EDecoObject int): counts move to the side-car.
+                var ints = stash.alloc.decorations.Keys.Where(v => v < owned.Count && owned[v] != 0).ToList();
+                if (ints.Count == 0) return value;
+                var copy = new List<int>(owned);
+                foreach (int v in ints)
+                {
+                    stash.entries.Add(new StashEntry { field = name, mode = "decoCount", json = $"{v},{owned[v]}" });
+                    copy[v] = 0;
+                }
+                return copy;
+            }
+            if (SurfaceKind(name) is Core.DecorationKind unlockKind && name.StartsWith("m_UnlockedDeco") && value is List<bool> unlocked)
+            {
+                var map = stash.alloc.SurfaceMap(unlockKind);
+                var idx = map.Keys.Where(i => i < unlocked.Count && unlocked[i]).ToList();
+                if (idx.Count == 0) return value;
+                var copy = new List<bool>(unlocked);
+                foreach (int i in idx)
+                {
+                    stash.entries.Add(new StashEntry { field = name, mode = "surfaceUnlock", json = i.ToString() });
+                    copy[i] = false;
+                }
+                return copy;
+            }
+            if (SurfaceKind(name) is Core.DecorationKind equipKind && name.StartsWith("m_Equipped") && value is int equipped)
+            {
+                if (!stash.alloc.SurfaceMap(equipKind).ContainsKey(equipped)) return value;
+                stash.entries.Add(new StashEntry { field = name, mode = "surfaceEquip", json = equipped.ToString() });
+                return 0; // the default look
             }
             if (name == "m_ChampionCardCollectedList" && value is List<int> champions)
             {
@@ -182,6 +217,19 @@ namespace TCGCustomCards.Save
             fCounts.SetValue(g, keptCounts);
         }
 
+        /// <summary>
+        /// Surface kind of a CPlayerData/CGameData decoration field: m_UnlockedDeco{Wall,Floor,Ceiling}List and
+        /// m_Equipped{Wall,Floor,Ceiling}DecoIndex(B). Null for any other field.
+        /// </summary>
+        private static Core.DecorationKind? SurfaceKind(string field)
+        {
+            if (!field.StartsWith("m_UnlockedDeco") && !(field.StartsWith("m_Equipped") && field.Contains("DecoIndex"))) return null;
+            if (field.Contains("Wall")) return Core.DecorationKind.Wall;
+            if (field.Contains("Floor")) return Core.DecorationKind.Floor;
+            if (field.Contains("Ceiling")) return Core.DecorationKind.Ceiling;
+            return null;
+        }
+
         /// <summary>Stash type of a set's own rarity: json = "setId:rarityId".</summary>
         private const string RarityType = "rarity";
         private const string WarehouseField = "m_WarehouseShelfSaveDataList";
@@ -262,9 +310,11 @@ namespace TCGCustomCards.Save
             public ECardExpansionType expansion;
             public EMonsterType monster;
             public EItemType item;
+            public EDecoObject deco;
 
             public EnumBox(object value)
             {
+                if (value is EDecoObject d) deco = d;
                 if (value is ECardExpansionType e) expansion = e;
                 else if (value is EMonsterType m) monster = m;
                 else if (value is EItemType it) item = it;
@@ -433,6 +483,24 @@ namespace TCGCustomCards.Save
             var target = typeof(CPlayerData).GetField(e.field, BindingFlags.Static | BindingFlags.Public);
             if (target == null) { Plugin.Log.LogWarning($"Restore: CPlayerData.{e.field} not found"); return false; }
 
+            if (e.mode == "decoCount")
+            {
+                var parts = e.json.Split(',');
+                if (!alloc.Deco(int.Parse(parts[0]), out int deco) || !(target.GetValue(null) is List<int> owned)) return false;
+                while (owned.Count <= deco) owned.Add(0);
+                owned[deco] += int.Parse(parts[1]);
+                return true;
+            }
+            if (e.mode == "surfaceUnlock" || e.mode == "surfaceEquip")
+            {
+                if (!(SurfaceKind(e.field) is Core.DecorationKind kind) || !alloc.Surface(kind, int.Parse(e.json), out int index)) return false;
+                if (e.mode == "surfaceEquip") { target.SetValue(null, index); return true; }
+                if (!(target.GetValue(null) is List<bool> unlocked)) return false;
+                while (unlocked.Count <= index) unlocked.Add(false);
+                unlocked[index] = true;
+                return true;
+            }
+
             if (e.type == RarityType)
             {
                 var parts = e.json.Split(':');
@@ -457,7 +525,8 @@ namespace TCGCustomCards.Save
                 int v = int.Parse(e.json);
                 bool mapped = type == typeof(ECardExpansionType) ? alloc.Expansion(v, out v)
                             : type == typeof(EMonsterType) ? alloc.Monster(v, out v)
-                            : type == typeof(EItemType) ? alloc.Item(v, out v) : true;
+                            : type == typeof(EItemType) ? alloc.Item(v, out v)
+                            : type == typeof(EDecoObject) ? alloc.Deco(v, out v) : true;
                 if (!mapped) return false;
                 obj = Enum.ToObject(type, v);
             }

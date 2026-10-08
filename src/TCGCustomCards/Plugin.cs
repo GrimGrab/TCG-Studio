@@ -21,6 +21,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> ShowVanillaCards;
         internal static ConfigEntry<bool> ShowVanillaPacks;
         internal static ConfigEntry<bool> ShowVanillaFurniture;
+        internal static ConfigEntry<bool> ShowVanillaPosters, ShowVanillaDecoObjects, ShowVanillaSurfaces;
         /// <summary>[Content] ShowVanilla&lt;Kind&gt; per accessory kind.</summary>
         internal static readonly System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>> ShowVanillaAccessory =
             new System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>>();
@@ -93,6 +94,16 @@ namespace TCGCustomCards
             ShowVanillaFurniture = Config.Bind("Content", "ShowVanillaFurniture", true,
                 "Sell the vanilla furniture in the furniture shop. Off = only your custom furniture from TCG Studio (the cash counter, " +
                 "workbench, trash bin and empty box storage stay unless you have a custom one of that kind). Placed furniture stays.");
+            const string decoSection = "Content - Decorations";
+            ShowVanillaPosters = Config.Bind(decoSection, "ShowVanillaPosters", true,
+                "Sell the vanilla posters and fan art in the Buy Decoration app (Poster tab). Off = only your custom posters from TCG Studio. " +
+                "Posters you own or have placed stay.");
+            ShowVanillaDecoObjects = Config.Bind(decoSection, "ShowVanillaDecoObjects", true,
+                "Sell the vanilla statues, signs and plants in the Buy Decoration app (Other tab). Off = only your custom decorations from " +
+                "TCG Studio. Decorations you own or have placed stay.");
+            ShowVanillaSurfaces = Config.Bind(decoSection, "ShowVanillaSurfaces", true,
+                "Sell the vanilla wall, floor and ceiling looks in the Buy Decoration app. Off = only your custom looks from TCG Studio " +
+                "(the default look stays). Looks you bought stay in the Decorate screen.");
             CardBackScale = Config.Bind("Visuals", "CardBackScale", 1.08f, new ConfigDescription(
                 "Size of custom card-back art on 3D cards relative to the vanilla art window (1 = same as the vanilla art, larger also covers the dark border). Applies live to newly shown cards.",
                 new AcceptableValueRange<float>(0.9f, 1.25f)));
@@ -231,11 +242,12 @@ namespace TCGCustomCards
             Registry.Build(SetLoader.LoadAll(Path.Combine(PluginDir, "Sets")));
             Registry.BuildAccessories(AccessoryLoader.Load(PluginDir));
             Registry.BuildFurniture(AccessoryLoader.LoadFurniture(PluginDir));
+            Registry.BuildDecorations(AccessoryLoader.LoadDecorations(PluginDir));
 
             _harmony = new Harmony(Guid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
 
-            Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s)");
+            Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s), {Registry.Decorations.Count} decoration(s)");
             Log.LogInfo("Supports " + Core.SetDef.LibraryCapability + " (shared card art in the plugin's Library folder)");
             WatchConfig();
         }

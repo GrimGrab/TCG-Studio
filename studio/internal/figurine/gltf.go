@@ -70,6 +70,10 @@ type gltfDoc struct {
 			BaseColorFactor  []float64   `json:"baseColorFactor"`
 			BaseColorTexture *gltfTexRef `json:"baseColorTexture"`
 		} `json:"pbrMetallicRoughness"`
+		NormalTexture *struct {
+			gltfTexRef
+			Scale *float64 `json:"scale"`
+		} `json:"normalTexture"`
 		Extensions map[string]json.RawMessage `json:"extensions"`
 	} `json:"materials"`
 	Textures []struct {
@@ -245,6 +249,17 @@ func (f *gltfFile) loadMaterials() {
 			}
 			mat.Image = f.textureImage(ref.Index)
 		}
+		// glTF colours are linear; the combined texture holds sRGB pixels.
+		mat.Factor = srgbColor(mat.Factor)
+		if nt := m.NormalTexture; nt != nil {
+			if nimg := f.textureImage(nt.Index); nimg != nil {
+				strength := 1.0
+				if nt.Scale != nil {
+					strength = *nt.Scale
+				}
+				mat.Image = withDetail(mat.Image, shadeFromNormal(nimg, strength))
+			}
+		}
 		f.scene.Materials = append(f.scene.Materials, mat)
 	}
 }
@@ -389,7 +404,7 @@ func (f *gltfFile) addMesh(mi int, world mat4) error {
 				for _, v := range col {
 					c := [4]float64{1, 1, 1, 1}
 					copy(c[:], v)
-					part.Color = append(part.Color, c)
+					part.Color = append(part.Color, srgbColor(c))
 				}
 			}
 		}

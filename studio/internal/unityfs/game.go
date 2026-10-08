@@ -179,6 +179,7 @@ type InteractableObject struct {
 	Highlight, NavMeshCut              PPtr // GameObjects (helpers, not part of the look)
 	Mesh, CullingMesh                  PPtr // MeshRenderers
 	IsGeneric                          bool
+	IsDecorationVertical               bool // decorations: hangs on a wall (else stands on the floor)
 	PickupMesh, ValidArea, BoxCollider PPtr // MeshFilter, Transform (placement area), BoxCollider
 }
 
@@ -192,8 +193,13 @@ func readInteractableObject(r *reader) (io InteractableObject) {
 	r.pptr() // skin mesh
 	r.f32()  // highlight outline width
 	io.IsGeneric = r.flag()
+	// can pickup move, can box up, can scan by counter, place in shop only, place in warehouse only, allow place near shop,
+	// is decoration vertical, can flip, can cat stand on this
 	for i := 0; i < 9; i++ {
-		r.flag() // can pickup move … can cat stand on this
+		v := r.flag()
+		if i == 6 {
+			io.IsDecorationVertical = v
+		}
 	}
 	io.PickupMesh = r.pptr()
 	io.ValidArea = r.pptr()
@@ -297,13 +303,58 @@ type FurniturePurchase struct {
 	Icon              PPtr
 }
 
+// DecoData / DecoPurchaseData: one placeable decoration (posters, statues, signs, plants, fan art), indexed by EDecoObject.
+type DecoData struct {
+	Name     string // I2 term
+	DecoType int32  // EDecoType: None, Poster, Statue, Sign, Plants
+	Prefab   PPtr   // InteractableObject script
+}
+
+type DecoPurchase struct {
+	Name, MainName, ReplaceXXX, ReplaceYYY string // I2 terms (MainName "… XXX …" with the others filled in)
+	Level                                  int32  // unused by the game
+	Price                                  float32
+	Icon                                   PPtr
+}
+
+// ShopDeco is one wall / wall bar / floor / ceiling look (ShopDecoData), picked by its list index.
+type ShopDeco struct {
+	Name, MainName, ReplaceXXX, ReplaceYYY string
+	Price                                  float32
+	ShowBar                                bool
+	MainTexture, RoughnessMap, NormalMap   PPtr
+	Color                                  [4]float32
+	Smoothness                             float32
+	Icon                                   PPtr
+}
+
 type ShelfData struct {
 	File      *File
 	Objects   []ObjectData
 	Purchases []FurniturePurchase
+	// Decorations (after the furniture lists).
+	Decos                         []DecoData
+	DecoPurchases                 []DecoPurchase
+	Floors, Walls, WallBars, Ceil []ShopDeco
+	PosterList, OtherList         []int32 // EDecoObject values shown on the shop's Poster / Other tabs
 }
 
-// ReadShelfData decodes ShelfData_ScriptableObject up to m_FurniturePurchaseDataList.
+func readShopDecos(r *reader) []ShopDeco {
+	out := make([]ShopDeco, r.count(48))
+	for i := range out {
+		d := &out[i]
+		d.Name, d.MainName, d.ReplaceXXX, d.ReplaceYYY = r.str(), r.str(), r.str(), r.str()
+		d.Price = r.f32()
+		d.ShowBar = r.flag()
+		d.MainTexture, d.RoughnessMap, d.NormalMap = r.pptr(), r.pptr(), r.pptr()
+		d.Color = r.vec4()
+		d.Smoothness = r.f32()
+		d.Icon = r.pptr()
+	}
+	return out
+}
+
+// ReadShelfData decodes ShelfData_ScriptableObject: furniture and decoration lists.
 func ReadShelfData(o *Object) (s ShelfData, err error) {
 	defer catch(&err, "ShelfData_ScriptableObject")
 	mb, err := readMonoBehaviour(o)
@@ -330,6 +381,27 @@ func ReadShelfData(o *Object) (s ShelfData, err error) {
 		d.ObjectType = r.i32()
 		d.Icon = r.pptr()
 	}
+	s.Decos = make([]DecoData, r.count(20))
+	for i := range s.Decos {
+		d := &s.Decos[i]
+		d.Name = r.str()
+		d.DecoType = r.i32()
+		d.Prefab = r.pptr()
+	}
+	s.DecoPurchases = make([]DecoPurchase, r.count(36))
+	for i := range s.DecoPurchases {
+		d := &s.DecoPurchases[i]
+		d.Name, d.MainName, d.ReplaceXXX, d.ReplaceYYY = r.str(), r.str(), r.str(), r.str()
+		d.Level = r.i32()
+		d.Price = r.f32()
+		d.Icon = r.pptr()
+	}
+	s.Floors = readShopDecos(r)
+	s.Walls = readShopDecos(r)
+	s.WallBars = readShopDecos(r)
+	s.Ceil = readShopDecos(r)
+	s.PosterList = r.i32s()
+	s.OtherList = r.i32s()
 	return s, nil
 }
 

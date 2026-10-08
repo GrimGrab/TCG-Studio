@@ -166,7 +166,7 @@ func (a *App) catalogItems(ids []string) {
 	}
 	var have []string
 	for _, id := range ids {
-		if cat.Index(id) >= 0 || cat.FurnitureIndex(id) >= 0 {
+		if cat.HasItem(id) {
 			have = append(have, id)
 		}
 	}

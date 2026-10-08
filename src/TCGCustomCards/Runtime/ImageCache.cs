@@ -41,6 +41,35 @@ namespace TCGCustomCards.Runtime
             return Store(absolutePath, tex);
         }
 
+        private static readonly Dictionary<string, Texture2D> Tiling = new Dictionary<string, Texture2D>();
+
+        /// <summary>
+        /// Repeating texture for materials that tile it (shop wall/floor/ceiling). <paramref name="linear"/> for data maps (normal,
+        /// metallic/smoothness), which must not be sRGB-decoded. Cached per path and mode; null when missing or undecodable.
+        /// </summary>
+        public static Texture2D GetTiling(string absolutePath, bool linear)
+        {
+            if (string.IsNullOrEmpty(absolutePath)) return null;
+            string key = (linear ? "L|" : "C|") + absolutePath;
+            if (Tiling.TryGetValue(key, out var cached) && cached != null) return cached;
+            if (!File.Exists(absolutePath)) { Plugin.Log.LogWarning($"Image not found: {absolutePath}"); return null; }
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, true, linear)
+            {
+                name = Path.GetFileNameWithoutExtension(absolutePath),
+                wrapMode = TextureWrapMode.Repeat,
+                filterMode = FilterMode.Trilinear,
+                anisoLevel = 8
+            };
+            if (!tex.LoadImage(File.ReadAllBytes(absolutePath), markNonReadable: true))
+            {
+                Object.Destroy(tex);
+                Plugin.Log.LogWarning($"Image could not be decoded: {absolutePath}");
+                return null;
+            }
+            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            return Tiling[key] = tex;
+        }
+
         private static readonly Dictionary<string, int> Trims = new Dictionary<string, int>();
 
         /// <summary>

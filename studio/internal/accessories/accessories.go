@@ -109,8 +109,8 @@ func (l *Library) NewID(name string) string {
 		base = "accessory"
 	}
 	id := base
-	// Accessories and furniture share images/<id>_*, so an id is unique across both lists.
-	for n := 2; l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0; n++ {
+	// Accessories, furniture and decorations share images/<id>_*, so an id is unique across all lists.
+	for n := 2; l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0; n++ {
 		id = fmt.Sprintf("%s-%d", base, n)
 	}
 	return id
@@ -162,6 +162,44 @@ func (l *Library) PutFurniture(f setfmt.Furniture) {
 func (l *Library) DeleteFurniture(id string) {
 	if i := l.FurnitureIndex(id); i >= 0 {
 		l.Lib.Furniture = append(l.Lib.Furniture[:i], l.Lib.Furniture[i+1:]...)
+	}
+	delete(l.Meta.Layouts, id)
+	delete(l.Meta.Origins, id)
+	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
+}
+
+// HasItem reports an accessory, furniture piece or decoration with this id.
+func (l *Library) HasItem(id string) bool {
+	return l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0
+}
+
+// DecorationIndex is the position of a decoration in the library (-1 = none).
+func (l *Library) DecorationIndex(id string) int {
+	for i, d := range l.Lib.Decorations {
+		if d.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// PutDecoration inserts or replaces a decoration (matched by id).
+func (l *Library) PutDecoration(d setfmt.Decoration) {
+	if i := l.DecorationIndex(d.ID); i >= 0 {
+		l.Lib.Decorations[i] = d
+		return
+	}
+	l.Lib.Decorations = append(l.Lib.Decorations, d)
+}
+
+// DeleteDecoration removes a decoration, its layout and its images/<id>_* files.
+func (l *Library) DeleteDecoration(id string) {
+	if i := l.DecorationIndex(id); i >= 0 {
+		l.Lib.Decorations = append(l.Lib.Decorations[:i], l.Lib.Decorations[i+1:]...)
 	}
 	delete(l.Meta.Layouts, id)
 	delete(l.Meta.Origins, id)
@@ -246,6 +284,13 @@ func (l *Library) FilesWhere(keep func(id string) bool) []string {
 			}
 		}
 	}
+	for _, d := range l.Lib.Decorations {
+		if ok(d.ID) {
+			for _, rel := range d.Files() {
+				add(rel)
+			}
+		}
+	}
 	for id, raw := range l.Meta.Layouts {
 		if ok(id) {
 			for _, rel := range layoutFiles(raw) {
@@ -295,7 +340,7 @@ func (l *Library) Install(gameDir string) error {
 	if !game.IsGameDir(gameDir) {
 		return fmt.Errorf("game folder not set")
 	}
-	if len(l.Lib.Accessories) == 0 && len(l.Lib.Furniture) == 0 {
+	if len(l.Lib.Accessories) == 0 && len(l.Lib.Furniture) == 0 && len(l.Lib.Decorations) == 0 {
 		return Uninstall(gameDir)
 	}
 	dest := InstalledDir(gameDir)
@@ -307,6 +352,9 @@ func (l *Library) Install(gameDir string) error {
 	}
 	for _, f := range l.Lib.Furniture {
 		rels = append(rels, f.Files()...)
+	}
+	for _, d := range l.Lib.Decorations {
+		rels = append(rels, d.Files()...)
 	}
 	done := map[string]bool{}
 	for _, rel := range rels {

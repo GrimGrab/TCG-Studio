@@ -40,6 +40,7 @@ type Manifest struct {
 	Sets          int       `json:"sets"`
 	Accessories   int       `json:"accessories"`
 	Furniture     int       `json:"furniture"`
+	Decorations   int       `json:"decorations,omitempty"`
 }
 
 // exportable reports whether a path inside a setup goes into an export: setup.json, projects\, accessories\ and game\ —
@@ -149,7 +150,7 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	if list, err := h.List(); err == nil {
 		for _, s := range list {
 			if s.ID == id {
-				m.Sets, m.Accessories, m.Furniture = s.Sets-len(converted), s.Accessories, s.Furniture
+				m.Sets, m.Accessories, m.Furniture, m.Decorations = s.Sets-len(converted), s.Accessories, s.Furniture, s.Decorations
 			}
 		}
 	}
@@ -432,7 +433,7 @@ func withoutConverted(b []byte) []byte {
 	if json.Unmarshal(b, &lib) != nil {
 		return b
 	}
-	n := len(lib.Accessories) + len(lib.Furniture)
+	n := len(lib.Accessories) + len(lib.Furniture) + len(lib.Decorations)
 	acc := lib.Accessories[:0]
 	for _, a := range lib.Accessories {
 		if !accessories.IsConverted(a.ID) {
@@ -445,10 +446,16 @@ func withoutConverted(b []byte) []byte {
 			fur = append(fur, f)
 		}
 	}
-	if len(acc)+len(fur) == n {
+	deco := lib.Decorations[:0]
+	for _, d := range lib.Decorations {
+		if !accessories.IsConverted(d.ID) {
+			deco = append(deco, d)
+		}
+	}
+	if len(acc)+len(fur)+len(deco) == n {
 		return b
 	}
-	lib.Accessories, lib.Furniture = acc, fur
+	lib.Accessories, lib.Furniture, lib.Decorations = acc, fur, deco
 	out, err := json.MarshalIndent(lib, "", "  ")
 	if err != nil {
 		return b

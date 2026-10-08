@@ -182,6 +182,44 @@ namespace TCGCustomCards.Runtime
         public static bool IsCustomFurniture(EObjectType t) => ByObject.TryGetValue((int)t, out var f) && f.Prefab != null;
         /// <summary>In our furniture block (ours whether or not it is still installed).</summary>
         public static bool InFurnitureBlock(int v) => v >= FurnitureBase && v < FurnitureEnd;
+
+        /// <summary>
+        /// Custom EDecoObject ints live in [DecoBase, DecoEnd): vanilla uses 1–183 (184–499 left for game updates); the owned-count list
+        /// CPlayerData.m_DecorationInventoryList has 1000 slots.
+        /// </summary>
+        public const int DecoBase = 500;
+        public const int DecoEnd = 1000;
+        public static readonly List<CustomDecoration> Decorations = new List<CustomDecoration>();
+        private static readonly Dictionary<int, CustomDecoration> ByDeco = new Dictionary<int, CustomDecoration>();
+
+        /// <summary>Placeable decorations get ints in id order; surfaces get their list index when injected.</summary>
+        public static void BuildDecorations(List<DecorationDef> defs)
+        {
+            int next = DecoBase;
+            foreach (var def in defs.OrderBy(d => d.Id, System.StringComparer.Ordinal))
+            {
+                var d = new CustomDecoration { Def = def };
+                if (!def.IsSurface)
+                {
+                    if (next >= DecoEnd) { Plugin.Log.LogError($"Too many custom decorations; '{def.Id}' skipped"); continue; }
+                    d.Object = (EDecoObject)next++;
+                    ByDeco[(int)d.Object] = d;
+                }
+                Decorations.Add(d);
+            }
+        }
+
+        public static CustomDecoration GetDecoration(EDecoObject t) => ByDeco.TryGetValue((int)t, out var d) ? d : null;
+        /// <summary>A custom placeable decoration that exists this session (its prefab was built).</summary>
+        public static bool IsCustomDecoration(EDecoObject t) => ByDeco.TryGetValue((int)t, out var d) && d.Prefab != null;
+        public static bool InDecoBlock(int v) => v >= DecoBase && v < DecoEnd;
+
+        /// <summary>Surface decoration at a wall/floor/ceiling list index, or null (vanilla / not ours).</summary>
+        public static CustomDecoration GetSurface(DecorationKind kind, int index)
+        {
+            foreach (var d in Decorations) if (d.Def.Kind == kind && d.Index == index && d.Index >= 0) return d;
+            return null;
+        }
         private static readonly Dictionary<int, CustomSet> ByExpansion = new Dictionary<int, CustomSet>();
         private static readonly Dictionary<int, CustomSet> ByMonster = new Dictionary<int, CustomSet>();
         private static readonly Dictionary<string, CustomSet> ById = new Dictionary<string, CustomSet>();

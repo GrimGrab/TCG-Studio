@@ -5,6 +5,7 @@ import {setfmt} from '../models';
 import {uvmap} from '../models';
 import {catalog} from '../models';
 import {figurine} from '../models';
+import {decoart} from '../models';
 import {game} from '../models';
 import {updater} from '../models';
 import {project} from '../models';
@@ -29,9 +30,13 @@ export function AddFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.A
 
 export function AppVersion():Promise<main.VersionInfo>;
 
+export function BakeDecorationModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.DecorationBake>;
+
 export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FigurineBake>;
 
 export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FurnitureBake>;
+
+export function BakePoster(arg1:string,arg2:decoart.Poster):Promise<main.DecorationBake>;
 
 export function BoxFromPack(arg1:string,arg2:string):Promise<main.BoxArt>;
 
@@ -63,6 +68,10 @@ export function CreateSetup(arg1:string,arg2:string,arg3:boolean):Promise<main.S
 
 export function DebugReport():Promise<debuglog.Report>;
 
+export function DecorationKinds():Promise<Array<setfmt.DecorationKind>>;
+
+export function DecorationTemplates():Promise<string>;
+
 export function DefaultArtColor(arg1:string):Promise<string>;
 
 export function DefaultImportOptions(arg1:string):Promise<importer.Options>;
@@ -70,6 +79,10 @@ export function DefaultImportOptions(arg1:string):Promise<importer.Options>;
 export function DeleteAccessories(arg1:Array<string>):Promise<main.AccessoryView>;
 
 export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
+
+export function DeleteDecoration(arg1:string):Promise<main.AccessoryView>;
+
+export function DeleteDecorationMany(arg1:Array<string>):Promise<main.AccessoryView>;
 
 export function DeleteFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.Deleted>;
 
@@ -129,6 +142,8 @@ export function ImportEPL(arg1:string,arg2:main.EPLSelection):Promise<main.EPLRe
 
 export function ImportFigurineModel():Promise<main.FigurineSource>;
 
+export function ImportModelWithTextures(arg1:string,arg2:main.ModelTextures):Promise<main.FigurineSource>;
+
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
 
 export function ImportSetup(arg1:string):Promise<string>;
@@ -164,6 +179,8 @@ export function MoveEverything():Promise<main.StorageResult>;
 export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
+
+export function NewDecoration(arg1:string,arg2:string):Promise<setfmt.Decoration>;
 
 export function NewFurniture(arg1:string,arg2:string,arg3:string):Promise<setfmt.Furniture>;
 
@@ -228,6 +245,8 @@ export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string
 export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SaveDebugReport():Promise<string>;
+
+export function SaveDecoration(arg1:setfmt.Decoration,arg2:string,arg3:string):Promise<main.AccessoryView>;
 
 export function SaveFurniture(arg1:setfmt.Furniture,arg2:string,arg3:string):Promise<main.AccessoryView>;
 

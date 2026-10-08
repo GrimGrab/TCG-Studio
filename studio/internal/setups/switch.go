@@ -98,7 +98,7 @@ func Snapshot(dir, gameDir string) error {
 
 func libraryEmpty(dir string) bool {
 	lib, err := setfmt.LoadAccessories(filepath.Join(accessories.Folder(dir), accessories.LibraryFile))
-	return err != nil || (len(lib.Accessories) == 0 && len(lib.Furniture) == 0)
+	return err != nil || (len(lib.Accessories) == 0 && len(lib.Furniture) == 0 && len(lib.Decorations) == 0)
 }
 
 // clearGame removes everything a setup puts into the game: installed sets, accessories, global card back, mod config.
@@ -139,7 +139,7 @@ func applyGame(dir, gameDir string, store assets.Store) ([]string, error) {
 	g := filepath.Join(dir, GameStateDir)
 	if lib, err := accessories.Open(dir, store); err != nil {
 		warnings = append(warnings, "accessories: "+err.Error())
-	} else if len(lib.Lib.Accessories) > 0 || len(lib.Lib.Furniture) > 0 {
+	} else if len(lib.Lib.Accessories) > 0 || len(lib.Lib.Furniture) > 0 || len(lib.Lib.Decorations) > 0 {
 		if err := lib.Install(gameDir); err != nil {
 			warnings = append(warnings, "accessories: "+err.Error())
 		}

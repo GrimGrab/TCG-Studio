@@ -212,27 +212,7 @@ namespace TCGCustomCards.Runtime
                 // The model is in the piece's root space (TCG Studio bakes it there), so it gets its own child at the root. The base's
                 // body renderers are hidden; the outline, the move preview and the culling check (shelves hide their stock while it
                 // isn't visible) use the new renderer.
-                var go = new GameObject("TCGCC_Model");
-                go.transform.SetParent(tpl.transform, false);
-                go.layer = tpl.gameObject.layer;
-                var mf = go.AddComponent<MeshFilter>();
-                mf.sharedMesh = mesh;
-                var mr = go.AddComponent<MeshRenderer>();
-                var m = mainMat != null ? new Material(mainMat) : new Material(Shader.Find("Standard"));
-                m.name = $"TCGCC_{def.Id}";
-                m.hideFlags = HideFlags.DontUnloadUnusedAsset;
-                m.mainTexture = tex != null ? tex : Texture2D.whiteTexture;
-                m.mainTextureScale = Vector2.one;
-                m.mainTextureOffset = Vector2.zero;
-                if (m.HasProperty("_Color")) m.color = tint ?? Color.white;
-                mr.sharedMaterial = m;
-                foreach (var r in body)
-                    if (!IsUnder(r.transform, tpl.m_HighlightGameObj) && !InPart(r.transform)) r.enabled = false;
-                tpl.m_Mesh = mr;
-                tpl.m_PickupObjectMesh = mf;
-                ReplaceHighlight(tpl, mesh);
-                if (tpl.m_CullingCheckMesh != null && !tpl.m_CullingCheckMesh.enabled) tpl.m_CullingCheckMesh = mr;
-                FitCollider(tpl.m_BoxCollider, go.transform, mesh.bounds);
+                ModelSwap.Apply(tpl, body, mesh, tex, tint, def.Id, InPart);
                 return;
             }
 
@@ -280,48 +260,6 @@ namespace TCGCustomCards.Runtime
             return s;
         }
 
-        /// <summary>
-        /// Pieces without an outline on their main material (e.g. shelves) show m_HighlightGameObj while aimed at: a separate
-        /// object shaped like the vanilla model. Give it our model's shape with the game's own highlight material, and switch the
-        /// vanilla one off (Init no longer hides it once m_Mesh is set).
-        /// </summary>
-        private static void ReplaceHighlight(InteractableObject tpl, Mesh mesh)
-        {
-            var old = tpl.m_HighlightGameObj;
-            if (old == null) return;
-            var mats = old.GetComponentsInChildren<Renderer>(true).Select(r => r.sharedMaterial).FirstOrDefault(m => m != null);
-            old.SetActive(false);
-            if (mats == null) { tpl.m_HighlightGameObj = null; return; }
-            var hl = new GameObject("TCGCC_Highlight");
-            hl.transform.SetParent(tpl.transform, false);
-            hl.layer = old.layer;
-            hl.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var r2 = hl.AddComponent<MeshRenderer>();
-            r2.sharedMaterial = mats;
-            r2.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            r2.receiveShadows = false;
-            hl.SetActive(false);
-            tpl.m_HighlightGameObj = hl;
-        }
-
-        private static bool IsUnder(Transform t, GameObject root) => root != null && (t == root.transform || t.IsChildOf(root.transform));
-
-        /// <summary>Sets a box collider to the bounds of <paramref name="localBounds"/> (in <paramref name="space"/>), converted into the collider's space.</summary>
-        internal static void FitCollider(BoxCollider col, Transform space, Bounds localBounds)
-        {
-            if (col == null) return;
-            var min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
-            var max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
-            var e = localBounds.extents;
-            for (int i = 0; i < 8; i++)
-            {
-                var corner = localBounds.center + new Vector3((i & 1) == 0 ? -e.x : e.x, (i & 2) == 0 ? -e.y : e.y, (i & 4) == 0 ? -e.z : e.z);
-                var p = col.transform.InverseTransformPoint(space.TransformPoint(corner));
-                min = Vector3.Min(min, p);
-                max = Vector3.Max(max, p);
-            }
-            col.center = (min + max) * 0.5f;
-            col.size = max - min;
-        }
+        internal static void FitCollider(BoxCollider col, Transform space, Bounds localBounds) => ModelSwap.FitCollider(col, space, localBounds);
     }
 }

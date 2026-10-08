@@ -209,6 +209,11 @@ func repoint(l *accessories.Library, moved map[string]string) {
 			fix(p)
 		}
 	}
+	for i := range l.Lib.Decorations {
+		for _, p := range l.Lib.Decorations[i].FileRefs() {
+			fix(p)
+		}
+	}
 	for id, raw := range l.Meta.Layouts {
 		var v any
 		if json.Unmarshal(raw, &v) != nil {

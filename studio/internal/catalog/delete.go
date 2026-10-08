@@ -83,6 +83,8 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 			var entry any
 			if i := l.FurnitureIndex(id); i >= 0 {
 				entry = l.Lib.Furniture[i]
+			} else if i := l.DecorationIndex(id); i >= 0 {
+				entry = l.Lib.Decorations[i]
 			} else if i := l.Index(id); i >= 0 {
 				entry = l.Lib.Accessories[i]
 			} else {
@@ -96,6 +98,7 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 			}
 			l.Delete(id)
 			l.DeleteFurniture(id)
+			l.DeleteDecoration(id)
 			return true
 		}
 		for _, s := range list {

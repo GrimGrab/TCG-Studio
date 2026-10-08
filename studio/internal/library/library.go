@@ -459,6 +459,11 @@ func itemsOf(l *accessories.Library) []ItemInfo {
 		it.Own, it.Shared = sizes(f.Files()...)
 		out = append(out, it)
 	}
+	for _, d := range l.Lib.Decorations {
+		it := ItemInfo{ID: d.ID, Name: d.Name, Kind: "Decoration"}
+		it.Own, it.Shared = sizes(d.Files()...)
+		out = append(out, it)
+	}
 	return out
 }
 

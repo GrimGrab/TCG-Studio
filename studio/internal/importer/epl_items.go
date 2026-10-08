@@ -155,8 +155,18 @@ func eplItems(b *epl.Bundle, a *epl.Assets, strip bool) (items []EPLItem, skippe
 	}
 	for i := range b.Desc.Prefabs {
 		p := &b.Desc.Prefabs[i]
+		if kinds := eplDecoKinds(p); len(kinds) > 0 {
+			for _, k := range kinds {
+				it := EPLItem{Key: eplDecoKey(b.Rel, p.Name, k), ID: eplDecoID(b.Path, p, k), Name: modName(p.Name, strip), Kind: "Decoration", Base: k}
+				if k == "Object" {
+					it.Note = "decoration from the mod's model"
+				}
+				items = append(items, it)
+			}
+			continue
+		}
 		if !p.AddItemToFurnitureShop {
-			skipped = append(skipped, EPLSkipped{Name: p.Name, Kind: "Deco", Reason: "posters and decorations aren't supported by TCG Custom Cards"})
+			skipped = append(skipped, EPLSkipped{Name: p.Name, Kind: "Prefab", Reason: "isn't sold in the furniture shop or as a decoration"})
 			continue
 		}
 		ftype := furnitureType(a, p)
@@ -209,12 +219,23 @@ func ImportEPLItems(path string, keys []string, opt Options, lib *accessories.Li
 			}
 		}
 		var prefabs []*epl.Prefab
+		type decoJob struct {
+			p    *epl.Prefab
+			kind string
+		}
+		var decos []decoJob
 		for i := range b.Desc.Prefabs {
-			if p := &b.Desc.Prefabs[i]; want[eplPrefabKey(b.Rel, p.Name)] {
+			p := &b.Desc.Prefabs[i]
+			if want[eplPrefabKey(b.Rel, p.Name)] {
 				prefabs = append(prefabs, p)
 			}
+			for _, k := range eplDecoKinds(p) {
+				if want[eplDecoKey(b.Rel, p.Name, k)] {
+					decos = append(decos, decoJob{p, k})
+				}
+			}
 		}
-		if len(todo)+len(prefabs) == 0 {
+		if len(todo)+len(prefabs)+len(decos) == 0 {
 			continue
 		}
 		assets, err := epl.OpenAssets(b.Path)
@@ -247,6 +268,16 @@ func ImportEPLItems(path string, keys []string, opt Options, lib *accessories.Li
 				continue
 			}
 			lib.Meta.Origins[eplItemID(b.Path, p.Name)] = *eplOrigin(mod, &b, p.Name, opt)
+			n++
+		}
+		for _, j := range decos {
+			done++
+			report(Progress{Stage: "items", Done: done, Total: len(keys), Message: "Converting " + j.p.Name})
+			if err := convertDecoration(assets, b, j.p, j.kind, strip, lib); err != nil {
+				failed = append(failed, fmt.Sprintf("%s: %v", j.p.Name, err))
+				continue
+			}
+			lib.Meta.Origins[eplDecoID(b.Path, j.p, j.kind)] = *eplOrigin(mod, &b, j.p.Name, opt)
 			n++
 		}
 		assets.Close()

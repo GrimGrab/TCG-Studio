@@ -137,7 +137,7 @@
   const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString() : '');
   const counts = (s: any) =>
     [`${s.sets} set${s.sets === 1 ? '' : 's'}`, s.accessories ? `${s.accessories} accessor${s.accessories === 1 ? 'y' : 'ies'}` : '',
-     s.furniture ? `${s.furniture} furniture` : ''].filter(Boolean).join(' · ');
+     s.furniture ? `${s.furniture} furniture` : '', s.decorations ? `${s.decorations} decoration${s.decorations === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
 
   // A request from the sidebar setup menu: open the New form or start a switch.
   async function runAction() {

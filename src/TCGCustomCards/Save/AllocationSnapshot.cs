@@ -15,6 +15,9 @@ namespace TCGCustomCards.Save
         public Dictionary<int, string> items = new Dictionary<int, string>();
         public Dictionary<int, string> restockRows = new Dictionary<int, string>();
         public Dictionary<int, string> furniture = new Dictionary<int, string>();
+        /// <summary>Placeable decorations (EDecoObject) and surface list indices per kind ("Wall" / "Floor" / "Ceiling").</summary>
+        public Dictionary<int, string> decorations = new Dictionary<int, string>();
+        public Dictionary<string, Dictionary<int, string>> surfaces = new Dictionary<string, Dictionary<int, string>>();
         /// <summary>setId → card ids in set order (cardSaveIndex = pos * 12 + variant).</summary>
         public Dictionary<string, List<string>> cardOrder = new Dictionary<string, List<string>>();
 
@@ -42,6 +45,11 @@ namespace TCGCustomCards.Save
             }
             foreach (var f in Registry.Furniture)
                 if (f.Prefab != null) s.furniture[(int)f.Object] = f.Key;
+            foreach (var d in Registry.Decorations)
+            {
+                if (d.Prefab != null) s.decorations[(int)d.Object] = d.Key;
+                else if (d.Def.IsSurface && d.Index >= 0) s.SurfaceMap(d.Def.Kind)[d.Index] = d.Key;
+            }
             return s;
         }
 
@@ -56,6 +64,17 @@ namespace TCGCustomCards.Save
         public bool Item(int oldValue, out int newValue) => Translate(items, CurrentAlloc.items, oldValue, out newValue);
         public bool WasCustomItem(int oldValue) => items.ContainsKey(oldValue);
         public bool Furniture(int oldValue, out int newValue) => Translate(furniture, CurrentAlloc.furniture, oldValue, out newValue);
+        public bool Deco(int oldValue, out int newValue) => Translate(decorations, CurrentAlloc.decorations, oldValue, out newValue);
+        public bool Surface(Core.DecorationKind kind, int oldValue, out int newValue) => Translate(SurfaceMap(kind), CurrentAlloc.SurfaceMap(kind), oldValue, out newValue);
+
+        public Dictionary<int, string> SurfaceMap(Core.DecorationKind kind)
+        {
+            surfaces ??= new Dictionary<string, Dictionary<int, string>>();
+            string k = kind.ToString();
+            if (!surfaces.TryGetValue(k, out var m)) surfaces[k] = m = new Dictionary<int, string>();
+            return m;
+        }
+
         public bool RestockRow(int oldValue, out int newValue) => Translate(restockRows, CurrentAlloc.restockRows, oldValue, out newValue);
 
         public bool CardSlot(int oldExpansion, int oldSlot, out int newSlot)

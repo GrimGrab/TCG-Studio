@@ -31,9 +31,10 @@ const DirName = "catalog"
 
 // Kinds of catalog entries.
 const (
-	KindSet       = "set"
-	KindAccessory = "accessory"
-	KindFurniture = "furniture"
+	KindSet        = "set"
+	KindAccessory  = "accessory"
+	KindFurniture  = "furniture"
+	KindDecoration = "decoration"
 )
 
 type Catalog struct {
@@ -102,6 +103,12 @@ func (c Catalog) SaveItems(src *accessories.Library, ids []string) error {
 				*p = share(*p)
 			}
 			cat.PutFurniture(f)
+		} else if i := src.DecorationIndex(id); i >= 0 {
+			d := src.Lib.Decorations[i].Clone()
+			for _, p := range d.FileRefs() {
+				*p = share(*p)
+			}
+			cat.PutDecoration(d)
 		} else {
 			continue
 		}
@@ -302,6 +309,13 @@ func (c Catalog) collect(h setups.Home, activeRoot, kind string, withActive bool
 					add(e)
 				}
 			}
+			for _, d := range l.Lib.Decorations {
+				if kind == KindDecoration {
+					e := itemEntry(kind, d.ID, d.Name, d.Kind, l.Meta.Origins, src.saved, src.name, src.root)
+					e.Icon = d.Icon
+					add(e)
+				}
+			}
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -410,6 +424,8 @@ func (c Catalog) AddItems(h setups.Home, activeRoot, kind string, ids []string, 
 			dst.Put(src.Lib.Accessories[i])
 		} else if i := src.FurnitureIndex(id); i >= 0 {
 			dst.PutFurniture(src.Lib.Furniture[i])
+		} else if i := src.DecorationIndex(id); i >= 0 {
+			dst.PutDecoration(src.Lib.Decorations[i])
 		} else {
 			continue
 		}
@@ -438,6 +454,8 @@ func (c Catalog) Remove(kind, id string) error {
 	}
 	if kind == KindFurniture {
 		cat.DeleteFurniture(id)
+	} else if kind == KindDecoration {
+		cat.DeleteDecoration(id)
 	} else {
 		cat.Delete(id)
 	}
@@ -477,6 +495,12 @@ func itemIDs(l *accessories.Library, kind string) []string {
 	if kind == KindFurniture {
 		for _, f := range l.Lib.Furniture {
 			out = append(out, f.ID)
+		}
+		return out
+	}
+	if kind == KindDecoration {
+		for _, d := range l.Lib.Decorations {
+			out = append(out, d.ID)
 		}
 		return out
 	}
@@ -538,7 +562,7 @@ func (c Catalog) KeepSetup(dir string) error {
 	if err != nil {
 		return nil // no library
 	}
-	return c.KeepItems(src, append(itemIDs(src, KindAccessory), itemIDs(src, KindFurniture)...))
+	return c.KeepItems(src, append(append(itemIDs(src, KindAccessory), itemIDs(src, KindFurniture)...), itemIDs(src, KindDecoration)...))
 }
 
 // KeepSets templates the sets (of a setup's workspace) the catalog doesn't hold yet; existing templates stay as they are.
@@ -570,7 +594,7 @@ func (c Catalog) KeepItems(src *accessories.Library, ids []string) error {
 	}
 	var missing []string
 	for _, id := range ids {
-		if cat.Index(id) < 0 && cat.FurnitureIndex(id) < 0 && (src.Index(id) >= 0 || src.FurnitureIndex(id) >= 0) {
+		if !cat.HasItem(id) && src.HasItem(id) {
 			missing = append(missing, id)
 		}
 	}

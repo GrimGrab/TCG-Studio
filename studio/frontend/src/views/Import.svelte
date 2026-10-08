@@ -438,14 +438,14 @@
         {/each}
         {#if (epl.items ?? []).length}
           <div class="eplset">
-            <div class="row"><b class="grow">Accessories, figurines &amp; furniture ({epl.items.length})</b>
+            <div class="row"><b class="grow">Accessories, figurines, furniture &amp; decorations ({epl.items.length})</b>
               <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, true])))}>Select all</button>
               <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, false])))}>Deselect all</button></div>
-            <p class="muted small">Go to the Accessories and Furniture pages with the mod's own textures and models; fine-tune them there
-              (figurine size on the shelf, furniture item spots).</p>
+            <p class="muted small">Go to the Accessories, Furniture and Decorations pages with the mod's own textures and models; fine-tune
+              them there (figurine size on the shelf, furniture item spots, decoration price).</p>
             {#each epl.items as it (it.key)}
               <label class="check"><input type="checkbox" bind:checked={pickItems[it.key]} disabled={!!importing} />
-                {it.name} <span class="muted small">— {it.kind}{it.note ? ` (${it.note})` : ''}{it.exists ? ' · already converted (replaced)' : ''}</span></label>
+                {it.name} <span class="muted small">— {it.kind === 'Decoration' ? `${it.base} decoration` : it.kind}{it.note ? ` (${it.note})` : ''}{it.exists ? ' · already converted (replaced)' : ''}</span></label>
             {/each}
           </div>
         {/if}

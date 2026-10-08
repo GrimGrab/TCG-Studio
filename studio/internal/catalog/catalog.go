@@ -97,8 +97,10 @@ func (c Catalog) SaveItems(src *accessories.Library, ids []string) error {
 			a.Texture, a.Icon, a.Mesh = share(a.Texture), share(a.Icon), share(a.Mesh)
 			cat.Put(a)
 		} else if i := src.FurnitureIndex(id); i >= 0 {
-			f := src.Lib.Furniture[i]
-			f.Texture, f.Icon, f.Mesh = share(f.Texture), share(f.Icon), share(f.Mesh)
+			f := src.Lib.Furniture[i].Clone()
+			for _, p := range f.FileRefs() {
+				*p = share(*p)
+			}
 			cat.PutFurniture(f)
 		} else {
 			continue

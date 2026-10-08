@@ -5,9 +5,25 @@ import { renderMeshIcon } from './meshView';
 
 export interface Target { rect: number[]; src: number[]; flipX?: boolean; flipY?: boolean; transpose?: boolean; bleed?: boolean }
 export interface Face { id: string; label: string; net: number[]; hidden?: boolean; targets: Target[] }
+/** A labelled frame of the net (furniture: Front, Left, Top… — each holds many faces). */
+export interface View { label: string; net: number[] }
 export interface Base { id: string; label: string; texture: string; targets?: Record<string, Target[]> }
-export interface PreviewPart { mesh: string; texture?: 'main' | 'secondary'; glass?: boolean }
-export interface Model { kind: string; mesh: string; textureSize: number; size: number[]; faces: Face[]; palette?: boolean; icon: string; bases?: Base[]; preview?: PreviewPart[] }
+export interface PreviewPart { mesh: string; url?: string; texture?: 'main' | 'secondary'; glass?: boolean }
+/** projected: no faces — the net is the `views`, and the GPU painter (lib/projectPaint.ts) projects the layers onto every surface by its
+ *  place in its view (preview[0] = the paint mesh). density: texture pixels per net unit. */
+export interface Model { kind: string; mesh: string; textureSize: number; size: number[]; faces: Face[]; palette?: boolean; icon: string; bases?: Base[]; preview?: PreviewPart[];
+  projected?: boolean; views?: View[]; turn?: number; density?: number }
+
+/** URL of a preview mesh: its own, else the accessory templates. */
+export const previewUrl = (p: PreviewPart) => p.url ?? `/acctemplates/${encodeURIComponent(p.mesh + '.obj')}`;
+
+/** Faces the user picks from (fit, wrap, copy to, fill): the model's faces, or a projected model's views as faces. */
+export function pickableFaces(m: Model): Face[] {
+  return m.projected ? (m.views ?? []).map((v) => ({ id: 'view:' + v.label, label: v.label, net: v.net, targets: [] })) : m.faces;
+}
+
+/** The net's areas (layers are clipped to them): the faces, or a projected model's views. */
+const netFaces = (m: Model): Face[] => (m.projected ? pickableFaces(m) : m.faces);
 
 export type LayerKind = 'image' | 'fill' | 'text';
 export interface Layer {
@@ -46,7 +62,7 @@ export async function renderAccessoryIcon(m: Model, textureUrl: string, w = 512,
 /** Net bounds in object units. */
 export function netBounds(m: Model) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const f of m.faces) {
+  for (const f of netFaces(m)) {
     x0 = Math.min(x0, f.net[0]); y0 = Math.min(y0, f.net[1]);
     x1 = Math.max(x1, f.net[0] + f.net[2]); y1 = Math.max(y1, f.net[1] + f.net[3]);
   }
@@ -55,6 +71,7 @@ export function netBounds(m: Model) {
 
 /** Pixels per object unit for the net canvas: about the texture's own density of the largest face. */
 export function netScale(m: Model): number {
+  if (m.density) return Math.min(480, Math.max(160, Math.round(m.density * 1.15)));
   let best = 0;
   for (const f of m.faces) for (const t of f.targets) {
     if (t.bleed) continue;
@@ -106,7 +123,7 @@ function blit(ctx: CanvasRenderingContext2D, img: CanvasImageSource, sx: number,
  * painted texture, which composeTexture then keeps at full resolution).
  */
 export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Layout, vanilla: HTMLImageElement | HTMLCanvasElement | null,
-  imageUrl: (rel: string) => string, S: number, layersOnly = false) {
+  imageUrl: (rel: string) => string, S: number, layersOnly = false, baseNet?: HTMLCanvasElement) {
   // Where each face is in the base texture (a model base may read other texture areas, e.g. the Rare box in the box atlas).
   const reverse = m.bases?.find((b) => b.id === layout.baseItem)?.targets;
   const b = netBounds(m);
@@ -116,8 +133,10 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const k = vanilla ? vanilla.width / m.textureSize : 1;
 
+  // A base rendered earlier (renderNet without layers) instead of drawing every face again.
+  if (baseNet && !layersOnly) ctx.drawImage(baseNet, 0, 0);
   for (const f of m.faces) {
-    if (layersOnly) break;
+    if (layersOnly || baseNet) break;
     const r = faceRect(m, f, S);
     if (layout.base === 'color' || !vanilla) {
       ctx.fillStyle = layout.baseColor || '#3a3a3a';
@@ -138,51 +157,91 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
   // Layers are clipped to the faces (the net's empty corners are not part of the model).
   ctx.save();
   ctx.beginPath();
-  for (const f of m.faces) { const r = faceRect(m, f, S); ctx.rect(r.x, r.y, r.w, r.h); }
+  for (const f of netFaces(m)) { const r = faceRect(m, f, S); ctx.rect(r.x, r.y, r.w, r.h); }
   ctx.clip();
-  for (const l of layout.layers) {
-    if (!l.visible) continue;
-    ctx.save();
-    ctx.globalAlpha = l.opacity;
-    ctx.globalCompositeOperation = l.blend || 'source-over';
-    if (l.kind === 'fill') {
-      for (const f of m.faces) {
-        if (l.face && l.face !== f.id) continue;
-        const r = faceRect(m, f, S);
-        if (l.color2) {
-          const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-          g.addColorStop(0, l.color || '#000');
-          g.addColorStop(1, l.color2);
-          ctx.fillStyle = g;
-        } else ctx.fillStyle = l.color || '#000';
-        ctx.fillRect(r.x, r.y, r.w, r.h);
-      }
-    } else {
-      ctx.translate((l.x - b.x0) * S, (l.y - b.y0) * S);
-      ctx.rotate((l.rot * Math.PI) / 180);
-      if (l.kind === 'image' && l.src) {
-        try {
-          const img = await loadImage(imageUrl(l.src));
-          ctx.drawImage(img, (-l.w / 2) * S, (-l.h / 2) * S, l.w * S, l.h * S);
-        } catch { /* missing image: skip */ }
-      } else if (l.kind === 'text' && l.text) {
-        const px = l.h * S;
-        ctx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        if (l.outline) {
-          ctx.lineWidth = Math.max(2, px * 0.12);
-          ctx.strokeStyle = l.outline;
-          ctx.lineJoin = 'round';
-          ctx.strokeText(l.text, 0, 0);
-        }
-        ctx.fillStyle = l.color || '#fff';
-        ctx.fillText(l.text, 0, 0);
-      }
+  const imgs = await layerImages(layout, imageUrl);
+  for (const l of layout.layers) if (l.visible) drawLayer(ctx, m, l, S, imgs);
+  ctx.restore();
+}
+
+/** The layers' images, loaded (missing ones left out). */
+async function layerImages(layout: Layout, imageUrl: (rel: string) => string): Promise<Map<string, HTMLImageElement>> {
+  const out = new Map<string, HTMLImageElement>();
+  await Promise.all(layout.layers.filter((l) => l.visible && l.kind === 'image' && l.src).map(async (l) => {
+    try { out.set(l.src!, await loadImage(imageUrl(l.src!))); } catch { /* missing image: skipped */ }
+  }));
+  return out;
+}
+
+/** Draws one layer (with its opacity and blend, or `blend` instead) in net-canvas pixels (net origin at its top-left, S px per unit). */
+function drawLayer(ctx: CanvasRenderingContext2D, m: Model, l: Layer, S: number, imgs: Map<string, HTMLImageElement>, blend?: GlobalCompositeOperation) {
+  const b = netBounds(m);
+  ctx.save();
+  ctx.globalAlpha = l.opacity;
+  ctx.globalCompositeOperation = blend ?? (l.blend || 'source-over');
+  if (l.kind === 'fill') {
+    for (const f of l.face?.startsWith('view:') ? pickableFaces(m) : netFaces(m)) {
+      if (l.face && l.face !== f.id) continue;
+      const r = faceRect(m, f, S);
+      if (l.color2) {
+        const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+        g.addColorStop(0, l.color || '#000');
+        g.addColorStop(1, l.color2);
+        ctx.fillStyle = g;
+      } else ctx.fillStyle = l.color || '#000';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
     }
-    ctx.restore();
+  } else {
+    ctx.translate((l.x - b.x0) * S, (l.y - b.y0) * S);
+    ctx.rotate((l.rot * Math.PI) / 180);
+    const img = l.kind === 'image' && l.src ? imgs.get(l.src) : undefined;
+    if (img) ctx.drawImage(img, (-l.w / 2) * S, (-l.h / 2) * S, l.w * S, l.h * S);
+    else if (l.kind === 'text' && l.text) {
+      const px = l.h * S;
+      ctx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (l.outline) {
+        ctx.lineWidth = Math.max(2, px * 0.12);
+        ctx.strokeStyle = l.outline;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(l.text, 0, 0);
+      }
+      ctx.fillStyle = l.color || '#fff';
+      ctx.fillText(l.text, 0, 0);
+    }
   }
   ctx.restore();
+}
+
+/**
+ * Layer textures for the GPU painter (lib/projectPaint.ts): the visible layers drawn in net space (S px per unit, covering the whole
+ * net), clipped to the views. Consecutive normal layers share one texture; every other blend mode gets its own (the painter blends it
+ * over each surface's own colours). Past the painter's limit the rest are flattened into the last one.
+ */
+export async function layerTextures(m: Model, layout: Layout, imageUrl: (rel: string) => string, S: number, max: number):
+  Promise<{ textures: { canvas: HTMLCanvasElement; blend: GlobalCompositeOperation }[]; net: number[] }> {
+  const b = netBounds(m);
+  const imgs = await layerImages(layout, imageUrl);
+  const groups: { layers: Layer[]; blend: GlobalCompositeOperation }[] = [];
+  for (const l of layout.layers) {
+    if (!l.visible) continue;
+    const blend = l.blend || 'source-over', last = groups.at(-1);
+    if (last && ((blend === 'source-over' && last.blend === 'source-over') || groups.length >= max)) last.layers.push(l);
+    else groups.push({ layers: [l], blend });
+  }
+  const textures = groups.map((g) => {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(b.w * S)); c.height = Math.max(1, Math.round(b.h * S));
+    const ctx = c.getContext('2d')!;
+    ctx.beginPath();
+    for (const f of netFaces(m)) { const r = faceRect(m, f, S); ctx.rect(r.x, r.y, r.w, r.h); }
+    ctx.clip();
+    // The group's blend is the painter's; inside the group, layers keep theirs (only when flattened past the limit).
+    for (const l of g.layers) drawLayer(ctx, m, l, S, imgs, g.layers.length === 1 ? 'source-over' : undefined);
+    return { canvas: c, blend: g.blend };
+  });
+  return { textures, net: [b.x0, b.y0, b.w, b.h] };
 }
 
 /** Maps the net into the texture (vanilla underneath so unmapped areas — insides, edges, the mat's rubber — stay intact). */
@@ -438,6 +497,6 @@ function bandColors(img: Picture, edges: boolean): { top: string; bottom: string
 /** Shop icon of a model whose icon is 'pack': the real game mesh rendered with the finished texture (1024², like vanilla). */
 export function meshIcon(m: Model, texture: TexImageSource): Promise<string> {
   const parts = (m.preview ?? [{ mesh: m.mesh }]).filter((p) => !p.glass && p.texture !== 'secondary')
-    .map((p) => ({ url: `/acctemplates/${encodeURIComponent(p.mesh + '.obj')}`, texture: p.texture }));
-  return renderMeshIcon(parts, texture, [1024, 1024]);
+    .map((p) => ({ url: previewUrl(p), texture: p.texture }));
+  return renderMeshIcon(parts, texture, [1024, 1024], { rx: m.turn ? 0.3 : 0, ry: -0.35 + (m.turn ?? 0), fov: 1.2, ambient: 0.9 });
 }

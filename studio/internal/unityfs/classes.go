@@ -52,6 +52,12 @@ type Transform struct {
 	Scale      [3]float32
 	Children   []PPtr
 	Father     PPtr
+	Rect       *RectInfo // RectTransforms (UI) only
+}
+
+// RectInfo: a RectTransform's layout fields (UI units; the world size is SizeDelta × the lossy scale for unstretched rects).
+type RectInfo struct {
+	AnchorMin, AnchorMax, AnchoredPosition, SizeDelta, Pivot [2]float32
 }
 
 func ReadTransform(o *Object) (t Transform, err error) {
@@ -66,6 +72,9 @@ func ReadTransform(o *Object) (t Transform, err error) {
 	t.Scale = r.vec3()
 	t.Children = r.pptrs()
 	t.Father = r.pptr()
+	if o.ClassID == ClassRectTransform {
+		t.Rect = &RectInfo{AnchorMin: r.vec2(), AnchorMax: r.vec2(), AnchoredPosition: r.vec2(), SizeDelta: r.vec2(), Pivot: r.vec2()}
+	}
 	return t, nil
 }
 
@@ -135,12 +144,13 @@ func readMonoBehaviour(o *Object) (m MonoBehaviour, err error) {
 	return m, nil
 }
 
-// Material: only the texture slots (m_SavedProperties.m_TexEnvs).
+// Material: the texture slots and colours of m_SavedProperties (floats/ints skipped).
 type Material struct {
 	Name     string
 	Shader   PPtr
 	Textures map[string]TexEnv
 	Order    []string
+	Colors   map[string][4]float32 // linear RGBA as serialized (e.g. _Color)
 }
 
 type TexEnv struct {
@@ -180,7 +190,35 @@ func ReadMaterial(o *Object) (m Material, err error) {
 		m.Textures[name] = TexEnv{Texture: r.pptr(), Scale: r.vec2(), Offset: r.vec2()}
 		m.Order = append(m.Order, name)
 	}
+	// Colours follow m_Ints (Unity 2021.1+) and m_Floats; a material that ends early just has none.
+	func() {
+		defer func() { recover() }()
+		for i, n := 0, r.count(8); i < n; i++ {
+			r.str()
+			r.i32()
+		}
+		for i, n := 0, r.count(8); i < n; i++ {
+			r.str()
+			r.f32()
+		}
+		cols := map[string][4]float32{}
+		for i, n := 0, r.count(20); i < n; i++ {
+			name := r.str()
+			cols[name] = r.vec4()
+		}
+		m.Colors = cols
+	}()
 	return m, nil
+}
+
+// MainColor is the colour the game's shaders multiply the main texture with (_Color, else _BaseColor); white when unset.
+func (m Material) MainColor() [4]float32 {
+	for _, k := range []string{"_Color", "_BaseColor"} {
+		if c, ok := m.Colors[k]; ok {
+			return c
+		}
+	}
+	return [4]float32{1, 1, 1, 1}
 }
 
 // MainTexture is what Material.mainTexture returns for the game's shaders: _MainTex, else _BaseMap / _BaseColorMap.

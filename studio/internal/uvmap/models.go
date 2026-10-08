@@ -27,6 +27,12 @@ type Face struct {
 	Targets []Target   `json:"targets"`
 }
 
+// View is a labelled frame drawn as a guide in the net (furniture: Front, Left, Top… — each holds many faces).
+type View struct {
+	Label string     `json:"label"`
+	Net   [4]float64 `json:"net"`
+}
+
 type Model struct {
 	Kind        string `json:"kind"`
 	Mesh        string `json:"mesh"`
@@ -39,11 +45,19 @@ type Model struct {
 	// Preview: the exported meshes the 3D preview draws (templates\accessories\<mesh>.obj).
 	Preview []PreviewPart `json:"preview"`
 	// Icon: how the studio renders the shop icon — "box" (front + right side + lid, oblique), "tilt" (front face, tilted like
-	// the vanilla playmat/book icons) or "recolor" (the vanilla icon with the palette swatches recoloured).
+	// the vanilla playmat/book icons), "recolor" (the vanilla icon with the palette swatches recoloured), "pack" / "mesh" (the
+	// preview model rendered with the texture).
 	Icon string `json:"icon"`
 	// Bases: vanilla items the art can start from (pack/box editor). Each names its template texture (<plugin>\templates\<file>)
 	// and, when that item's mesh reads a different texture area, where each face is in it (face id → targets; nil = Faces).
 	Bases []Base `json:"bases,omitempty"`
+	// Projected: no faces — the net is the Views, and the editor's GPU painter projects the layers onto every surface by its
+	// place in its view (Preview[0] is the .bin of gameextract/furniture_paint.go). Density: atlas pixels per net unit.
+	Projected bool    `json:"projected,omitempty"`
+	Views     []View  `json:"views,omitempty"`
+	Density   float64 `json:"density,omitempty"`
+	// Turn: extra turn of the 3D preview / icon camera around the vertical axis (radians) — furniture fronts face +z.
+	Turn float64 `json:"turn,omitempty"`
 }
 
 type Base struct {
@@ -59,6 +73,7 @@ var full = [4]float64{0, 0, 1, 1}
 // second texture (<base>_texture2.png, e.g. binder pages); Glass parts are drawn see-through and untextured.
 type PreviewPart struct {
 	Mesh    string `json:"mesh"`
+	URL     string `json:"url,omitempty"` // where the UI loads it ("" = /acctemplates/<mesh>.obj)
 	Texture string `json:"texture,omitempty"`
 	Glass   bool   `json:"glass,omitempty"`
 }

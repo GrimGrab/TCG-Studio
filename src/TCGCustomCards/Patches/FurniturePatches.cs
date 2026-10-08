@@ -99,6 +99,30 @@ namespace TCGCustomCards.Patches
     }
 
     /// <summary>
+    /// The till and card screens only follow their point's position and rotation (FollowObject): a custom counter's screen size (its
+    /// point's scale: "screen", and "cardMachine" for the card screen on it) is applied to the spawned screen.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class FurnitureScreenScalePatch
+    {
+        private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(WorldCanvasUIManager), nameof(WorldCanvasUIManager.SpawnCashCounterScreenUI));
+            yield return AccessTools.Method(typeof(WorldCanvasUIManager), nameof(WorldCanvasUIManager.SpawnCreditCardScreenUI));
+        }
+
+        private static void Postfix(Transform followTarget, MonoBehaviour __result, System.Reflection.MethodBase __originalMethod)
+        {
+            var piece = followTarget != null ? followTarget.GetComponentInParent<InteractableObject>() : null;
+            var f = piece != null ? Registry.GetFurniture(piece.m_ObjectType) : null;
+            if (f?.Def.Points == null || __result == null) return;
+            string role = __originalMethod.Name == nameof(WorldCanvasUIManager.SpawnCashCounterScreenUI) ? "screen" : "cardMachine";
+            var pt = f.Def.Points.FirstOrDefault(p => p.Role == role);
+            if (pt?.Scale is float sc && sc > 0 && sc != 1f) __result.transform.localScale *= sc;
+        }
+    }
+
+    /// <summary>
     /// The shop's deco bonus counts placed furniture in a list of exactly 57 slots indexed by (int)objectType (CustomerManager.cs:256),
     /// which is out of range for our types. Size it to cover our block.
     /// </summary>

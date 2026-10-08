@@ -205,10 +205,9 @@ func repoint(l *accessories.Library, moved map[string]string) {
 		fix(&a.Mesh)
 	}
 	for i := range l.Lib.Furniture {
-		f := &l.Lib.Furniture[i]
-		fix(&f.Texture)
-		fix(&f.Icon)
-		fix(&f.Mesh)
+		for _, p := range l.Lib.Furniture[i].FileRefs() {
+			fix(p)
+		}
 	}
 	for id, raw := range l.Meta.Layouts {
 		var v any

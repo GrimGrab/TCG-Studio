@@ -218,25 +218,39 @@ func ReadInteractableObject(o *Object) (io InteractableObject, err error) {
 	return io, nil
 }
 
-// CardShelf: m_CardShelfCompartmentGrpList (Transforms whose children are the card compartments).
-type CardShelf struct {
-	GameObject        PPtr
-	ItemNotForSale    bool
-	CompartmentGroups []PPtr
+// SpotGroups: a furniture script's compartment groups (Transforms whose children are the compartments) — item compartments
+// (ShelfCompartment; warehouse ones also carry InteractableStorageCompartment) and card compartments.
+type SpotGroups struct {
+	Items, Cards []PPtr
 }
 
-func ReadCardShelf(o *Object) (s CardShelf, err error) {
-	defer catch(&err, "CardShelf")
+// ReadSpotGroups reads the compartment groups of Shelf, WarehouseShelf, CardShelf, CardItemCombiShelf and TournamentPrizeShelf
+// (other classes have none). Mirrors the mod's FurnitureKinds.ItemGroups/CardGroups.
+func ReadSpotGroups(o *Object, class string) (g SpotGroups, err error) {
+	defer catch(&err, class)
 	mb, err := readMonoBehaviour(o)
 	if err != nil {
-		return s, err
+		return g, err
 	}
 	r := mb.fields
-	s.GameObject = mb.GameObject
 	readInteractableObject(r)
-	s.ItemNotForSale = r.flag()
-	s.CompartmentGroups = r.pptrs()
-	return s, nil
+	switch class {
+	case "Shelf":
+		r.flag() // item not for sale
+		r.flag() // gamepad quick select reverse
+		g.Items = r.pptrs()
+	case "WarehouseShelf":
+		g.Items = r.pptrs()
+	case "CardShelf", "CardItemCombiShelf", "TournamentPrizeShelf":
+		r.flag() // item not for sale
+		g.Cards = r.pptrs()
+		if class != "CardShelf" {
+			r.pptr() // electronic card listener
+			r.flag() // gamepad quick select reverse
+			g.Items = r.pptrs()
+		}
+	}
+	return g, nil
 }
 
 // CardCompartment is InteractableCardCompartment (one card spot).
@@ -342,41 +356,90 @@ func ReadItemMeshFilter(o *Object) (gameObject, meshFilter PPtr, err error) {
 	return mb.GameObject, mb.fields.pptr(), nil
 }
 
-// MonoBehaviourGameObject is the GameObject a script component sits on.
-func MonoBehaviourGameObject(o *Object) (PPtr, error) {
+// ReadUIPrefabs reads the world-UI prefabs the furniture screens are made from: WorldCanvasUIManager (till screen, card screen) or
+// AutoCardOpenerUISpawner (pack opener progress screen); the first fields of either script.
+func ReadUIPrefabs(o *Object, n int) (out []PPtr, err error) {
+	defer catch(&err, "UI prefabs")
 	mb, err := readMonoBehaviour(o)
-	return mb.GameObject, err
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < n; i++ {
+		out = append(out, mb.fields.pptr())
+	}
+	return out, nil
 }
 
-// ReadFurniturePoints reads the position Transforms of a furniture script (the fields right after InteractableObject's), by the
-// mod's role names (Core/FurnitureKinds.cs PointRoles). Classes without points return an empty map.
-func ReadFurniturePoints(o *Object, class string) (roles map[string][]PPtr, err error) {
+// ComponentGameObject is the GameObject a component (script, Animation, renderer…) sits on: every component's first field.
+func ComponentGameObject(o *Object) (p PPtr, err error) {
+	defer catch(&err, "Component")
+	r, err := o.reader()
+	if err != nil {
+		return p, err
+	}
+	return r.pptr(), nil
+}
+
+// PointRef is a furniture point's object: a Transform, a GameObject or a component (its GameObject's Transform is the point).
+type PointRef struct {
+	Ptr PPtr
+	Of  RefKind
+}
+
+type RefKind int
+
+const (
+	RefTransform RefKind = iota
+	RefGameObject
+	RefComponent
+)
+
+// ReadFurniturePoints reads the points of a furniture script (the fields after InteractableObject's) by the mod's role names
+// (Core/FurnitureKinds.cs PointRoles, setfmt.PointRoles). Classes without points return an empty map.
+func ReadFurniturePoints(o *Object, class string) (roles map[string][]PointRef, err error) {
 	defer catch(&err, class)
-	roles = map[string][]PPtr{}
+	roles = map[string][]PointRef{}
 	mb, err := readMonoBehaviour(o)
 	if err != nil {
 		return roles, err
 	}
 	r := mb.fields
 	readInteractableObject(r)
-	one := func(role string) { roles[role] = []PPtr{r.pptr()} }
+	ref := func(role string, of RefKind) { roles[role] = append(roles[role], PointRef{r.pptr(), of}) }
+	one := func(role string) { ref(role, RefTransform) }
+	list := func(role string) {
+		for _, p := range r.pptrs() {
+			roles[role] = append(roles[role], PointRef{p, RefTransform})
+		}
+	}
 	switch class {
 	case "InteractablePlayTable":
-		roles["stand"] = r.pptrs()
-		roles["standB"] = r.pptrs()
-		roles["sit"] = r.pptrs()
+		list("stand")
+		list("standB")
+		list("sit")
 	case "InteractableCashierCounter":
 		one("cashier")
 		one("queue")
 		one("placeItems")
-		for i := 0; i < 8; i++ {
-			r.pptr() // scanned item lerp, money, coin, screens, credit card machine…
-		}
-		roles["trade"] = r.pptrs()
+		one("scanItem")
+		one("money")
+		one("coin")
+		one("screen")
+		one("cardScreen") // not a role: on the card machine, moves with it (its screen preview's place)
+		ref("cardMachine", RefTransform)
+		one("cardPay")
+		one("cardLook")
+		list("trade")
+		r.pptr() // credit card model
+		ref("bag", RefGameObject)
+		r.pptr() // nav-mesh cut when manned
+		ref("closedSign", RefGameObject)
+		ref("tradeSign", RefGameObject)
+		ref("drawer", RefComponent) // the drawer's Animation (the role moves its parent)
 	case "InteractableAutoPackOpener":
-		r.pptr() // pos
-		r.pptr() // pos inside
-		r.pptr() // UI pos
+		one("packIn")
+		one("packInside")
+		one("screen")
 		one("worker")
 	case "InteractableAutoCleanser":
 		r.pptrs() // item pos list
@@ -384,11 +447,20 @@ func ReadFurniturePoints(o *Object, class string) (roles map[string][]PPtr, err 
 	case "InteractableWorkbench":
 		one("player")
 	case "InteractableBulkDonationBox", "InteractableCardStorageShelf":
-		roles["customer"] = r.pptrs()
+		list("customer")
 	case "InteractableEmptyBoxStorage":
 		r.pptr() // box stack
 		r.pptr() // box spawn loc
-		roles["customer"] = r.pptrs()
+		list("customer")
+	case "TournamentPrizeShelf": // after CardShelf's and CardItemCombiShelf's fields
+		r.flag()  // item not for sale
+		r.pptrs() // card compartment groups
+		r.pptr()  // electronic card listener
+		r.flag()  // gamepad quick select reverse
+		r.pptrs() // item compartment groups
+		list("customer")
+		list("winner")
+		ref("screen", RefGameObject)
 	}
 	return roles, nil
 }

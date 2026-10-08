@@ -241,9 +241,9 @@ func (l *Library) FilesWhere(keep func(id string) bool) []string {
 	}
 	for _, f := range l.Lib.Furniture {
 		if ok(f.ID) {
-			add(f.Texture)
-			add(f.Icon)
-			add(f.Mesh)
+			for _, rel := range f.Files() {
+				add(rel)
+			}
 		}
 	}
 	for id, raw := range l.Meta.Layouts {
@@ -257,7 +257,7 @@ func (l *Library) FilesWhere(keep func(id string) bool) []string {
 }
 
 // layoutFiles finds the file paths in an editor layout: painted texture, layer images (and their straighten sources),
-// figurine/furniture model and texture.
+// figurine/furniture model and texture, and those of a furniture piece's paint layout.
 func layoutFiles(raw json.RawMessage) []string {
 	var l struct {
 		TextureFile string `json:"textureFile"`
@@ -269,11 +269,15 @@ func layoutFiles(raw json.RawMessage) []string {
 				Src string `json:"src"`
 			} `json:"straighten"`
 		} `json:"layers"`
+		Paint json.RawMessage `json:"paint"`
 	}
 	if json.Unmarshal(raw, &l) != nil {
 		return nil
 	}
 	out := []string{l.TextureFile, l.Model, l.Texture}
+	if len(l.Paint) > 0 {
+		out = append(out, layoutFiles(l.Paint)...)
+	}
 	for _, ly := range l.Layers {
 		out = append(out, ly.Src)
 		if ly.Straighten != nil {
@@ -302,7 +306,7 @@ func (l *Library) Install(gameDir string) error {
 		rels = append(rels, a.Texture, a.Icon, a.Mesh)
 	}
 	for _, f := range l.Lib.Furniture {
-		rels = append(rels, f.Texture, f.Icon, f.Mesh)
+		rels = append(rels, f.Files()...)
 	}
 	done := map[string]bool{}
 	for _, rel := range rels {

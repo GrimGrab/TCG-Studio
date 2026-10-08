@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import type { Layout } from '../lib/accessoryArt';
   /** Editor state of a furniture piece (kept in the library's studio.json layouts). */
   export interface FurLayout {
     version: 'fur1';
@@ -7,9 +8,11 @@
     sourceName: string;
     rotX: number; rotY: number; rotZ: number; // degrees, applied Z, X, Y
     height: number;      // metres, 0 = base piece's height
+    offset?: number[];   // own model: Unity piece-space metres from the base piece's footprint centre (moved in the 3D view)
     triangles: number;
     warnings: string[];
-    autoIcon: boolean;   // the saved icon was rendered from the model (re-rendered on save)
+    autoIcon: boolean;   // the saved icon was rendered from the model or the paint (re-rendered on save)
+    paint?: Layout;      // face editor layout over the whole piece (AccessoryEditor); absent = not painted
   }
   export function newFurLayout(): FurLayout {
     return { version: 'fur1', model: '', texture: '', sourceName: '', rotX: 0, rotY: 0, rotZ: 0, height: 0, triangles: 0, warnings: [], autoIcon: false };
@@ -23,10 +26,12 @@
   import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
   import { App, EventsOn, errText, ask } from '../lib/api';
-  import { loadImage } from '../lib/accessoryArt';
+  import { loadImage, newLayout } from '../lib/accessoryArt';
+  import AccessoryEditor from './AccessoryEditor.svelte';
+  import { tick } from 'svelte';
   import CatalogPicker from './CatalogPicker.svelte';
   import {
-    FigurineView, loadGeom, type Geom, type Mat, type Box, type SceneObj, ident, mul, translate, scale, rotX, rotY, rotZ, point, boxLines, MIRROR_Z,
+    FigurineView, loadGeom, boxesGeom, quadGeom, type Geom, type Mat, type Box, type SceneObj, ident, mul, translate, scale, rotX, rotY, rotZ, point, boxLines, MIRROR_Z,
   } from '../lib/figurineView';
   import { type Compartment, type ItemTpl, slotMatrices, grid as slotGrid, meshMatrix } from '../lib/figurineShelf';
 
@@ -45,10 +50,74 @@
   let dirty = $state(false);
   let saving = $state(false);
   let busy = $state(false);
+
+  // ---------------------------------------------------------------- paint (the pack/box face editor over the whole piece)
+  // The base's paint template (gameextract/furniture_paint.go, made on first use) unfolds the piece into views (Front, Left, Top…);
+  // the editor's texture is stored with the base's part meshes as f.paint on save.
+
+  let mode = $state<'spots' | 'paint'>('spots');
+  let paintTpl = $state<any>(null);   // FurniturePaintInfo of paintFor
+  let paintFor = $state('');          // base piece the template is for
+  let paintEditor = $state<any>();
+  let paintBusy = $state('');
+  let paintChanged = false;           // the editor changed the art since the last save
+  const painted = () => !!layout.paint && (layout.paint.layers.length > 0 || layout.paint.base === 'color' || !!layout.paint.textureFile);
+
+  async function openPaint() {
+    mode = 'paint';
+    await ensurePaintTemplate();
+  }
+
+  /** What the paint template is made from: the vanilla piece, or the own model as placed (any move/turn/resize makes a new one). */
+  const paintKey = () => (layout.model ? `own:${layout.model}:${layout.texture}:${JSON.stringify(modelPlacement())}` : baseOf(f));
+  const paintTemplateFor = () => (layout.model ? App.FurniturePaintTemplateOwn(layout.model, layout.texture, modelPlacement() as any) : App.FurniturePaintTemplate(baseOf(f)));
+
+  async function ensurePaintTemplate() {
+    const key = paintKey();
+    if (paintTpl && paintFor === key) return;
+    paintBusy = `Preparing ${layout.model ? 'your model' : baseOf(f)} for painting…`;
+    try {
+      paintTpl = null;
+      paintTpl = await paintTemplateFor();
+      paintFor = key;
+      if (!layout.paint) layout.paint = newLayout();
+    } catch (e) { notify(errText(e), 'error'); mode = 'spots'; }
+    paintBusy = '';
+  }
+
+  async function removePaint() {
+    if (!(await ask('Remove the painted look? The piece goes back to the vanilla look (your layers are deleted).'))) return;
+    layout.paint = undefined;
+    f.paint = undefined;
+    if (layout.autoIcon && !layout.model) { f.icon = ''; layout.autoIcon = false; }
+    paintChanged = false;
+    mode = 'spots';
+    changed();
+  }
+
+  /**
+   * Save: the painted texture and icon from the editor (fitted to the current base or model placement), or no paint. A vanilla piece
+   * gets it as its paint field; an own model (baked just before) is replaced by its painted copy (mesh + texture). Returns the icon
+   * data URL ('' = keep).
+   */
+  async function savePaint(): Promise<string> {
+    if (!painted()) { f.paint = undefined; return ''; }
+    if (!layout.model && !paintChanged && f.paint) return '';
+    await ensurePaintTemplate();
+    await tick();
+    if (!paintEditor) throw new Error('The paint editor is not ready — open Paint once and save again.');
+    const img = await paintEditor.exportImages();
+    const res = await App.PaintFurniture(paintTpl.template, img.texture);
+    if (layout.model) { f.mesh = res.parts[0].mesh; f.texture = res.texture; f.paint = undefined; } else f.paint = res;
+    f.tint = ''; // baked into the paint
+    paintChanged = false;
+    if (!f.icon || layout.autoIcon) { layout.autoIcon = true; return img.icon; }
+    return '';
+  }
   let bust = $state(Date.now());
   let newType = $state('Shelf');
   let sel = $state(0);                   // selected spot
-  let part = $state<'spot' | 'customer' | 'tag' | 'area' | 'point'>('spot');
+  let part = $state<'spot' | 'customer' | 'tag' | 'area' | 'point' | 'model'>('spot');
   let selPt = $state(0);                 // selected position point (seats, stand points…) when part === 'point' // what the 3D handles act on (a part of the selected spot, or the placement area)
   let redraw = $state(0);                // bumped while dragging (spot edits don't change f.spots itself)
   let showBase = $state(true);
@@ -63,25 +132,13 @@
    * A stand-in customer (GL space, facing +z, feet at 0, ~1.65 m): boxes for legs, body, arms and head plus a nose, so you can
    * judge reach and aisle room. The game's own customers are rigged characters; this is only for scale.
    */
-  const personGeom: Geom = (() => {
-    const out: number[] = [];
-    const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => {
-      const faces: [number[], number[][]][] = [
-        [[1, 0, 0], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]], [[-1, 0, 0], [[x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0]]],
-        [[0, 1, 0], [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]]], [[0, -1, 0], [[x0, y0, z1], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1]]],
-        [[0, 0, 1], [[x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [x0, y0, z1]]], [[0, 0, -1], [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]]],
-      ];
-      for (const [n, q] of faces) for (const k of [0, 1, 2, 0, 2, 3]) out.push(...q[k], ...n, 0, 0);
-    };
-    box(-0.15, 0, -0.08, -0.02, 0.8, 0.08); box(0.02, 0, -0.08, 0.15, 0.8, 0.08);      // legs
-    box(-0.19, 0.8, -0.1, 0.19, 1.42, 0.1);                                            // body
-    box(-0.27, 0.78, -0.06, -0.19, 1.38, 0.06); box(0.19, 0.78, -0.06, 0.27, 1.38, 0.06); // arms
-    box(-0.1, 1.44, -0.1, 0.1, 1.65, 0.1);                                              // head
-    box(-0.03, 1.52, 0.1, 0.03, 1.56, 0.14);                                            // nose (facing)
-    let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < out.length; i += 8) for (let q = 0; q < 3; q++) { min[q] = Math.min(min[q], out[i + q]); max[q] = Math.max(max[q], out[i + q]); }
-    return { data: new Float32Array(out), count: out.length / 8, min, max };
-  })();
+  const personGeom: Geom = boxesGeom([
+    [-0.15, 0, -0.08, -0.02, 0.8, 0.08], [0.02, 0, -0.08, 0.15, 0.8, 0.08],          // legs
+    [-0.19, 0.8, -0.1, 0.19, 1.42, 0.1],                                              // body
+    [-0.27, 0.78, -0.06, -0.19, 1.38, 0.06], [0.19, 0.78, -0.06, 0.27, 1.38, 0.06],   // arms
+    [-0.1, 1.44, -0.1, 0.1, 1.65, 0.1],                                                // head
+    [-0.03, 1.52, 0.1, 0.03, 1.56, 0.14],                                              // nose (facing)
+  ]);
 
   // ---------------------------------------------------------------- position points (seats, cashier, worker, stand points…)
   // Roles per type come from Go (setfmt.PointRoles, same as the mod's FurnitureKinds.PointRoles); vanilla points from the game files.
@@ -91,12 +148,79 @@
     placeItems: [0.95, 0.95, 0.95, 1], trade: [0.5, 1, 0.85, 1], worker: [1, 0.7, 0.3, 1], player: [0.3, 1, 0.6, 1], customer: [0.45, 0.95, 0.45, 1],
   };
   const roleInfo = (role: string) => (info?.points ?? []).find((r: any) => r.role === role);
-  /** The piece's points: its own, or the base piece's. */
-  const pointsOf = (): any[] => f?.points ?? t?.points ?? [];
+  /** person (stand-ins), spot (a place the game uses) or part (a working part with its own look). */
+  const roleKind = (role: string): string => roleInfo(role)?.kind ?? 'person';
+  /** A working part's box around point i (its frame), from the vanilla piece's point of the same role and number. */
+  function partBox(i: number): Box | null {
+    const q = pointsOf()[i];
+    if (!q || roleKind(q.role) !== 'part') return null;
+    const n = roleIndex(i), b = (t?.points ?? []).filter((v: any) => v.role === q.role)[n - 1]?.box;
+    return b ? { min: b[0], max: b[1] } : null;
+  }
+  /** GL matrix of a point's frame (its position and rotation). */
+  const pointFrameGL = (q: any): Mat => mul(MIRROR_Z, mul(spotMat(q), scale(q.scale || 1)));
+
+  // ---- the game's screens on the piece (till, card reader, pack opener progress), at their in-game size, with a mock picture
+  const SCREEN_LABEL: Record<string, string> = { till: 'Till screen', card: 'Card screen', progress: 'Progress screen' };
+  /** Mock picture of a screen (a rough copy of the game's UI, labelled as a preview). */
+  function screenPicture(look: string, aspect: number): HTMLCanvasElement {
+    const W = 512, H = Math.max(64, Math.round(W / aspect)), c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d')!;
+    g.fillStyle = look === 'progress' ? '#1d2433' : '#e9eef5'; g.fillRect(0, 0, W, H);
+    g.font = `bold ${Math.round(H * 0.08)}px sans-serif`; g.textBaseline = 'middle';
+    if (look === 'till') {
+      g.fillStyle = '#2d6cdf'; g.fillRect(0, 0, W, H * 0.12);
+      g.fillStyle = '#fff'; g.fillText('CHECKOUT', W * 0.04, H * 0.06);
+      g.fillStyle = '#c9d3e3';
+      for (let i = 0; i < 4; i++) g.fillRect(W * 0.04, H * (0.18 + i * 0.1), W * 0.64, H * 0.07);
+      g.fillStyle = '#2d6cdf'; g.fillRect(W * 0.72, H * 0.16, W * 0.25, H * 0.8);
+      g.fillStyle = '#fff'; g.fillText('TOTAL', W * 0.75, H * 0.6); g.fillText('$0.00', W * 0.75, H * 0.75);
+    } else if (look === 'card') {
+      g.fillStyle = '#2d6cdf'; g.fillRect(0, 0, W, H * 0.3);
+      g.fillStyle = '#fff'; g.fillText('$0.00', W * 0.1, H * 0.15);
+      g.fillStyle = '#9fb0c8';
+      for (let r = 0; r < 4; r++) for (let k = 0; k < 3; k++) g.fillRect(W * (0.1 + k * 0.28), H * (0.35 + r * 0.15), W * 0.24, H * 0.12);
+    } else {
+      g.fillStyle = '#fff'; g.fillText('Opening packs  3 / 10', W * 0.06, H * 0.25);
+      g.fillStyle = '#3a4357'; g.fillRect(W * 0.06, H * 0.45, W * 0.88, H * 0.2);
+      g.fillStyle = '#4cd964'; g.fillRect(W * 0.06, H * 0.45, W * 0.88 * 0.6, H * 0.2);
+    }
+    g.font = `${Math.round(H * 0.06)}px sans-serif`; g.fillStyle = 'rgba(0,0,0,0.45)';
+    g.fillText(`${SCREEN_LABEL[look] ?? look} — preview`, W * 0.04, H * 0.93);
+    return c;
+  }
+  // Pictures are uploaded once per 3D view; quads made once per size.
+  let screenTextures = new Set<string>(), screenTexView: FigurineView | null = null;
+  const quads = new Map<string, Geom>();
+  /** The piece's screens: each on the first point of its role (its frame and size), as textured quads. */
+  function screenObjs(): SceneObj[] {
+    const out: SceneObj[] = [];
+    for (const sc of (t?.screens ?? []) as any[]) {
+      const q = pointsOf().find((p: any) => p.role === sc.role);
+      if (!q || !v3) continue;
+      const key = 'screen-' + sc.look;
+      if (screenTexView !== v3) { screenTextures = new Set(); screenTexView = v3; }
+      if (!screenTextures.has(key)) { v3.setTexture(key, screenPicture(sc.look, sc.size[0] / sc.size[1])); screenTextures.add(key); }
+      const local = mul(translate(sc.pos[0], sc.pos[1], sc.pos[2]), eulerMat(sc.rot));
+      const qk = `${sc.size[0]}x${sc.size[1]}`;
+      if (!quads.has(qk)) quads.set(qk, quadGeom(sc.size[0], sc.size[1]));
+      out.push({ geom: quads.get(qk)!, matrix: mul(pointFrameGL(q), local), texture: key });
+    }
+    return out;
+  }
+  /** Vanilla points of roles the piece's own points don't have (saved before those roles existed, e.g. the cash drawer). */
+  const missingPoints = (): any[] => (f?.points ? (t?.points ?? []).filter((q: any) => !f.points.some((p: any) => p.role === q.role)) : []);
+  /** The piece's points: its own (plus vanilla ones of roles it doesn't have), or the base piece's. */
+  const pointsOf = (): any[] => (f?.points ? [...f.points, ...missingPoints()] : t?.points ?? []);
   /** Index of a point among the points of its role (1-based, for labels). */
   const roleIndex = (i: number) => { const pts = pointsOf(); return pts.slice(0, i + 1).filter((q: any) => q.role === pts[i]?.role).length; };
   const pointLabel = (i: number) => { const q = pointsOf()[i]; return q ? `${roleInfo(q.role)?.label ?? q.role} ${roleIndex(i)}` : ''; };
-  function pointsCustom() { if (!f.points) f.points = JSON.parse(JSON.stringify(t?.points ?? [])); }
+  /** Makes the points editable: the vanilla ones become the piece's own (same order as pointsOf). */
+  function pointsCustom() {
+    if (!f.points) f.points = JSON.parse(JSON.stringify(t?.points ?? []));
+    else if (missingPoints().length) f.points = [...f.points, ...JSON.parse(JSON.stringify(missingPoints()))];
+  }
   function usePointsVanilla() { f.points = undefined; if (part === 'point') part = 'spot'; changed(); redraw++; }
   function addPoint() {
     pointsCustom();
@@ -121,7 +245,7 @@
   }
 
   /** Point marker: a ring (on the floor or at its height) with an arrow for the direction it faces; seats also get a seat square. */
-  function pointLines(q: any, selected: boolean): { points: number[]; color: [number, number, number, number]; top?: boolean }[] {
+  function pointLines(q: any, selected: boolean, i: number): { points: number[]; color: [number, number, number, number]; top?: boolean }[] {
     const g = toGL(q.pos), r = 0.12, pts: number[] = [];
     for (let k = 0; k < 16; k++) {
       const a0 = (k / 16) * Math.PI * 2, a1 = ((k + 1) / 16) * Math.PI * 2;
@@ -131,67 +255,46 @@
     const tip = [g[0] + (dir[0] / l) * r * 2, g[1] + 0.01, g[2] + (dir[2] / l) * r * 2];
     pts.push(g[0], g[1] + 0.01, g[2], ...tip);
     if (q.role === 'sit') { const s2 = 0.2; pts.push(g[0] - s2, 0.45, g[2] - s2, g[0] + s2, 0.45, g[2] - s2, g[0] + s2, 0.45, g[2] - s2, g[0] + s2, 0.45, g[2] + s2, g[0] + s2, 0.45, g[2] + s2, g[0] - s2, 0.45, g[2] + s2, g[0] - s2, 0.45, g[2] + s2, g[0] - s2, 0.45, g[2] - s2); }
-    return [{ points: pts, color: selected ? [1, 0.85, 0.2, 1] : ROLE_COL[q.role] ?? [1, 1, 1, 1], top: true }];
+    const kind = roleKind(q.role), box = partBox(i);
+    const color: [number, number, number, number] = selected ? [1, 0.85, 0.2, 1] : ROLE_COL[q.role] ?? (kind === 'part' ? [1, 0.55, 0.25, 1] : kind === 'spot' ? [0.4, 0.9, 1, 1] : [1, 1, 1, 1]);
+    if (box) pts.push(...boxLines(pointFrameGL(q), box));
+    return [{ points: pts, color, top: true }];
   }
 
   function makePointHandles(q: any): Handle[] {
     if (!v3) return [];
-    const L = v3.dist * 0.13, out: Handle[] = [], P = (p: number[]) => v3!.project(p), c = toGL(q.pos);
-    const axis = (id: string, dir: number[], color: Col, k: number, sign: number) => {
-      const tip = add3(c, dir, L), side = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
-      const draw = [...c, ...tip, ...tip, ...add3(add3(tip, dir, -L * 0.15), side, L * 0.06), ...tip, ...add3(add3(tip, dir, -L * 0.15), side, -L * 0.06)];
-      out.push({ id, kind: 'axis', color, draw, origin: c, dir, hit: (x, y) => segDist(x, y, P(c), P(tip)),
-        apply: (pt, amt, fine) => { pt.pos[k] = snap(pt.pos[k] + sign * amt, fine); } });
-    };
-    if (tool === 'rotate') {
-      // Turning around the vertical is what matters for people (which way they face).
-      const pts: number[] = [], seg = 48;
-      for (let i = 0; i < seg; i++) {
-        const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
-        pts.push(c[0] + Math.cos(a0) * L, c[1], c[2] + Math.sin(a0) * L, c[0] + Math.cos(a1) * L, c[1], c[2] + Math.sin(a1) * L);
-      }
-      out.push({ id: 'pry', kind: 'ring', color: GREEN, draw: pts, origin: c, n: [0, 1, 0],
-        apply: (pt, deg, fine) => rotateSpot(pt, 1, -deg, fine),
-        hit: (x, y) => { let best = Infinity; for (let i = 0; i + 5 < pts.length; i += 6) best = Math.min(best, segDist(x, y, P(pts.slice(i, i + 3)), P(pts.slice(i + 3, i + 6)))); return best; } });
+    const L = v3.dist * 0.13, out: Handle[] = [], c = toGL(q.pos);
+    if (tool === 'size') {
+      // Spots and working parts: their size against the vanilla piece's (screens, drawer, signs).
+      arrow(out, 'ps', c, [0, 1, 0], GREEN, (pt, amt, fine) => { pt.scale = Math.max(0.1, snap((pt.scale || 1) + amt * 2, fine)); }, L * 0.6);
       return out;
     }
-    axis('px', [1, 0, 0], RED, 0, 1);
-    axis('py', [0, 1, 0], GREEN, 1, 1);
-    axis('pz', [0, 0, 1], BLUE, 2, -1);
-    const r = L * 0.14, q4 = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([u, v]) => [c[0] + u, c[1], c[2] + v]), sq: number[] = [];
-    for (let i = 0; i < 4; i++) sq.push(...q4[i], ...q4[(i + 1) % 4]);
-    out.push({ id: 'pxz', kind: 'plane', color: YELLOW, draw: sq, origin: c, n: [0, 1, 0], hit: (x, y) => pointDist(x, y, P(c)) - 4,
-      apply: (pt, d, fine) => { pt.pos = [snap(pt.pos[0] + d[0], fine), pt.pos[1], snap(pt.pos[2] - d[2], fine)]; } });
+    if (tool === 'rotate') {
+      // People turn around the vertical (which way they face); spots and working parts (screens, signs) every way.
+      if (roleKind(q.role) === 'person') rings(out, 'pr', c, L, (pt, _k, deg, fine) => rotateSpot(pt, 1, -deg, fine), [1]);
+      else rings(out, 'pr', c, L, (pt, k, deg, fine) => rotateSpot(pt, k, k === 2 ? deg : -deg, fine));
+      return out;
+    }
+    AXES.forEach(([id, dir, col], k) => arrow(out, 'p' + id, c, dir, col, (pt, amt, fine) => { pt.pos[k] = snap(pt.pos[k] + (k === 2 ? -amt : amt), fine); }, L));
+    floorSquare(out, 'pxz', c, L * 0.14, YELLOW, (pt, d, fine) => { pt.pos = [snap(pt.pos[0] + d[0], fine), pt.pos[1], snap(pt.pos[2] - d[2], fine)]; });
     return out;
   }
 
   /** A seated stand-in (GL, facing +z, hips at the seat height). */
-  const sitGeom: Geom = (() => {
-    const out: number[] = [];
-    const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => {
-      const faces: [number[], number[][]][] = [
-        [[1, 0, 0], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]], [[-1, 0, 0], [[x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0]]],
-        [[0, 1, 0], [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]]], [[0, -1, 0], [[x0, y0, z1], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1]]],
-        [[0, 0, 1], [[x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [x0, y0, z1]]], [[0, 0, -1], [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]]],
-      ];
-      for (const [n, q] of faces) for (const k of [0, 1, 2, 0, 2, 3]) out.push(...q[k], ...n, 0, 0);
-    };
-    box(-0.15, 0.42, -0.05, -0.02, 0.55, 0.4); box(0.02, 0.42, -0.05, 0.15, 0.55, 0.4); // thighs
-    box(-0.15, 0, 0.3, -0.02, 0.45, 0.42); box(0.02, 0, 0.3, 0.15, 0.45, 0.42);         // shins
-    box(-0.19, 0.55, -0.12, 0.19, 1.15, 0.08);                                          // body
-    box(-0.27, 0.62, -0.06, -0.19, 1.12, 0.06); box(0.19, 0.62, -0.06, 0.27, 1.12, 0.06); // arms
-    box(-0.1, 1.17, -0.1, 0.1, 1.38, 0.1);                                              // head
-    box(-0.03, 1.25, 0.1, 0.03, 1.29, 0.14);                                            // nose
-    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < out.length; i += 8) for (let q = 0; q < 3; q++) { min[q] = Math.min(min[q], out[i + q]); max[q] = Math.max(max[q], out[i + q]); }
-    return { data: new Float32Array(out), count: out.length / 8, min, max };
-  })();
+  const sitGeom: Geom = boxesGeom([
+    [-0.15, 0.42, -0.05, -0.02, 0.55, 0.4], [0.02, 0.42, -0.05, 0.15, 0.55, 0.4],    // thighs
+    [-0.15, 0, 0.3, -0.02, 0.45, 0.42], [0.02, 0, 0.3, 0.15, 0.45, 0.42],            // shins
+    [-0.19, 0.55, -0.12, 0.19, 1.15, 0.08],                                           // body
+    [-0.27, 0.62, -0.06, -0.19, 1.12, 0.06], [0.19, 0.62, -0.06, 0.27, 1.12, 0.06],   // arms
+    [-0.1, 1.17, -0.1, 0.1, 1.38, 0.1],                                               // head
+    [-0.03, 1.25, 0.1, 0.03, 1.29, 0.14],                                             // nose
+  ]);
 
   /** Stand-ins on the people points (not on item drop / queue markers), facing the way the point faces. */
   function pointPeople(): SceneObj[] {
     const out: SceneObj[] = [];
     for (const q of pointsOf()) {
-      if (q.role === 'placeItems') continue;
+      if (roleKind(q.role) !== 'person') continue;
       const g = toGL(q.pos), yaw = 180 - q.rot[1];
       out.push({ geom: q.role === 'sit' ? sitGeom : personGeom, matrix: mul(translate(g[0], q.role === 'sit' ? 0 : g[1], g[2]), rotY(yaw)), color: [0.95, 0.75, 0.5, 0.5] });
     }
@@ -200,7 +303,7 @@
 
   /** One stand-in per distinct customer point, turned towards the middle of the spots it serves. */
   function peopleObjs(): SceneObj[] {
-    const list: any[] = f?.spots ?? (t?.spots ?? []).filter((q: any) => q.kind === spotKind);
+    const list: any[] = f?.spots ?? (t?.spots ?? []).filter((q: any) => spotKinds.includes(q.kind));
     const groups = new Map<string, { c: number[]; targets: number[][] }>();
     for (const sp of list) {
       if (!sp.customer) continue;
@@ -245,7 +348,10 @@
   let shown = $derived(sortShown(list, sortBy));
   let t = $derived(tplOf(f));
   let info = $derived(typeInfo(f?.type));
-  let spotKind = $derived<string>(info?.spots ?? '');
+  /** Spot kinds the type can have ('items', 'card'; prize shelves both). spotKind = the selected spot's kind (else the first). */
+  let spotKinds = $derived<string[]>(info?.spots ?? []);
+  let spotKind = $derived<string>(f?.spots?.[sel]?.kind ?? spotKinds[0] ?? '');
+  const kindName = (k: string) => (k === 'card' ? 'card spot' : 'item spot');
   let bases = $derived(pieces.filter((p) => p.type && p.type === f?.type));
   let baseHeight = $derived(t?.bounds ? t.bounds[1][1] - t.bounds[0][1] : 1);
 
@@ -340,6 +446,10 @@
     let l: any = null;
     try { l = x && view.layouts[id] ? JSON.parse(view.layouts[id]) : null; } catch { l = null; }
     layout = l && l.version === 'fur1' ? { ...newFurLayout(), ...l } : newFurLayout();
+    mode = 'spots';
+    paintChanged = false;
+    // Prepare the piece for painting in the background (made once per vanilla piece), so Paint opens at once.
+    if (f) paintTemplateFor().catch(() => { /* reported when Paint is opened */ });
     sel = 0;
     dirty = false;
     framedFor = '';
@@ -454,6 +564,7 @@
 
   function setBase(b: string) {
     f.base = b === info?.defaultBase ? '' : b;
+    if (painted()) { paintChanged = true; if (mode === 'paint') ensurePaintTemplate(); }
     framedFor = '';
     changed();
   }
@@ -474,7 +585,8 @@
   }
 
   function removeModel() {
-    layout.model = ''; layout.texture = ''; layout.sourceName = '';
+    layout.model = ''; layout.texture = ''; layout.sourceName = ''; layout.offset = undefined;
+    if (part === 'model') part = 'spot';
     if (layout.autoIcon) { f.icon = ''; layout.autoIcon = false; }
     f.mesh = ''; f.texture = '';
     framedFor = '';
@@ -499,7 +611,7 @@
   const cardSize = [0.065, 0.09]; // Card3d collider (runtime-facts)
 
   function spotsFromBase() {
-    f.spots = JSON.parse(JSON.stringify((t?.spots ?? []).filter((s: any) => s.kind === spotKind)));
+    f.spots = JSON.parse(JSON.stringify((t?.spots ?? []).filter((s: any) => spotKinds.includes(s.kind))));
     ensureCustomers();
     sel = 0; changed();
   }
@@ -510,13 +622,15 @@
     return n;
   }
   function useBaseSpots() { f.spots = undefined; sel = 0; changed(); }
-  function addSpot() {
+  /** Adds a spot of `kind` (default: the selected spot's): a copy of the selected spot when it is that kind, else of the base's first. */
+  function addSpot(kind = spotKind) {
     if (!f.spots) spotsFromBase(); // the vanilla spots become editable, then the new one joins them
-    const src = f.spots?.[sel] ?? (t?.spots ?? []).find((s: any) => s.kind === spotKind);
-    const s = src ? JSON.parse(JSON.stringify(src)) : spotKind === 'card'
+    const cur = f.spots?.[sel];
+    const src = (cur?.kind === kind ? cur : null) ?? f.spots?.find((s: any) => s.kind === kind) ?? (t?.spots ?? []).find((s: any) => s.kind === kind);
+    const s = src ? JSON.parse(JSON.stringify(src)) : kind === 'card'
       ? { kind: 'card', pos: [0, 1, 0.1], rot: [15, 180, 0] }
       : { kind: 'items', pos: [0, 1, 0.15], rot: [0, 0, 0], size: [0.49, 0.236, 0], grid: [4, 8, 1] };
-    if (src) shiftSpot(s, 0, spotKind === 'card' ? 0.08 : 0.1);
+    if (src) shiftSpot(s, 0, kind === 'card' ? 0.08 : 0.1);
     if (!s.customer) s.customer = defaultCustomer(s);
     f.spots = [...(f.spots ?? []), s];
     sel = f.spots.length - 1; part = 'spot'; tool = 'move'; changed();
@@ -578,6 +692,13 @@
     const b = t?.bounds;
     return b ? [(b[0][0] + b[1][0]) / 2, b[0][1], (b[0][2] + b[1][2]) / 2] : [0, 0, 0];
   }
+  /** Where the own model's bottom centre goes (Unity piece space): the footprint centre + the model's offset. */
+  function modelAnchor(): number[] {
+    const a = anchorUnity(), o = layout.offset ?? [0, 0, 0];
+    return [r3(a[0] + o[0]), r3(a[1] + o[1]), r3(a[2] + o[2])];
+  }
+  /** The own model's placement (figurine.Placement) — the same for the 3D view, the bake on save and painting. */
+  const modelPlacement = () => ({ rotX: layout.rotX, rotY: layout.rotY, rotZ: layout.rotZ, height: layout.height || baseHeight, anchor: modelAnchor() });
 
   /** Source model → piece space in GL (mirrors figurine.Place in Go). */
   function placement(): { m: Mat; box: Box } | null {
@@ -595,7 +716,7 @@
     if (!(h > 0)) return null;
     const s = (layout.height || baseHeight) / h;
     const c = [(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2];
-    const a = toGL(anchorUnity());
+    const a = toGL(modelAnchor());
     const m = mul(translate(a[0], a[1], a[2]), mul(scale(s), mul(translate(-c[0], -c[1], -c[2]), R)));
     return { m, box: { min: [a[0] + (lo[0] - c[0]) * s, a[1], a[2] + (lo[2] - c[2]) * s], max: [a[0] + (hi[0] - c[0]) * s, a[1] + h * s, a[2] + (hi[2] - c[2]) * s] } };
   }
@@ -720,7 +841,8 @@
     const p = placement();
     if (showPeople && spotKind) objs.push(...peopleObjs());
     if (showPeople) objs.push(...pointPeople());
-    if (fillItem && fillGeom && spotKind === 'items') {
+    objs.push(...screenObjs());
+    if (fillItem && fillGeom && spotKinds.includes('items')) {
       const mm = meshMatrix(itemPrefab), custom = !!f.spots;
       const spotList: any[] = f.spots ?? (t?.spots ?? []).filter((x: any) => x.kind === 'items');
       for (const sp of spotList) {
@@ -732,7 +854,7 @@
     if (p && figGeom) objs.push({ geom: figGeom, matrix: p.m, texture: layout.texture ? 'fig' : undefined, color: f.tint ? tintRGB() : [1, 1, 1, 1] });
     if (baseGeom && (!figGeom || showBase)) objs.push({ geom: baseGeom, matrix: ident(), color: figGeom ? [0.6, 0.62, 0.7, 0.35] : tintRGB() });
     const lines: { points: number[]; color: [number, number, number, number]; top?: boolean }[] = [];
-    const spots: any[] = f.spots ?? (t?.spots ?? []).filter((s: any) => s.kind === spotKind);
+    const spots: any[] = f.spots ?? (t?.spots ?? []).filter((s: any) => spotKinds.includes(s.kind));
     // The spots a selected customer point serves light up (green, on top) with a line from the point to each; a selected spot
     // shows a faint line to its customer point.
     const served = part === 'customer' && f.spots?.[sel] ? new Set([sel, ...sharedCustomer(sel)]) : null;
@@ -748,14 +870,14 @@
       lines.push({ points: link, color: served ? GREEN_HI : [0.45, 0.95, 0.45, 0.45], top: !!served });
     }
     lines.push(...areaLines());
-    pointsOf().forEach((q, i) => lines.push(...pointLines(q, part === 'point' && i === selPt)));
-    handles = part === 'area' ? makeAreaHandles() : part === 'point' ? (pointsOf()[selPt] ? makePointHandles(pointsOf()[selPt]) : []) : f.spots?.[sel] ? makeHandles(f.spots[sel]) : [];
+    pointsOf().forEach((q, i) => lines.push(...pointLines(q, part === 'point' && i === selPt, i)));
+    handles = part === 'model' ? makeModelHandles() : part === 'area' ? makeAreaHandles() : part === 'point' ? (pointsOf()[selPt] ? makePointHandles(pointsOf()[selPt]) : []) : f.spots?.[sel] ? makeHandles(f.spots[sel]) : [];
     for (const h of handles) lines.push({ points: h.draw, color: h.id === hot ? [1, 1, 1, 1] : h.color, top: true });
     // Floor grid around the footprint.
     const b = t?.bounds, r = b ? Math.max(b[1][0] - b[0][0], b[1][2] - b[0][2]) : 1.5, fl: number[] = [];
     for (let i = -4; i <= 4; i++) { const q = (i / 4) * r; fl.push(-r, 0, q, r, 0, q, q, 0, -r, q, 0, r); }
     lines.push({ points: fl, color: [0.35, 0.4, 0.5, 0.6] });
-    if (p) lines.push({ points: boxLines(ident(), p.box), color: [0.35, 0.6, 1, 0.6] });
+    if (p) lines.push({ points: boxLines(ident(), p.box), color: part === 'model' ? YELLOW : [0.35, 0.6, 1, 0.6], top: part === 'model' });
     v3.setScene(objs);
     v3.setLines(lines);
     const key = `${f.id}|${baseOf(f)}|${layout.model}`;
@@ -847,20 +969,44 @@
     sp.rot = matEuler(mul(R, eulerMat(sp.rot)));
   }
 
+  // Handle builders shared by the spot, area and model handles.
+  /** Arrow: drag along `dir` (GL). */
+  function arrow(out: Handle[], id: string, from: number[], dir: number[], color: Col, apply: Handle['apply'], len: number) {
+    const P = (q: number[]) => v3!.project(q);
+    const tip = add3(from, dir, len), side = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const draw = [...from, ...tip, ...tip, ...add3(add3(tip, dir, -len * 0.15), side, len * 0.06), ...tip, ...add3(add3(tip, dir, -len * 0.15), side, -len * 0.06)];
+    out.push({ id, kind: 'axis', color, draw, origin: from, dir, apply, hit: (x, y) => segDist(x, y, P(from), P(tip)) });
+  }
+  /** Square at `at`: drag on the horizontal plane through it. */
+  function floorSquare(out: Handle[], id: string, at: number[], r: number, color: Col, apply: Handle['apply']) {
+    const q = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([a, b]) => [at[0] + a, at[1], at[2] + b]), draw: number[] = [];
+    for (let i = 0; i < 4; i++) draw.push(...q[i], ...q[(i + 1) % 4]);
+    out.push({ id, kind: 'plane', color, draw, origin: at, n: [0, 1, 0], apply, hit: (x, y) => pointDist(x, y, v3!.project(at)) - 4 });
+  }
+  /** Rings around the GL axes at `c` (`only` = some of them); turning ring k by `deg` (around its GL axis) calls apply(target, k, deg, fine). */
+  function rings(out: Handle[], prefix: string, c: number[], L: number, apply: (t: any, k: number, deg: number, fine: boolean) => void, only = [0, 1, 2]) {
+    const P = (q: number[]) => v3!.project(q);
+    AXES.forEach(([id, n, col], k) => {
+      if (!only.includes(k)) return;
+      const u = k === 1 ? [1, 0, 0] : [0, 1, 0], w = cross3(n, u), pts: number[] = [], seg = 48, R = L * (1 - k * 0.08);
+      for (let i = 0; i < seg; i++) {
+        const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
+        pts.push(...add3(add3(c, u, Math.cos(a0) * R), w, Math.sin(a0) * R), ...add3(add3(c, u, Math.cos(a1) * R), w, Math.sin(a1) * R));
+      }
+      out.push({ id: prefix + id, kind: 'ring', color: col, draw: pts, origin: c, n, apply: (t, deg, fine) => apply(t, k, deg, fine),
+        hit: (x, y) => {
+          let best = Infinity;
+          for (let i = 0; i + 5 < pts.length; i += 6) best = Math.min(best, segDist(x, y, P(pts.slice(i, i + 3)), P(pts.slice(i + 3, i + 6))));
+          return best;
+        } });
+    });
+  }
+
   function makeHandles(s: any): Handle[] {
     if (!v3) return [];
     const L = v3.dist * 0.13, out: Handle[] = [];
-    const P = (p: number[]) => v3!.project(p);
-    const axis = (id: string, from: number[], dir: number[], color: Col, apply: Handle['apply'], len = L) => {
-      const tip = add3(from, dir, len), side = Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
-      const draw = [...from, ...tip, ...tip, ...add3(add3(tip, dir, -len * 0.15), side, len * 0.06), ...tip, ...add3(add3(tip, dir, -len * 0.15), side, -len * 0.06)];
-      out.push({ id, kind: 'axis', color, draw, origin: from, dir, apply, hit: (x, y) => segDist(x, y, P(from), P(tip)) });
-    };
-    const square = (id: string, at: number[], r: number, color: Col, apply: Handle['apply']) => {
-      const q = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([a, b]) => [at[0] + a, at[1], at[2] + b]), draw: number[] = [];
-      for (let i = 0; i < 4; i++) draw.push(...q[i], ...q[(i + 1) % 4]);
-      out.push({ id, kind: 'plane', color, draw, origin: at, n: [0, 1, 0], apply, hit: (x, y) => pointDist(x, y, P(at)) - 4 });
-    };
+    const axis = (id: string, from: number[], dir: number[], color: Col, apply: Handle['apply'], len = L) => arrow(out, id, from, dir, color, apply, len);
+    const square = (id: string, at: number[], r: number, color: Col, apply: Handle['apply']) => floorSquare(out, id, at, r, color, apply);
     // Moves in GL deltas (d) → Unity (z mirrored).
     if (part === 'customer' && s.customer) {
       const at = [s.customer[0], 0.01, -s.customer[1]];
@@ -888,21 +1034,8 @@
         shiftSpot(sp, 2, snap(sp.pos[2] - d[2], fine) - sp.pos[2]);
       });
     } else if (tool === 'rotate') {
-      // Three rings around the world axes (GL). A turn of Δ around GL axis n is a turn of −Δ around Unity axis (nx, ny, −nz).
-      AXES.forEach(([id, n, col], k) => {
-        const u = k === 1 ? [1, 0, 0] : [0, 1, 0], w = cross3(n, u), pts: number[] = [], seg = 48, R = L * (1 - k * 0.08);
-        for (let i = 0; i < seg; i++) {
-          const a0 = (i / seg) * Math.PI * 2, a1 = ((i + 1) / seg) * Math.PI * 2;
-          pts.push(...add3(add3(c, u, Math.cos(a0) * R), w, Math.sin(a0) * R), ...add3(add3(c, u, Math.cos(a1) * R), w, Math.sin(a1) * R));
-        }
-        out.push({ id: 'r' + id, kind: 'ring', color: col, draw: pts, origin: c, n,
-          apply: (sp, deg, fine) => rotateSpot(sp, k, k === 2 ? deg : -deg, fine),
-          hit: (x, y) => {
-            let best = Infinity;
-            for (let i = 0; i + 5 < pts.length; i += 6) best = Math.min(best, segDist(x, y, P(pts.slice(i, i + 3)), P(pts.slice(i + 3, i + 6))));
-            return best;
-          } });
-      });
+      // A turn of Δ around GL axis n is a turn of −Δ around Unity axis (nx, ny, −nz).
+      rings(out, 'r', c, L, (sp, k, deg, fine) => rotateSpot(sp, k, k === 2 ? deg : -deg, fine));
     } else if (tool === 'size' && s.kind === 'items' && s.size) {
       const M = spotMat(s), o = toGL(s.pos);
       const dirOf = (local: number[]) => { const d = sub3(toGL(point(M, local)), o), l = Math.hypot(d[0], d[1], d[2]) || 1; return d.map((v) => v / l); };
@@ -916,15 +1049,36 @@
     return out;
   }
 
+  /**
+   * The own model: Move (arrows + floor square at its bottom centre), Rotate (rings, 5° steps, Shift = 1°) and Size (green arrow on
+   * top = height; the model keeps its proportions). Its rotation lives in GL space (the source model is right-handed, like GL).
+   */
+  function makeModelHandles(): Handle[] {
+    const pl = placement();
+    if (!v3 || !pl) return [];
+    const L = v3.dist * 0.13, out: Handle[] = [];
+    const c = toGL(modelAnchor()), h = layout.height || baseHeight;
+    if (tool === 'rotate') {
+      rings(out, 'mr', add3(c, [0, 1, 0], h / 2), L, (m, k, deg, fine) => {
+        const step = fine ? 1 : 5, d = Math.round(deg / step) * step;
+        if (d) m.rot = matEuler(mul(k === 0 ? rotX(d) : k === 1 ? rotY(d) : rotZ(d), eulerMat(m.rot)));
+      });
+    } else if (tool === 'size') {
+      arrow(out, 'mh', add3(c, [0, 1, 0], h), [0, 1, 0], GREEN, (m, amt, fine) => { m.height = Math.max(0.02, snap(m.height + amt, fine)); }, L * 0.6);
+    } else {
+      // GL → Unity: z mirrored.
+      AXES.forEach(([id, dir, col], k) => arrow(out, 'm' + id, c, dir, col, (m, a, fine) => { m.offset[k] = snap(m.offset[k] + (k === 2 ? -a : a), fine); }, L));
+      floorSquare(out, 'mxz', c, L * 0.14, YELLOW, (m, d, fine) => { m.offset = [snap(m.offset[0] + d[0], fine), m.offset[1], snap(m.offset[2] - d[2], fine)]; });
+    }
+    return out;
+  }
+
   function makeAreaHandles(): Handle[] {
     const a = areaOf();
     if (!v3 || !a) return [];
-    const L = v3.dist * 0.13, out: Handle[] = [], P = (p: number[]) => v3!.project(p);
+    const L = v3.dist * 0.13, out: Handle[] = [];
     const c = [a.pos[0], 0.02, -a.pos[1]];
-    const axis = (id: string, from: number[], dir: number[], color: Col, apply: Handle['apply'], len = L) => {
-      const tip = add3(from, dir, len), draw = [...from, ...tip, ...tip, ...add3(add3(tip, dir, -len * 0.15), [0, 1, 0], len * 0.06), ...tip, ...add3(add3(tip, dir, -len * 0.15), [0, 1, 0], -len * 0.06)];
-      out.push({ id, kind: 'axis', color, draw, origin: from, dir, apply, hit: (x, y) => segDist(x, y, P(from), P(tip)) });
-    };
+    const axis = (id: string, from: number[], dir: number[], color: Col, apply: Handle['apply'], len = L) => arrow(out, id, from, dir, color, apply, len);
     if (tool === 'size') {
       // Width / depth: handles on the right and front edges; like the spot sizers, both sides move (the centre stays put).
       axis('aw', [c[0] + a.size[0] / 2, 0.02, c[2]], [1, 0, 0], RED, (ar, amt, fine) => { ar.size[0] = Math.max(0.05, snap(ar.size[0] + 2 * amt, fine)); }, L * 0.6);
@@ -933,10 +1087,7 @@
     }
     axis('ax', c, [1, 0, 0], RED, (ar, amt, fine) => { ar.pos[0] = snap(ar.pos[0] + amt, fine); });
     axis('az', c, [0, 0, 1], BLUE, (ar, amt, fine) => { ar.pos[1] = snap(ar.pos[1] - amt, fine); });
-    const r = L * 0.14, q = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([u, v]) => [c[0] + u, c[1], c[2] + v]), sq: number[] = [];
-    for (let i = 0; i < 4; i++) sq.push(...q[i], ...q[(i + 1) % 4]);
-    out.push({ id: 'axz', kind: 'plane', color: YELLOW, draw: sq, origin: c, n: [0, 1, 0], hit: (x, y) => pointDist(x, y, P(c)) - 4,
-      apply: (ar, d, fine) => { ar.pos = [snap(ar.pos[0] + d[0], fine), snap(ar.pos[1] - d[2], fine)]; } });
+    floorSquare(out, 'axz', c, L * 0.14, YELLOW, (ar, d, fine) => { ar.pos = [snap(ar.pos[0] + d[0], fine), snap(ar.pos[1] - d[2], fine)]; });
     return out;
   }
 
@@ -946,7 +1097,14 @@
     return best;
   }
 
-  type Pick = { i: number; part: 'spot' | 'customer' | 'tag' | 'area' | 'point' };
+  type Pick = { i: number; part: 'spot' | 'customer' | 'tag' | 'area' | 'point' | 'model' };
+
+  /** Whether a screen point is on a box (GL matrix m, local min/max): inside any of its faces' outlines. */
+  function onBox(x: number, y: number, m: Mat, b: Box): boolean {
+    const c = (i: number) => point(m, [i & 1 ? b.max[0] : b.min[0], i & 2 ? b.max[1] : b.min[1], i & 4 ? b.max[2] : b.min[2]]);
+    const faces = [[0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4], [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5]];
+    return faces.some((q) => inPoly(x, y, q.map((i) => v3!.project(c(i)))));
+  }
 
   /** Point-in-polygon (screen space). */
   function inPoly(x: number, y: number, pts: (number[] | null)[]): boolean {
@@ -979,7 +1137,7 @@
   function picksAt(x: number, y: number): Pick[] {
     if (!v3) return [];
     const marks: { p: Pick; d: number }[] = [], spots: { p: Pick; d: number }[] = [], out: Pick[] = [];
-    const list: any[] = f?.spots ?? (t?.spots ?? []).filter((q: any) => q.kind === spotKind);
+    const list: any[] = f?.spots ?? (t?.spots ?? []).filter((q: any) => spotKinds.includes(q.kind));
     list.forEach((sp, i) => {
       if (sp.customer) {
         const g = [sp.customer[0], 0.01, -sp.customer[1]];
@@ -995,12 +1153,15 @@
     pointsOf().forEach((q: any, i: number) => {
       const g = toGL(q.pos);
       const ring = Array.from({ length: 16 }, (_, k) => v3!.project([g[0] + Math.cos((k / 16) * Math.PI * 2) * 0.12, g[1] + 0.01, g[2] + Math.sin((k / 16) * Math.PI * 2) * 0.12]));
-      const d = pointDist(x, y, v3!.project(g));
-      if (d < 12 || inPoly(x, y, ring)) marks.push({ p: { i, part: 'point' }, d });
+      const d = pointDist(x, y, v3!.project(g)), box = partBox(i);
+      if (d < 12 || inPoly(x, y, ring) || (box && onBox(x, y, pointFrameGL(q), box))) marks.push({ p: { i, part: 'point' }, d });
     });
     marks.sort((a, b) => a.d - b.d);
     spots.sort((a, b) => a.d - b.d);
     out.push(...marks.map((m) => m.p), ...spots.map((m) => m.p));
+    // The own model: its box.
+    const pl = layout.model ? placement() : null;
+    if (pl && onBox(x, y, ident(), pl.box)) out.push({ i: 0, part: 'model' });
     const a = areaOf();
     if (a) {
       const dc = pointDist(x, y, v3.project([a.pos[0], 0.01, -a.pos[1]]));
@@ -1017,7 +1178,7 @@
     const all = picksAt(x, y);
     if (!all.length) return null;
     if (cycle) {
-      const cur = all.findIndex((q) => q.part === part && (q.part === 'area' || q.i === (q.part === 'point' ? selPt : sel)));
+      const cur = all.findIndex((q) => q.part === part && (q.part === 'area' || q.part === 'model' || q.i === (q.part === 'point' ? selPt : sel)));
       if (cur >= 0) return all[(cur + 1) % all.length];
     }
     return all[0];
@@ -1102,9 +1263,12 @@
   }
 
   /** What a drag edits: the selected spot, or the placement area (created from the base piece's on first edit). */
-  const dragTarget = () => (part === 'area' ? f.area ?? areaOf() : part === 'point' ? pointsOf()[selPt] : f.spots?.[sel]);
+  const dragTarget = () => (part === 'model' ? modelTarget() : part === 'area' ? f.area ?? areaOf() : part === 'point' ? pointsOf()[selPt] : f.spots?.[sel]);
+  /** The own model as a drag target: offset (Unity), rotation (degrees, GL/source space as figurine.Place) and height. */
+  const modelTarget = () => ({ offset: [...(layout.offset ?? [0, 0, 0])], rot: [layout.rotX, layout.rotY, layout.rotZ], height: layout.height || baseHeight });
   function setDragTarget(v: any) {
-    if (part === 'area') f.area = v;
+    if (part === 'model') { layout.offset = v.offset; [layout.rotX, layout.rotY, layout.rotZ] = v.rot; layout.height = v.height; }
+    else if (part === 'area') f.area = v;
     else if (part === 'point') { pointsCustom(); f.points[selPt] = v; }
     else f.spots[sel] = v;
   }
@@ -1131,6 +1295,14 @@
       const at = toGL(f.points[selPt].pos);
       startDrag({ id: 'drag', kind: 'plane', color: YELLOW, draw: [], origin: at, n: [0, 1, 0], hit: () => Infinity,
         apply: (pt, d, fine) => { pt.pos = [snap(pt.pos[0] + d[0], fine), pt.pos[1], snap(pt.pos[2] - d[2], fine)]; } }, x, y);
+      redraw++;
+      return true;
+    }
+    if (pk.part === 'model') {
+      part = 'model';
+      handles = makeModelHandles();
+      startDrag({ id: 'drag', kind: 'plane', color: YELLOW, draw: [], origin: toGL(modelAnchor()), n: [0, 1, 0], hit: () => Infinity,
+        apply: (m, d, fine) => { m.offset = [snap(m.offset[0] + d[0], fine), m.offset[1], snap(m.offset[2] - d[2], fine)]; } }, x, y);
       redraw++;
       return true;
     }
@@ -1202,8 +1374,7 @@
       let icon = '';
       if (layout.model) {
         if (!t?.bounds) throw new Error(`No size known for ${baseOf(f)} — the game templates aren't available yet (Settings → Game).`);
-        const b = await App.BakeFurnitureModel(f.id, layout.model, layout.texture,
-          { rotX: layout.rotX, rotY: layout.rotY, rotZ: layout.rotZ, height: layout.height || baseHeight, anchor: anchorUnity() } as any);
+        const b = await App.BakeFurnitureModel(f.id, layout.model, layout.texture, modelPlacement() as any);
         f.mesh = b.mesh; f.texture = b.texture;
         if (!f.icon || layout.autoIcon) { icon = await renderIcon(t?.iconSize ?? [512, 512]); layout.autoIcon = true; }
       } else {
@@ -1218,8 +1389,10 @@
         sel = missing[0] - 1; part = 'spot'; redraw++;
         throw new Error(`Spot${missing.length > 1 ? 's' : ''} ${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no customer point (shown in red). Select the spot and press C to give it one, or share a nearby spot's point.`);
       }
+      const paintIcon = await savePaint();
+      if (paintIcon) icon = paintIcon;
       const clean = JSON.parse(JSON.stringify(f));
-      for (const k of ['description', 'icon', 'texture', 'tint', 'mesh', 'base']) if (!clean[k]) delete clean[k];
+      for (const k of ['description', 'icon', 'texture', 'tint', 'mesh', 'base', 'paint']) if (!clean[k]) delete clean[k];
       view = await App.SaveFurniture(clean, JSON.stringify(layout), icon);
       bust = Date.now();
       dirty = false;
@@ -1245,7 +1418,7 @@
 
   /** Keys 1 / 2 / 3 = Move / Rotate / Size (not while typing). Rotate and Size act on a spot's body, so they select it. */
   function onKey(e: KeyboardEvent) {
-    if (!f) return;
+    if (!f || mode === 'paint') return;
     const el = e.target as HTMLElement | null;
     if (el && (el.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName))) return;
     if ((e.ctrlKey || e.metaKey) && !e.altKey) {
@@ -1259,7 +1432,7 @@
     if (spotKind && part !== 'point' && (e.key === 'n' || e.key === 'N' || e.key === 'Insert')) { e.preventDefault(); addSpot(); return; }
     const partKey = ({ b: 'spot', c: 'customer', t: 'tag' } as const)[e.key.toLowerCase() as 'b' | 'c' | 't'];
     if (spotKind && partKey && !e.shiftKey) { e.preventDefault(); selectPart(partKey); return; }
-    if (spotKind === 'items' && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); if (e.shiftKey) cycleFill(1); else toggleFill(); return; }
+    if (spotKinds.includes('items') && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); if (e.shiftKey) cycleFill(1); else toggleFill(); return; }
     if ((spotKind || pointsOf().length) && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); showPeople = !showPeople; return; }
     if (spotKind && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); showTags = !showTags; return; }
     if (e.key === 'h' || e.key === 'H' || e.key === '?') { e.preventDefault(); showHelp = !showHelp; return; }
@@ -1269,11 +1442,12 @@
     if (part === 'point' && (e.key === 'n' || e.key === 'N' || e.key === 'Insert')) { e.preventDefault(); addPoint(); return; }
     const next = ({ '1': 'move', '2': 'rotate', '3': 'size' } as const)[e.key as '1' | '2' | '3'];
     if (!next) return;
+    if (part === 'model') { tool = next; e.preventDefault(); return; }
     if (next === 'size' && spotKind !== 'items') return;
     if (part === 'area') {
       if (next === 'rotate') return;
     } else if (part === 'point') {
-      if (next === 'size') return;
+      if (next === 'size' && roleKind(pointsOf()[selPt]?.role) === 'person') return;
     } else if (next !== 'move') {
       if (!f.spots?.length) return;
       part = 'spot';
@@ -1373,16 +1547,28 @@
       <section>
         <div class="row">
           <h3 class="grow">Look & spots</h3>
+          <span class="seg" title="Spots & positions: where items, cards and people go. Paint: put images, text and colours on the piece (like pack and box art).">
+            <button class:on={mode === 'spots'} onclick={() => (mode = 'spots')}>Spots & positions</button>
+            <button class:on={mode === 'paint'} onclick={openPaint}>Paint{painted() ? ' ●' : ''}</button>
+          </span>
           <span class="thumbs"><span class="small muted">Shop icon:</span>
             {#if f.icon}<img src={accUrl(f.icon)} alt="icon" />{:else if t?.icon}<img src={furnUrl(t.icon)} alt="vanilla icon" />{/if}
           </span>
         </div>
-        <div class="editor">
+        <div class="editor" class:hidden={mode === 'paint'}>
           <div class="stage">
             <div class="scene" use:maximizable>
               <canvas bind:this={canvas} class="view3d"></canvas>
               {#if busy}<p class="overlay muted small">Loading…</p>{/if}
-              {#if part === 'area'}
+              {#if part === 'model'}
+                <div class="tools">
+                  <span class="selpart">Your model</span>
+                  <button class:on={tool === 'move'} onclick={() => (tool = 'move')} title="Move your model: drag the arrows or the yellow square, or drag the model itself (key 1).">Move <kbd>1</kbd></button>
+                  <button class:on={tool === 'rotate'} onclick={() => (tool = 'rotate')} title="Turn your model: drag a ring (5° steps, Shift = 1°) (key 2).">Rotate <kbd>2</kbd></button>
+                  <button class:on={tool === 'size'} onclick={() => (tool = 'size')} title="Resize your model: drag the green arrow on top (height; it keeps its proportions) (key 3).">Size <kbd>3</kbd></button>
+                  <button onclick={() => { layout.offset = [0, 0, 0]; changed(); redraw++; }} title="Back to the middle of the vanilla piece's footprint, on the floor.">Centre</button>
+                </div>
+              {:else if part === 'area'}
                 <div class="tools">
                   <span class="selpart">Placement area</span>
                   <button class:on={tool !== 'size'} onclick={() => (tool = 'move')} title="Move the area: drag the arrows or the yellow square (key 1).">Move <kbd>1</kbd></button>
@@ -1393,6 +1579,12 @@
                   <span class="selpart" title={roleInfo(pointsOf()[selPt].role)?.tip ?? ''}>{pointLabel(selPt)}</span>
                   <button class:on={tool !== 'rotate'} onclick={() => (tool = 'move')} title="Move the point: arrows or the yellow square (key 1).">Move <kbd>1</kbd></button>
                   <button class:on={tool === 'rotate'} onclick={() => (tool = 'rotate')} title="Turn the point — which way the person faces (key 2).">Rotate <kbd>2</kbd></button>
+                  {#if roleKind(pointsOf()[selPt].role) !== 'person'}
+                    <button class:on={tool === 'size'} onclick={() => (tool = 'size')} title="Resize it: drag the green arrow (key 3). Screens show at their in-game size.">Size <kbd>3</kbd></button>
+                    <label class="small" title="Size against the vanilla piece's (100 % = unchanged).">
+                      <input type="number" min="10" max="2000" step="5" style="width:64px" value={Math.round((pointsOf()[selPt].scale || 1) * 100)}
+                        onchange={(e) => { const v = +e.currentTarget.value; if (v > 0) { pointsCustom(); f.points[selPt].scale = v / 100; changed(); redraw++; } }} /> %</label>
+                  {/if}
                   {#if roleInfo(pointsOf()[selPt].role)?.resizable}
                     <button onclick={addPoint} title="Add another point of this kind beside it (N). The game picks one of them.">+ Point <kbd>N</kbd></button>
                     <button onclick={deletePoint} title="Remove this point (Delete). At least one stays.">Delete <kbd>Del</kbd></button>
@@ -1421,7 +1613,7 @@
                     <button onclick={ownCustomer} disabled={!sharedCustomer(sel).length} title="Give the selected spot a customer point of its own, split off the shared one (you can then move it).">Own point</button>
                     <button onclick={deleteCustomer} disabled={customerPoints().length < 2} title="Remove this customer point: the spots using it move over to the nearest other customer point (Delete key). Every spot keeps one, so the last point can't be removed.">Remove point <kbd>Del</kbd></button>
                   {/if}
-                  {#if spotKind === 'items'}
+                  {#if spotKinds.includes('items')}
                     <button class:on={showTags} onclick={() => (showTags = !showTags)} title="Show every price tag as a tag-sized label where the game puts it, facing the way it faces in game (L). Off = small white crosses.">Tags <kbd>L</kbd></button>
                     <button class:on={showPeople} onclick={() => (showPeople = !showPeople)} title="Show a life-size stand-in customer (~1.65 m) on every customer point, facing the spots it serves (P). Only for judging reach and aisle room.">Customers <kbd>P</kbd></button>
                     <button class:on={!!fillKey} onclick={toggleFill} title="Fill preview on/off (F): every item spot filled with a shop item, placed like the game does. Shift+F = next item.">Fill <kbd>F</kbd></button>
@@ -1431,7 +1623,7 @@
                       </select>
                     {/if}
                   {/if}
-                  <button onclick={addSpot} title="Add a spot: a copy of the selected one, placed beside it (N or Ctrl+D). On vanilla spots this makes them editable first.">+ Spot <kbd>N</kbd></button>
+                  <button onclick={() => addSpot()} title="Add a spot: a copy of the selected one, placed beside it (N or Ctrl+D). On vanilla spots this makes them editable first.">+ Spot <kbd>N</kbd></button>
                   <button onclick={deleteSpot} disabled={part !== 'spot' || (!!f.spots && !f.spots.length)} title="Delete the selected spot (Delete key).">Delete spot{#if part === 'spot'} <kbd>Del</kbd>{/if}</button>
                   <button class:on={tool === 'move' || part !== 'spot'} onclick={() => (tool = 'move')} title="Drag an arrow to move the selected part along that axis, or the yellow square to slide it across its level. You can also click and drag any spot, customer point or price tag directly.">Move <kbd>1</kbd></button>
                   <button class:on={tool === 'rotate' && part === 'spot'} disabled={part !== 'spot'} onclick={() => (tool = 'rotate')} title="Drag a ring to turn the selected spot around that axis (5° steps): green = turn left/right, red = tilt forward/back, blue = roll. Tilt a spot to make hanging or slanted spots.">Rotate <kbd>2</kbd></button>
@@ -1477,11 +1669,12 @@
           <div class="side">
             <div class="props">
               <h4>Colour</h4>
+              {#if painted()}<p class="muted small">Painted — the paint replaces the tint (use a Fill layer in Paint to recolour).</p>{:else}
               <div class="row">
                 <input type="color" title="Colour multiplied onto the piece's own materials (the vanilla model or your model). Price tags and spots keep their colours." value={f.tint || '#ffffff'} oninput={(e) => { f.tint = e.currentTarget.value; changed(); }} />
                 <span class="muted small grow">{f.tint ? `Tint ${f.tint}` : 'No tint (vanilla colours)'}</span>
                 {#if f.tint}<button class="tiny" onclick={() => { f.tint = ''; changed(); }}>Clear</button>{/if}
-              </div>
+              </div>{/if}
             </div>
             <div class="props">
               <h4>Model</h4>
@@ -1501,13 +1694,13 @@
                 </div>
                 <label class="check small"><input type="checkbox" bind:checked={showBase} /> Show {baseOf(f)} (ghost)</label>
                 <div class="row"><button class="small" onclick={importModel} disabled={busy}>Replace…</button><button class="small" onclick={removeModel}>Use vanilla model</button></div>
-                <p class="muted small">The front faces you in the default view (−z = the aisle side of vanilla shelves). Spots stay where they are — move them onto your model.</p>
+                <p class="muted small">Click your model in the view to move, turn (key 2) or resize it (key 3) with handles. The front faces you in the default view (−z = the aisle side of vanilla shelves). Spots stay where they are — move them onto your model.</p>
               {:else}
                 <p class="muted small">Vanilla model of {baseOf(f)}{f.tint ? ', tinted' : ''}.</p>
                 <button class="small" onclick={importModel} disabled={busy}>Import own model… (.glb/.gltf/.obj)</button>
               {/if}
             </div>
-            {#if spotKind === 'items'}
+            {#if spotKinds.includes('items')}
               <div class="props" title="Preview only: fills every item spot with a vanilla item, placed the way the game does it, so you can see how many fit and how it looks. Nothing is saved.">
                 <h4>Fill preview</h4>
                 <select bind:value={fillKey}>
@@ -1554,7 +1747,26 @@
           </div>
         </div>
 
-        {#if (info?.points ?? []).length}
+        {#if mode === 'paint'}
+          <div class="paint">
+            {#if paintBusy}<p class="muted">{paintBusy}</p>{/if}
+            <div class="row">
+              <p class="muted small grow">Drop images, text and colour fills on the views — <b>Front</b> is the side customers see (the aisle side), each view
+                paints everything seen from that side. Your art replaces the piece's look in the game; spots, price tags and items stay as they are.</p>
+              {#if painted()}<button class="small danger" onclick={removePaint}>Remove paint</button>{/if}
+            </div>
+          </div>
+        {/if}
+        {#if paintTpl && layout.paint}
+          {#key f.id + '|' + paintFor}
+            <div class:hidden={mode !== 'paint'}>
+              <AccessoryEditor bind:this={paintEditor} kind="Furniture" givenModel={paintTpl.model} vanillaUrl={paintTpl.vanilla}
+                bind:layout={layout.paint} iconSize={t?.iconSize ?? [512, 512]} {notify} active={mode === 'paint'}
+                onchange={() => { paintChanged = true; changed(); }} defaultText={(f.name || 'SHOP').toUpperCase()} />
+            </div>
+          {/key}
+        {/if}
+        {#if mode === 'spots' && (info?.points ?? []).length}
           <div class="spots">
             <div class="row">
               <h4 class="grow">Positions <span class="muted small">{f.points ? 'custom' : 'vanilla'}</span></h4>
@@ -1572,13 +1784,17 @@
             <p class="muted small">Where people stand, sit or work at this piece. Select one (here or its coloured ring in the view) and drag it; <b>P</b> shows stand-in people.</p>
           </div>
         {/if}
-        {#if spotKind}
+        {#if mode === 'spots' && spotKind}
           <div class="spots">
             <div class="row">
-              <h4 class="grow">{spotKind === 'card' ? 'Card spots' : 'Item spots'}
-                <span class="muted small">{f.spots ? `${f.spots.length} custom` : `vanilla (${(t?.spots ?? []).filter((s: any) => s.kind === spotKind).length})`}</span></h4>
+              <h4 class="grow">{spotKinds.length > 1 ? 'Item & card spots' : spotKind === 'card' ? 'Card spots' : 'Item spots'}
+                <span class="muted small">{f.spots ? `${f.spots.length} custom` : `vanilla (${(t?.spots ?? []).filter((s: any) => spotKinds.includes(s.kind)).length})`}</span></h4>
               {#if f.spots}
-                <button class="small" onclick={addSpot} title="Add a copy of the selected spot, a little to the side.">+ Add</button>
+                {#if spotKinds.length > 1}
+                  {#each spotKinds as k}<button class="small" onclick={() => addSpot(k)} title={`Add a ${kindName(k)}: a copy of the selected one (or of the first ${kindName(k)}), a little to the side.`}>+ {k === 'card' ? 'Card' : 'Item'}</button>{/each}
+                {:else}
+                  <button class="small" onclick={() => addSpot()} title="Add a copy of the selected spot, a little to the side.">+ Add</button>
+                {/if}
                 <button class="small" onclick={deleteSpot} disabled={!f.spots.length}>Delete</button>
                 <button class="small" onclick={useBaseSpots} title="Drop your spots and use the vanilla piece's own again.">Use vanilla spots</button>
               {:else}
@@ -1589,7 +1805,7 @@
               <div class="spotlist">
                 {#each f.spots as s, i}
                   <button class:active={i === sel} onclick={() => { sel = i; part = 'spot'; }}>
-                    {i + 1}{#if s.kind === 'items'} · {fillItem ? `${fillCount(s, true)} ${fillItem.label}` : `${capacity(s)} units`}{/if}
+                    {i + 1}{#if spotKinds.length > 1} {s.kind === 'card' ? 'card' : 'items'}{/if}{#if s.kind === 'items'} · {fillItem ? `${fillCount(s, true)} ${fillItem.label}` : `${capacity(s)} units`}{/if}
                   </button>
                 {/each}
               </div>
@@ -1697,6 +1913,8 @@
   .tools { position: absolute; top: 8px; right: 8px; left: 48px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
   .tools button { padding: 3px 10px; font-size: 12px; }
   .tools button.on { border-color: var(--accent); background: #22304d; }
+  .hidden { display: none; }
+  .paint { margin-top: 8px; }
   .seg { display: inline-flex; gap: 0; }
   .seg button { border-radius: 0; }
   .seg button:first-child { border-radius: 4px 0 0 4px; }

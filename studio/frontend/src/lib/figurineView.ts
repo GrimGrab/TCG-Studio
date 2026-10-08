@@ -103,6 +103,32 @@ export const MIRROR_Z = scale(1, 1, -1);
 export function point(m: Mat, p: number[]): number[] {
   return [0, 1, 2].map((r) => m[r] * p[0] + m[4 + r] * p[1] + m[8 + r] * p[2] + m[12 + r]);
 }
+/** Geometry from interleaved position(3) normal(3) uv(2) data (bounds computed). */
+export function geomOf(data: number[]): Geom {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < data.length; i += 8) for (let q = 0; q < 3; q++) { min[q] = Math.min(min[q], data[i + q]); max[q] = Math.max(max[q], data[i + q]); }
+  return { data: new Float32Array(data), count: data.length / 8, min, max };
+}
+/** Axis-aligned boxes [x0, y0, z0, x1, y1, z1] as one geometry (stand-in figures). */
+export function boxesGeom(boxes: number[][]): Geom {
+  const out: number[] = [];
+  for (const [x0, y0, z0, x1, y1, z1] of boxes) {
+    const faces: [number[], number[][]][] = [
+      [[1, 0, 0], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]], [[-1, 0, 0], [[x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0]]],
+      [[0, 1, 0], [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]]], [[0, -1, 0], [[x0, y0, z1], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1]]],
+      [[0, 0, 1], [[x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [x0, y0, z1]]], [[0, 0, -1], [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]]],
+    ];
+    for (const [n, q] of faces) for (const k of [0, 1, 2, 0, 2, 3]) out.push(...q[k], ...n, 0, 0);
+  }
+  return geomOf(out);
+}
+/** A w×h rectangle in the xy plane, centred, facing −z, UVs 0..1 (an image on it reads correctly from the −z side, like world UI). */
+export function quadGeom(w: number, h: number): Geom {
+  const x = w / 2, y = h / 2, v = [[-x, -y, 0, 0], [x, -y, 1, 0], [x, y, 1, 1], [-x, y, 0, 1]], out: number[] = [];
+  for (const k of [0, 1, 2, 0, 2, 3]) out.push(v[k][0], v[k][1], 0, 0, 0, -1, v[k][2], v[k][3]);
+  return geomOf(out);
+}
+
 function perspective(fov: number, aspect: number, near: number, far: number): Mat {
   const f = 1 / Math.tan(fov / 2), m = new Float32Array(16);
   m[0] = f / aspect; m[5] = f; m[10] = (far + near) / (near - far); m[11] = -1; m[14] = (2 * far * near) / (near - far);

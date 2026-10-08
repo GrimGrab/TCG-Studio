@@ -93,6 +93,10 @@ export function ExportSetup(arg1:string):Promise<string>;
 
 export function ForgeStatus():Promise<forge.Status>;
 
+export function FurniturePaintTemplate(arg1:string):Promise<main.FurniturePaintInfo>;
+
+export function FurniturePaintTemplateOwn(arg1:string,arg2:string,arg3:figurine.Placement):Promise<main.FurniturePaintInfo>;
+
 export function FurnitureTemplates():Promise<string>;
 
 export function FurnitureTypes():Promise<Array<setfmt.FurnitureType>>;
@@ -170,6 +174,8 @@ export function OpenFolder(arg1:string):Promise<void>;
 export function OpenProjectFolder(arg1:string):Promise<void>;
 
 export function OpenSetupFolder(arg1:string):Promise<void>;
+
+export function PaintFurniture(arg1:string,arg2:string):Promise<setfmt.FurniturePaint>;
 
 export function PickAccessoryImage():Promise<string>;
 

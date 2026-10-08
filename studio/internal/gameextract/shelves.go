@@ -303,7 +303,7 @@ func (x *extractor) tables(g *graph, set *unityfs.Object) []any {
 		return nil
 	}
 	owner := "TableGameItemSet"
-	if gref, err := unityfs.MonoBehaviourGameObject(set); err == nil {
+	if gref, err := unityfs.ComponentGameObject(set); err == nil {
 		if n := g.nodeOf(gref); n != nil {
 			owner += "(" + n.name + ")"
 		}

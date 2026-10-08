@@ -76,10 +76,12 @@ namespace TCGCustomCards.Runtime
             tpl.m_ObjectType = f.Object;
             f.Prefab = tpl;
 
+            // Paint first: its renderer paths are the prefab's, before spots/points add or remove children.
+            if (def.Paint != null) FurniturePaint.Apply(tpl, def);
             if (def.Spots != null) FurnitureSpots.Build(tpl, def, so, inv);
             if (def.Area != null) SetArea(tpl, def);
             if (def.Points != null) SetPoints(tpl, def);
-            ApplyLook(tpl, def);
+            if (def.Paint == null) ApplyLook(tpl, def); // painted: the look is the painted atlas (texture/tint are baked into it)
 
             so.m_ObjectDataList.Add(new ObjectData
             {
@@ -140,7 +142,7 @@ namespace TCGCustomCards.Runtime
                 var field = tpl.GetType().GetField(role.Field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
                 if (field == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': {tpl.GetType().Name} has no {role.Field}; '{role.Role}' points ignored"); continue; }
                 var list = field.GetValue(tpl) as List<Transform>;
-                var single = field.FieldType == typeof(Transform) ? field.GetValue(tpl) as Transform : null;
+                var single = list == null ? Core.FurnitureKinds.RoleTransform(tpl, role) : null;
                 if (list == null && single == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': base has no '{role.Role}' point"); continue; }
                 if (list == null) list = new List<Transform> { single };
                 if (role.Resizable && list.Count > 0)
@@ -166,6 +168,8 @@ namespace TCGCustomCards.Runtime
                     if (t == null) continue;
                     t.SetPositionAndRotation(piece.TransformPoint(new Vector3(pts[i].Pos[0], pts[i].Pos[1], pts[i].Pos[2])),
                         piece.rotation * Quaternion.Euler(pts[i].Rot[0], pts[i].Rot[1], pts[i].Rot[2]));
+                    // Size: parts scale with their transform, the pack opener's screen copies it; till/card screens: FurnitureScreenScalePatch.
+                    if (pts[i].Scale is float sc && sc > 0) t.localScale *= sc;
                 }
             }
         }
@@ -194,6 +198,11 @@ namespace TCGCustomCards.Runtime
             if (!string.IsNullOrEmpty(def.Tint) && ColorUtility.TryParseHtmlString(def.Tint, out var c)) tint = c;
             Mesh mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Path.Combine(def.FolderPath, def.Mesh));
 
+            // Working parts (cash drawer, card machine, signs, the prize shelf's TV) keep their own look: an own model doesn't hide them.
+            var parts = FurnitureKinds.PointRoles(def.Type).Where(r => r.Kind == FurnitureKinds.PointKind.Part)
+                .Select(r => FurnitureKinds.RoleTransform(tpl, r)).Where(x => x != null).ToList();
+            bool InPart(Transform t) => parts.Any(p => t == p || t.IsChildOf(p));
+
             var mainRenderer = tpl.m_Mesh;
             Material mainMat = mainRenderer != null ? mainRenderer.sharedMaterial : body.Select(r => r.sharedMaterial).FirstOrDefault(m => m != null);
             Texture baseTex = mainMat != null ? mainMat.mainTexture : null;
@@ -218,7 +227,7 @@ namespace TCGCustomCards.Runtime
                 if (m.HasProperty("_Color")) m.color = tint ?? Color.white;
                 mr.sharedMaterial = m;
                 foreach (var r in body)
-                    if (!IsUnder(r.transform, tpl.m_HighlightGameObj)) r.enabled = false;
+                    if (!IsUnder(r.transform, tpl.m_HighlightGameObj) && !InPart(r.transform)) r.enabled = false;
                 tpl.m_Mesh = mr;
                 tpl.m_PickupObjectMesh = mf;
                 ReplaceHighlight(tpl, mesh);

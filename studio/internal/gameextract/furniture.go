@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/unityfs"
 )
 
@@ -18,10 +19,10 @@ import (
 // FurnitureDir is the templates sub-folder.
 const FurnitureDir = "furniture"
 
-// furnitureTypes maps game script classes to the mod's FurnitureType names (Core/FurnitureKinds.cs). Classes not listed
-// (WarehouseShelf, TournamentPrizeShelf) can't be used as a base yet.
+// furnitureTypes maps game script classes to the mod's FurnitureType names (Core/FurnitureKinds.cs).
 var furnitureTypes = map[string]string{
 	"Shelf": "Shelf", "CardShelf": "CardShelf", "InteractablePlayTable": "PlayTable",
+	"WarehouseShelf": "WarehouseShelf", "TournamentPrizeShelf": "TournamentPrizeShelf",
 	"InteractableBulkDonationBox": "BulkDonationBox", "InteractableTrashBin": "TrashBin",
 	"InteractableEmptyBoxStorage": "EmptyBoxStorage", "InteractableCardStorageShelf": "CardStorageShelf",
 	"InteractableAutoPackOpener": "AutoPackOpener", "InteractableAutoCleanser": "AutoCleanser",
@@ -51,20 +52,21 @@ type furnitureSpot struct {
 }
 
 type furniturePiece struct {
-	Base      string           `json:"base"`   // EObjectType name
-	Object    int32            `json:"object"` // EObjectType value
-	Class     string           `json:"class"`  // game script class
-	Type      string           `json:"type"`   // mod furniture type ("" = not usable as a base)
-	NameTerm  string           `json:"nameTerm"`
-	Price     float32          `json:"price"`
-	Level     int32            `json:"level"`
-	DecoBonus float32          `json:"decoBonus"`
-	Icon      string           `json:"icon,omitempty"`
-	IconSize  [2]float32       `json:"iconSize"`
-	Model     string           `json:"model,omitempty"`
-	Bounds    *[2][3]float32   `json:"bounds,omitempty"` // model min / max (root space)
-	Area      *furnitureArea   `json:"area,omitempty"`   // placement area (m_MoveStateValidArea)
-	Points    []furniturePoint `json:"points"`           // seats / stand / worker positions by role (see ReadFurniturePoints)
+	Base      string            `json:"base"`   // EObjectType name
+	Object    int32             `json:"object"` // EObjectType value
+	Class     string            `json:"class"`  // game script class
+	Type      string            `json:"type"`   // mod furniture type ("" = not usable as a base)
+	NameTerm  string            `json:"nameTerm"`
+	Price     float32           `json:"price"`
+	Level     int32             `json:"level"`
+	DecoBonus float32           `json:"decoBonus"`
+	Icon      string            `json:"icon,omitempty"`
+	IconSize  [2]float32        `json:"iconSize"`
+	Model     string            `json:"model,omitempty"`
+	Bounds    *[2][3]float32    `json:"bounds,omitempty"` // model min / max (root space)
+	Area      *furnitureArea    `json:"area,omitempty"`   // placement area (m_MoveStateValidArea)
+	Points    []furniturePoint  `json:"points"`
+	Screens   []furnitureScreen `json:"screens,omitempty"` // the game's UI screens on the piece (editor previews)           // seats / stand / worker positions by role (see ReadFurniturePoints)
 	// Flags of the base's first item compartment: custom item spots are clones of it (Runtime/FurnitureSpots).
 	HeightGoesUp       bool            `json:"heightGoesUp"`
 	ApplyScaleOffset   bool            `json:"applyScaleOffset"`
@@ -75,10 +77,22 @@ type furniturePiece struct {
 // furnitureArea is the box the game keeps free of other furniture/walls when placing a piece (InteractableObject
 // m_MoveStateValidArea: an OverlapBox at its position with its lossy scale as size), in the piece's root space.
 // furniturePoint is a position the game uses on a piece (a seat, where the cashier stands…), in the piece's root space.
-type furniturePoint struct {
+// furnitureScreen is a world-UI screen the game shows on a piece (till, card reader, pack opener progress), for the editor's preview:
+// its size in metres at the point's scale 1, and its place in the frame of the point it follows (role). Its face is seen from the
+// frame's −z side, like any world UI. Look picks the editor's mock picture.
+type furnitureScreen struct {
 	Role string     `json:"role"`
+	Look string     `json:"look"`
+	Size [2]float32 `json:"size"`
 	Pos  [3]float32 `json:"pos"`
 	Rot  [3]float32 `json:"rot"`
+}
+
+// furniturePoint is a vanilla piece's point as the furniture def has it (setfmt.FurniturePoint) plus, for working parts, the
+// part's size around it (min, max in the point's frame: its position and rotation) for the editor.
+type furniturePoint struct {
+	setfmt.FurniturePoint
+	Box *[2][3]float32 `json:"box,omitempty"`
 }
 
 type furnitureArea struct {
@@ -87,22 +101,52 @@ type furnitureArea struct {
 	Rot  [3]float32 `json:"rot"`
 }
 
-func (x *extractor) furniture() ([]furniturePiece, error) {
-	var soObj *unityfs.Object
+// shelfData reads the game's furniture list (ShelfData_ScriptableObject).
+func (x *extractor) shelfData() (unityfs.ShelfData, error) {
 	for _, name := range prefabFiles {
 		f, err := x.env.File(name)
 		if err != nil || f == nil {
 			continue
 		}
 		if found := x.env.FindScripts(f, "ShelfData_ScriptableObject"); len(found) > 0 {
-			soObj = found[0]
-			break
+			return unityfs.ReadShelfData(found[0])
 		}
 	}
-	if soObj == nil {
-		return nil, fmt.Errorf("the game's furniture list (ShelfData) wasn't found")
+	return unityfs.ShelfData{}, fmt.Errorf("the game's furniture list (ShelfData) wasn't found")
+}
+
+// lookSkip: nodes that aren't part of a piece's look — inactive parts, the placement area, highlight shells, nav-mesh cutters,
+// price-tag placeholders (merged preview model and paint template).
+func lookSkip(g *graph, io unityfs.InteractableObject) func(*node) bool {
+	helpers := map[*node]bool{}
+	for _, ref := range []unityfs.PPtr{io.Highlight, io.NavMeshCut} {
+		if n := g.nodeOf(ref); n != nil {
+			helpers[n] = true
+		}
 	}
-	sd, err := unityfs.ReadShelfData(soObj)
+	if n := g.transformNode(io.ValidArea); n != nil {
+		helpers[n] = true
+	}
+	return func(n *node) bool {
+		if !n.activeInHierarchy() || n.hasInParent("InteractablePriceTag", "InteractableCardPriceTag") {
+			return true
+		}
+		for p := n; p != nil; p = p.parent {
+			if helpers[p] {
+				return true
+			}
+			for _, w := range []string{"highlight", "hightlight", "movestatevalidarea", "dashedline"} {
+				if strings.Contains(strings.ToLower(p.name), w) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+func (x *extractor) furniture() ([]furniturePiece, error) {
+	sd, err := x.shelfData()
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +154,7 @@ func (x *extractor) furniture() ([]furniturePiece, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
+	uis := x.uiScreens()
 	graphs := map[*unityfs.File]*graph{}
 	meshes := x.newMeshSet("")
 	var out []furniturePiece
@@ -161,30 +206,25 @@ func (x *extractor) furniture() ([]furniturePiece, error) {
 		}
 		inv := root.world().inverse()
 		invRot := root.worldQuat().inverse()
-		switch p.Class {
-		case "Shelf":
-			if sh, err := unityfs.ReadShelf(po); err == nil {
-				p.Spots = append(p.Spots, x.itemSpots(g, sh.CompartmentGroups, inv, invRot)...)
-				if c := x.firstCompartment(g, sh.CompartmentGroups); c != nil {
-					p.HeightGoesUp, p.ApplyScaleOffset, p.AffectedByTallItem = c.HeightGoesUp, c.ApplyScaleOffset, c.AffectedByTallItem
-				}
-			} else {
-				x.warn("furniture %s: %v", name, err)
+		if sg, err := unityfs.ReadSpotGroups(po, p.Class); err == nil {
+			p.Spots = append(p.Spots, x.itemSpots(g, sg.Items, inv, invRot)...)
+			p.Spots = append(p.Spots, x.cardSpots(g, sg.Cards, inv, invRot)...)
+			if c := x.firstCompartment(g, sg.Items); c != nil {
+				p.HeightGoesUp, p.ApplyScaleOffset, p.AffectedByTallItem = c.HeightGoesUp, c.ApplyScaleOffset, c.AffectedByTallItem
 			}
-		case "CardShelf":
-			if cs, err := unityfs.ReadCardShelf(po); err == nil {
-				p.Spots = append(p.Spots, x.cardSpots(g, cs.CompartmentGroups, inv, invRot)...)
-			} else {
-				x.warn("furniture %s: %v", name, err)
-			}
+		} else {
+			x.warn("furniture %s: %v", name, err)
 		}
-		if roles, err := unityfs.ReadFurniturePoints(po, p.Class); err == nil {
-			for _, role := range []string{"sit", "stand", "standB", "cashier", "queue", "placeItems", "trade", "worker", "player", "customer"} {
-				for _, ref := range roles[role] {
-					if n := g.transformNode(ref); n != nil {
-						p.Points = append(p.Points, furniturePoint{Role: role, Pos: r3(inv.point(wpos(n))), Rot: euler(invRot.mul(n.worldQuat()))})
-					}
+		if refs, err := x.refNodes(g, po, p.Class); err == nil {
+			p.Screens = x.pieceScreens(p.Type, refs, uis)
+		}
+		if rps, err := x.rolePoints(g, po, p.Class, p.Type); err == nil {
+			for _, rp := range rps {
+				pt := furniturePoint{FurniturePoint: setfmt.FurniturePoint{Role: rp.role.Role, Pos: r3x(inv.point(wpos(rp.n))), Rot: r3x(f64(euler(invRot.mul(rp.n.worldQuat()))))}}
+				if rp.role.Kind == "part" {
+					pt.Box = x.partBox(g, rp.n, meshes)
 				}
+				p.Points = append(p.Points, pt)
 			}
 		} else {
 			x.warn("furniture %s points: %v", name, err)
@@ -193,32 +233,7 @@ func (x *extractor) furniture() ([]furniturePiece, error) {
 			w := mul(inv, an.world())
 			p.Area = &furnitureArea{Pos: r3(w.point([3]float64{})), Size: r3(f64(lossy(w))), Rot: euler(invRot.mul(an.worldQuat()))}
 		}
-		// The look only: no placement area, highlight shells, nav-mesh cutters, price-tag placeholders or hidden parts.
-		helpers := map[*node]bool{}
-		for _, ref := range []unityfs.PPtr{io.Highlight, io.NavMeshCut} {
-			if n := g.nodeOf(ref); n != nil {
-				helpers[n] = true
-			}
-		}
-		if n := g.transformNode(io.ValidArea); n != nil {
-			helpers[n] = true
-		}
-		skip := func(n *node) bool {
-			if !n.activeInHierarchy() || n.hasInParent("InteractablePriceTag", "InteractableCardPriceTag") {
-				return true
-			}
-			for p := n; p != nil; p = p.parent {
-				if helpers[p] {
-					return true
-				}
-				for _, w := range []string{"highlight", "hightlight", "movestatevalidarea", "dashedline"} {
-					if strings.Contains(strings.ToLower(p.name), w) {
-						return true
-					}
-				}
-			}
-			return false
-		}
+		skip := lookSkip(g, io)
 		file := safe(name) + ".obj"
 		if x.mergedModel(g, root, "Furniture "+name, filepath.Join(dir, file), inv, meshes, skip) {
 			p.Model = file
@@ -351,7 +366,7 @@ func (x *extractor) componentNode(g *graph, p unityfs.PPtr) *node {
 	if o == nil || o.File != g.file {
 		return nil
 	}
-	gref, err := unityfs.MonoBehaviourGameObject(o)
+	gref, err := unityfs.ComponentGameObject(o)
 	if err != nil {
 		return nil
 	}
@@ -363,6 +378,11 @@ func wpos(n *node) [3]float64 { w := n.world(); return [3]float64{w[0][3], w[1][
 func round3(v float64) float32 { return float32(math.Round(v*1000) / 1000) }
 
 func r3(v [3]float64) [3]float32 { return [3]float32{round3(v[0]), round3(v[1]), round3(v[2])} }
+
+// r3x rounds to millimetres as float64 (setfmt's number type), without float32 noise.
+func r3x(v [3]float64) [3]float64 {
+	return [3]float64{math.Round(v[0]*1000) / 1000, math.Round(v[1]*1000) / 1000, math.Round(v[2]*1000) / 1000}
+}
 
 // euler converts a rotation to Unity's Euler angles in degrees (Quaternion.Euler(x, y, z) = Ry · Rx · Rz), each in (-180, 180].
 func euler(q quat) [3]float32 {
@@ -418,4 +438,216 @@ func objBounds(path string) (lo, hi [3]float32, ok bool) {
 		}
 	}
 	return lo, hi, ok
+}
+
+// rolePoint is a point of a furniture piece: its role and the node it moves (setfmt.PointRoles, mirrors the mod's FurnitureKinds).
+type rolePoint struct {
+	role setfmt.PointRole
+	n    *node
+}
+
+// rolePoints finds the nodes of a piece's point roles: the role's object (a Transform, a GameObject or a component's GameObject),
+// or its parent for Parent roles (the cash drawer).
+func (x *extractor) rolePoints(g *graph, po *unityfs.Object, class, typ string) ([]rolePoint, error) {
+	refs, err := x.refNodes(g, po, class)
+	if err != nil {
+		return nil, err
+	}
+	var out []rolePoint
+	for _, role := range setfmt.PointRoles(typ) {
+		for _, n := range refs[role.Role] {
+			if role.Parent {
+				n = n.parent
+			}
+			if n != nil {
+				out = append(out, rolePoint{role, n})
+			}
+		}
+	}
+	return out, nil
+}
+
+// refNodes resolves a furniture script's point objects (unityfs.ReadFurniturePoints, roles and helpers like the card screen) to nodes.
+func (x *extractor) refNodes(g *graph, po *unityfs.Object, class string) (map[string][]*node, error) {
+	refs, err := unityfs.ReadFurniturePoints(po, class)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]*node{}
+	for name, rs := range refs {
+		for _, ref := range rs {
+			var n *node
+			switch ref.Of {
+			case unityfs.RefTransform:
+				n = g.transformNode(ref.Ptr)
+			case unityfs.RefGameObject:
+				n = g.nodeOf(ref.Ptr)
+			case unityfs.RefComponent:
+				if o, _ := x.env.Resolve(g.file, ref.Ptr); o != nil && o.File == g.file {
+					if gp, err := unityfs.ComponentGameObject(o); err == nil {
+						n = g.nodeOf(gp)
+					}
+				}
+			}
+			if n != nil {
+				out[name] = append(out[name], n)
+			}
+		}
+	}
+	return out, nil
+}
+
+// pointFrame is a node's position and rotation (not its scale) in world space: the frame a point's pos/rot describe.
+func pointFrame(n *node) mat {
+	q, p := n.worldQuat().mat3(), wpos(n)
+	var m mat
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			m[r][c] = q[r][c]
+		}
+		m[r][3] = p[r]
+	}
+	m[3][3] = 1
+	return m
+}
+
+// uiScreen: a world-UI prefab's picture size in its own units (the largest image, anchors resolved) and its root scale.
+type uiScreen struct{ extent, scale [2]float64 }
+
+// uiScreens reads the till, card and pack-opener screen prefabs (WorldCanvasUIManager / AutoCardOpenerUISpawner in the shop scene).
+func (x *extractor) uiScreens() map[string]uiScreen {
+	out := map[string]uiScreen{}
+	f, _ := x.env.File("level1")
+	if f == nil {
+		x.warn("shop scene not found: no screen previews")
+		return out
+	}
+	add := func(name string, from *unityfs.File, ptr unityfs.PPtr) {
+		o, _ := x.env.Resolve(from, ptr)
+		if o == nil {
+			return
+		}
+		gp, err := unityfs.ComponentGameObject(o)
+		if err != nil {
+			return
+		}
+		g := newGraph(x.env, o.File)
+		if n := g.nodeOf(gp); n != nil && n.tr.Rect != nil {
+			out[name] = uiScreen{extent: uiExtent(n), scale: [2]float64{float64(n.tr.Scale[0]), float64(n.tr.Scale[1])}}
+		}
+	}
+	for _, o := range x.env.FindScripts(f, "WorldCanvasUIManager") {
+		if ps, err := unityfs.ReadUIPrefabs(o, 2); err == nil {
+			add("till", o.File, ps[0])
+			add("card", o.File, ps[1])
+		}
+	}
+	for _, o := range x.env.FindScripts(f, "AutoCardOpenerUISpawner") {
+		if ps, err := unityfs.ReadUIPrefabs(o, 1); err == nil {
+			add("progress", o.File, ps[0])
+		}
+	}
+	return out
+}
+
+// uiExtent is the largest image under a UI root, in the root's units (stretched rects resolved against their parents).
+func uiExtent(root *node) [2]float64 {
+	var best [2]float64
+	var walk func(n *node, parent, scale [2]float64)
+	walk = func(n *node, parent, scale [2]float64) {
+		r := n.tr.Rect
+		if r == nil {
+			return
+		}
+		size := [2]float64{float64(r.SizeDelta[0]), float64(r.SizeDelta[1])}
+		if n != root {
+			for k := 0; k < 2; k++ {
+				size[k] += parent[k] * float64(r.AnchorMax[k]-r.AnchorMin[k])
+			}
+			scale = [2]float64{scale[0] * float64(n.tr.Scale[0]), scale[1] * float64(n.tr.Scale[1])}
+		}
+		if n.has("Image") {
+			best = [2]float64{math.Max(best[0], math.Abs(size[0]*scale[0])), math.Max(best[1], math.Abs(size[1]*scale[1]))}
+		}
+		for _, c := range n.children {
+			walk(c, size, scale)
+		}
+	}
+	walk(root, [2]float64{}, [2]float64{1, 1})
+	return best
+}
+
+// pieceScreens: the screens a piece type shows. Till and card screens keep their prefab scale (they only follow their point's
+// position and rotation); the pack opener's takes its point's scale (InteractableAutoPackOpener copies m_UIPos.localScale).
+func (x *extractor) pieceScreens(typ string, refs map[string][]*node, uis map[string]uiScreen) []furnitureScreen {
+	size := func(u uiScreen, sx, sy float64) [2]float32 {
+		return [2]float32{round3(u.extent[0] * sx), round3(u.extent[1] * sy)}
+	}
+	var out []furnitureScreen
+	switch typ {
+	case "CashCounter":
+		if u, ok := uis["till"]; ok && len(refs["screen"]) > 0 {
+			out = append(out, furnitureScreen{Role: "screen", Look: "till", Size: size(u, u.scale[0], u.scale[1])})
+		}
+		if u, ok := uis["card"]; ok && len(refs["cardMachine"]) > 0 && len(refs["cardScreen"]) > 0 {
+			m, c := refs["cardMachine"][0], refs["cardScreen"][0]
+			rel := mul(pointFrame(m).inverse(), pointFrame(c))
+			out = append(out, furnitureScreen{Role: "cardMachine", Look: "card", Size: size(u, u.scale[0], u.scale[1]),
+				Pos: r3(rel.point([3]float64{})), Rot: euler(m.worldQuat().inverse().mul(c.worldQuat()))})
+		}
+	case "AutoPackOpener":
+		if u, ok := uis["progress"]; ok && len(refs["screen"]) > 0 {
+			sc := refs["screen"][0].tr.Scale
+			// Faces the frame's +z side (checked against the vanilla machine's screen frame).
+			out = append(out, furnitureScreen{Role: "screen", Look: "progress", Size: size(u, float64(sc[0]), float64(sc[1])), Rot: [3]float32{0, 180, 0}})
+		}
+	}
+	return out
+}
+
+// partBox is the extent of the visible meshes under a working part, in the part's frame (its position and rotation, not its scale).
+func (x *extractor) partBox(g *graph, n *node, meshes *meshSet) *[2][3]float32 {
+	inv := pointFrame(n).inverse()
+	lo := [3]float64{math.Inf(1), math.Inf(1), math.Inf(1)}
+	hi := [3]float64{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
+	n.walk(func(c *node) {
+		if !c.activeInHierarchy() || g.comp(c, unityfs.ClassMeshRenderer, "") == nil {
+			return
+		}
+		mfo := g.comp(c, unityfs.ClassMeshFilter, "")
+		if mfo == nil {
+			return
+		}
+		mf, err := unityfs.ReadMeshFilter(mfo)
+		if err != nil {
+			return
+		}
+		mo, _ := x.env.Resolve(g.file, mf.Mesh)
+		if mo == nil || mo.ClassID != unityfs.ClassMesh {
+			return
+		}
+		m := meshes.mesh(mo)
+		if m == nil {
+			return
+		}
+		xf := mul(inv, c.world())
+		for i := 0; i < 8; i++ {
+			var v [3]float64
+			for k := 0; k < 3; k++ {
+				e := float64(m.Extent[k])
+				if i&(1<<k) == 0 {
+					e = -e
+				}
+				v[k] = float64(m.Center[k]) + e
+			}
+			w := xf.point(v)
+			for k := 0; k < 3; k++ {
+				lo[k], hi[k] = math.Min(lo[k], w[k]), math.Max(hi[k], w[k])
+			}
+		}
+	})
+	if math.IsInf(lo[0], 1) {
+		return nil
+	}
+	return &[2][3]float32{r3(lo), r3(hi)}
 }

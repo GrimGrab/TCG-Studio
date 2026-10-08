@@ -1515,6 +1515,42 @@ export namespace main {
 	        this.size = source["size"];
 	    }
 	}
+	export class FurniturePaintInfo {
+	    template: string;
+	    model: uvmap.Model;
+	    vanilla: string;
+	    parts: setfmt.PaintPart[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurniturePaintInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.template = source["template"];
+	        this.model = this.convertValues(source["model"], uvmap.Model);
+	        this.vanilla = source["vanilla"];
+	        this.parts = this.convertValues(source["parts"], setfmt.PaintPart);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ImportableSet {
 	    code: string;
 	    name: string;
@@ -2593,6 +2629,7 @@ export namespace setfmt {
 	    role: string;
 	    pos: number[];
 	    rot: number[];
+	    scale?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new FurniturePoint(source);
@@ -2603,6 +2640,7 @@ export namespace setfmt {
 	        this.role = source["role"];
 	        this.pos = source["pos"];
 	        this.rot = source["rot"];
+	        this.scale = source["scale"];
 	    }
 	}
 	export class FurnitureArea {
@@ -2645,6 +2683,52 @@ export namespace setfmt {
 	        this.boxes = source["boxes"];
 	    }
 	}
+	export class PaintPart {
+	    renderer: string;
+	    mesh: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaintPart(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.renderer = source["renderer"];
+	        this.mesh = source["mesh"];
+	    }
+	}
+	export class FurniturePaint {
+	    texture: string;
+	    parts: PaintPart[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FurniturePaint(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.texture = source["texture"];
+	        this.parts = this.convertValues(source["parts"], PaintPart);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Furniture {
 	    id: string;
 	    type: string;
@@ -2658,6 +2742,7 @@ export namespace setfmt {
 	    texture?: string;
 	    tint?: string;
 	    mesh?: string;
+	    paint?: FurniturePaint;
 	    spots?: FurnitureSpot[];
 	    area?: FurnitureArea;
 	    points?: FurniturePoint[];
@@ -2680,6 +2765,7 @@ export namespace setfmt {
 	        this.texture = source["texture"];
 	        this.tint = source["tint"];
 	        this.mesh = source["mesh"];
+	        this.paint = this.convertValues(source["paint"], FurniturePaint);
 	        this.spots = this.convertValues(source["spots"], FurnitureSpot);
 	        this.area = this.convertValues(source["area"], FurnitureArea);
 	        this.points = this.convertValues(source["points"], FurniturePoint);
@@ -2706,11 +2792,14 @@ export namespace setfmt {
 	
 	
 	
+	
 	export class PointRole {
 	    role: string;
 	    label: string;
 	    tip: string;
 	    resizable: boolean;
+	    kind: string;
+	    parent?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PointRole(source);
@@ -2722,6 +2811,8 @@ export namespace setfmt {
 	        this.label = source["label"];
 	        this.tip = source["tip"];
 	        this.resizable = source["resizable"];
+	        this.kind = source["kind"];
+	        this.parent = source["parent"];
 	    }
 	}
 	export class FurnitureType {
@@ -2729,7 +2820,7 @@ export namespace setfmt {
 	    title: string;
 	    one: string;
 	    defaultBase: string;
-	    spots: string;
+	    spots: string[];
 	    points: PointRole[];
 	
 	    static createFrom(source: any = {}) {
@@ -2888,6 +2979,7 @@ export namespace setfmt {
 		    return a;
 		}
 	}
+	
 	
 	
 	export class PriceDefaults {
@@ -3196,8 +3288,23 @@ export namespace uvmap {
 		    return a;
 		}
 	}
+	export class View {
+	    label: string;
+	    net: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new View(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.net = source["net"];
+	    }
+	}
 	export class PreviewPart {
 	    mesh: string;
+	    url?: string;
 	    texture?: string;
 	    glass?: boolean;
 	
@@ -3208,6 +3315,7 @@ export namespace uvmap {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mesh = source["mesh"];
+	        this.url = source["url"];
 	        this.texture = source["texture"];
 	        this.glass = source["glass"];
 	    }
@@ -3222,6 +3330,10 @@ export namespace uvmap {
 	    preview: PreviewPart[];
 	    icon: string;
 	    bases?: Base[];
+	    projected?: boolean;
+	    views?: View[];
+	    density?: number;
+	    turn?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Model(source);
@@ -3238,6 +3350,10 @@ export namespace uvmap {
 	        this.preview = this.convertValues(source["preview"], PreviewPart);
 	        this.icon = source["icon"];
 	        this.bases = this.convertValues(source["bases"], Base);
+	        this.projected = source["projected"];
+	        this.views = this.convertValues(source["views"], View);
+	        this.density = source["density"];
+	        this.turn = source["turn"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3258,6 +3374,7 @@ export namespace uvmap {
 		    return a;
 		}
 	}
+	
 	
 
 }

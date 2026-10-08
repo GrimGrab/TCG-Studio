@@ -127,6 +127,17 @@ namespace TCGCustomCards.Core
                     Plugin.Log.LogWarning($"Accessory library {where}: model not found '{f.Mesh}' (base model used)");
                     f.Mesh = null;
                 }
+                if (f.Paint != null)
+                {
+                    bool missing = string.IsNullOrEmpty(f.Paint.Texture) || !File.Exists(Path.Combine(dir, f.Paint.Texture)) || f.Paint.Parts == null
+                        || f.Paint.Parts.Count == 0 || f.Paint.Parts.Exists(p => p == null || string.IsNullOrEmpty(p.Mesh) || !File.Exists(Path.Combine(dir, p.Mesh)));
+                    if (missing)
+                    {
+                        Plugin.Log.LogWarning($"Accessory library {where}: painted look incomplete (texture or part model missing) — base look used");
+                        f.Paint = null;
+                    }
+                    else if (!string.IsNullOrEmpty(f.Mesh)) errors.Add("a painted piece can't also have its own model");
+                }
                 if (f.Spots != null && f.Spots.Count > 0)
                 {
                     for (int i = 0; i < f.Spots.Count; i++)
@@ -160,6 +171,7 @@ namespace TCGCustomCards.Core
                         var pt = f.Points[i];
                         if (pt == null || !roles.Contains(pt.Role ?? "")) errors.Add($"point {i + 1}: a {f.Type} has no '{pt?.Role}' points");
                         else if (!Vec(pt.Pos, 3) || !Vec(pt.Rot, 3)) errors.Add($"point {i + 1}: pos and rot need 3 numbers");
+                        else if (pt.Scale.HasValue && (pt.Scale.Value < 0 || pt.Scale.Value > 20)) errors.Add($"point {i + 1}: scale must be between 0 and 20");
                     }
                     if (f.Points.Count == 0) f.Points = null;
                 }

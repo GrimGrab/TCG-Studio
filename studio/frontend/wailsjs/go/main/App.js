@@ -154,6 +154,14 @@ export function ForgeStatus() {
   return window['go']['main']['App']['ForgeStatus']();
 }
 
+export function FurniturePaintTemplate(arg1) {
+  return window['go']['main']['App']['FurniturePaintTemplate'](arg1);
+}
+
+export function FurniturePaintTemplateOwn(arg1, arg2, arg3) {
+  return window['go']['main']['App']['FurniturePaintTemplateOwn'](arg1, arg2, arg3);
+}
+
 export function FurnitureTemplates() {
   return window['go']['main']['App']['FurnitureTemplates']();
 }
@@ -308,6 +316,10 @@ export function OpenProjectFolder(arg1) {
 
 export function OpenSetupFolder(arg1) {
   return window['go']['main']['App']['OpenSetupFolder'](arg1);
+}
+
+export function PaintFurniture(arg1, arg2) {
+  return window['go']['main']['App']['PaintFurniture'](arg1, arg2);
 }
 
 export function PickAccessoryImage() {

@@ -24,13 +24,13 @@ namespace TCGCustomCards.Runtime
 
             if (itemSpots.Count > 0)
             {
-                var groups = (tpl as Shelf)?.m_ShelfCompartmentGrpList;
+                var groups = FurnitureKinds.ItemGroups(tpl);
                 int needed = PosSlotsNeeded(inv, itemSpots);
                 Rebuild<ShelfCompartment>(tpl, def, groups, itemSpots, (c, s) => PlaceItemSpot(tpl.transform, c, s, needed));
             }
             if (cardSpots.Count > 0)
             {
-                var groups = (tpl as CardShelf)?.m_CardShelfCompartmentGrpList;
+                var groups = FurnitureKinds.CardGroups(tpl);
                 Rebuild<InteractableCardCompartment>(tpl, def, groups, cardSpots, (c, s) => PlaceCardSpot(tpl.transform, c, s));
             }
         }

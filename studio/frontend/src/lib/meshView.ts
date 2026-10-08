@@ -67,9 +67,11 @@ void main() {
   else gl_FragColor = vec4(base.rgb * light, 1.0);
 }`;
 
-type Mat = Float32Array;
+// ---------------------------------------------------------------- shared WebGL helpers (also lib/projectPaint.ts)
+
+export type Mat = Float32Array;
 const ident = (): Mat => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-function mul(a: Mat, b: Mat): Mat {
+export function mul(a: Mat, b: Mat): Mat {
   const o = new Float32Array(16);
   for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
     let s = 0;
@@ -86,6 +88,69 @@ function perspective(fov: number, aspect: number, near: number, far: number): Ma
   const f = 1 / Math.tan(fov / 2), m = new Float32Array(16);
   m[0] = f / aspect; m[5] = f; m[10] = (far + near) / (near - far); m[11] = -1; m[14] = (2 * far * near) / (near - far);
   return m;
+}
+
+/** Orbit camera of the previews: the model (centre, radius) turned by rx/ry, seen from 3.1/zoom away. mvp + the rotation (normals). */
+export interface Orbit { rx: number; ry: number; zoom: number; fov: number }
+export function orbitMatrices(o: Orbit, center: number[], radius: number, w: number, h: number): { mvp: Mat; rot: Mat } {
+  const model = mul(rotX(o.rx), mul(rotY(o.ry), mul(scale(1 / radius), translate(-center[0], -center[1], -center[2]))));
+  const view = translate(0, 0, -3.1 / o.zoom);
+  return { mvp: mul(perspective(o.fov, w / h, 0.05, 50), mul(view, model)), rot: mul(rotX(o.rx), rotY(o.ry)) };
+}
+
+export function compileProgram(gl: WebGLRenderingContext, vs: string, fs: string): WebGLProgram {
+  const sh = (type: number, src: string) => {
+    const s = gl.createShader(type)!;
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader error');
+    return s;
+  };
+  const p = gl.createProgram()!;
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'shader link error');
+  return p;
+}
+
+/** Uploads an image/canvas. flipY: UV origin bottom-left (model textures); mipmaps when the size is a power of two. */
+export function uploadTexture(gl: WebGLRenderingContext, tex: WebGLTexture, src: TexImageSource, nearest = false, flipY = true) {
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flipY);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  const pot = (n: number) => (n & (n - 1)) === 0;
+  const w = (src as any).width, h = (src as any).height;
+  if (!nearest && pot(w) && pot(h)) {
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  } else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+/** Crops a render to its non-transparent pixels and fits it into W×H with a small margin (shop icons). */
+export function cropToContent(src: HTMLCanvasElement, W: number, H: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const cctx = c.getContext('2d')!;
+  cctx.drawImage(src, 0, 0);
+  const px = cctx.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+    if (px[(y * c.width + x) * 4 + 3] < 8) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 < 0) throw new Error('the model rendered empty');
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const m = Math.round(Math.min(W, H) * 0.015), bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  const f = Math.min((W - 2 * m) / bw, (H - 2 * m) / bh), dw = bw * f, dh = bh * f;
+  const octx = out.getContext('2d')!;
+  octx.imageSmoothingQuality = 'high';
+  octx.drawImage(c, x0, y0, bw, bh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  return out;
 }
 
 export class MeshView {
@@ -108,18 +173,7 @@ export class MeshView {
     const gl = canvas.getContext('webgl', { antialias: true, premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: preserve });
     if (!gl) throw new Error('WebGL is not available');
     this.gl = gl;
-    const sh = (type: number, src: string) => {
-      const s = gl.createShader(type)!;
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader error');
-      return s;
-    };
-    const p = gl.createProgram()!;
-    gl.attachShader(p, sh(gl.VERTEX_SHADER, VS));
-    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(p);
-    this.prog = p;
+    this.prog = compileProgram(gl, VS, FS);
     this.mainTex = gl.createTexture()!;
   }
 
@@ -149,21 +203,7 @@ export class MeshView {
     this.draw();
   }
 
-  private upload(tex: WebGLTexture, src: TexImageSource, nearest: boolean) {
-    const gl = this.gl;
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // images are top-down, UVs bottom-up
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
-    const pot = (n: number) => (n & (n - 1)) === 0;
-    const w = (src as any).width, h = (src as any).height;
-    if (!nearest && pot(w) && pot(h)) {
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    } else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  }
+  private upload(tex: WebGLTexture, src: TexImageSource, nearest: boolean) { uploadTexture(this.gl, tex, src, nearest); }
 
   /** The texture being edited (the composed game texture). */
   setTexture(src: TexImageSource) {
@@ -194,12 +234,10 @@ export class MeshView {
     gl.disable(gl.CULL_FACE);
     gl.useProgram(this.prog);
 
-    const model = mul(rotX(this.rx), mul(rotY(this.ry), mul(scale(1 / this.radius), translate(-this.center[0], -this.center[1], -this.center[2]))));
-    const view = translate(0, 0, -3.1 / this.zoom);
-    const mvp = mul(perspective(this.fov, w / h, 0.05, 50), mul(view, model));
+    const { mvp, rot } = orbitMatrices(this, this.center, this.radius, w, h);
     const loc = (n: string) => gl.getUniformLocation(this.prog, n);
     gl.uniformMatrix4fv(loc('uMvp'), false, mvp);
-    gl.uniformMatrix4fv(loc('uModel'), false, mul(rotX(this.rx), rotY(this.ry)));
+    gl.uniformMatrix4fv(loc('uModel'), false, rot);
     gl.uniform1i(loc('uTex'), 0);
     gl.uniform1f(loc('uAmbient'), this.ambient);
     const aPos = gl.getAttribLocation(this.prog, 'aPos'), aNrm = gl.getAttribLocation(this.prog, 'aNrm'), aUv = gl.getAttribLocation(this.prog, 'aUv');
@@ -246,24 +284,6 @@ export async function renderMeshIcon(parts: MeshPart[], texture: TexImageSource,
     await v.load(parts);
     v.setTexture(texture);
     v.renderNow();
-    const src = document.createElement('canvas');
-    src.width = c.width; src.height = c.height;
-    const sctx = src.getContext('2d')!;
-    sctx.drawImage(c, 0, 0);
-    const px = sctx.getImageData(0, 0, src.width, src.height).data;
-    let x0 = src.width, y0 = src.height, x1 = -1, y1 = -1;
-    for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) {
-      if (px[(y * src.width + x) * 4 + 3] < 8) continue;
-      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-    }
-    if (x1 < 0) throw new Error('the model rendered empty');
-    const out = document.createElement('canvas');
-    out.width = W; out.height = H;
-    const m = Math.round(Math.min(W, H) * 0.015), bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-    const f = Math.min((W - 2 * m) / bw, (H - 2 * m) / bh), dw = bw * f, dh = bh * f;
-    const octx = out.getContext('2d')!;
-    octx.imageSmoothingQuality = 'high';
-    octx.drawImage(src, x0, y0, bw, bh, (W - dw) / 2, (H - dh) / 2, dw, dh);
-    return out.toDataURL('image/png');
+    return cropToContent(c, W, H).toDataURL('image/png');
   } finally { v.dispose(); }
 }

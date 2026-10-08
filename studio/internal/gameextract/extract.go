@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 5
+const Version = 9
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {

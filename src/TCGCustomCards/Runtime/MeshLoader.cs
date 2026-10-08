@@ -8,8 +8,9 @@ using UnityEngine.Rendering;
 namespace TCGCustomCards.Runtime
 {
     /// <summary>
-    /// Loads the baked figurine models TCG Studio writes: OBJ already in Unity space (left-handed, Y up, UV origin bottom-left), one object.
-    /// Reads v / vt / vn / f (polygons are fanned into triangles, groups and materials ignored). Meshes are cached per path for the session.
+    /// Loads the models TCG Studio writes (baked figurines/furniture, furniture paint meshes): OBJ already in Unity space (left-handed,
+    /// Y up, UV origin bottom-left), one object. Reads v / vt / vn / f (polygons are fanned into triangles); each "usemtl" starts the
+    /// next submesh (material names ignored), groups are ignored. Meshes are cached per path for the session.
     /// </summary>
     internal static class MeshLoader
     {
@@ -37,7 +38,10 @@ namespace TCGCustomCards.Runtime
             var outPos = new List<Vector3>();
             var outUv = new List<Vector2>();
             var outN = new List<Vector3>();
-            var tris = new List<int>();
+            var subs = new List<List<int>> { new List<int>() };
+            var tris = subs[0];
+            bool sawMaterial = false;
+            int triCount = 0;
             var map = new Dictionary<(int, int, int), int>();
             var face = new List<int>();
             bool anyNormal = false;
@@ -56,6 +60,11 @@ namespace TCGCustomCards.Runtime
                         break;
                     case "vt":
                         uvs.Add(new Vector2(float.Parse(p[1], inv), p.Length > 2 ? float.Parse(p[2], inv) : 0f));
+                        break;
+                    case "usemtl":
+                        // Triangles before the first usemtl (if any) keep submesh 0.
+                        if (sawMaterial || tris.Count > 0) { tris = new List<int>(); subs.Add(tris); }
+                        sawMaterial = true;
                         break;
                     case "vn":
                         nrms.Add(new Vector3(float.Parse(p[1], inv), float.Parse(p[2], inv), float.Parse(p[3], inv)));
@@ -83,12 +92,13 @@ namespace TCGCustomCards.Runtime
                         for (int k = 1; k + 1 < face.Count; k++)
                         {
                             tris.Add(face[0]); tris.Add(face[k]); tris.Add(face[k + 1]);
+                            triCount++;
                         }
-                        if (tris.Count / 3 > MaxTriangles) throw new InvalidDataException($"more than {MaxTriangles} triangles");
+                        if (triCount > MaxTriangles) throw new InvalidDataException($"more than {MaxTriangles} triangles");
                         break;
                 }
             }
-            if (tris.Count == 0) throw new InvalidDataException("no faces");
+            if (triCount == 0) throw new InvalidDataException("no faces");
 
             var mesh = new Mesh
             {
@@ -98,13 +108,14 @@ namespace TCGCustomCards.Runtime
             };
             mesh.SetVertices(outPos);
             mesh.SetUVs(0, outUv);
-            mesh.SetTriangles(tris, 0);
+            mesh.subMeshCount = subs.Count;
+            for (int i = 0; i < subs.Count; i++) mesh.SetTriangles(subs[i], i);
             if (anyNormal) mesh.SetNormals(outN);
             else mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             // Keep it CPU-readable: outline effects and colliders may read it; figurine meshes are small.
             mesh.UploadMeshData(false);
-            Plugin.Log.LogInfo($"Model {Path.GetFileName(path)}: {outPos.Count} vertices, {tris.Count / 3} triangles, bounds {mesh.bounds.size}");
+            Plugin.Log.LogInfo($"Model {Path.GetFileName(path)}: {outPos.Count} vertices, {triCount} triangles, {subs.Count} submesh(es), bounds {mesh.bounds.size}");
             return mesh;
         }
     }

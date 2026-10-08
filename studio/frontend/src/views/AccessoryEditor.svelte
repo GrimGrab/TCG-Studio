@@ -12,16 +12,19 @@
   import { App, errText, ask } from '../lib/api';
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
-    recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon,
+    recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon, pickableFaces, previewUrl, layerTextures,
   } from '../lib/accessoryArt';
+  import { ProjectPainter, MAX_LAYER_TEXTURES, renderPaintIcon, type LayerTexture } from '../lib/projectPaint';
   import { MeshView } from '../lib/meshView';
   import Straighten from './Straighten.svelte';
 
   let {
     kind, base = '', vanillaUrl, vanillaIconUrl = '', layout = $bindable(), iconSize = [512, 512], notify, onchange,
-    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX',
+    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true,
   }: {
     kind: string;
+    givenModel?: Model;                 // a model made elsewhere (furniture paint templates); default: the accessory kind's
+    active?: boolean;                   // false: mounted but hidden (keys go to the page around it)
     base?: string;                      // vanilla item it starts from (for its second texture in the 3D preview)
     vanillaUrl: string;                 // vanilla texture of the chosen base ('' when not exported)
     vanillaIconUrl?: string;            // vanilla shop icon of the base (palette models recolour it)
@@ -36,6 +39,8 @@
   } = $props();
 
   let model = $state<Model | null>(null);
+  /** Faces offered in the pickers (fit, wrap, copy to, fill): projected models offer their views. */
+  let pickFaces = $derived(model ? pickableFaces(model) : []);
   let S = 300;
   let vanilla: HTMLImageElement | null = null;
   let net: HTMLCanvasElement = document.createElement('canvas');
@@ -62,6 +67,27 @@
     try {
       do {
         again = false;
+        if (model.projected) {
+          // GPU painter (lib/projectPaint.ts): the views' base picture is rendered once per base; each edit only redraws the layers
+          // (net view: over that picture; 3D: as layer textures the painter projects onto every surface). The texture is made on demand.
+          const base = (await paintedImage()) ?? projectedBase();
+          if (!base) break;
+          const w = await workPainter();
+          if (paintBase !== base || baseNetS !== S) {
+            paintBase = base; baseNetS = S;
+            w.setBase(base);
+            painter3d?.setBase(base);
+            const b = netBounds(model);
+            baseNet = w.renderNet(Math.max(1, Math.round(b.w * S)), Math.max(1, Math.round(b.h * S)), [b.x0, b.y0, b.w, b.h], false);
+          }
+          await renderNet(net, model, layout, null, accUrl, S, false, baseNet);
+          drawNetView();
+          paintLayers = await layerTextures(model, layout, accUrl, S, MAX_LAYER_TEXTURES);
+          painter3d?.setLayers(paintLayers.textures, paintLayers.net);
+          textureCanvas = null;
+          if (view === 'texture') { textureCanvas = atlasNow(); drawTexView(); }
+          continue;
+        }
         const painted = await paintedImage();
         if (painted) {
           // The painted texture projected onto the faces (net view, icons) — always through the faces' own targets, it is
@@ -87,8 +113,14 @@
     const lw = Math.max(2, net.width / 500);
     if (showGuides) {
       ctx.font = `bold ${Math.round(net.width / 45)}px Nunito, sans-serif`;
-      for (const f of model.faces) {
-        const r = faceRect(model, f, S);
+      // Projected models: their views are the frames (their faces are many and overlap).
+      const b0 = netBounds(model);
+      const frames = [
+        ...model.faces.map((f) => ({ label: f.label, hidden: f.hidden, r: faceRect(model!, f, S) })),
+        ...(model.views ?? []).map((v) => ({ label: v.label, hidden: false, r: { x: (v.net[0] - b0.x0) * S, y: (v.net[1] - b0.y0) * S, w: v.net[2] * S, h: v.net[3] * S } })),
+      ];
+      for (const f of frames) {
+        const r = f.r;
         ctx.strokeStyle = 'rgba(255,255,255,0.7)';
         ctx.setLineDash([lw * 4, lw * 3]);
         ctx.lineWidth = lw;
@@ -150,11 +182,17 @@
     await loaded;                                         // model + vanilla art (an export right after mounting)
     await redraw();
     while (rendering) await new Promise((r) => setTimeout(r, 30)); // a redraw already running returns at once
+    if (model?.projected) {
+      const tex = atlasNow();
+      if (!tex || !paintBase) throw new Error('editor not ready');
+      const icon = await renderPaintIcon(paintMeshUrl(), paintBase, paintLayers?.textures ?? [], paintLayers?.net ?? [0, 0, 1, 1], iconSize, model.turn ?? 0);
+      return { texture: tex.toDataURL('image/png'), icon };
+    }
     if (!model || !textureCanvas) throw new Error('editor not ready');
     let icon: HTMLCanvasElement;
     const texture = textureCanvas.toDataURL('image/png');
     // Packs: the game mesh rendered with the finished texture (what the pack looks like in game).
-    if (model.icon === 'pack') return { texture, icon: await meshIcon(model, textureCanvas) };
+    if (model.icon === 'pack' || model.icon === 'mesh') return { texture, icon: await meshIcon(model, textureCanvas) };
     if (model.icon === 'recolor') {
       if (!vanilla || !vanillaIconUrl) throw new Error("the vanilla icon is needed to recolour it — the game templates aren't available yet (Settings → Game)");
       icon = recolorIcon(model, net, S, vanilla, await loadImage(vanillaIconUrl));
@@ -215,13 +253,13 @@
 
   // ---------------------------------------------------------------- layers
 
-  function faceById(id: string) { return model?.faces.find((f) => f.id === id); }
-  const mainFace = () => (faceById('front') ?? faceById('surface') ?? model?.faces[0])!;
+  function faceById(id: string) { return pickFaces.find((f) => f.id === id); }
+  const mainFace = () => (faceById('front') ?? faceById('surface') ?? pickFaces[0])!;
 
   /** Faces in the main row (same height as the main face): the deck box's four sides, a book's back + spine + front. */
   function wrapFaces() {
     const m = mainFace();
-    return (model?.faces ?? []).filter((f) => !f.hidden && f.net[1] === m.net[1] && f.net[3] === m.net[3]);
+    return pickFaces.filter((f) => !f.hidden && f.net[1] === m.net[1] && f.net[3] === m.net[3]);
   }
 
   function fitInto(l: Layer, net: number[], mode: 'cover' | 'contain', aspect: number) {
@@ -252,6 +290,48 @@
   const textureSize = () => [vanilla?.width || model!.textureSize, vanilla?.height || vanilla?.width || model!.textureSize];
 
   /** The painted texture, stretched to the game texture's shape when it differs (its own width kept, so no detail is lost). */
+  // Projected models (furniture): an off-screen GPU painter for the views' base picture and the texture; the 3D view has its own.
+  let work: ProjectPainter | null = null;
+  let workLoading: Promise<ProjectPainter> | null = null;
+  let painter3d: ProjectPainter | null = null;
+  let paintBase: HTMLImageElement | HTMLCanvasElement | null = null, baseNetS = 0;
+  let baseNet: HTMLCanvasElement = document.createElement('canvas');
+  let paintLayers: { textures: LayerTexture[]; net: number[] } | null = null;
+  let colorBase: { color: string; canvas: HTMLCanvasElement } | null = null;
+  const paintMeshUrl = () => previewUrl(model!.preview![0]);
+
+  function workPainter(): Promise<ProjectPainter> {
+    if (!workLoading) workLoading = (async () => {
+      const p = new ProjectPainter(document.createElement('canvas'));
+      await p.load(paintMeshUrl());
+      work = p;
+      return p;
+    })();
+    return workLoading;
+  }
+
+  /** The finished texture of a projected model (GPU render; only when shown or saved). */
+  function atlasNow(): HTMLCanvasElement | null {
+    if (!work || !paintBase || !model) return null;
+    work.setLayers(paintLayers?.textures ?? [], paintLayers?.net ?? [0, 0, 1, 1]);
+    return work.renderAtlas(model.textureSize, paintBase);
+  }
+
+  /** Projected models keep their base texture whole (faces overlap in the net): the vanilla bake, or the base colour. */
+  function projectedBase(): HTMLImageElement | HTMLCanvasElement | null {
+    if (!model?.projected) return null;
+    if (layout.base !== 'color' && vanilla) return vanilla;
+    const color = layout.baseColor || '#3a3a3a';
+    if (colorBase?.color === color) return colorBase.canvas;
+    const c = document.createElement('canvas');
+    c.width = c.height = model.textureSize;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, c.width, c.height);
+    colorBase = { color, canvas: c };
+    return c;
+  }
+
   async function paintedImage(): Promise<HTMLImageElement | HTMLCanvasElement | null> {
     if (!layout.textureFile) return null;
     let img: HTMLImageElement;
@@ -371,7 +451,7 @@
 
   /** The face a layer sits on: the visible face whose net holds its centre (else the main face). */
   function faceOf(l: Layer) {
-    return model?.faces.find((f) => !f.hidden && l.x >= f.net[0] && l.x <= f.net[0] + f.net[2] && l.y >= f.net[1] && l.y <= f.net[1] + f.net[3]) ?? mainFace();
+    return pickFaces.find((f) => !f.hidden && l.x >= f.net[0] && l.x <= f.net[0] + f.net[2] && l.y >= f.net[1] && l.y <= f.net[1] + f.net[3]) ?? mainFace();
   }
 
   /** Places l at the same relative spot of `to` that it had on `from` (nets: x, y, w, h). */
@@ -400,7 +480,10 @@
   const OPPOSITE: Record<string, string> = { front: 'back', back: 'front', left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
   const oppositeFace = $derived.by(() => {
     if (!sel || !model || sel.kind === 'fill') return undefined;
-    const f = faceById(OPPOSITE[faceOf(sel).id] ?? '');
+    // Views of projected models are "view:Front" etc.
+    const id = faceOf(sel).id, isView = id.startsWith('view:');
+    const opp = OPPOSITE[(isView ? id.slice(5) : id).toLowerCase()] ?? '';
+    const f = faceById(isView && opp ? 'view:' + opp[0].toUpperCase() + opp.slice(1) : opp);
     return f && !f.hidden ? f : undefined;
   });
 
@@ -420,7 +503,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (!model || straightening || e.defaultPrevented) return;
+    if (!model || !active || straightening || e.defaultPrevented) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName))) return;
     if (t?.closest?.('.backdrop')) return; // a dialog is open
@@ -470,7 +553,7 @@
   // ---------------------------------------------------------------- straighten (perspective correction of a photo)
 
   let straightening = $state<Layer | null>(null);
-  const straightenFaces = $derived((model?.faces ?? []).filter((f) => !f.hidden).map((f) => ({ label: f.label.toLowerCase(), aspect: f.net[2] / f.net[3] })));
+  const straightenFaces = $derived(pickFaces.filter((f) => !f.hidden).map((f) => ({ label: f.label.toLowerCase(), aspect: f.net[2] / f.net[3] })));
 
   async function applyStraighten(png: string, pts: number[], aspect: number) {
     const l = straightening;
@@ -606,7 +689,7 @@
       // Snap the centre to face centres/edges when close (hold Alt to move freely).
       if (!e.altKey && model) {
         const tol = 0.03 * Math.max(model.size[0], model.size[1]);
-        for (const f of model.faces) {
+        for (const f of pickFaces) {
           for (const cx of [f.net[0], f.net[0] + f.net[2] / 2, f.net[0] + f.net[2]]) if (Math.abs(sel.x - cx) < tol) sel.x = cx;
           for (const cy of [f.net[1], f.net[1] + f.net[3] / 2, f.net[1] + f.net[3]]) if (Math.abs(sel.y - cy) < tol) sel.y = cy;
         }
@@ -668,14 +751,32 @@
 
   $effect(() => {
     const c = canvas3d;
-    if (!c || !model) return;
+    if (!c || !model?.projected) return;
+    let pp: ProjectPainter;
+    try { pp = new ProjectPainter(c); } catch (e) { meshError = errText(e); return; }
+    painter3d = pp;
+    meshError = '';
+    pp.ry += model.turn ?? 0;
+    pp.load(paintMeshUrl()).then(() => {
+      if (paintBase) pp.setBase(paintBase);
+      if (paintLayers) pp.setLayers(paintLayers.textures, paintLayers.net);
+    }).catch((e) => (meshError = errText(e)));
+    const ro = new ResizeObserver(() => pp.draw());
+    ro.observe(c);
+    return () => { ro.disconnect(); pp.dispose(); if (painter3d === pp) painter3d = null; };
+  });
+
+  $effect(() => {
+    const c = canvas3d;
+    if (!c || !model || model.projected) return;
     let mv: MeshView;
     try { mv = new MeshView(c, !!model.palette); } catch (e) { meshError = errText(e); return; }
     mesh = mv;
     meshError = '';
     if (model.kind === 'Playmat') { mv.rx = 0.85; mv.ry = -0.25; }
+    mv.ry += model.turn ?? 0;
     const parts = ((model as any).preview ?? []).map((p: any) => ({
-      url: tpl(p.mesh + '.obj'), texture: p.texture, glass: p.glass, secondaryUrl: base ? tpl(`${base}_texture2.png`) : undefined,
+      url: previewUrl(p), texture: p.texture, glass: p.glass, secondaryUrl: base ? tpl(`${base}_texture2.png`) : undefined,
     }));
     mv.load(parts).then(() => { if (textureCanvas) mv.setTexture(textureCanvas); })
       .catch((e) => (meshError = errText(e) + " — the game templates aren't available yet (Settings → Game)"));
@@ -684,23 +785,51 @@
     return () => { ro.disconnect(); mv.dispose(); if (mesh === mv) mesh = null; };
   });
 
+  // Drag on the model: a layer under the pointer moves with it (painted models; Shift+click puts the selected layer there); anywhere
+  // else, or with Alt, the view turns.
   let spin: { x: number; y: number; rx: number; ry: number } | null = null;
+  let drag3d: { id: string; dx: number; dy: number } | null = null;
+  const cam = () => mesh ?? painter3d;
   function spinDown(e: PointerEvent) {
-    if (!mesh) return;
-    spin = { x: e.clientX, y: e.clientY, rx: mesh.rx, ry: mesh.ry };
+    const c = cam();
+    if (!c) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (painter3d && !e.altKey) {
+      const p = painter3d.pick(e.clientX, e.clientY);
+      if (p && e.shiftKey && sel && sel.kind !== 'fill') {
+        pushUndo(snapshot()); sel.x = p.x; sel.y = p.y; changed();
+        drag3d = { id: sel.id, dx: 0, dy: 0 };
+        return;
+      }
+      const l = p ? hit(p) : undefined;
+      if (p && l) {
+        selected = l.id;
+        pushUndo(snapshot());
+        drag3d = { id: l.id, dx: l.x - p.x, dy: l.y - p.y };
+        return;
+      }
+    }
+    spin = { x: e.clientX, y: e.clientY, rx: c.rx, ry: c.ry };
   }
   function spinMove(e: PointerEvent) {
-    if (!spin || !mesh) return;
-    mesh.ry = spin.ry + (e.clientX - spin.x) * 0.01;
-    mesh.rx = Math.max(-1.55, Math.min(1.55, spin.rx + (e.clientY - spin.y) * 0.01));
-    mesh.draw();
+    if (drag3d && painter3d) {
+      const l = layout.layers.find((q) => q.id === drag3d!.id), p = painter3d.pick(e.clientX, e.clientY);
+      if (l && p) { l.x = p.x + drag3d.dx; l.y = p.y + drag3d.dy; changed(); }
+      return;
+    }
+    const c = cam();
+    if (!spin || !c) return;
+    c.ry = spin.ry + (e.clientX - spin.x) * 0.01;
+    c.rx = Math.max(-1.55, Math.min(1.55, spin.rx + (e.clientY - spin.y) * 0.01));
+    c.draw();
   }
+  function spinUp() { spin = null; drag3d = null; }
   function spinWheel(e: WheelEvent) {
-    if (!mesh) return;
+    const c = cam();
+    if (!c) return;
     e.preventDefault();
-    mesh.zoom = Math.max(0.5, Math.min(4, mesh.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-    mesh.draw();
+    c.zoom = Math.max(0.5, Math.min(4, c.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    c.draw();
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -710,9 +839,9 @@
 
   onMount(async () => {
     try {
-      model = (await App.AccessoryModel(kind)) as unknown as Model;
+      model = givenModel ?? ((await App.AccessoryModel(kind)) as unknown as Model);
       S = netScale(model);
-      if (model.palette) view = '3d';
+      if (model.palette || model.projected) view = '3d';
       if (!layout || layout.version !== 2) layout = newLayout();
       resetHistory();
       await loadVanilla();
@@ -735,7 +864,10 @@
   });
   $effect(() => {
     view; showGuides; netView; texView;
-    untrack(() => { drawNetView(); drawTexView(); });
+    untrack(() => {
+      if (model?.projected && view === 'texture' && !textureCanvas) textureCanvas = atlasNow();
+      drawNetView(); drawTexView();
+    });
   });
 
   const BLENDS: [GlobalCompositeOperation, string][] = [
@@ -747,10 +879,10 @@
 
 {#snippet viewer()}
   <div class="scene" use:maximizable>
-    <canvas class="view3d" bind:this={canvas3d} onpointerdown={spinDown} onpointermove={spinMove} onpointerup={() => (spin = null)} onwheel={spinWheel}></canvas>
+    <canvas class="view3d" bind:this={canvas3d} onpointerdown={spinDown} onpointermove={spinMove} onpointerup={spinUp} onwheel={spinWheel}></canvas>
     {#if meshError}<p class="warn small overlay">{meshError}</p>{/if}
   </div>
-  <p class="muted small">The game's own model with your texture. Drag to turn, scroll to zoom.</p>
+  <p class="muted small">{model?.projected ? 'Drag a layer on the model to move it (Shift+click: put the selected layer there); drag elsewhere or with Alt to turn, scroll to zoom.' : "The game's own model with your texture. Drag to turn, scroll to zoom."}</p>
 {/snippet}
 
 {#if straightening}
@@ -784,7 +916,7 @@
   <div class="editor">
     <div class="stage">
       <div class="row tabs">
-        <button class:on={view === 'net'} onclick={() => (view = 'net')}>Faces</button>
+        <button class:on={view === 'net'} onclick={() => (view = 'net')}>{model.projected ? 'Views' : 'Faces'}</button>
         <button class:on={view === 'texture'} onclick={() => (view = 'texture')}>Texture (UV map)</button>
         <button class:on={view === '3d'} onclick={() => (view = '3d')}>3D preview</button>
         <div class="grow"></div>
@@ -863,7 +995,7 @@
             <label class="field">Face
               <select bind:value={sel.face} onchange={changed}>
                 <option value="">All faces</option>
-                {#each model.faces as f}<option value={f.id}>{f.label}</option>{/each}
+                {#each pickFaces as f}<option value={f.id}>{f.label}</option>{/each}
               </select>
             </label>
             <div class="row">
@@ -897,12 +1029,12 @@
             <div class="small muted">Fill (keeps proportions, crops the overflow):</div>
             <div class="row wrap">
               {#if wrapFaces().length > 1}<button class="tiny" onclick={() => fitSelected('_wrap', 'cover')} title={wrapFaces().map((f) => f.label).join(' + ') + ' as one panorama'}>Wrap around</button>{/if}
-              {#each model.faces as f}<button class="tiny" onclick={() => fitSelected(f.id, 'cover')}>{f.label}</button>{/each}
+              {#each pickFaces as f}<button class="tiny" onclick={() => fitSelected(f.id, 'cover')}>{f.label}</button>{/each}
             </div>
             <div class="small muted">Stretch to (fills exactly, may distort):</div>
             <div class="row wrap">
               {#if wrapFaces().length > 1}<button class="tiny" onclick={() => fitSelected('_wrap', 'stretch')}>Wrap around</button>{/if}
-              {#each model.faces as f}<button class="tiny" onclick={() => fitSelected(f.id, 'stretch')}>{f.label}</button>{/each}
+              {#each pickFaces as f}<button class="tiny" onclick={() => fitSelected(f.id, 'stretch')}>{f.label}</button>{/each}
             </div>
             <div class="row wrap">
               <button class="tiny" onclick={() => fitSelected(mainFace().id, 'contain')}>Fit inside {mainFace().label.toLowerCase()}</button>
@@ -911,7 +1043,7 @@
             <div class="row wrap">
               {#if oppositeFace}<button class="tiny primary" onclick={() => copyToFaces([oppositeFace!.id])}
                 title="The same place on the opposite side">Opposite: {oppositeFace.label}</button>{/if}
-              {#each model.faces.filter((f) => !f.hidden && f.id !== faceOf(sel!).id) as f}<button class="tiny" onclick={() => copyToFaces([f.id])}>{f.label}</button>{/each}
+              {#each pickFaces.filter((f) => !f.hidden && f.id !== faceOf(sel!).id) as f}<button class="tiny" onclick={() => copyToFaces([f.id])}>{f.label}</button>{/each}
             </div>
             <p class="muted small">Drag the white side handles to stretch one side; the blue corner keeps proportions (hold Shift to stretch freely).
               Keys: Ctrl+C / Ctrl+V copy and paste a layer, Ctrl+D duplicate, Del delete, Ctrl+Z / Ctrl+Y undo and redo.</p>

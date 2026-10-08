@@ -226,7 +226,7 @@ namespace TCGCustomCards.Core
     public enum FurnitureType
     {
         Shelf, CardShelf, PlayTable, BulkDonationBox, TrashBin, EmptyBoxStorage, CardStorageShelf,
-        AutoPackOpener, AutoCleanser, Workbench, CashCounter
+        AutoPackOpener, AutoCleanser, Workbench, CashCounter, WarehouseShelf, TournamentPrizeShelf
     }
 
     /// <summary>
@@ -255,6 +255,11 @@ namespace TCGCustomCards.Core
         [JsonProperty("tint")] public string Tint;
         /// <summary>Own model: baked OBJ in the piece's local space (Unity space, like figurine models). Null = base model.</summary>
         [JsonProperty("mesh")] public string Mesh;
+        /// <summary>
+        /// Painted in TCG Studio's face editor: the base's body renderers get meshes with new UVs into one painted atlas
+        /// (<see cref="Runtime.FurniturePaint"/>). Replaces texture/tint. Null = none.
+        /// </summary>
+        [JsonProperty("paint")] public FurniturePaintDef Paint;
         /// <summary>Shelf spots (item or card spots, depending on the type). Null/empty = the base piece's own spots.</summary>
         [JsonProperty("spots")] public List<FurnitureSpotDef> Spots;
         /// <summary>Placement area: the floor box kept free of other furniture/walls when placing. Null = the base piece's.</summary>
@@ -264,6 +269,21 @@ namespace TCGCustomCards.Core
 
         [JsonIgnore] public EObjectType BaseObject = EObjectType.None;
         [JsonIgnore] public string FolderPath;
+    }
+
+    public class FurniturePaintDef
+    {
+        /// <summary>The painted atlas (every part reads it).</summary>
+        [JsonProperty("texture")] public string Texture;
+        [JsonProperty("parts")] public List<FurniturePaintPartDef> Parts;
+    }
+
+    public class FurniturePaintPartDef
+    {
+        /// <summary>Body renderer under the piece root: "&lt;sibling index&gt;:&lt;name&gt;/…" ("" = the root itself).</summary>
+        [JsonProperty("renderer")] public string Renderer;
+        /// <summary>Its mesh with the painting UVs: OBJ in the renderer's mesh space, one "usemtl" group per submesh.</summary>
+        [JsonProperty("mesh")] public string Mesh;
     }
 
     public enum FurnitureSpotKind { Items, Card }
@@ -277,6 +297,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("role")] public string Role;
         [JsonProperty("pos")] public float[] Pos = { 0f, 0f, 0f };
         [JsonProperty("rot")] public float[] Rot = { 0f, 0f, 0f };
+        /// <summary>Size against the vanilla piece's (screens, drawer, signs…). Null/0 = unchanged.</summary>
+        [JsonProperty("scale")] public float? Scale;
     }
 
     /// <summary>

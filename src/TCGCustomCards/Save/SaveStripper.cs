@@ -22,7 +22,8 @@ namespace TCGCustomCards.Save
             public int index = -1;
             /// <summary>
             /// replace (list element / object at index), remove (appended back), removeAt (put back at its index: placed custom furniture,
-            /// whose list order other save data may rely on), scalar (object or enum field), spawn (paired restock lists).
+            /// whose list order other save data may rely on), scalar (object or enum field), spawn (paired restock lists),
+            /// warehouseBox (a box stored on a custom warehouse shelf: appended back, its shelf index is the saved list's).
             /// </summary>
             public string mode;
             public string type;
@@ -51,10 +52,12 @@ namespace TCGCustomCards.Save
         {
             var stash = new Stash { alloc = AllocationSnapshot.Current() };
             var originals = new List<(FieldInfo f, object value)>();
-            undo = () => { foreach (var (f, v) in originals) f.SetValue(g, v); };
+            // Newest first: a field swapped twice (pre-pass, then the generic pass) ends with its true original.
+            undo = () => { for (int i = originals.Count - 1; i >= 0; i--) originals[i].f.SetValue(g, originals[i].value); };
             if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0) return stash;
 
             StripSpawnWaiting(g, stash, originals);
+            StripWarehouseBoxes(g, stash, originals);
             foreach (var f in GameFields)
             {
                 if (f.Name == "m_SpawnBoxRestockIndexWaitingList" || f.Name == "m_SpawnBoxItemCountWaitingList") continue;
@@ -168,6 +171,70 @@ namespace TCGCustomCards.Save
             originals.Add((fCounts, counts));
             fRows.SetValue(g, keptRows);
             fCounts.SetValue(g, keptCounts);
+        }
+
+        private const string WarehouseField = "m_WarehouseShelfSaveDataList";
+        private const string BoxField = "m_PackageBoxItemSaveDataList";
+
+        /// <summary>
+        /// Stored boxes point at their warehouse shelf by its index in the shelf list (ShelfManager.cs:565/854), and the generic pass
+        /// takes custom shelves out of that list. Boxes on a custom shelf go to the stash with it (mode warehouseBox: full index,
+        /// appended back on load). Boxes on vanilla shelves get the index their shelf has in the stripped list — also those the generic
+        /// pass then stashes (custom item) — and get it back on load (<see cref="RemapStoredBoxes"/>, <see cref="RestoreOne"/>).
+        /// </summary>
+        private static void StripWarehouseBoxes(CGameData g, Stash stash, List<(FieldInfo f, object value)> originals)
+        {
+            var shelves = g.m_WarehouseShelfSaveDataList;
+            var boxes = g.m_PackageBoxItemSaveDataList;
+            if (shelves == null || boxes == null) return;
+            var removed = new List<int>();
+            for (int i = 0; i < shelves.Count; i++)
+                if (shelves[i] != null && CustomRefWalker.IsCustomFurnitureEntry(shelves[i])) removed.Add(i);
+            if (removed.Count == 0) return;
+            var kept = new List<PackageBoxItemaveData>();
+            foreach (var b in boxes)
+            {
+                if (b == null || !b.isStored) { kept.Add(b); continue; }
+                if (removed.Contains(b.storedWarehouseShelfIndex))
+                {
+                    stash.entries.Add(new StashEntry { field = BoxField, mode = "warehouseBox", type = typeof(PackageBoxItemaveData).AssemblyQualifiedName, json = JsonUtility.ToJson(b) });
+                    continue;
+                }
+                int below = removed.Count(r => r < b.storedWarehouseShelfIndex);
+                if (below == 0) { kept.Add(b); continue; }
+                var copy = JsonUtility.FromJson<PackageBoxItemaveData>(JsonUtility.ToJson(b));
+                copy.storedWarehouseShelfIndex -= below;
+                kept.Add(copy);
+            }
+            var f = typeof(CGameData).GetField(BoxField);
+            originals.Add((f, boxes));
+            f.SetValue(g, kept);
+        }
+
+        /// <summary>
+        /// Load, after the custom shelves are back in the list: stripped indices of the vanilla save's boxes → current indices
+        /// (<paramref name="removed"/> = saved indices of every stashed custom shelf, <paramref name="dropped"/> = those not restored).
+        /// </summary>
+        private static void RemapStoredBoxes(List<int> removed, HashSet<int> dropped)
+        {
+            if (removed.Count == 0 || CPlayerData.m_PackageBoxItemSaveDataList == null) return;
+            foreach (var b in CPlayerData.m_PackageBoxItemSaveDataList)
+                if (b != null && b.isStored) SetStoredShelf(b, SavedToFull(b.storedWarehouseShelfIndex, removed), dropped);
+        }
+
+        /// <summary>Index in the stripped list → index in the list as it was saved (custom shelves included).</summary>
+        private static int SavedToFull(int stripped, List<int> removed)
+        {
+            int full = stripped;
+            foreach (int r in removed) if (r <= full) full++; // removed is ascending
+            return full;
+        }
+
+        /// <summary>Saved full index → current index; a box whose shelf wasn't restored is left lying where it was.</summary>
+        private static void SetStoredShelf(PackageBoxItemaveData b, int full, HashSet<int> dropped)
+        {
+            if (dropped.Contains(full)) { b.isStored = false; return; }
+            b.storedWarehouseShelfIndex = full - dropped.Count(d => d < full);
         }
 
         private static object Neutralized(object original)
@@ -301,13 +368,21 @@ namespace TCGCustomCards.Save
             if (stash == null || stash.entries.Count == 0) return;
             var alloc = stash.alloc ?? new AllocationSnapshot();
             int ok = 0, dropped = 0;
+            // Warehouse shelves taken out at save (saved indices, ascending) and those that couldn't be put back: stored boxes refer to
+            // shelves by index (see StripWarehouseBoxes).
+            var shelves = new List<int>();
+            var lostShelves = new HashSet<int>();
+            bool boxesRemapped = false;
             // Pieces go back to their saved index first (ascending, so the list is as saved), then replace entries (indices refer to
             // the saved list), then removes are appended.
             foreach (var e in stash.entries.OrderBy(e => e.mode == "removeAt" ? 0 : e.mode == "replace" ? 1 : 2).ThenBy(e => e.index))
             {
+                if (!boxesRemapped && e.mode != "removeAt") { RemapStoredBoxes(shelves, lostShelves); boxesRemapped = true; }
+                bool restored = false;
                 try
                 {
-                    if (RestoreOne(e, alloc)) ok++;
+                    restored = RestoreOne(e, alloc, shelves, lostShelves);
+                    if (restored) ok++;
                     else { dropped++; Plugin.Log.LogWarning($"Restore: dropped {e.field}[{e.index}] (its custom set/card/pack/furniture is no longer installed)"); }
                 }
                 catch (Exception ex)
@@ -315,11 +390,17 @@ namespace TCGCustomCards.Save
                     dropped++;
                     Plugin.Log.LogError($"Restore failed for {e.field}[{e.index}]: {ex.Message}");
                 }
+                if (e.mode == "removeAt" && e.field == WarehouseField)
+                {
+                    shelves.Add(e.index);
+                    if (!restored) lostShelves.Add(e.index);
+                }
             }
+            if (!boxesRemapped) RemapStoredBoxes(shelves, lostShelves);
             Plugin.Log.LogInfo($"Load: restored {ok} custom entries into the game{(dropped > 0 ? $", dropped {dropped}" : "")}");
         }
 
-        private static bool RestoreOne(StashEntry e, AllocationSnapshot alloc)
+        private static bool RestoreOne(StashEntry e, AllocationSnapshot alloc, List<int> shelves, HashSet<int> lostShelves)
         {
             if (e.mode == "spawn")
             {
@@ -356,6 +437,8 @@ namespace TCGCustomCards.Save
             {
                 obj = JsonUtility.FromJson(e.json, type);
                 if (!CustomRefWalker.Walk(obj, CustomRefWalker.Mode.Remap, alloc)) return false;
+                if (obj is PackageBoxItemaveData box && box.isStored)
+                    SetStoredShelf(box, e.mode == "warehouseBox" ? box.storedWarehouseShelfIndex : SavedToFull(box.storedWarehouseShelfIndex, shelves), lostShelves);
             }
 
             switch (e.mode)
@@ -369,6 +452,7 @@ namespace TCGCustomCards.Save
                     list[e.index] = obj;
                     return true;
                 case "remove":
+                case "warehouseBox":
                     ((IList)target.GetValue(null))?.Add(obj);
                     return true;
                 case "removeAt":

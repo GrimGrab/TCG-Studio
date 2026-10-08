@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.1.0 - 2026-10-08
+
+Paint your own furniture, and build custom furniture from every piece in the game.
+
+- New: Furniture → Paint. Put images, text and colour fills on a furniture piece in the same editor as pack and box art, with a live 3D preview. The paint replaces the piece's tint; "Remove paint" brings the plain look back.
+- New: all 43 vanilla furniture pieces can now be the base of custom furniture, including the warehouse shelf and the tournament prize shelf. Boxes stored on a custom warehouse shelf are kept when you save and load.
+- New: Spots & positions can now move and resize the working parts of a piece (cash drawer, card machine, signs, the prize shelf's TV), with a size setting against the vanilla piece.
+- Changed: a furniture piece with your own model can be moved, turned and resized right in the 3D view (keys 1 / 2 / 3), and you can move its spots onto the model.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.0.2 - 2026-10-07
 
 Hide-vanilla settings now always work.

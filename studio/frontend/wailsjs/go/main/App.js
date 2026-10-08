@@ -510,8 +510,16 @@ export function SetShopSignCrop(arg1) {
   return window['go']['main']['App']['SetShopSignCrop'](arg1);
 }
 
+export function SetShopSignFont(arg1, arg2) {
+  return window['go']['main']['App']['SetShopSignFont'](arg1, arg2);
+}
+
 export function SetShopSignShowName(arg1) {
   return window['go']['main']['App']['SetShopSignShowName'](arg1);
+}
+
+export function SetShopSignText(arg1) {
+  return window['go']['main']['App']['SetShopSignText'](arg1);
 }
 
 export function SetupRepair() {
@@ -528,6 +536,10 @@ export function SetupUninstall(arg1) {
 
 export function ShopSign() {
   return window['go']['main']['App']['ShopSign']();
+}
+
+export function ShopSignFonts() {
+  return window['go']['main']['App']['ShopSignFonts']();
 }
 
 export function ShrinkPreview(arg1, arg2) {

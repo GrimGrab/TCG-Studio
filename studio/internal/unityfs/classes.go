@@ -151,6 +151,7 @@ type Material struct {
 	Textures map[string]TexEnv
 	Order    []string
 	Colors   map[string][4]float32 // linear RGBA as serialized (e.g. _Color)
+	Floats   map[string]float32
 }
 
 type TexEnv struct {
@@ -197,10 +198,12 @@ func ReadMaterial(o *Object) (m Material, err error) {
 			r.str()
 			r.i32()
 		}
+		floats := map[string]float32{}
 		for i, n := 0, r.count(8); i < n; i++ {
-			r.str()
-			r.f32()
+			name := r.str()
+			floats[name] = r.f32()
 		}
+		m.Floats = floats
 		cols := map[string][4]float32{}
 		for i, n := 0, r.count(20); i < n; i++ {
 			name := r.str()

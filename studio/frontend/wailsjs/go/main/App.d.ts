@@ -272,7 +272,11 @@ export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modco
 
 export function SetShopSignCrop(arg1:Array<number>):Promise<main.ShopSignView>;
 
+export function SetShopSignFont(arg1:string,arg2:string):Promise<main.ShopSignView>;
+
 export function SetShopSignShowName(arg1:boolean):Promise<main.ShopSignView>;
+
+export function SetShopSignText(arg1:main.ShopSignText):Promise<main.ShopSignView>;
 
 export function SetupRepair():Promise<string>;
 
@@ -281,6 +285,8 @@ export function SetupState():Promise<installer.State>;
 export function SetupUninstall(arg1:boolean):Promise<string>;
 
 export function ShopSign():Promise<main.ShopSignView>;
+
+export function ShopSignFonts():Promise<Array<main.ShopSignFont>>;
 
 export function ShrinkPreview(arg1:string,arg2:string):Promise<library.ShrinkPreview>;
 

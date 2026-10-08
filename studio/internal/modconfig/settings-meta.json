@@ -15,5 +15,5 @@
     "AiDeckWeight4Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
     "AiDeckWeight5Colors": { "setting": "AiDeckStyle", "is": ["Random"] }
   },
-  "elsewhere": ["ShopSignImage", "ShopSignCrop", "ShowShopNameOnSign"]
+  "elsewhere": ["ShopSignImage", "ShopSignCrop", "ShowShopNameOnSign", "ShopSignFont", "ShopSignTextColor", "ShopSignTextSize", "ShopSignOutline", "ShopSignOutlineColor"]
 }

@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.3.2 - 2026-10-08
+
+Customise the shop name on your shop sign.
+
+- New: Settings → Shop sign now lets you change the shop name's font: the game's own font, other fonts from the game, any font installed on Windows, or your own .ttf/.otf file.
+- New: pick your own colour, size and outline (with outline colour) for the shop name, with a live preview of the sign before you go in game. Also in F1 under Visuals - Shop sign text.
+- Fixed: removing the sign picture no longer deletes other sign files.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.3.1 - 2026-10-08
 
 Put your own picture on the sign above your shop.

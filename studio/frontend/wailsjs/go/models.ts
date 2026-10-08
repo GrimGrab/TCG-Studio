@@ -1936,11 +1936,52 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ShopSignFont {
+	    source: string;
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopSignFont(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	export class ShopSignText {
+	    font: string;
+	    fontUrl: string;
+	    color: string;
+	    size: number;
+	    outline: number;
+	    outlineColor: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopSignText(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.font = source["font"];
+	        this.fontUrl = source["fontUrl"];
+	        this.color = source["color"];
+	        this.size = source["size"];
+	        this.outline = source["outline"];
+	        this.outlineColor = source["outlineColor"];
+	    }
+	}
 	export class ShopSignView {
 	    image: string;
 	    crop: number[];
 	    showName: boolean;
 	    aspect: number;
+	    text: ShopSignText;
+	    layout: string;
+	    shopName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ShopSignView(source);
@@ -1952,7 +1993,28 @@ export namespace main {
 	        this.crop = source["crop"];
 	        this.showName = source["showName"];
 	        this.aspect = source["aspect"];
+	        this.text = this.convertValues(source["text"], ShopSignText);
+	        this.layout = source["layout"];
+	        this.shopName = source["shopName"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SmartArtCard {
 	    name: string;

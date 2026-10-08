@@ -48,6 +48,8 @@ namespace TCGCustomCards
         internal static ConfigEntry<float> PrintedBorderMax;
         internal static ConfigEntry<string> ShopSignImage, ShopSignCrop;
         internal static ConfigEntry<bool> ShowShopNameOnSign;
+        internal static ConfigEntry<string> ShopSignFont, ShopSignTextColor, ShopSignOutlineColor;
+        internal static ConfigEntry<float> ShopSignTextSize, ShopSignOutline;
         internal static ConfigEntry<bool> GradeLabel;
         internal static ConfigEntry<float> GradeLabelOffsetX;
         internal static ConfigEntry<float> GradeLabelOffsetY;
@@ -133,6 +135,20 @@ namespace TCGCustomCards
                 "corner), set with the crop box in TCG Studio's Settings → Shop sign. Empty = the largest 4.11:1 area from the middle. Applies live.");
             ShowShopNameOnSign = Config.Bind("Visuals", "ShowShopNameOnSign", true,
                 "Show your shop's name on the sign above the entrance. Turn it off when your ShopSignImage already has a name or logo. Applies live.");
+            const string signText = "Visuals - Shop sign text";
+            ShopSignFont = Config.Bind(signText, "ShopSignFont", "",
+                "Font of the shop name on the sign: a .ttf/.otf file name in the plugin's ShopSign folder (TCG Studio's Settings → Shop sign " +
+                "copies the font you choose there) or a full path. Empty = the game's own font. Applies live.");
+            ShopSignTextColor = Config.Bind(signText, "ShopSignTextColor", "",
+                "Colour of the shop name on the sign as #RRGGBB. Empty = the game's gold. It still dims at night. Applies live.");
+            ShopSignTextSize = Config.Bind(signText, "ShopSignTextSize", 1f, new ConfigDescription(
+                "Size of the shop name on the sign (1 = the game's size). Long names are still shrunk to fit. Applies live.",
+                new AcceptableValueRange<float>(0.5f, 2f)));
+            ShopSignOutline = Config.Bind(signText, "ShopSignOutline", 0f, new ConfigDescription(
+                "Outline around the letters of the shop name, as a fraction of the font size (0 = none, 0.1 = a bold outline). Applies live.",
+                new AcceptableValueRange<float>(0f, 0.3f)));
+            ShopSignOutlineColor = Config.Bind(signText, "ShopSignOutlineColor", "#000000",
+                "Colour of the shop name's outline (ShopSignOutline) as #RRGGBB. Applies live.");
             ShopSign.Init();
             GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
                 "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");

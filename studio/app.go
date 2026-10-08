@@ -1078,6 +1078,13 @@ func (a *App) fileHandler() http.Handler {
 			}
 		case path == "globalback/"+globalBackFile:
 			file = filepath.Join(game.PluginDir(a.settings.GameDir), globalBackFile)
+		case strings.HasPrefix(path, "signtemplates/"): // Settings → Shop sign preview: layout, default font, game fonts
+			rel := strings.TrimPrefix(path, "signtemplates/")
+			if strings.Contains(rel, "..") || strings.Contains(rel, `\`) || strings.Count(rel, "/") > 1 {
+				http.NotFound(w, r)
+				return
+			}
+			file = filepath.Join(a.templatesDir(), gameextract.ShopSignDir, filepath.FromSlash(rel))
 		case strings.HasPrefix(path, "shopsign/"): // Settings → Shop sign
 			name := strings.TrimPrefix(path, "shopsign/")
 			if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {

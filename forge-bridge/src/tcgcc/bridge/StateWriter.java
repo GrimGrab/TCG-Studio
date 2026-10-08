@@ -87,9 +87,16 @@ final class StateWriter {
             for (CardView a : cv.getAttackers()) {
                 Map<String, Object> e = new LinkedHashMap<>();
                 e.put("attacker", a.getId());
-                GameEntityView d = cv.getDefender(a);
-                e.put("defender", d == null ? null : d.getId());
-                e.put("defenderIsPlayer", d instanceof PlayerView);
+                // Attack target from Forge's live combat (the view lags while attackers are declared), else the view's.
+                Object[] ld = liveDefender(game, a.getId());
+                if (ld != null) {
+                    e.put("defender", ld[0]);
+                    e.put("defenderIsPlayer", ld[1]);
+                } else {
+                    GameEntityView d = cv.getDefender(a);
+                    e.put("defender", d == null ? null : d.getId());
+                    e.put("defenderIsPlayer", d instanceof PlayerView);
+                }
                 // Blockers from Forge's live combat (updated on every assignment while you declare); the view only catches up
                 // once blocks are confirmed, so lines/checks on the table lagged a whole step.
                 List<Integer> bl = liveBlockers(game, a.getId());
@@ -170,6 +177,22 @@ final class StateWriter {
             Bridge.log("canBeBlockedBy failed: " + t);
         }
         return null;
+    }
+
+    /** {id, isPlayer} of what this attacker attacks in Forge's live combat, or null when that isn't available. */
+    private static Object[] liveDefender(Game game, int attackerId) {
+        try {
+            if (game == null) return null;
+            var combat = game.getCombat();
+            Card attacker = game.findById(attackerId);
+            if (combat == null || attacker == null) return null;
+            var d = combat.getDefenderByAttacker(attacker);
+            if (d == null) return null;
+            return new Object[] { d.getId(), d instanceof forge.game.player.Player };
+        } catch (Throwable t) {
+            Bridge.log("liveDefender failed: " + t);
+            return null;
+        }
     }
 
     /** Blockers of this attacker in Forge's live combat, or null when that isn't available (then the view's are used). */

@@ -107,6 +107,16 @@ namespace TCGCustomCards.Runtime.Mtg
             Ask = null;
         }
 
+        /// <summary>"input" asks: the typed text (Forge checks it and asks again when it isn't valid); cancel = Forge's cancel.</summary>
+        public static void AnswerText(string text, bool cancel = false)
+        {
+            if (Ask == null) return;
+            var a = new JObject { ["t"] = "answer", ["id"] = Ask["id"], ["text"] = text ?? "" };
+            if (cancel) a["cancel"] = true;
+            ForgeBridge.Send(a);
+            Ask = null;
+        }
+
         /// <summary>Replacement for PlayTableGame.DelayStart (a coroutine on the PlayTableGame).</summary>
         /// <param name="rematch">Another game with the same customer (vanilla rematch) — [MTG - AI opponent] AiKeepDeckOnRematch.</param>
         public static IEnumerator Run(PlayTableGame game, bool rematch)

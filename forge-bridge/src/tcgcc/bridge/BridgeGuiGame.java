@@ -100,16 +100,60 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         sendState();
         Bridge.send(Bridge.msg("prompt", "text", promptText, "card", promptCard,
                 "ok", okEnabled ? okLabel : null, "cancel", cancelEnabled ? cancelLabel : null,
-                "selectable", selectableIds(), "picked", pickedIds(), "min", getSelectionMin(), "max", getSelectionMax()));
+                "selectable", selectableIds(), "picked", pickedIds(), "min", getSelectionMin(), "max", getSelectionMax(),
+                "selectableCards", offTableSelectables(), "pickedPlayers", pickedPlayerIds(), "cardInfo", promptCardInfo()));
     }
 
-    /** Cards/players already chosen in the current multi-select (Forge highlights them; clicking again deselects). */
+    /** The prompt's card in full: it may be a card the state doesn't carry (single-card scry/surveil ask about a library card). */
+    private Map<String, Object> promptCardInfo() {
+        GameView gv = getGameView();
+        CardView c = promptCard == null ? null : StateWriter.findCard(gv, promptCard);
+        if (c == null) return null;
+        try {
+            return StateWriter.card(c);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Players Forge highlights (e.g. the current attack target while declaring attackers); ids can collide with card ids in picked. */
+    private List<Integer> pickedPlayerIds() {
+        List<Integer> ids = new ArrayList<>();
+        GameView gv = getGameView();
+        if (gv == null) return ids;
+        for (PlayerView p : gv.getPlayers()) if (isHighlighted(p)) ids.add(p.getId());
+        return ids;
+    }
+
+    /**
+     * Selectable cards the table doesn't show (anywhere but the battlefield, my hand and the stack: graveyards, exile,
+     * libraries, command zone, other hands...), with full details so the game can show them in a strip. Forge picks them
+     * on the board for some costs/targets whatever the preferences (e.g. "exile a card from your graveyard").
+     */
+    private List<Map<String, Object>> offTableSelectables() {
+        List<Map<String, Object>> r = new ArrayList<>();
+        GameView gv = getGameView();
+        if (gv == null || !isSelecting()) return r;
+        PlayerView me = humanView();
+        for (CardView c : StateWriter.allCards(gv)) {
+            if (!isSelectable(c) || c.getZone() == null) continue;
+            ZoneType z = c.getZone();
+            if (z == ZoneType.Battlefield || z == ZoneType.Stack) continue;
+            if (z == ZoneType.Hand && me != null && c.getController() != null && c.getController().getId() == me.getId()) continue;
+            r.add(StateWriter.card(c));
+        }
+        return r;
+    }
+
+    /**
+     * Cards already chosen in the current multi-select (Forge highlights them; clicking again deselects). Players go in
+     * pickedPlayers: player and card ids overlap (player 1 vs card 1), so one list framed the wrong card.
+     */
     private List<Integer> pickedIds() {
         List<Integer> ids = new ArrayList<>();
         GameView gv = getGameView();
         if (gv == null) return ids;
         for (CardView c : StateWriter.allCards(gv)) if (isHighlighted(c)) ids.add(c.getId());
-        for (PlayerView p : gv.getPlayers()) if (isHighlighted(p)) ids.add(p.getId());
         return ids;
     }
 
@@ -194,7 +238,9 @@ public final class BridgeGuiGame extends AbstractGuiGame {
 
     @Override public void clearSelectables() {
         super.clearSelectables();
-        markDirty();
+        // Forge clears a finished selection (e.g. a graveyard target) after the next input already sent its prompt: resend,
+        // or the game keeps offering the old cards (stale off-table strip).
+        sendPrompt();
     }
 
     // ------------------------------------------------------------------ questions (block the game thread until answered)
@@ -290,6 +336,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         q.put("kind", "confirm");
         q.put("title", question == null ? "" : question);
         q.put("card", c == null ? null : c.getId());
+        if (c != null) q.put("cardInfo", StateWriter.card(c)); // may be a hidden card the state doesn't carry
         q.put("options", opts);
         q.put("default", defaultIsYes ? 0 : 1);
         sendState();
@@ -314,7 +361,17 @@ public final class BridgeGuiGame extends AbstractGuiGame {
             List<Integer> p = choose("choose", message, inputOptions, 1, 1, null);
             return p == null || p.isEmpty() ? initialInput : inputOptions.get(p.get(0));
         }
-        return initialInput; // free text input isn't supported by the game client
+        // Free text / a number (e.g. "Other..." in a number list): Forge checks the answer and asks again when it's invalid.
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("kind", "input");
+        q.put("title", (title == null || title.isEmpty() ? "" : title + ": ") + (message == null ? "" : message));
+        q.put("numeric", isNumeric);
+        q.put("initial", initialInput == null ? "" : initialInput);
+        sendState();
+        Map<String, Object> a = Bridge.ask(q);
+        if (a == null || Json.b(a, "cancel")) return null; // shutting down / Cancel: Forge treats null as cancel
+        String text = Json.s(a, "text");
+        return text == null ? initialInput : text;
     }
 
     @Override public SpellAbilityView getAbilityToPlay(CardView hostCard, List<SpellAbilityView> abilities, ITriggerEvent triggerEvent) {
@@ -564,7 +621,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     @Override public void updateLives(Iterable<PlayerView> livesUpdate) { super.updateLives(livesUpdate); markDirty(); }
     @Override public void updateShards(Iterable<PlayerView> shardsUpdate) { markDirty(); }
     @Override public void setPanelSelection(CardView hostCard) {}
-    @Override public void setCard(CardView card) {}
+    @Override public void setCard(CardView card) {} // detail panel; the prompt that follows carries the card (cardInfo)
     @Override public void setPlayerAvatar(LobbyPlayer player, IHasIcon ihi) {}
     @Override public PlayerZoneUpdates openZones(PlayerView controller, Collection<ZoneType> zones, Map<PlayerView, Object> players, boolean backupLastZones) {
         markDirty();

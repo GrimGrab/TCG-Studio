@@ -3,6 +3,22 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.4.0 - 2026-10-08
+
+MTG mode: choices that used to freeze the game now work, and the table shows more of what is going on.
+
+- Fixed: searching your library (Cultivate, tutors and similar) - you now pick the cards in a dialog instead of the game getting stuck.
+- Fixed: cards that make you choose from revealed cards, like the opponent's Karn, Scion of Urza, no longer stall after the reveal.
+- Fixed: choosing a card from the opponent's hand (Duress and similar) now opens a picker.
+- Fixed: Scry and Surveil with one card now show the card you are deciding about.
+- New: when a cost or target uses cards in a graveyard or exile, those cards appear in a strip at the top of the table, and the Graveyard/Exile buttons light up.
+- New: attacking creatures show what they attack (the player or a planeswalker), with a line to an attacked planeswalker. While you declare attackers, the panel says what new attackers will attack and how to switch.
+- New: while a spell or ability is on the stack, its targets are framed in purple (hover a stack entry to see that one's targets).
+- New: "Other..." in a number list (X spells) opens a number box instead of freezing the game.
+- New: very long lists, such as naming a card for Pithing Needle, have a search box.
+- Changed: reveal windows now say there is nothing to choose, so they aren't mistaken for a choice.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.3.2 - 2026-10-08
 
 Customise the shop name on your shop sign.

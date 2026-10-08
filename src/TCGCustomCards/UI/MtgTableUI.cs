@@ -48,6 +48,17 @@ namespace TCGCustomCards.UI
         private JToken _askSeen;
         private int[] _amounts;                               // "amounts" dialog values
         private readonly List<int> _order = new List<int>(); // "reorder" dialog: option indexes, top first
+        private string _inputText = "";                       // "input" dialog
+        private string _askFilter = "";                       // long option lists: search text
+        private string _filterKey;                            // _askFilter the cached list was built for
+        private List<int> _filtered;                          // long option lists: indexes matching the search
+        private const int LongList = 40;                      // more options than this: search + fixed-height rows
+        private bool _stripHidden;                            // off-table choice strip collapsed by the player
+        private Vector2 _stripScroll;
+        private int _hoverStack = -1;                          // stack entry under the mouse (last frame): its targets are marked
+        private readonly HashSet<int> _tgtCards = new HashSet<int>(), _tgtPlayers = new HashSet<int>();
+        private string _tgtLabel;                              // "Target: <spell>"
+        private readonly Dictionary<int, (string label, int card)> _attackTo = new Dictionary<int, (string, int)>(); // attacker -> "→ X", planeswalker/battle id or -1
         private string _zoneView; // "me:graveyard" etc.
         private bool _confirmConcede;
         private bool _deckInfoOpen;           // "Customer's deck" panel toggled by the player
@@ -60,7 +71,7 @@ namespace TCGCustomCards.UI
         private static readonly Color MyTurn = new Color(0.25f, 0.75f, 0.35f), TheirTurn = new Color(0.85f, 0.3f, 0.3f);
         private Vector2 _guiOffset;
         private static Dictionary<string, (CustomSet set, int pos)> _art;
-        private static readonly Color Selectable = new Color(1f, 0.85f, 0.2f), Picked = new Color(0.3f, 1f, 0.4f), Attacking = new Color(1f, 0.35f, 0.3f), Blocking = new Color(0.35f, 0.6f, 1f);
+        private static readonly Color Selectable = new Color(1f, 0.85f, 0.2f), Picked = new Color(0.3f, 1f, 0.4f), Attacking = new Color(1f, 0.35f, 0.3f), Blocking = new Color(0.35f, 0.6f, 1f), Targeted = new Color(0.75f, 0.4f, 1f);
 
         public static void Show()
         {
@@ -208,12 +219,19 @@ namespace TCGCustomCards.UI
             var selectable = Ids(prompt, "selectable");
             var picked = Ids(prompt, "picked");
             var combat = Arr(st, "combat").ToList();
+            PrepareTargets(st, combat);
 
             // IMGUI gives clicks to the first control drawn: keep the board inert while a dialog is open.
             // The after-match deck reveal counts too: its Continue button sits over the board.
             bool modal = MtgSession.Ask != null || _confirmConcede || _zoneView != null || MtgSession.RevealOpen;
             UpdateBlockStep(st, prompt, picked, combat, modal);
-            GUI.enabled = !modal;
+            // Cards Forge lets you pick that aren't on the table (graveyard/exile costs and targets...): a strip over the board,
+            // which stays inert under it.
+            var offTable = modal ? new List<JObject>() : Arr(prompt, "selectableCards").ToList();
+            if (offTable.Count == 0) _stripHidden = false; // the next such choice opens it again
+            Rect? strip = offTable.Count == 0 ? (Rect?)null : StripRect(board3d);
+            bool overStrip = Event.current.isMouse && (strip?.Contains(Event.current.mousePosition) ?? false); // mouse events only: no dimming
+            GUI.enabled = !modal && !overStrip;
             if (board3d)
             {
                 // 3D table: cards are real objects; highlights/labels/click areas over them, everything else in one panel on the
@@ -232,6 +250,7 @@ namespace TCGCustomCards.UI
             }
             GUI.enabled = true;
 
+            if (strip != null) DrawOffTableChoices(strip.Value, st, offTable, picked);
             if (_zoneView != null && MtgSession.Ask == null) DrawZoneView(st, selectable, picked, combat);
             if (MtgSession.Ask != null) DrawAsk(MtgSession.Ask);
             if (_confirmConcede) DrawConcede();
@@ -344,6 +363,92 @@ namespace TCGCustomCards.UI
             if (GUI.Button(new Rect(r.center.x - 150, r.yMax - 76, 300, 60), "Continue", _big)) MtgSession.RevealOpen = false;
         }
 
+        /// <summary>
+        /// What the hovered stack entry (else the top of the stack) targets, from Forge's stack (targetCards/targetPlayers), and
+        /// what each attacker attacks (combat[].defender). Display only: Forge decides both.
+        /// </summary>
+        private void PrepareTargets(JObject st, List<JObject> combat)
+        {
+            _tgtCards.Clear();
+            _tgtPlayers.Clear();
+            _tgtLabel = null;
+            var stack = Arr(st, "stack").ToList();
+            if (stack.Count > 0)
+            {
+                var e = stack[_hoverStack >= 0 && _hoverStack < stack.Count ? _hoverStack : 0]; // stack[0] = top
+                foreach (var t in (e["targetCards"] as JArray)?.Where(x => x.Type == JTokenType.Integer) ?? Enumerable.Empty<JToken>()) _tgtCards.Add((int)t);
+                foreach (var t in (e["targetPlayers"] as JArray)?.Where(x => x.Type == JTokenType.Integer) ?? Enumerable.Empty<JToken>()) _tgtPlayers.Add((int)t);
+                _tgtLabel = "Target: " + (S(e["card"] as JObject, "name") ?? "spell");
+            }
+
+            _attackTo.Clear();
+            int meId = I(st, "me");
+            foreach (var cb in combat)
+            {
+                if (cb["defender"] == null || cb["defender"].Type != JTokenType.Integer) continue;
+                int def = I(cb, "defender");
+                if (B(cb, "defenderIsPlayer"))
+                {
+                    var pl = Arr(st, "players").FirstOrDefault(p => I(p, "id") == def);
+                    // Only worth saying when that player has planeswalkers/battles that could have been attacked instead.
+                    if (pl != null && HasAttackables(pl)) _attackTo[I(cb, "attacker")] = ("→ " + (def == meId ? "you" : S(pl, "name")), -1);
+                }
+                else
+                {
+                    var c = FindCard(def);
+                    _attackTo[I(cb, "attacker")] = ("→ " + (S(c, "name") ?? "planeswalker"), def);
+                }
+            }
+        }
+
+        /// <summary>Thumbnail of the prompt's hidden card; hover = the big preview.</summary>
+        private void DrawPromptCard(Rect r, JObject c)
+        {
+            if (!DrawThumb(r, c))
+            {
+                GUI.Box(r, "");
+                GUI.Label(new Rect(r.x + 4, r.y + 4, r.width - 8, r.height - 8), $"<b>{S(c, "name")}</b>\n<size=11>{S(c, "type")}</size>", _small);
+            }
+            if (r.Contains(Event.current.mousePosition)) _hover = c;
+        }
+
+        private static bool HasAttackables(JObject player) =>
+            Arr(player, "battlefield").Any(c => (S(c, "type") ?? "").Contains("Planeswalker") || (S(c, "type") ?? "").Contains("Battle"));
+
+        /// <summary>
+        /// While you declare attackers and the opponent has planeswalkers/battles: what new attackers will attack (Forge's
+        /// highlighted defender) and how to switch. Null otherwise.
+        /// </summary>
+        private static string AttackHint(JObject st, JObject prompt)
+        {
+            if (prompt == null || S(st, "phase") != "COMBAT_DECLARE_ATTACKERS" || I(st, "activePlayer", -1) != I(st, "me", -2)) return null;
+            if ((S(prompt, "text") ?? "").StartsWith("Waiting for")) return null;
+            var opp = Opp(st);
+            if (opp == null || !HasAttackables(opp)) return null;
+            string target = null;
+            var pp = Ids(prompt, "pickedPlayers");
+            var pl = Arr(st, "players").FirstOrDefault(p => pp.Contains(I(p, "id")));
+            if (pl != null) target = S(pl, "name");
+            else
+                foreach (int id in Ids(prompt, "picked"))
+                {
+                    var c = FindCard(id);
+                    string type = S(c, "type") ?? "";
+                    if (c != null && S(c, "zone") == "Battlefield" && (type.Contains("Planeswalker") || type.Contains("Battle"))) { target = S(c, "name"); break; }
+                }
+            return $"<color=#ffcc66>New attackers attack: <b>{target ?? "?"}</b></color>\n<color=#aaaaaa>Click the opponent's name or a planeswalker to switch.</color>";
+        }
+
+        /// <summary>The card the prompt is about when the table doesn't show it (single-card scry/surveil: a library card).</summary>
+        private static JObject HiddenPromptCard(JObject st, JObject prompt)
+        {
+            if (!(prompt?["cardInfo"] is JObject c)) return null;
+            string zone = S(c, "zone");
+            if (zone == "Battlefield" || zone == "Stack") return null;
+            if (zone == "Hand" && I(c, "controller", -1) == I(st, "me", -2)) return null;
+            return c;
+        }
+
         private void DrawPlayerBar(Rect r, JObject p, JObject st, HashSet<int> selectable, HashSet<int> picked)
         {
             if (p == null) return;
@@ -353,7 +458,9 @@ namespace TCGCustomCards.UI
             string pool = mana == null || !mana.HasValues ? "" : "   Mana: " + string.Join(" ", mana.Properties().Select(x => $"{x.Name}{x.Value}"));
             string label = $"{(active ? "▶ " : "")}<b>{S(p, "name")}</b>   Life <b>{I(p, "life")}</b>   Hand {I(p, "handSize")}   Library {I(p, "library")}{pool}";
             var old = GUI.backgroundColor;
-            if (selectable.Contains(id)) GUI.backgroundColor = picked.Contains(id) ? Picked : Selectable;
+            // Players: Forge's highlight (e.g. the current attack target) comes in pickedPlayers (ids overlap card ids)
+            if (Ids(MtgSession.Prompt, "pickedPlayers").Contains(id)) GUI.backgroundColor = Picked;
+            else if (_tgtPlayers.Contains(id)) GUI.backgroundColor = Targeted;
             if (GUI.Button(new Rect(r.x, r.y, 760, r.height), label, new GUIStyle(_button) { richText = true, alignment = TextAnchor.MiddleLeft }))
                 ForgeBridge.Act("player", id);
             GUI.backgroundColor = old;
@@ -362,8 +469,11 @@ namespace TCGCustomCards.UI
             {
                 int n = Arr(p, zone).Count();
                 string key = (B(p, "ai") ? "opp:" : "me:") + zone;
+                var oldZ = GUI.backgroundColor;
+                if (Arr(p, zone).Any(c => selectable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable; // holds a card you can pick now
                 if (GUI.Button(new Rect(x, r.y, 170, r.height), $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({n})", _button))
                     _zoneView = _zoneView == key ? null : key;
+                GUI.backgroundColor = oldZ;
                 x += 180;
             }
             if (!B(p, "ai"))
@@ -408,9 +518,9 @@ namespace TCGCustomCards.UI
             bool tapped = B(c, "tapped");
             var art = Art(c);
             var old = GUI.color;
-            if (selectable.Contains(id) || picked.Contains(id) || B(c, "attacking") || B(c, "blocking"))
+            if (selectable.Contains(id) || picked.Contains(id) || B(c, "attacking") || B(c, "blocking") || _tgtCards.Contains(id))
             {
-                GUI.color = picked.Contains(id) ? Picked : selectable.Contains(id) ? Selectable : Attacking;
+                GUI.color = picked.Contains(id) ? Picked : selectable.Contains(id) ? Selectable : _tgtCards.Contains(id) ? Targeted : Attacking;
                 GUI.DrawTexture(new Rect(r.x - 3, r.y - 3, r.width + 6, r.height + 6), Texture2D.whiteTexture);
             }
             GUI.color = tapped ? new Color(0.55f, 0.55f, 0.55f) : Color.white;
@@ -424,7 +534,8 @@ namespace TCGCustomCards.UI
             if (c["counters"] is JObject cnt) foreach (var p in cnt.Properties()) lines.Add($"{p.Value}× {p.Name}");
             if (tapped) lines.Add("<color=#aaaaaa>tapped</color>");
             if (B(c, "sick") && B(c, "creature") && S(c, "zone") == "Battlefield") lines.Add("<color=#aaaaaa>new</color>");
-            if (B(c, "attacking")) lines.Add("<color=#ff8080>attacking</color>");
+            if (B(c, "attacking")) lines.Add("<color=#ff8080>attacking</color>" + (_attackTo.TryGetValue(id, out var at) ? $" <color=#ffb0b0>{at.label}</color>" : ""));
+            if (_tgtCards.Contains(id)) lines.Insert(0, $"<color=#d0a0ff>{_tgtLabel}</color>");
             if (B(c, "blocking")) lines.Add("<color=#80c0ff>blocking</color>");
             if (lines.Count > 0)
             {
@@ -506,6 +617,16 @@ namespace TCGCustomCards.UI
                 }
                 else if (selectable.Contains(id) || picked.Contains(id) || (!e.Covered && (B(c, "attacking") || B(c, "blocking"))))
                     frame = picked.Contains(id) ? Picked : selectable.Contains(id) ? Selectable : B(c, "blocking") ? Blocking : Attacking;
+                else if (_tgtCards.Contains(id)) { frame = Targeted; width = 5f; }
+                if (_tgtCards.Contains(id) && _tgtLabel != null)
+                {
+                    // what is aiming at it (the hovered stack entry, else the top of the stack)
+                    var tr = new Rect(r.center.x - 90f, r.y - 24f, 180f, 20f);
+                    GUI.color = new Color(0, 0, 0, 0.75f);
+                    GUI.DrawTexture(tr, Texture2D.whiteTexture);
+                    GUI.color = old;
+                    GUI.Label(tr, $"<color=#d0a0ff>{_tgtLabel}</color>", new GUIStyle(_small) { fontSize = 13, alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip });
+                }
                 if (frame is Color col)
                 {
                     if (e.HasQuad)
@@ -525,6 +646,7 @@ namespace TCGCustomCards.UI
                 if (c["power"] != null) lines.Add($"<b>{I(c, "power")}/{I(c, "toughness")}</b>" + (I(c, "damage") > 0 ? $" <color=#ff6060>-{I(c, "damage")}</color>" : ""));
                 if (S(c, "loyalty") != null) lines.Add($"Loyalty {S(c, "loyalty")}");
                 if (c["counters"] is JObject cnt) foreach (var p in cnt.Properties()) lines.Add($"{p.Value}× {p.Name}");
+                if (B(c, "attacking") && _attackTo.TryGetValue(id, out var at)) lines.Add($"<color=#ffb0b0>{at.label}</color>");
                 if (MtgTable3d.IsUnknown(e)) lines.Insert(0, $"<b>{S(c, "name")}</b>");
                 if (B(c, "faceDown")) lines.Insert(0, "<i>Face-down</i>");
                 // Tags only for permanents (battlefield): not when hidden behind a nearer card, not in the hand or on the stack
@@ -786,6 +908,9 @@ namespace TCGCustomCards.UI
             foreach (var cb in combat)
             {
                 if (!rects.TryGetValue(I(cb, "attacker", -1), out var ar)) continue;
+                // attacking a planeswalker/battle: line to it (attacking the player needs no line)
+                if (_attackTo.TryGetValue(I(cb, "attacker"), out var at) && at.card >= 0 && rects.TryGetValue(at.card, out var dr))
+                    DrawLine(ar.center, dr.center, Attacking, 4f);
                 foreach (var b in (cb["blockers"] as JArray)?.Where(t => t.Type == JTokenType.Integer) ?? Enumerable.Empty<JToken>())
                     if (rects.TryGetValue((int)b, out var br)) DrawLine(br.center, ar.center, Blocking, 5f);
             }
@@ -822,20 +947,27 @@ namespace TCGCustomCards.UI
             // Stack (left)
             var stack = Arr(st, "stack").ToList();
             GUI.Label(new Rect(r.x + 8, r.y + 4, 420, 24), $"<b>Stack</b> ({stack.Count})", _text);
+            int hs = -1;
             for (int i = 0; i < Math.Min(stack.Count, 5); i++)
             {
                 var e = stack[i];
                 var rr = new Rect(r.x + 8, r.y + 30 + i * 29, 420, 27);
                 if (GUI.Button(rr, S(e, "text") ?? "", new GUIStyle(_small) { normal = { textColor = Color.white }, wordWrap = false, clipping = TextClipping.Clip }) && e["card"] is JObject sc)
                     ForgeBridge.Act("card", I(sc, "id"));
-                if (rr.Contains(Event.current.mousePosition) && e["card"] is JObject hc) _hover = hc;
+                if (rr.Contains(Event.current.mousePosition)) { hs = i; if (e["card"] is JObject hc) _hover = hc; }
             }
+            _hoverStack = hs; // its targets are marked on the board
             // Prompt (centre)
             string phase = $"Turn {I(st, "turn")} — {Pretty(S(st, "phase"))}";
             GUI.Label(new Rect(r.x + 440, r.y + 4, 700, 26), $"<b>{phase}</b>", _text);
             string text = S(prompt, "text") ?? "";
             bool waiting = text.StartsWith("Waiting for");
-            GUI.Label(new Rect(r.x + 440, r.y + 32, 700, 140), text, _text);
+            string hint = AttackHint(st, prompt);
+            if (hint != null) text += "\n" + hint;
+            float tx = r.x + 440;
+            var pc = HiddenPromptCard(st, prompt);
+            if (pc != null) { DrawPromptCard(new Rect(tx, r.y + 30, 100, 140), pc); tx += 108; }
+            GUI.Label(new Rect(tx, r.y + 32, r.x + 1140 - tx, 140), text, _text);
             if (!waiting)
             {
                 string ok = S(prompt, "ok"), cancel = S(prompt, "cancel");
@@ -881,7 +1013,16 @@ namespace TCGCustomCards.UI
                         : "Declare blockers: click (or drag) your creatures to block the attacker." +
                           "\n<color=#aaaaaa>Click a blocker again to take it back. OK when done.</color>";
             }
-            GUI.Label(new Rect(x, y, w, 150), text, _small);
+            string hint = AttackHint(st, prompt);
+            if (hint != null && !_blockStep) text += "\n" + hint;
+            var pc = HiddenPromptCard(st, prompt);
+            if (pc != null)
+            {
+                // e.g. single-card scry/surveil: the library card Forge asks about (Top/Bottom are Forge's buttons below)
+                DrawPromptCard(new Rect(x, y, 104, 146), pc);
+                GUI.Label(new Rect(x + 112, y, w - 112, 150), text, _small);
+            }
+            else GUI.Label(new Rect(x, y, w, 150), text, _small);
             y += 154;
             string ok = waiting ? null : S(prompt, "ok"), cancel = waiting ? null : S(prompt, "cancel");
             if (ok != null && GUI.Button(new Rect(x, y, w, 56), ok, _big)) ForgeBridge.Act("ok");
@@ -895,15 +1036,17 @@ namespace TCGCustomCards.UI
             var stack = Arr(st, "stack").ToList();
             GUI.Label(new Rect(x, y, w, 24), $"<b>Stack</b> ({stack.Count})", _text);
             y += 26;
+            int hs = -1;
             for (int i = 0; i < Math.Min(stack.Count, 4); i++)
             {
                 var e = stack[i];
                 var rr = new Rect(x, y, w, 24);
                 if (GUI.Button(rr, S(e, "text") ?? "", new GUIStyle(_small) { normal = { textColor = Color.white }, wordWrap = false, clipping = TextClipping.Clip }) && e["card"] is JObject sc)
                     ForgeBridge.Act("card", I(sc, "id"));
-                if (rr.Contains(Event.current.mousePosition) && e["card"] is JObject hc) _hover = hc;
+                if (rr.Contains(Event.current.mousePosition)) { hs = i; if (e["card"] is JObject hc) _hover = hc; }
                 y += 25;
             }
+            _hoverStack = hs; // its targets are marked on the board
             y = Math.Max(y, r.y + 600);
 
             // Log (fills the space down to the player's box)
@@ -931,7 +1074,9 @@ namespace TCGCustomCards.UI
                 GUI.color = Color.white;
             }
             var old = GUI.backgroundColor;
-            if (selectable.Contains(id)) GUI.backgroundColor = picked.Contains(id) ? Picked : Selectable;
+            // Players: Forge's highlight (e.g. the current attack target) comes in pickedPlayers (ids overlap card ids)
+            if (Ids(MtgSession.Prompt, "pickedPlayers").Contains(id)) GUI.backgroundColor = Picked;
+            else if (_tgtPlayers.Contains(id)) GUI.backgroundColor = Targeted;
             if (GUI.Button(new Rect(r.x, r.y, r.width, 34), $"{(active ? "▶ " : "")}<b>{S(p, "name")}</b>   Life <b>{I(p, "life")}</b>",
                     new GUIStyle(_button) { richText = true, alignment = TextAnchor.MiddleLeft }))
                 ForgeBridge.Act("player", id);
@@ -944,8 +1089,11 @@ namespace TCGCustomCards.UI
             {
                 int n = Arr(p, zone).Count();
                 string key = (B(p, "ai") ? "opp:" : "me:") + zone;
+                var oldZ = GUI.backgroundColor;
+                if (Arr(p, zone).Any(c => selectable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable; // holds a card you can pick now
                 if (GUI.Button(new Rect(bx, r.y + 60, r.width / 2 - 4, 32), $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({n})", _button))
                     _zoneView = _zoneView == key ? null : key;
+                GUI.backgroundColor = oldZ;
                 bx += r.width / 2 + 4;
             }
             return r.yMax;
@@ -1173,6 +1321,67 @@ namespace TCGCustomCards.UI
             DrawRow(new Rect(r.x + 12, r.y + 52, r.width - 24, r.height - 64), cards, selectable, picked, combat, 150);
         }
 
+        /// <summary>Where the off-table choice strip goes (just its tab while collapsed): over the opponent's side of the board.</summary>
+        private Rect StripRect(bool board3d)
+        {
+            var full = board3d ? new Rect(8, 50, W - 400, 300) : new Rect(10, 48, 1450, 300);
+            return _stripHidden ? new Rect(full.x, full.y, 420, 40) : full;
+        }
+
+        /// <summary>
+        /// Cards Forge lets you pick right now that the table doesn't show: graveyard/exile/library/command zone/another hand
+        /// (bridge prompt.selectableCards, e.g. "exile a card from your graveyard" costs, graveyard targets). Click = the same
+        /// card click as on the table; Forge's own OK/Cancel stay in the prompt.
+        /// </summary>
+        private void DrawOffTableChoices(Rect r, JObject st, List<JObject> cards, HashSet<int> picked)
+        {
+            if (_stripHidden)
+            {
+                var old0 = GUI.backgroundColor;
+                GUI.backgroundColor = Selectable;
+                if (GUI.Button(r, $"Show cards to choose ({cards.Count}) ▾", _button)) _stripHidden = false;
+                GUI.backgroundColor = old0;
+                return;
+            }
+            GUI.color = new Color(0f, 0f, 0f, 0.85f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            int meId = I(st, "me");
+            string zones = string.Join(", ", cards.Select(c => ZoneLabel(c, meId, st)).Distinct());
+            GUI.Label(new Rect(r.x + 12, r.y + 6, r.width - 160, 30), $"<b>Choose from {zones}</b>", _text);
+            if (GUI.Button(new Rect(r.xMax - 130, r.y + 4, 120, 32), "Hide ▴", _button)) { _stripHidden = true; return; }
+
+            const float tw = 150f, th = 210f, cellW = 162f;
+            var view = new Rect(r.x + 8, r.y + 40, r.width - 16, r.height - 46);
+            _stripScroll = GUI.BeginScrollView(view, _stripScroll, new Rect(0, 0, Mathf.Max(view.width - 4, cards.Count * cellW + 8), th + 20));
+            for (int i = 0; i < cards.Count; i++)
+            {
+                var c = cards[i];
+                var tile = new Rect(i * cellW + 6, 4, tw, th);
+                bool on = picked.Contains(I(c, "id"));
+                GUI.color = on ? Picked : Selectable;
+                GUI.DrawTexture(new Rect(tile.x - 3, tile.y - 3, tile.width + 6, tile.height + 6), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                if (!DrawThumb(tile, c))
+                {
+                    GUI.Box(tile, "");
+                    GUI.Label(new Rect(tile.x + 6, tile.y + 6, tile.width - 12, tile.height - 12),
+                        $"<b>{S(c, "name")}</b>\n<size=12>{S(c, "type")}\n\n{S(c, "text")}</size>", _small);
+                }
+                if (tile.Contains(Event.current.mousePosition)) _hover = c;
+                if (GUI.Button(tile, "", GUIStyle.none)) Click(c);
+            }
+            GUI.EndScrollView();
+        }
+
+        private static string ZoneLabel(JObject c, int meId, JObject st)
+        {
+            int owner = I(c, "owner", I(c, "controller", -1));
+            string who = owner == meId ? "your" : (S(Opp(st), "name") ?? "Opponent") + "'s";
+            string zone = S(c, "zone") ?? "";
+            return $"{who} {(zone == "Command" ? "command zone" : zone.ToLowerInvariant())}";
+        }
+
         private void DrawAsk(JObject ask)
         {
             string kind = S(ask, "kind");
@@ -1185,6 +1394,10 @@ namespace TCGCustomCards.UI
                 _amounts = opts0.Select(o => I(o, "suggest")).ToArray();
                 _order.Clear();
                 for (int i = 0; i < opts0.Count; i++) _order.Add(i);
+                _inputText = S(ask, "initial") ?? "";
+                _askFilter = "";
+                _filterKey = null;
+                _filtered = null;
             }
             int min = I(ask, "min"), max = I(ask, "max", 1);
             var r = new Rect(360, 150, 1100, 760);
@@ -1206,12 +1419,14 @@ namespace TCGCustomCards.UI
 
             if (kind == "confirm")
             {
+                if (ask["cardInfo"] is JObject qc) DrawPromptCard(new Rect(r.x + 16, r.y + 120, 300, 420), qc); // the card asked about (may be hidden)
                 var opts = (ask["options"] as JArray)?.Select(x => (string)x).ToList() ?? new List<string> { "Yes", "No" };
                 for (int i = 0; i < opts.Count; i++)
                     if (GUI.Button(new Rect(r.x + 16 + i * 270, r.yMax - 90, 250, 70), opts[i], _big)) MtgSession.AnswerIndex(i);
                 return;
             }
 
+            if (kind == "input") { DrawInput(ask, r); return; }
             if (kind == "amounts") { DrawAmounts(ask, r); return; }
             if (kind == "reorder") { DrawReorder(ask, r); return; }
 
@@ -1220,6 +1435,10 @@ namespace TCGCustomCards.UI
             if (options.Any(o => OptCard(o) != null))
             {
                 if (DrawCardGrid(view, options, kind, min, max)) return; // answered
+            }
+            else if (options.Count > LongList)
+            {
+                if (DrawLongList(view, options, kind, min, max)) return; // answered
             }
             else
             {
@@ -1251,6 +1470,8 @@ namespace TCGCustomCards.UI
 
             if (kind == "reveal")
             {
+                GUI.Label(new Rect(r.x + 286, r.yMax - 80, 700, 50),
+                    "<color=#aaaaaa>Shown to you — nothing to choose here. Any choice comes next.</color>", _text);
                 if (GUI.Button(new Rect(r.x + 16, r.yMax - 90, 250, 70), "OK", _big)) MtgSession.Answer(new JArray());
                 return;
             }
@@ -1262,6 +1483,85 @@ namespace TCGCustomCards.UI
                 MtgSession.Answer(new JArray(_askPicked.OrderBy(x => x).Cast<object>().ToArray()));
             GUI.enabled = true;
         }
+
+        /// <summary>
+        /// Long text lists (naming a card = every card name, creature types...): a search box and fixed-height rows, only the
+        /// visible ones drawn. Answers use the original option indexes. True when answered.
+        /// </summary>
+        private bool DrawLongList(Rect view, List<JObject> options, string kind, int min, int max)
+        {
+            GUI.Label(new Rect(view.x, view.y + 4, 90, 36), "Search", _text);
+            GUI.SetNextControlName("tcgcc_mtg_search");
+            _askFilter = GUI.TextField(new Rect(view.x + 90, view.y, 420, 40), _askFilter ?? "", new GUIStyle(GUI.skin.textField) { fontSize = 20 });
+            if (_filterKey == null) GUI.FocusControl("tcgcc_mtg_search"); // type straight away
+            if (_filterKey != _askFilter || _filtered == null)
+            {
+                _filterKey = _askFilter;
+                string f = _askFilter.Trim();
+                _filtered = new List<int>();
+                for (int i = 0; i < options.Count; i++)
+                    if (f.Length == 0 || (S(options[i], "text") ?? "").IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0) _filtered.Add(i);
+                _askScroll = Vector2.zero;
+            }
+            GUI.Label(new Rect(view.x + 530, view.y + 4, 400, 36), $"<color=#aaaaaa>{_filtered.Count} of {options.Count}</color>", _text);
+
+            const float rowH = 40f, gap = 4f;
+            var list = new Rect(view.x, view.y + 48, view.width, view.height - 48);
+            _askScroll = GUI.BeginScrollView(list, _askScroll, new Rect(0, 0, list.width - 20, _filtered.Count * (rowH + gap)));
+            int first = Mathf.Max(0, (int)(_askScroll.y / (rowH + gap)));
+            int last = Mathf.Min(_filtered.Count - 1, (int)((_askScroll.y + list.height) / (rowH + gap)) + 1);
+            var rowStyle = new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, wordWrap = false, clipping = TextClipping.Clip, padding = new RectOffset(10, 10, 4, 4) };
+            for (int k = first; k <= last; k++)
+            {
+                int i = _filtered[k];
+                var o = options[i];
+                var rr = new Rect(0, k * (rowH + gap), list.width - 24, rowH);
+                if (B(o, "header")) { GUI.Label(new Rect(rr.x + 4, rr.y + 8, rr.width, rowH), $"<b>{S(o, "text")}</b>", _text); continue; }
+                bool on = _askPicked.Contains(i);
+                var old = GUI.backgroundColor;
+                if (on) GUI.backgroundColor = Picked;
+                if (GUI.Button(rr, S(o, "text") ?? "", rowStyle) && kind != "reveal")
+                {
+                    if (max == 1 && min <= 1) { MtgSession.Answer(new JArray(i)); GUI.backgroundColor = old; GUI.EndScrollView(); return true; }
+                    if (on) _askPicked.Remove(i); else if (_askPicked.Count < max) _askPicked.Add(i);
+                }
+                GUI.backgroundColor = old;
+                if (rr.Contains(Event.current.mousePosition)) _hover = OptCard(o) ?? (o["sourceInfo"] as JObject) ?? _hover;
+            }
+            GUI.EndScrollView();
+            return false;
+        }
+
+        /// <summary>Free text / a number Forge asks for (e.g. "Other..." in a number list). Forge checks it and asks again if invalid.</summary>
+        private void DrawInput(JObject ask, Rect r)
+        {
+            bool numeric = B(ask, "numeric");
+            var field = new Rect(r.x + 16 + (numeric ? 90 : 0), r.y + 140, numeric ? 300 : r.width - 32, 64);
+            if (numeric && GUI.Button(new Rect(field.x - 90, field.y, 80, field.height), "−", _big))
+                _inputText = (ParseOr(_inputText, 0) - 1).ToString();
+            GUI.SetNextControlName("tcgcc_mtg_input");
+            var ev = Event.current;
+            bool enter = ev.type == EventType.KeyDown && (ev.keyCode == KeyCode.Return || ev.keyCode == KeyCode.KeypadEnter);
+            _inputText = GUI.TextField(field, _inputText ?? "", new GUIStyle(GUI.skin.textField) { fontSize = 32, alignment = numeric ? TextAnchor.MiddleCenter : TextAnchor.MiddleLeft });
+            GUI.FocusControl("tcgcc_mtg_input");
+            if (numeric)
+            {
+                // digits only (a leading minus allowed)
+                var sb = new System.Text.StringBuilder();
+                foreach (char ch in _inputText) if (char.IsDigit(ch) || (ch == '-' && sb.Length == 0)) sb.Append(ch);
+                _inputText = sb.ToString();
+                if (GUI.Button(new Rect(field.xMax + 10, field.y, 80, field.height), "+", _big))
+                    _inputText = (ParseOr(_inputText, 0) + 1).ToString();
+            }
+            if (GUI.Button(new Rect(r.x + 16, r.yMax - 90, 260, 70), "Cancel", _big)) { MtgSession.AnswerText("", cancel: true); return; }
+            if (GUI.Button(new Rect(r.xMax - 280, r.yMax - 90, 260, 70), "Confirm", _big) || enter)
+            {
+                if (enter) ev.Use();
+                MtgSession.AnswerText(_inputText);
+            }
+        }
+
+        private static int ParseOr(string s, int def) => int.TryParse(s, out int v) ? v : def;
 
         /// <summary>One number per option (combat damage split, divided damage/counters, mana combinations); must add up to the total.</summary>
         private void DrawAmounts(JObject ask, Rect r)

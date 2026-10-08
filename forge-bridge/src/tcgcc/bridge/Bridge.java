@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "3";
+    public static final String VERSION = "5";
 
     private static PrintStream proto;
     private static PrintStream logStream;
@@ -62,6 +62,10 @@ public final class Bridge {
             prefs.setPref(FPref.UI_ENABLE_SOUNDS, false);
             prefs.setPref(FPref.UI_ENABLE_MUSIC, false);
             prefs.setPref(FPref.UI_MATCHES_PER_GAME, "1"); // a table duel is one game
+            // Forge's desktop picks cards in libraries, graveyards, exile, other hands... by clicking them in its pop-up zone
+            // windows. The table has no such windows, so ask with a dialog instead (in memory only: never saved to the
+            // player's preferences). On-board picking then stays for the battlefield and your own hand.
+            prefs.setPref(FPref.UI_SELECT_FROM_CARD_DISPLAYS, false);
             if (prefs.getPref(FPref.PLAYER_NAME).isBlank()) prefs.setPref(FPref.PLAYER_NAME, "Player");
         } catch (Throwable t) {
             log("init failed: " + t);

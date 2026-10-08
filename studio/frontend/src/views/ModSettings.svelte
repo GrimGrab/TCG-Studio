@@ -8,6 +8,7 @@
 
   let sections = $state<any[]>([]);
   let showWhen = $state<Record<string, { setting: string; is: string[] }>>({});
+  let elsewhere = $state<string[]>([]); // settings edited on another page (Settings → Shop sign)
   let gameRunning = $state(false);
   let setup = $state('');
   let error = $state('');
@@ -18,6 +19,7 @@
       const v = await App.ModSettings();
       sections = v.sections;
       showWhen = v.showWhen ?? {};
+      elsewhere = v.elsewhere ?? [];
       gameRunning = v.gameRunning;
       setup = v.setup;
       error = '';
@@ -85,7 +87,7 @@
       const i = s.name.indexOf(' - ');
       const top = i > 0 ? s.name.slice(0, i) : s.name;
       const t = (tops[top] ??= { name: top, entries: [], groups: [] });
-      const entries = s.entries.filter((e: any) => visible(e, values) && matches(e));
+      const entries = s.entries.filter((e: any) => !elsewhere.includes(e.key) && visible(e, values) && matches(e));
       if (i > 0) { if (entries.length) t.groups.push({ id: s.name, title: s.name.slice(i + 3), entries }); }
       else t.entries.push(...entries);
     }

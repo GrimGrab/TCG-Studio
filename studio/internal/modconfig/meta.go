@@ -18,8 +18,13 @@ type ShowWhen struct {
 }
 
 type Meta struct {
-	ShowWhen map[string]ShowWhen `json:"showWhen"`
+	ShowWhen  map[string]ShowWhen `json:"showWhen"`
+	Elsewhere []string            `json:"elsewhere"` // settings edited on another studio page (hidden on Mod settings)
 }
+
+// ShopSignFolder is the plugin-dir folder holding the image of [Visuals] ShopSignImage (Studio Settings → Shop sign; a
+// setup carries it with its mod config).
+const ShopSignFolder = "ShopSign"
 
 // SettingsMeta parses the embedded settings-meta.json.
 func SettingsMeta() (Meta, error) {

@@ -46,6 +46,8 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> FullImageFoilGlow;
         internal static ConfigEntry<bool> HidePrintedBorders;
         internal static ConfigEntry<float> PrintedBorderMax;
+        internal static ConfigEntry<string> ShopSignImage, ShopSignCrop;
+        internal static ConfigEntry<bool> ShowShopNameOnSign;
         internal static ConfigEntry<bool> GradeLabel;
         internal static ConfigEntry<float> GradeLabelOffsetX;
         internal static ConfigEntry<float> GradeLabelOffsetY;
@@ -122,6 +124,16 @@ namespace TCGCustomCards
                 new AcceptableValueRange<float>(0f, 0.2f)));
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
+            ShopSignImage = Config.Bind("Visuals", "ShopSignImage", "",
+                "Your own picture for the sign above the shop entrance: a file name in the plugin's ShopSign folder (TCG Studio's " +
+                "Settings → Shop sign copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
+                "other shapes are cropped (see ShopSignCrop). Empty = the vanilla sign. Applies live.");
+            ShopSignCrop = Config.Bind("Visuals", "ShopSignCrop", "",
+                "The part of ShopSignImage shown on the sign: x,y,width,height as fractions of the image (0-1, from its top-left " +
+                "corner), set with the crop box in TCG Studio's Settings → Shop sign. Empty = the largest 4.11:1 area from the middle. Applies live.");
+            ShowShopNameOnSign = Config.Bind("Visuals", "ShowShopNameOnSign", true,
+                "Show your shop's name on the sign above the entrance. Turn it off when your ShopSignImage already has a name or logo. Applies live.");
+            ShopSign.Init();
             GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
                 "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");
             GradeLabelOffsetX = Config.Bind("Visuals - Grade label", "GradeLabelOffsetX", 0f, new ConfigDescription(

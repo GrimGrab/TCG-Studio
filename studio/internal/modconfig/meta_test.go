@@ -30,6 +30,11 @@ func TestSettingsMeta(t *testing.T) {
 	if len(m.ShowWhen) == 0 {
 		t.Fatal("no showWhen rules parsed")
 	}
+	for _, key := range m.Elsewhere {
+		if _, ok := byKey[key]; !ok {
+			t.Errorf("elsewhere %s: no such setting", key)
+		}
+	}
 	for key, rule := range m.ShowWhen {
 		if _, ok := byKey[key]; !ok {
 			t.Errorf("showWhen %s: no such setting", key)

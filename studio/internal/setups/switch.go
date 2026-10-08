@@ -69,6 +69,11 @@ func Snapshot(dir, gameDir string) error {
 			return err
 		}
 	}
+	if sign := filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder); exists(sign) {
+		if err := copyTree(sign, filepath.Join(tmp, modconfig.ShopSignFolder), nil); err != nil {
+			return err
+		}
+	}
 	installed := []string{}
 	entries, _ := os.ReadDir(game.SetsDir(gameDir))
 	for _, e := range entries {
@@ -101,7 +106,8 @@ func libraryEmpty(dir string) bool {
 	return err != nil || (len(lib.Accessories) == 0 && len(lib.Furniture) == 0 && len(lib.Decorations) == 0)
 }
 
-// clearGame removes everything a setup puts into the game: installed sets, accessories, global card back, mod config.
+// clearGame removes everything a setup puts into the game: installed sets, accessories, global card back, mod config and
+// shop sign image.
 // Saves are handled separately.
 func clearGame(gameDir string) error {
 	entries, _ := os.ReadDir(game.SetsDir(gameDir))
@@ -110,7 +116,8 @@ func clearGame(gameDir string) error {
 			return err
 		}
 	}
-	for _, p := range []string{accessories.InstalledDir(gameDir), filepath.Join(game.PluginDir(gameDir), backFile), modconfig.Path(gameDir)} {
+	for _, p := range []string{accessories.InstalledDir(gameDir), filepath.Join(game.PluginDir(gameDir), backFile), modconfig.Path(gameDir),
+		filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder)} {
 		if err := os.RemoveAll(p); err != nil {
 			return err
 		}
@@ -160,6 +167,11 @@ func applyGame(dir, gameDir string, store assets.Store) ([]string, error) {
 	}
 	if src := filepath.Join(g, cfgFile); exists(src) {
 		if err := copyFile(src, modconfig.Path(gameDir)); err != nil {
+			return warnings, err
+		}
+	}
+	if src := filepath.Join(g, modconfig.ShopSignFolder); exists(src) {
+		if err := copyTree(src, filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder), nil); err != nil {
 			return warnings, err
 		}
 	}

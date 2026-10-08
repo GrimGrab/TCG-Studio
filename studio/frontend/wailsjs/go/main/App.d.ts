@@ -60,6 +60,8 @@ export function ChooseGlobalCardBack():Promise<string>;
 
 export function ChooseSetCardBack(arg1:string):Promise<string>;
 
+export function ChooseShopSign():Promise<main.ShopSignView>;
+
 export function Confirm(arg1:string):Promise<boolean>;
 
 export function CreateProject(arg1:string,arg2:string):Promise<project.Project>;
@@ -230,6 +232,8 @@ export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function RemoveGlobalCardBack():Promise<void>;
 
+export function RemoveShopSign():Promise<main.ShopSignView>;
+
 export function ResolveDiffering(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.StorageResult>;
 
 export function RestoreModDefaults(arg1:string):Promise<number>;
@@ -266,11 +270,17 @@ export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
 
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 
+export function SetShopSignCrop(arg1:Array<number>):Promise<main.ShopSignView>;
+
+export function SetShopSignShowName(arg1:boolean):Promise<main.ShopSignView>;
+
 export function SetupRepair():Promise<string>;
 
 export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
+
+export function ShopSign():Promise<main.ShopSignView>;
 
 export function ShrinkPreview(arg1:string,arg2:string):Promise<library.ShrinkPreview>;
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -111,22 +112,36 @@ func parse(lines []string) []Section {
 	return kept
 }
 
-// Set replaces one entry's value (validated against its type/range/options) and writes the file back.
-func Set(path, section, key, value string) (Entry, error) {
+// find reads the file and returns one entry.
+func find(path, section, key string) (*Entry, error) {
 	secs, err := Read(path)
 	if err != nil {
-		return Entry{}, err
+		return nil, err
 	}
-	var e *Entry
 	for si := range secs {
 		for ei := range secs[si].Entries {
 			if secs[si].Name == section && secs[si].Entries[ei].Key == key {
-				e = &secs[si].Entries[ei]
+				return &secs[si].Entries[ei], nil
 			}
 		}
 	}
-	if e == nil {
-		return Entry{}, fmt.Errorf("setting [%s] %s not found", section, key)
+	return nil, fmt.Errorf("setting [%s] %s not found", section, key)
+}
+
+// Get returns one entry.
+func Get(path, section, key string) (Entry, error) {
+	e, err := find(path, section, key)
+	if err != nil {
+		return Entry{}, err
+	}
+	return *e, nil
+}
+
+// Set replaces one entry's value (validated against its type/range/options) and writes the file back.
+func Set(path, section, key, value string) (Entry, error) {
+	e, err := find(path, section, key)
+	if err != nil {
+		return Entry{}, err
 	}
 	value = strings.TrimSpace(value)
 	if err := validate(*e, value); err != nil {
@@ -145,7 +160,8 @@ func Set(path, section, key, value string) (Entry, error) {
 }
 
 // RestoreDefaults sets every entry of a section and its sub-sections ("Foil" also resets "Foil - Base"; all sections when
-// section is "") back to its default value in one write.
+// section is "") back to its default value in one write. Settings edited on another studio page (settings-meta.json "elsewhere",
+// e.g. the shop sign) are left alone.
 // Returns the number of values that changed.
 func RestoreDefaults(path, section string) (int, error) {
 	secs, err := Read(path)
@@ -156,13 +172,14 @@ func RestoreDefaults(path, section string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	meta, _ := SettingsMeta()
 	n := 0
 	for _, s := range secs {
 		if section != "" && s.Name != section && !strings.HasPrefix(s.Name, section+" - ") {
 			continue
 		}
 		for _, e := range s.Entries {
-			if e.Value != e.Default {
+			if e.Value != e.Default && !slices.Contains(meta.Elsewhere, e.Key) {
 				lines[e.line] = e.Key + " = " + e.Default
 				n++
 			}

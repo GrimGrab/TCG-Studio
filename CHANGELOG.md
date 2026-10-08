@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.3.1 - 2026-10-08
+
+Put your own picture on the sign above your shop.
+
+- New: TCG Studio Settings → Shop sign: choose any picture, then drag the box over it (or drag a corner to resize) to pick the part shown on the sign above your shop's entrance. It glows at night like the original sign, and changes show in a running game right away. Remove brings the original sign back.
+- New: "Show the shop name on the sign" option (same place) — turn it off when your picture already has a name or logo.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.3.0 - 2026-10-08
 
 Custom decorations: your own wall, floor and ceiling looks, posters and 3D decorations.

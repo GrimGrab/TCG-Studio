@@ -86,6 +86,10 @@ export function ChooseSetCardBack(arg1) {
   return window['go']['main']['App']['ChooseSetCardBack'](arg1);
 }
 
+export function ChooseShopSign() {
+  return window['go']['main']['App']['ChooseShopSign']();
+}
+
 export function Confirm(arg1) {
   return window['go']['main']['App']['Confirm'](arg1);
 }
@@ -426,6 +430,10 @@ export function RemoveGlobalCardBack() {
   return window['go']['main']['App']['RemoveGlobalCardBack']();
 }
 
+export function RemoveShopSign() {
+  return window['go']['main']['App']['RemoveShopSign']();
+}
+
 export function ResolveDiffering(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ResolveDiffering'](arg1, arg2, arg3, arg4);
 }
@@ -498,6 +506,14 @@ export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
 }
 
+export function SetShopSignCrop(arg1) {
+  return window['go']['main']['App']['SetShopSignCrop'](arg1);
+}
+
+export function SetShopSignShowName(arg1) {
+  return window['go']['main']['App']['SetShopSignShowName'](arg1);
+}
+
 export function SetupRepair() {
   return window['go']['main']['App']['SetupRepair']();
 }
@@ -508,6 +524,10 @@ export function SetupState() {
 
 export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
+}
+
+export function ShopSign() {
+  return window['go']['main']['App']['ShopSign']();
 }
 
 export function ShrinkPreview(arg1, arg2) {

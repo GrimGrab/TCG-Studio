@@ -29,6 +29,7 @@ import (
 	"tcgstudio/internal/gamify"
 	"tcgstudio/internal/importer"
 	"tcgstudio/internal/installer"
+	"tcgstudio/internal/modconfig"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/scryfall"
 	"tcgstudio/internal/setfmt"
@@ -481,7 +482,7 @@ const globalBackFile = "card_back.png" // read by the mod from <plugin>\card_bac
 
 // ChooseSetCardBack lets the user pick an image, composes it into the vanilla card-back shape and returns its path.
 func (a *App) ChooseSetCardBack(id string) (string, error) {
-	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose a card back image", Filters: imageFilters})
+	file, err := a.pickImageFile("Choose a card back image")
 	if err != nil || file == "" {
 		return "", err
 	}
@@ -531,7 +532,7 @@ func (a *App) ChooseGlobalCardBack() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose the global card back image", Filters: imageFilters})
+	file, err := a.pickImageFile("Choose the global card back image")
 	if err != nil || file == "" {
 		return a.GlobalCardBack(), err
 	}
@@ -859,9 +860,14 @@ func (a *App) RefreshPrices(id string) (string, error) {
 
 var imageFilters = []runtime.FileFilter{{DisplayName: "Images (*.png;*.jpg;*.jpeg)", Pattern: "*.png;*.jpg;*.jpeg"}}
 
+// pickImageFile is the one image file dialog every "choose an image" button uses. Returns "" when cancelled.
+func (a *App) pickImageFile(title string) (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: title, Filters: imageFilters})
+}
+
 // PickImage lets the user choose one image and copies it into the project's images folder. Returns the relative path ("" if cancelled).
 func (a *App) PickImage(id, title string) (string, error) {
-	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: title, Filters: imageFilters})
+	file, err := a.pickImageFile(title)
 	if err != nil || file == "" {
 		return "", err
 	}
@@ -1072,6 +1078,13 @@ func (a *App) fileHandler() http.Handler {
 			}
 		case path == "globalback/"+globalBackFile:
 			file = filepath.Join(game.PluginDir(a.settings.GameDir), globalBackFile)
+		case strings.HasPrefix(path, "shopsign/"): // Settings → Shop sign
+			name := strings.TrimPrefix(path, "shopsign/")
+			if strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+				http.NotFound(w, r)
+				return
+			}
+			file = filepath.Join(game.PluginDir(a.settings.GameDir), modconfig.ShopSignFolder, name)
 		default:
 			http.NotFound(w, r)
 			return

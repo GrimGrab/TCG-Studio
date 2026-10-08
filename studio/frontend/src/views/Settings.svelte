@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { App, EventsOn, errText } from '../lib/api';
+  import CropBox from './CropBox.svelte';
 
   let { notify, onchange }: { notify: (t: string, k?: string) => void; onchange: () => void } = $props();
 
@@ -13,6 +14,7 @@
     status = await App.GameStatus();
     tpl = await App.TemplatesStatus();
     globalBack = await App.GlobalCardBack();
+    await loadSign();
   }
 
   async function rereadTemplates() {
@@ -50,6 +52,16 @@
   }
   async function removeGlobal() {
     try { await App.RemoveGlobalCardBack(); globalBack = ''; } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  // Shop sign: stored as mod settings, so a running game applies changes right away.
+  let sign = $state<any>(null);
+  let signError = $state('');
+  async function loadSign() {
+    try { sign = await App.ShopSign(); signError = ''; } catch (e) { sign = null; signError = errText(e); }
+  }
+  async function signDo(f: () => Promise<any>) {
+    try { sign = await f(); } catch (e) { notify(errText(e), 'error'); }
   }
 
   async function saveWorkspace() {
@@ -102,6 +114,30 @@
       </div>
     </section>
     <section>
+      <h3>Shop sign</h3>
+      <p class="muted">The sign above your shop's entrance. Pick any picture, then drag the box to choose the part that's shown (drag a corner
+        to resize it). It glows at night like the vanilla sign. Changes show in a running game right away.</p>
+      {#if sign}
+        {#if sign.image}
+          <CropBox src={sign.image} aspect={sign.aspect} crop={sign.crop} label={sign.showName ? 'Shop name' : ''}
+            onchange={(c) => signDo(() => App.SetShopSignCrop(c))} />
+        {:else}
+          <div class="sign"><span class="muted">vanilla sign</span></div>
+        {/if}
+        <div class="row">
+          <button onclick={() => signDo(App.ChooseShopSign)}>Choose image…</button>
+          {#if sign.image}
+            <button onclick={() => signDo(() => App.SetShopSignCrop([]))} disabled={!sign.crop}>Centre</button>
+            <button class="danger" onclick={() => signDo(App.RemoveShopSign)}>Remove</button>
+          {/if}
+        </div>
+        <label><input type="checkbox" checked={sign.showName} onchange={(ev) => signDo(() => App.SetShopSignShowName(ev.currentTarget.checked))} /> Show the shop name on the sign
+          <span class="muted small">(turn off when your picture already has a name or logo)</span></label>
+      {:else}
+        <p class="muted small">{signError || 'Loading…'}</p>
+      {/if}
+    </section>
+    <section>
       <h3>Downloads</h3>
       <label class="field">Default card image format for imports
         <select bind:value={settings.imageFormat} onchange={saveWorkspace}>
@@ -127,6 +163,7 @@
   .back-row { align-items: flex-start; gap: 14px; }
   .back { width: 130px; height: 130px; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .back img { max-width: 100%; max-height: 100%; }
+  .sign { width: 360px; height: 88px; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .col { display: flex; flex-direction: column; gap: 6px; }
   .small { font-size: 12px; margin: 0; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }

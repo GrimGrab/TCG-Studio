@@ -16,8 +16,9 @@ import (
 type ModSettingsView struct {
 	Sections    []modconfig.Section           `json:"sections"`
 	GameRunning bool                          `json:"gameRunning"`
-	ShowWhen    map[string]modconfig.ShowWhen `json:"showWhen"` // settings shown only for some value of another (settings-meta.json)
-	Setup       string                        `json:"setup"`    // name of the active setup: each setup keeps its own copy of these settings
+	ShowWhen    map[string]modconfig.ShowWhen `json:"showWhen"`  // settings shown only for some value of another (settings-meta.json)
+	Elsewhere   []string                      `json:"elsewhere"` // settings edited on another studio page (settings-meta.json)
+	Setup       string                        `json:"setup"`     // name of the active setup: each setup keeps its own copy of these settings
 }
 
 func (a *App) modConfigPath() (string, error) {
@@ -75,7 +76,7 @@ func (a *App) ModSettings() (ModSettingsView, error) {
 			setup = in.Name
 		}
 	}
-	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen, Setup: setup}, nil
+	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen, Elsewhere: meta.Elsewhere, Setup: setup}, nil
 }
 
 // SetModSetting changes one value (validated against the setting's type/range). A running game reloads it right away.

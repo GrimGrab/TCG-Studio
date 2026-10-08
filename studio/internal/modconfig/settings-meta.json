@@ -1,5 +1,5 @@
 {
-  "_about": "Extra structure for the mod's settings, read by the mod (embedded resource: F1 menu) and TCG Studio (Mod settings). showWhen: a setting is only shown while another setting has one of the listed values. Keys are unique across sections. TestSettingsMeta checks every name and value against defaults.cfg.",
+  "_about": "Extra structure for the mod's settings, read by the mod (embedded resource: F1 menu) and TCG Studio (Mod settings). showWhen: a setting is only shown while another setting has one of the listed values. Keys are unique across sections. TestSettingsMeta checks every name and value against defaults.cfg. elsewhere: settings edited on another Studio page (Settings → Shop sign), hidden on Mod settings.",
   "showWhen": {
     "AiDeckSetsMin": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
     "AiDeckSetsMax": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
@@ -14,5 +14,6 @@
     "AiDeckWeight3Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
     "AiDeckWeight4Colors": { "setting": "AiDeckStyle", "is": ["Random"] },
     "AiDeckWeight5Colors": { "setting": "AiDeckStyle", "is": ["Random"] }
-  }
+  },
+  "elsewhere": ["ShopSignImage", "ShopSignCrop", "ShowShopNameOnSign"]
 }

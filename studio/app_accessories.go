@@ -230,7 +230,7 @@ func (a *App) MoveAccessory(id string, to int) (AccessoryView, error) {
 
 // PickAccessoryImage lets the user choose an image for the editor and copies it into the library (images/src/…).
 func (a *App) PickAccessoryImage() (string, error) {
-	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose an image", Filters: imageFilters})
+	file, err := a.pickImageFile("Choose an image")
 	if err != nil || file == "" {
 		return "", err
 	}

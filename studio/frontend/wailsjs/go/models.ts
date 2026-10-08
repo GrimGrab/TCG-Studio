@@ -1668,6 +1668,7 @@ export namespace main {
 	    sections: modconfig.Section[];
 	    gameRunning: boolean;
 	    showWhen: Record<string, modconfig.ShowWhen>;
+	    elsewhere: string[];
 	    setup: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1679,6 +1680,7 @@ export namespace main {
 	        this.sections = this.convertValues(source["sections"], modconfig.Section);
 	        this.gameRunning = source["gameRunning"];
 	        this.showWhen = this.convertValues(source["showWhen"], modconfig.ShowWhen, true);
+	        this.elsewhere = source["elsewhere"];
 	        this.setup = source["setup"];
 	    }
 	
@@ -1933,6 +1935,24 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ShopSignView {
+	    image: string;
+	    crop: number[];
+	    showName: boolean;
+	    aspect: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopSignView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.image = source["image"];
+	        this.crop = source["crop"];
+	        this.showName = source["showName"];
+	        this.aspect = source["aspect"];
+	    }
 	}
 	export class SmartArtCard {
 	    name: string;

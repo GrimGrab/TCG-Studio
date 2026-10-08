@@ -59,7 +59,7 @@ namespace TCGCustomCards.Patches
             _grid = null;
             Custom.Clear();
 
-            var byIndex = FindButtons(screen);
+            var byIndex = FindButtons(screen.m_ScreenGrp != null ? screen.m_ScreenGrp.transform : screen.transform, nameof(CardExpansionSelectScreen.OnPressButton));
             if (byIndex.Count == 0)
             {
                 Plugin.Log.LogWarning("Expansion picker: no buttons wired to OnPressButton(int) found; custom sets are not selectable here");
@@ -118,7 +118,7 @@ namespace TCGCustomCards.Patches
         }
 
         /// <summary>Maps each button to its row: the ancestor directly under the deepest common ancestor of all buttons.</summary>
-        private static Dictionary<int, RectTransform> ToRows(Dictionary<int, Button> buttons)
+        internal static Dictionary<int, RectTransform> ToRows(Dictionary<int, Button> buttons)
         {
             var chains = buttons.ToDictionary(kv => kv.Key, kv =>
             {
@@ -133,11 +133,10 @@ namespace TCGCustomCards.Patches
             return chains.ToDictionary(kv => kv.Key, kv => (RectTransform)kv.Value[Mathf.Min(depth, kv.Value.Count - 1)]);
         }
 
-        /// <summary>Buttons under the screen whose persistent onClick calls OnPressButton(int), keyed by that int.</summary>
-        private static Dictionary<int, Button> FindButtons(CardExpansionSelectScreen screen)
+        /// <summary>Buttons under <paramref name="root"/> whose persistent onClick calls <paramref name="method"/>(int), keyed by that int.</summary>
+        internal static Dictionary<int, Button> FindButtons(Transform root, string method)
         {
             var result = new Dictionary<int, Button>();
-            var root = screen.m_ScreenGrp != null ? screen.m_ScreenGrp.transform : screen.transform;
             foreach (var b in root.GetComponentsInChildren<Button>(true))
             {
                 var calls = Traverse.Create(b.onClick).Field("m_PersistentCalls").Field("m_Calls").GetValue() as IList;
@@ -145,7 +144,7 @@ namespace TCGCustomCards.Patches
                 foreach (var call in calls)
                 {
                     var t = Traverse.Create(call);
-                    if (t.Field("m_MethodName").GetValue<string>() != nameof(CardExpansionSelectScreen.OnPressButton)) continue;
+                    if (t.Field("m_MethodName").GetValue<string>() != method) continue;
                     int arg = t.Field("m_Arguments").Field("m_IntArgument").GetValue<int>();
                     if (!result.ContainsKey(arg)) result[arg] = b;
                 }

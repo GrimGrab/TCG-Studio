@@ -434,6 +434,11 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 	if err != nil {
 		return "", err
 	}
+	if opt.KeepRarities && !p.Set.OwnRarities() {
+		if err := importer.KeepSourceRarities(p, src.Info().RarityOrder); err == nil {
+			_ = a.ws().Save(p)
+		}
+	}
 	// Brand the default booster with generated art when the game's templates are available (not when the import brought
 	// its own pack art, e.g. an EPL mod).
 	if len(p.Set.Packs) > 0 && p.Set.Packs[0].PackTexture == "" && a.templatesReady() {
@@ -628,6 +633,19 @@ func (a *App) ListProjects() ([]project.Summary, error) {
 }
 
 func (a *App) LoadProject(id string) (*project.Project, error) { return a.ws().Load(id) }
+
+// UseSourceRarities returns the editor's project with the source's own rarities as its rarity list (Set tab button; the
+// editor saves it). See importer.KeepSourceRarities.
+func (a *App) UseSourceRarities(p project.Project) (*project.Project, error) {
+	var order []string
+	if src, err := a.sources.Get(p.Meta.Source); err == nil {
+		order = src.Info().RarityOrder
+	}
+	if err := importer.KeepSourceRarities(&p, order); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
 
 func (a *App) CreateProject(id, name string) (*project.Project, error) {
 	return a.ws().Create(id, name)

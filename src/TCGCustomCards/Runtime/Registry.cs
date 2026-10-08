@@ -22,6 +22,8 @@ namespace TCGCustomCards.Runtime
         private bool _cardBackResolved;
 
         public CardDef Card(int pos) => Def.Cards[pos];
+        /// <summary>The card's rarity entry (always found: SetLoader rejects unknown rarities).</summary>
+        public RarityDef Rarity(int pos) => Def.RarityOf(Card(pos)) ?? Def.Rarities[0];
         public string ImagePath(CardDef card) => string.IsNullOrEmpty(card.Image) ? null : Def.Resolve(card.Image);
         public Sprite CardImage(int pos) => ImageCache.Get(ImagePath(Card(pos)));
 
@@ -201,19 +203,44 @@ namespace TCGCustomCards.Runtime
             return false;
         }
 
+        /// <summary>
+        /// Custom rarity ints (sets' own rarities that aren't vanilla names) start here: clear of vanilla (0–4) and of the custom
+        /// expansion ints (100+) that GetTranslationPatch answers for numeric terms. Allocated per launch; the save keeps stable ids.
+        /// </summary>
+        public const int RarityBase = 1000;
+        private static readonly Dictionary<int, (CustomSet set, RarityDef rarity)> ByRarity = new Dictionary<int, (CustomSet, RarityDef)>();
+
+        public static bool IsCustomRarity(ERarity r) => (int)r >= RarityBase;
+        public static bool TryGetRarity(ERarity r, out CustomSet set, out RarityDef rarity)
+        {
+            bool ok = ByRarity.TryGetValue((int)r, out var e);
+            set = e.set;
+            rarity = e.rarity;
+            return ok;
+        }
+
+        /// <summary>Rarity entry of a custom card's monster, or null for vanilla cards.</summary>
+        public static RarityDef RarityOf(EMonsterType m) => TryGetCard(m, out var set, out int pos) ? set.Rarity(pos) : null;
+
         public static int MaxExpansionInt => Sets.Count == 0 ? -1 : Sets.Max(s => (int)s.Expansion);
 
         public static void Build(List<SetDef> defs)
         {
             int nextMonster = MonsterBase;
+            int nextRarity = RarityBase;
             foreach (var def in defs.OrderBy(d => d.Id, System.StringComparer.Ordinal))
             {
                 var set = new CustomSet { Def = def, Expansion = (ECardExpansionType)(ExpansionBase + Sets.Count) };
+                foreach (var r in def.Rarities)
+                {
+                    r.Value = (ERarity)nextRarity++;
+                    ByRarity[(int)r.Value] = (set, r);
+                }
                 for (int pos = 0; pos < def.Cards.Count; pos++)
                 {
                     var card = def.Cards[pos];
                     var id = (EMonsterType)nextMonster++;
-                    var md = NewMonster(id, card.Name, card.Rarity);
+                    var md = NewMonster(id, card.Name, set.Rarity(pos).Value);
                     md.ArtistName = card.Artist ?? "";
                     md.Description = card.Description ?? "";
                     md.ElementIndex = card.Play.Element;
@@ -255,7 +282,9 @@ namespace TCGCustomCards.Runtime
                 Sets.Add(set);
                 ByExpansion[(int)set.Expansion] = set;
                 ById[def.Id] = set;
-                Plugin.Log.LogInfo($"Registered set '{def.Id}' as expansion {(int)set.Expansion}, monsters {(int)set.Shown.First()}..{(int)set.Shown.Last()}");
+                int own = def.Rarities.Count(r => IsCustomRarity(r.Value));
+                Plugin.Log.LogInfo($"Registered set '{def.Id}' as expansion {(int)set.Expansion}, monsters {(int)set.Shown.First()}..{(int)set.Shown.Last()}" +
+                                   (own > 0 ? $", {own} own rarities" : ""));
             }
         }
 

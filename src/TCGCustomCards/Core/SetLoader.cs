@@ -64,6 +64,7 @@ namespace TCGCustomCards.Core
                 errors.Add($"frameTemplate '{set.FrameTemplate}' is not a usable vanilla expansion");
             if (set.PriceDefaults?.BorderMultipliers?.Length != 6) errors.Add("priceDefaults.borderMultipliers must have 6 entries");
             if (set.Cards == null || set.Cards.Count == 0) errors.Add("no cards");
+            bool defaultList = ValidateRarities(set, errors);
 
             var ids = new HashSet<string>();
             foreach (var c in set.Cards ?? new List<CardDef>())
@@ -73,7 +74,12 @@ namespace TCGCustomCards.Core
                 if (!ids.Add(c.Id)) errors.Add($"{where}: duplicate id");
                 if (!IsSafeId(c.Id)) errors.Add($"{where}: id may not contain spaces or ':'");
                 if (string.IsNullOrWhiteSpace(c.Name)) c.Name = c.Id;
-                if (c.Rarity < ERarity.Common || c.Rarity > ERarity.SuperLegend) errors.Add($"{where}: bad rarity");
+                // Before custom rarities the field was an ERarity (names, any case, or 0–4).
+                if (string.IsNullOrWhiteSpace(c.Rarity)) c.Rarity = set.Rarities[0]?.Id ?? "Common";
+                else if (int.TryParse(c.Rarity, out int n) && n >= 0 && n <= (int)ERarity.SuperLegend) c.Rarity = ((ERarity)n).ToString();
+                // SuperLegend never had an icon in game (it showed Common's); the default list ends at Legendary.
+                if (defaultList && string.Equals(c.Rarity, "SuperLegend", StringComparison.OrdinalIgnoreCase)) c.Rarity = "Legendary";
+                if (set.RarityOf(c) == null) errors.Add($"{where}: unknown rarity '{c.Rarity}'");
                 if (c.Price == null) c.Price = new CardPrice();
                 if (c.Price.BorderMultipliers != null && c.Price.BorderMultipliers.Length != 6) errors.Add($"{where}: price.borderMultipliers must have 6 entries");
                 if (c.Play == null) c.Play = new PlayDef();
@@ -100,7 +106,7 @@ namespace TCGCustomCards.Core
                     errors.Add($"{where}: slot counts add up to {p.Slots.Sum(s => s.Count)}, expected {p.CardsPerPack}");
                 foreach (var s in p.Slots)
                     foreach (var w in s.Weights.Keys)
-                        if (!Enum.TryParse<ERarity>(w, out var r) || r < ERarity.Common) errors.Add($"{where}: unknown rarity '{w}' in slot weights");
+                        if (!set.RarityById.ContainsKey(w)) errors.Add($"{where}: unknown rarity '{w}' in slot weights");
                 foreach (var b in (p.BorderOdds ?? new Dictionary<string, float>()).Keys)
                     if (!Enum.TryParse<ECardBorderType>(b, out _)) errors.Add($"{where}: unknown border '{b}' in borderOdds");
                 foreach (var id in p.Cards ?? new List<string>())
@@ -110,6 +116,31 @@ namespace TCGCustomCards.Core
                         Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{img}' (vanilla art used)");
             }
             return errors;
+        }
+
+        private static readonly string[] DefaultRarities = { "Common", "Rare", "Epic", "Legendary" };
+
+        /// <summary>
+        /// Fills <see cref="SetDef.RarityById"/> and each rarity's place (the default list when the set has none; returns true then).
+        /// Values come from Registry.Build.
+        /// </summary>
+        private static bool ValidateRarities(SetDef set, List<string> errors)
+        {
+            bool defaultList = set.Rarities == null || set.Rarities.Count == 0;
+            if (defaultList) set.Rarities = DefaultRarities.Select(r => new RarityDef { Id = r, Name = r }).ToList();
+            int count = set.Rarities.Count;
+            for (int i = 0; i < set.Rarities.Count; i++)
+            {
+                var r = set.Rarities[i];
+                if (r == null || string.IsNullOrWhiteSpace(r.Id)) { errors.Add($"rarity #{i + 1}: missing id"); continue; }
+                if (!IsSafeId(r.Id)) errors.Add($"rarity '{r.Id}': id may not contain spaces, ':', '/' or '|'");
+                if (!set.RarityById.ContainsKey(r.Id)) set.RarityById[r.Id] = r;
+                else errors.Add($"rarity '{r.Id}': duplicate id");
+                if (string.IsNullOrWhiteSpace(r.Name)) r.Name = r.Id;
+                r.Rank = i;
+                r.Tier = (ERarity)(count <= 4 ? i : (int)Math.Round(i * 3.0 / (count - 1)));
+            }
+            return defaultList;
         }
     }
 }

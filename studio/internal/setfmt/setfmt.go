@@ -24,7 +24,8 @@ type Set struct {
 	RenderMode    string        `json:"renderMode"`    // FullImage | Framed
 	FrameTemplate string        `json:"frameTemplate"` // vanilla expansion name
 	CardBack      string        `json:"cardBack,omitempty"`
-	Mtg           *SetMtg       `json:"mtg,omitempty"` // real MTG set: lets the mod export decks to Forge
+	Mtg           *SetMtg       `json:"mtg,omitempty"`      // real MTG set: lets the mod export decks to Forge
+	Rarities      []Rarity      `json:"rarities,omitempty"` // the set's own rarities, lowest first; empty = vanilla ones
 	PriceDefaults PriceDefaults `json:"priceDefaults"`
 	Packs         []Pack        `json:"packs"`
 	Cards         []Card        `json:"cards"`
@@ -41,7 +42,7 @@ type Card struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Artist      string    `json:"artist"`
-	Rarity      string    `json:"rarity"`
+	Rarity      string    `json:"rarity"` // id from Set.Rarities (vanilla name when the set has none)
 	Number      string    `json:"number,omitempty"`
 	Image       string    `json:"image"`
 	Price       CardPrice `json:"price"`
@@ -200,10 +201,16 @@ func (s *Set) normalize() {
 	if s.Packs == nil {
 		s.Packs = []Pack{}
 	}
+	for i := range s.Rarities {
+		r := &s.Rarities[i]
+		if r.Name == "" {
+			r.Name = r.ID
+		}
+	}
 	for i := range s.Cards {
 		c := &s.Cards[i]
 		if c.Rarity == "" {
-			c.Rarity = "Common"
+			c.Rarity = s.RarityList()[0].ID
 		}
 		if len(c.Play.LaneAttack) != 4 {
 			c.Play.LaneAttack = []int{1, 1, 1, 1}
@@ -290,6 +297,28 @@ func (s *Set) Validate(folders ...string) []Issue {
 		add("error", "set", "no cards")
 	}
 
+	rarityIDs := map[string]bool{}
+	for i, r := range s.Rarities {
+		w := "rarity " + r.ID
+		if r.ID == "" {
+			add("error", "set", "rarity #%d: missing id", i+1)
+			continue
+		}
+		if !SafeID(r.ID) {
+			add("error", w, "id may not contain spaces, ':', '/', '|'")
+		}
+		if rarityIDs[r.ID] {
+			add("error", w, "duplicate id")
+		}
+		rarityIDs[r.ID] = true
+	}
+	knownRarity := func(id string) bool {
+		if s.OwnRarities() {
+			return rarityIDs[id]
+		}
+		return contains(Rarities, id)
+	}
+
 	ids := map[string]bool{}
 	for _, c := range s.Cards {
 		w := "card " + c.ID
@@ -304,9 +333,9 @@ func (s *Set) Validate(folders ...string) []Issue {
 		if !SafeID(c.ID) {
 			add("error", w, "id may not contain spaces, ':', '/', '|'")
 		}
-		if !contains(Rarities, c.Rarity) {
-			add("error", w, "bad rarity %q", c.Rarity)
-		} else if c.Rarity == "SuperLegend" {
+		if !knownRarity(c.Rarity) {
+			add("error", w, "unknown rarity %q", c.Rarity)
+		} else if c.Rarity == "SuperLegend" && !s.OwnRarities() {
 			add("warning", w, "SuperLegend has no rarity icon in the game (shows as Common) — use Legendary")
 		}
 		if c.Price.BorderMultipliers != nil && len(c.Price.BorderMultipliers) != 6 {
@@ -348,7 +377,7 @@ func (s *Set) Validate(folders ...string) []Issue {
 			for _, sl := range p.Slots {
 				sum += sl.Count
 				for r := range sl.Weights {
-					if !contains(Rarities, r) {
+					if !knownRarity(r) {
 						add("error", w, "unknown rarity %q in slot weights", r)
 					}
 				}

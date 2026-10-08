@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { App, projectFile, RARITIES, BORDERS, errText, ask } from '../../lib/api';
+  import { App, projectFile, setRarities, splitWeights, BORDERS, errText, ask } from '../../lib/api';
   import PackArtEditor from './PackArtEditor.svelte';
+  import PackContents from './PackContents.svelte';
 
   let { project, notify, imgBust, save, hooks }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
@@ -17,7 +18,10 @@
 
   let index = $state(0);
   const pack = $derived(project.set.packs[index]);
-  const slotSum = $derived(pack ? pack.slots.reduce((s: number, x: any) => s + (x.count || 0), 0) : 0);
+  const rarities = $derived(setRarities(project.set));
+  const ownRarities = $derived(!!project.set.rarities?.length);
+  // Presets are written in the game's 4 rarities; sets with their own rarities share each one's weight over theirs by place in the list.
+  const preset = (name: string) => structuredClone(PRESETS[name]).map((s: any) => ({ ...s, weights: splitWeights(project.set, s.weights) }));
 
   const PRESETS: Record<string, any[]> = {
     'MTG-like (5 C · 1 U · 1 R/M)': [
@@ -37,7 +41,7 @@
     project.set.packs.push({
       id, name: `${project.set.name} Booster${n > 1 ? ' ' + n : ''}`, cardsPerPack: 7, starter: false, hasBox: true,
       packCost: 1.5, marketMin: 1.5, marketMax: 2, license: { packLevel: 1, packPrice: 100, boxLevel: 3, boxPrice: 200 },
-      slots: structuredClone(PRESETS['MTG-like (5 C · 1 U · 1 R/M)']), foilChance: 5,
+      slots: preset('MTG-like (5 C · 1 U · 1 R/M)'), foilChance: 5,
       borderOdds: { FullArt: 0.25, EX: 1, Gold: 4, Silver: 8, FirstEdition: 20 }, allowDuplicates: false, cards: []
     });
     index = project.set.packs.length - 1;
@@ -49,14 +53,7 @@
     index = Math.max(0, index - 1);
   }
 
-  function applyPreset(name: string) { pack.slots = structuredClone(PRESETS[name]); }
-
-  function weight(slot: any, r: string, v: string) {
-    const n = parseFloat(v);
-    if (isNaN(n) || n <= 0) delete slot.weights[r];
-    else slot.weights[r] = n;
-    slot.weights = { ...slot.weights };
-  }
+  function applyPreset(name: string) { pack.slots = preset(name); }
 
   async function pick(field: string, title: string) {
     try {
@@ -121,21 +118,12 @@
           </select>
         </div>
         {#if pack.slots.length === 0}
-          <p class="muted">No slots: every card uses vanilla-like odds (Rare 10%, Epic 2%, Legendary 0.1%).</p>
+          <p class="muted">{ownRarities ? 'No slots: every card uses vanilla-like odds, each rarity by its place in the list.'
+            : 'No slots: every card uses vanilla-like odds (Rare 10%, Epic 2%, Legendary 0.1%).'} Apply a preset or add a slot to choose your own weights.</p>
+          <div class="row"><button class="small" onclick={() => pack.slots.push({ count: pack.cardsPerPack, weights: { [rarities[0]?.id ?? 'Common']: 1 } })}>+ Slot</button></div>
+        {:else}
+          <PackContents {project} {pack} />
         {/if}
-        {#each pack.slots as slot, si}
-          <div class="slot row">
-            <label class="field" style="width:70px">Cards<input type="number" min="1" bind:value={slot.count} /></label>
-            {#each RARITIES as r}
-              <label class="field">{r} weight<input type="number" min="0" step="0.5" value={slot.weights[r] ?? ''} placeholder="0" oninput={(e) => weight(slot, r, e.currentTarget.value)} /></label>
-            {/each}
-            <button class="small" onclick={() => pack.slots.splice(si, 1)}>✕</button>
-          </div>
-        {/each}
-        <div class="row">
-          <button class="small" onclick={() => pack.slots.push({ count: 1, weights: { Common: 1 } })}>+ Slot</button>
-          {#if pack.slots.length && slotSum !== pack.cardsPerPack}<span class="err">Slot counts add up to {slotSum}, must be {pack.cardsPerPack}</span>{/if}
-        </div>
         <div class="grid4">
           <label class="field">Foil chance %<input type="number" step="0.5" min="0" max="100" bind:value={pack.foilChance} /></label>
           {#each BORDERS.slice(1) as b}
@@ -178,12 +166,9 @@
   .form { flex: 1; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .slot { align-items: flex-end; flex-wrap: wrap; }
-  .slot .field { width: 110px; }
   .art { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .artbox { display: flex; flex-direction: column; gap: 6px; }
   .thumb { aspect-ratio: 1; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .thumb img { max-width: 100%; max-height: 100%; }
   .small { font-size: 12px; }
-  .err { color: var(--danger); font-size: 12px; }
 </style>

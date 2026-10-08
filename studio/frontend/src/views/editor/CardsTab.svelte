@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { App, projectFile, money, RARITIES, RARITY_COLORS, errText, ask, sourceInfo } from '../../lib/api';
+  import { App, projectFile, money, setRarities, rarityName, rarityColor, errText, ask, sourceInfo } from '../../lib/api';
   import CardDetail from './CardDetail.svelte';
   import BulkEdit from './BulkEdit.svelte';
+  import CardViewer from './CardViewer.svelte';
 
   let { project, notify, imgBust, onimages }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number; onimages: (what: string) => Promise<void>;
@@ -16,7 +17,10 @@
   let anchor = $state<number>(-1);
 
   const meta = (id: string) => project.meta?.cards?.[id] ?? {};
-  const RANK: Record<string, number> = Object.fromEntries(RARITIES.map((r, i) => [r, i]));
+  const rarities = $derived(setRarities(project.set));
+  const RANK = $derived<Record<string, number>>(Object.fromEntries(rarities.map((r, i) => [r.id, i])));
+  // Sets with their own rarities name them on the card already; the source rarity filter/sort only adds to the game's 4.
+  const ownRarities = $derived(!!project.set.rarities?.length);
 
   // The import source decides the colour filter (Magic colours, Pokémon types) and the order of its own rarities.
   let source = $state<any>(null);
@@ -33,6 +37,7 @@
     return i >= 0 ? i : (srcOrder.length - 1) / 2 + 0.25;
   };
   const srcRarities = $derived(
+    ownRarities ? [] :
     [...new Set<string>(project.set.cards.map((c: any) => meta(c.id).srcRarity).filter(Boolean))].sort((a, b) => srcRank(a) - srcRank(b))
   );
   const setIndex = $derived(new Map(project.set.cards.map((c: any, i: number) => [c.id, i])));
@@ -66,8 +71,8 @@
     });
     if (sort === 'name') list = [...list].sort((a: any, b: any) => a.name.localeCompare(b.name));
     if (sort === 'rarity')
-      list = [...list].sort((a: any, b: any) => RANK[b.rarity] - RANK[a.rarity] || srcRank(meta(b.id).srcRarity) - srcRank(meta(a.id).srcRarity) ||
-        bySet(a, b));
+      list = [...list].sort((a: any, b: any) => (RANK[b.rarity] ?? -1) - (RANK[a.rarity] ?? -1) ||
+        (ownRarities ? 0 : srcRank(meta(b.id).srcRarity) - srcRank(meta(a.id).srcRarity)) || bySet(a, b));
     if (sort === 'cost' || sort === 'power') {
       const key = sort === 'cost' ? 'cmc' : 'power';
       const dir = sort === 'cost' ? 1 : -1;
@@ -101,6 +106,11 @@
 
   function selectAll() { selected = shown.map((c: any) => c.id); }
 
+  // Full-screen viewer over the shown cards (double-click a card, or click the picture in the card panel); browsing selects.
+  let viewing = $state<number | null>(null);
+  function view(id: string) { const i = shown.findIndex((c: any) => c.id === id); if (i >= 0) viewing = i; }
+  function viewAt(i: number) { viewing = i; selected = [shown[i].id]; anchor = i; }
+
   // Strip leading numbers: "001 Captain Marvel.png" → card 001 "Captain Marvel" (shared with the Import page's image-folder
   // option). Off: the whole file name is the name, so "2099 Spider-Man" stays whole.
   let stripNumbers = $state((() => { try { return localStorage.getItem('import.stripNumbers') === '1'; } catch { return false; } })());
@@ -122,7 +132,7 @@
         if (m) { number = m[1]; name = m[2]; }
         name = name.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim(); // hyphens stay (Spider-Man)
         project.set.cards.push({
-          id, name, ...(number ? { number } : {}), description: '', artist: '', rarity: 'Common', image: rel,
+          id, name, ...(number ? { number } : {}), description: '', artist: '', rarity: rarities[0]?.id ?? 'Common', image: rel,
           price: { base: 0.25 }, play: { laneAttack: [1, 1, 1, 1], element: 'Fire' }
         });
         added.push(id);
@@ -140,7 +150,7 @@
     selected = [];
   }
 
-  const rarityCounts = $derived(RARITIES.map((r) => [r, project.set.cards.filter((c: any) => c.rarity === r).length]));
+  const rarityCounts = $derived(rarities.map((r) => [r, project.set.cards.filter((c: any) => c.rarity === r.id).length] as [any, number]));
 </script>
 
 <div class="wrap">
@@ -150,10 +160,10 @@
       <select bind:value={rarity}>
         <option value="">All rarities</option>
         {#if srcRarities.length}
-          <optgroup label="Game rarity">{#each RARITIES as r}<option value={r}>{r}</option>{/each}</optgroup>
+          <optgroup label="Game rarity">{#each rarities as r}<option value={r.id}>{r.name}</option>{/each}</optgroup>
           <optgroup label="Card rarity">{#each srcRarities as r}<option value={'src:' + r}>{r}</option>{/each}</optgroup>
         {:else}
-          {#each RARITIES as r}<option value={r}>{r}</option>{/each}
+          {#each rarities as r}<option value={r.id}>{r.name}</option>{/each}
         {/if}
       </select>
       {#if colors.length}
@@ -180,14 +190,14 @@
     </div>
     <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))">
       {#each shown as c, i (c.id)}
-        <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)}
-          title={meta(c.id).srcRarity ? `${c.rarity} · ${meta(c.id).srcRarity}` : c.rarity}>
+        <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)} ondblclick={() => view(c.id)}
+          title={meta(c.id).srcRarity && !ownRarities ? `${rarityName(project.set, c.rarity)} · ${meta(c.id).srcRarity}` : rarityName(project.set, c.rarity)}>
           <div class="img" style="aspect-ratio: 63/88">
             {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt={c.name} loading="lazy" draggable="false" />{/if}
             {#if meta(c.id).locked}<span class="lock" title="Price locked">🔒</span>{/if}
           </div>
           <div class="cap">
-            <span class="dot" style="background:{RARITY_COLORS[c.rarity]}"></span>
+            <span class="dot" style="background:{rarityColor(project.set, c.rarity)}"></span>
             <span class="nm">{c.name}</span>
           </div>
           <div class="price muted">{money(c.price.base)}{#if meta(c.id).usd !== undefined}<span class="real"> · real {money(meta(c.id).usd)}</span>{/if}</div>
@@ -198,20 +208,24 @@
 
   <aside>
     {#if selectedCards.length === 1}
-      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {onimages} ondelete={deleteSelected} />
+      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {onimages} ondelete={deleteSelected} onzoom={() => view(selectedCards[0].id)} />
     {:else if selectedCards.length > 1}
       <BulkEdit {project} cards={selectedCards} {notify} {onimages} ondelete={deleteSelected} />
     {:else}
       <div class="summary">
         <h3>Set summary</h3>
         {#each rarityCounts as [r, n]}
-          <div class="row"><span class="dot" style="background:{RARITY_COLORS[r as string]}"></span><span class="grow">{r}</span><b>{n}</b></div>
+          <div class="row"><span class="dot" style="background:{rarityColor(project.set, r.id)}"></span><span class="grow">{r.name}</span><b>{n}</b></div>
         {/each}
-        <p class="muted">Click a card to edit it. Ctrl/Shift-click or “Select all shown” to edit many at once.</p>
+        <p class="muted">Click a card to edit it, double-click to view it full screen. Ctrl/Shift-click or “Select all shown” to edit many at once.</p>
       </div>
     {/if}
   </aside>
 </div>
+
+{#if viewing !== null && shown[viewing]}
+  <CardViewer {project} cards={shown} index={viewing} {imgBust} onindex={viewAt} onclose={() => (viewing = null)} />
+{/if}
 
 <style>
   .wrap { display: flex; height: 100%; }

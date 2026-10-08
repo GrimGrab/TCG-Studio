@@ -53,7 +53,11 @@ type setIn struct {
 	Rotate     bool    // turn landscape card art upright
 	Aspect     float64 // > 0: stretch card art to this width/height (CardAspect for cards narrower than the game's slot)
 	Get        func(context.Context, string) ([]byte, error)
-	Rarity     func(src string) string // source rarity → game rarity
+	Rarity     func(src string) string // source rarity → the card's rarity (a game rarity, or an id of Rarities)
+	// Rarities: the set's own rarity list (EPL mods with their tiers kept); Slots keyed by game rarity are shared out over it
+	// by Group (rarity id → the game rarity whose weight it shares).
+	Rarities []setfmt.Rarity
+	Group    func(id string) string
 	// Local: images come from the player's own folder, so they are always copied again (a library file from an
 	// earlier import of that folder may be an older picture).
 	Local       bool
@@ -83,6 +87,7 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		return nil, err
 	}
 	set := setfmt.NewSet(in.ID, in.Name)
+	set.Rarities = in.Rarities
 	set.RenderMode = "FullImage"
 	if in.RenderMode != "" {
 		set.RenderMode = in.RenderMode
@@ -144,17 +149,20 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 	packs := in.Packs
 	if len(packs) == 0 {
 		pack := setfmt.NewPack("booster", in.Name+" Booster")
-		pack.Slots, pack.FoilChance = in.Slots, in.FoilChance
+		pack.FoilChance = in.FoilChance
+		for _, sl := range in.Slots {
+			pack.Slots = append(pack.Slots, setfmt.Slot{Count: sl.Count, Weights: set.SplitWeights(sl.Weights, in.Group)})
+		}
 		packs = []setfmt.Pack{pack}
 	}
 	for _, pk := range packs {
 		fitted := pk
-		fitted.Slots = fitSlots(pk.Slots, set.Cards)
+		fitted.Slots = fitSlots(pk.Slots, set)
 		set.Packs = append(set.Packs, fitted)
 	}
 
 	if in.Logo != "" {
-		_ = saveImage(ctx, in.Get, imageJob{url: in.Logo, path: filepath.Join(folder, "images", "set_logo.png")}, 0)
+		_ = saveImage(ctx, in.Get, imageJob{url: in.Logo, path: filepath.Join(art.dir, "set_logo.png")}, 0) // next to the card art (the set's shared folder)
 	}
 	failed := downloadImages(ctx, in.Get, jobs, opt.ImageWidth, report)
 	if err := ctx.Err(); err != nil {
@@ -181,10 +189,12 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 			return nil, fmt.Errorf("no card images could be downloaded for %s", in.Name)
 		}
 		for i := range set.Packs {
-			set.Packs[i].Slots = fitSlots(packs[i].Slots, set.Cards)
+			set.Packs[i].Slots = fitSlots(packs[i].Slots, set)
 		}
 	}
-	failed = append(failed, writeExtras(ctx, in, folder, set)...)
+	// Pack/box art and the card back go next to the card art too (the set's shared folder when it has one), like every set file
+	// Studio writes (Project.WriteTarget) — else Storage's "Move everything to shared" would offer them right after the import.
+	failed = append(failed, writeExtras(ctx, in, filepath.Dir(art.dir), set)...)
 	p := &project.Project{ID: in.ID, Folder: folder, LibFolder: ws.LibFolder(in.ID), Set: set, Meta: meta}
 	if err := ws.Save(p); err != nil {
 		return nil, err
@@ -199,12 +209,16 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 
 // fitSlots drops slot rarities the set has no cards of; a slot left empty takes the closest lower rarity the set has
 // (e.g. modern Yu-Gi-Oh! sets have no Rare printings, 30th Celebration no Uncommons), so packs never draw from an empty bucket.
-func fitSlots(slots []setfmt.Slot, cards []setfmt.Card) []setfmt.Slot {
+// "Lower" follows the set's rarity list.
+func fitSlots(slots []setfmt.Slot, set *setfmt.Set) []setfmt.Slot {
 	have := map[string]bool{}
-	for _, c := range cards {
+	for _, c := range set.Cards {
 		have[c.Rarity] = true
 	}
-	ladder := []string{"Common", "Rare", "Epic", "Legendary"}
+	var ladder []string
+	for _, r := range set.RarityList() {
+		ladder = append(ladder, r.ID)
+	}
 	var out []setfmt.Slot
 	for _, s := range slots {
 		w := map[string]float64{}
@@ -316,10 +330,11 @@ func slug(s string) string {
 
 // writeExtras saves an import's pack/box art and card back into the project folder. An image that fails leaves its
 // field empty (generated art is used instead) and is reported with the failed images.
-func writeExtras(ctx context.Context, in setIn, folder string, set *setfmt.Set) []string {
+// writeExtras saves the import's extra images under base (the folder their set.json paths are relative to).
+func writeExtras(ctx context.Context, in setIn, base string, set *setfmt.Set) []string {
 	var failed []string
 	for _, e := range in.Extra {
-		out := filepath.Join(folder, filepath.FromSlash(e.Rel))
+		out := filepath.Join(base, filepath.FromSlash(e.Rel))
 		err := func() error {
 			b, err := in.Get(ctx, e.URL)
 			if err != nil {

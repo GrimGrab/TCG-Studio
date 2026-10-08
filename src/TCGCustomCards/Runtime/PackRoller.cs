@@ -10,10 +10,22 @@ namespace TCGCustomCards.Runtime
     internal static class PackRoller
     {
         /// <summary>Vanilla-like odds used when a pack defines no slots (≈ vanilla non-guaranteed slot: Rare 10%, Epic 2%, Legendary 0.1%).</summary>
-        private static readonly Dictionary<ERarity, float> DefaultWeights = new Dictionary<ERarity, float>
+        private static readonly Dictionary<string, float> DefaultWeights = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase)
         {
-            [ERarity.Common] = 87.9f, [ERarity.Rare] = 10f, [ERarity.Epic] = 2f, [ERarity.Legendary] = 0.1f
+            ["Common"] = 87.9f, ["Rare"] = 10f, ["Epic"] = 2f, ["Legendary"] = 0.1f
         };
+
+        /// <summary>
+        /// No slots: each rarity gets the vanilla-like odds of the vanilla rarity for its place in the list (shared when several have
+        /// the same one). The default list (Common…Legendary) gets exactly the vanilla-like odds.
+        /// </summary>
+        private static Dictionary<string, float> DefaultWeightsFor(SetDef set)
+        {
+            var w = new Dictionary<string, float>();
+            foreach (var r in set.Rarities)
+                w[r.Id] = DefaultWeights[r.Tier.ToString()] / set.Rarities.Count(x => x.Tier == r.Tier);
+            return w;
+        }
 
         private static readonly ECardBorderType[] BorderCheckOrder =
             { ECardBorderType.FullArt, ECardBorderType.EX, ECardBorderType.Gold, ECardBorderType.Silver, ECardBorderType.FirstEdition };
@@ -26,13 +38,17 @@ namespace TCGCustomCards.Runtime
             var buckets = BuildBuckets(pack);
             bool anyFoil = false;
 
-            var slotWeights = new List<Dictionary<ERarity, float>>();
+            var slotWeights = new List<Dictionary<string, float>>();
             if (def.Slots.Count == 0)
-                for (int i = 0; i < def.CardsPerPack; i++) slotWeights.Add(DefaultWeights);
+            {
+                var w = DefaultWeightsFor(set.Def);
+                for (int i = 0; i < def.CardsPerPack; i++) slotWeights.Add(w);
+            }
             else
                 foreach (var s in def.Slots)
                 {
-                    var w = s.Weights.ToDictionary(kv => (ERarity)Enum.Parse(typeof(ERarity), kv.Key), kv => kv.Value);
+                    // Keys as the cards' rarity ids are spelled (SetLoader matched them case-insensitively).
+                    var w = s.Weights.ToDictionary(kv => set.Def.RarityById[kv.Key].Id, kv => kv.Value);
                     for (int i = 0; i < s.Count; i++) slotWeights.Add(w);
                 }
 
@@ -53,32 +69,33 @@ namespace TCGCustomCards.Runtime
             return anyFoil;
         }
 
-        private static Dictionary<ERarity, List<int>> BuildBuckets(CustomPack pack)
+        /// <summary>Card positions by rarity id.</summary>
+        private static Dictionary<string, List<int>> BuildBuckets(CustomPack pack)
         {
-            var buckets = new Dictionary<ERarity, List<int>>();
+            var buckets = new Dictionary<string, List<int>>();
             foreach (int pos in pack.Pool)
             {
-                var r = pack.Set.Card(pos).Rarity;
+                var r = pack.Set.Rarity(pos).Id;
                 if (!buckets.TryGetValue(r, out var list)) buckets[r] = list = new List<int>();
                 list.Add(pos);
             }
             return buckets;
         }
 
-        private static int PickCard(CustomPack pack, Dictionary<ERarity, List<int>> buckets, Dictionary<ERarity, float> weights)
+        private static int PickCard(CustomPack pack, Dictionary<string, List<int>> buckets, Dictionary<string, float> weights)
         {
             // Only rarities that still have cards take part; if the wanted rarities are all empty, fall back to any rarity.
             var candidates = weights.Where(w => w.Value > 0f && buckets.TryGetValue(w.Key, out var b) && b.Count > 0).ToList();
-            if (candidates.Count == 0) candidates = buckets.Where(b => b.Value.Count > 0).Select(b => new KeyValuePair<ERarity, float>(b.Key, 1f)).ToList();
+            if (candidates.Count == 0) candidates = buckets.Where(b => b.Value.Count > 0).Select(b => new KeyValuePair<string, float>(b.Key, 1f)).ToList();
             if (candidates.Count == 0)
             {
                 // Pack pool exhausted (no-duplicate pack with fewer cards than slots): refill and allow repeats.
                 foreach (var kv in BuildBuckets(pack)) buckets[kv.Key] = kv.Value;
-                candidates = buckets.Select(b => new KeyValuePair<ERarity, float>(b.Key, 1f)).ToList();
+                candidates = buckets.Select(b => new KeyValuePair<string, float>(b.Key, 1f)).ToList();
             }
 
             float roll = Random.Range(0f, candidates.Sum(c => c.Value));
-            ERarity rarity = candidates[candidates.Count - 1].Key;
+            string rarity = candidates[candidates.Count - 1].Key;
             foreach (var c in candidates)
             {
                 if (roll < c.Value) { rarity = c.Key; break; }

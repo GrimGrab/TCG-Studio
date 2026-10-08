@@ -36,12 +36,23 @@ namespace TCGCustomCards.Core
         /// <summary>Set of real MTG cards (imported from Scryfall): enables Forge deck export (MTG mode).</summary>
         [JsonProperty("mtg")] public SetMtgDef Mtg;
 
+        /// <summary>
+        /// The set's rarities, lowest first. Empty = Common, Rare, Epic, Legendary. Cards and pack slot weights name a rarity by its
+        /// id; every rarity is a new ERarity value of its own (EPL-style), also those four.
+        /// </summary>
+        [JsonProperty("rarities")] public List<RarityDef> Rarities = new List<RarityDef>();
+
         [JsonProperty("priceDefaults")] public PriceDefaults PriceDefaults = new PriceDefaults();
         [JsonProperty("packs")] public List<PackDef> Packs = new List<PackDef>();
         [JsonProperty("cards")] public List<CardDef> Cards = new List<CardDef>();
 
         /// <summary>Absolute folder the set was loaded from (not serialized).</summary>
         [JsonIgnore] public string FolderPath;
+
+        /// <summary>Rarities by id, case-insensitive (filled by SetLoader).</summary>
+        [JsonIgnore] public readonly Dictionary<string, RarityDef> RarityById = new Dictionary<string, RarityDef>(System.StringComparer.OrdinalIgnoreCase);
+
+        public RarityDef RarityOf(CardDef card) => RarityById.TryGetValue(card.Rarity ?? "", out var r) ? r : null;
 
         /// <summary>
         /// Absolute path of a file the set refers to: the set's own folder first, then the shared card-art library
@@ -80,8 +91,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("description")] public string Description = "";
         [JsonProperty("artist")] public string Artist = "";
 
-        [JsonProperty("rarity"), JsonConverter(typeof(StringEnumConverter))]
-        public ERarity Rarity = ERarity.Common;
+        /// <summary>Rarity id from <see cref="SetDef.Rarities"/> (a vanilla rarity name when the set has no list).</summary>
+        [JsonProperty("rarity")] public string Rarity = "Common";
 
         /// <summary>Printed card number (display only).</summary>
         [JsonProperty("number")] public string Number;
@@ -94,6 +105,28 @@ namespace TCGCustomCards.Core
 
         /// <summary>Real MTG card data for Forge deck export; null for non-MTG cards.</summary>
         [JsonProperty("mtg")] public CardMtgDef Mtg;
+    }
+
+    /// <summary>One of a set's own rarities (EPL-style: a real rarity of its own in game, with its own pack weights).</summary>
+    public class RarityDef
+    {
+        /// <summary>Id used by cards and pack slots.</summary>
+        [JsonProperty("id")] public string Id;
+        /// <summary>Shown on the card, binder, Check Price and graded slabs.</summary>
+        [JsonProperty("name")] public string Name;
+        /// <summary>Optional colour "#RRGGBB" (TCG Studio, rarity picker).</summary>
+        [JsonProperty("color")] public string Color;
+
+        /// <summary>Runtime value on MonsterData.Rarity (set by the loader / Registry; not serialized).</summary>
+        [JsonIgnore] public ERarity Value;
+        /// <summary>Position in the set's list, lowest first.</summary>
+        [JsonIgnore] public int Rank;
+        /// <summary>
+        /// Vanilla rarity for the few vanilla things that only know those (rarity icon, fame, MTG fallback, odds of
+        /// packs without slots): by its place in the list. The n-th of up to four is the n-th vanilla rarity; longer lists are
+        /// spread evenly over Common…Legendary.
+        /// </summary>
+        [JsonIgnore] public ERarity Tier;
     }
 
     public class SetMtgDef
@@ -206,7 +239,7 @@ namespace TCGCustomCards.Core
     public class PackSlot
     {
         [JsonProperty("count")] public int Count = 1;
-        /// <summary>Relative weight per rarity name (Common, Rare, Epic, Legendary, SuperLegend).</summary>
+        /// <summary>Relative weight per rarity id (the set's rarities; vanilla names when the set has no list).</summary>
         [JsonProperty("weights")] public Dictionary<string, float> Weights = new Dictionary<string, float>();
     }
 

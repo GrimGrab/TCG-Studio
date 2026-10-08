@@ -38,7 +38,8 @@ func (eplSource) Info() SourceInfo {
 	return SourceInfo{ID: "epl", Name: "Enhanced Prefab Loader (experimental)", Game: "Import EPL mod", Local: true, OwnArt: true}
 }
 
-func (eplSource) DefaultOptions() Options { return Options{ImageWidth: 512} }
+// DefaultOptions: a mod's tiers are kept as the set's rarities (with their pack odds) unless the player turns it off.
+func (eplSource) DefaultOptions() Options { return Options{ImageWidth: 512, KeepRarities: true} }
 
 func (eplSource) Sets(context.Context, string) ([]SetInfo, error) { return nil, nil }
 
@@ -258,18 +259,65 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 	}
 	defer assets.Close()
 	sp := epl.PlanSet(b.Desc, exp)
-	rarity := sp.DefaultRarities()
+	rarity := sp.DefaultRarities()    // tier → game rarity (with the mod's rarities kept: the game rarity it counts as)
 	for t, g := range opt.RarityMap { // the player's choices in the preview
-		if _, ok := rarity[t]; ok && contains(setfmt.Rarities, g) {
+		if _, ok := rarity[t]; ok && contains(setfmt.GameRarities, g) {
 			rarity[t] = g
 		}
 	}
 	mode, _, _ := checkCards(assets, sp)
 
+	// Rarity of each card: with KeepRarities every tier is a rarity of the set (its exact pack odds kept), else its game rarity.
+	cardRarity := rarity
+	var own []setfmt.Rarity
+	groupOf := map[string]string{} // own rarity id → its tier's odds group (only orders the list and shares a fallback booster)
+	if opt.KeepRarities {
+		cardRarity = map[string]string{}
+		used := map[string]bool{}
+		// Lowest first: by the game rarity each counts as, then most pulled first (mods list tiers in any order, DBS
+		// alphabetically). This order is the binder's rarity sort and Gamify's price ranges; prices stay the mod's.
+		tiers := append([]epl.Tier(nil), sp.Tiers...)
+		gameRank := func(t epl.Tier) int {
+			for i, g := range setfmt.GameRarities {
+				if g == rarity[t.Name] {
+					return i
+				}
+			}
+			return 0
+		}
+		sort.SliceStable(tiers, func(i, j int) bool {
+			if a, b := gameRank(tiers[i]), gameRank(tiers[j]); a != b {
+				return a < b
+			}
+			return tiers[i].PerCard > tiers[j].PerCard
+		})
+		for _, t := range tiers {
+			id := setfmt.RarityID(t.Name)
+			for n := 2; used[id]; n++ {
+				id = fmt.Sprintf("%s-%d", setfmt.RarityID(t.Name), n)
+			}
+			used[id] = true
+			cardRarity[t.Name] = id
+			groupOf[id] = rarity[t.Name]
+			own = append(own, setfmt.Rarity{ID: id, Name: t.Name})
+		}
+	}
+
+	// Prices: EPL's own price generator for the expansion (expected value), Base border; foil = its foil entry's price.
+	pm := epl.PriceModelOf(exp)
+
 	var cards []cardIn
 	for _, c := range sp.Cards {
 		ci := cardIn{SourceID: c.Sprite, ID: slug(c.Sprite), Name: c.Name, Number: fmt.Sprint(c.Order), SrcRarity: c.Tier,
 			Element: c.Element, Image: "sprite:" + c.Sprite}
+		if c.PlainRarity != "" {
+			ci.USD = pricef(pm.Price(c.PlainRarity, 0, false))
+		}
+		if c.FoilRarity != "" {
+			ci.USDFoil = pricef(pm.Price(c.FoilRarity, 0, true))
+		} else if c.PlainRarity != "" && (exp.HasRandomFoils || len(sp.Packs) == 0 || anyFoil(sp)) {
+			ci.USDFoil = pricef(pm.Price(c.PlainRarity, 0, true))
+		}
 		if c.Variant != "" {
 			ci.Variant = []string{c.Variant}
 		}
@@ -281,9 +329,13 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 
 	in := setIn{ID: EPLProjectID(exp.CardExpansion), Source: "epl", Code: exp.CardExpansion, Name: modName(exp.Name, opt.StripNumbers),
 		Cards: cards, Rotate: mode == "FullImage", Local: true, SourceDir: path, RarityOrder: sp.TierOrder(), RenderMode: mode,
+		Rarities: own, Group: func(id string) string { return groupOf[id] },
 		Rarity: func(t string) string {
-			if g := rarity[t]; g != "" {
+			if g := cardRarity[t]; g != "" {
 				return g
+			}
+			if len(own) > 0 {
+				return own[0].ID
 			}
 			return "Common"
 		},
@@ -301,7 +353,7 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 		}
 		used[id] = true
 		pk := setfmt.NewPack(id, modName(pp.Item.Name, opt.StripNumbers))
-		pk.Slots = pp.Slots(rarity)
+		pk.Slots = pp.Slots(cardRarity)
 		pk.FoilChance = math.Round(pp.FoilChance*100) / 100
 		pk.AllowDuplicates = pp.Item.CanHaveDuplicates
 		if pp.Item.BaseCost > 0 {
@@ -354,6 +406,11 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 		return nil, err
 	}
 	p.Meta.Origin = eplOrigin(mod, b, "", opt)
+	// EPL's border/foil multipliers; Real pricing (prices from EPL's generator, above) keeps them.
+	pd := setfmt.PriceDefaults{BorderMultipliers: pm.BorderMultipliers(), FoilMultiplier: math.Round(pm.FoilMult*100) / 100, Minimum: 0.01}
+	p.Set.PriceDefaults = pd
+	p.Meta.SrcPriceDefaults = &pd
+	p.Meta.Pricing = &project.Pricing{Mode: "real", BorderCurve: "gentle", TierStep: 0}
 	// The pack/box 3D editor starts from the mod's own art ("Earlier art (snapshot)"), not the vanilla pack and box.
 	if p.Meta.PackArt == nil {
 		p.Meta.PackArt = map[string]map[string]json.RawMessage{}
@@ -483,7 +540,17 @@ func faceImage(src *image.NRGBA, area image.Rectangle, t uvmap.Target) *image.NR
 }
 
 func (eplSource) RefreshMeta(_ context.Context, p *project.Project) (int, error) {
-	return 0, fmt.Errorf("%s came from a mod: it has no real prices to refresh (use Gamify to price it)", p.ID)
+	return 0, fmt.Errorf("%s came from a mod: its prices come from the mod's price settings and don't change (use Gamify to re-price it)", p.ID)
+}
+
+// anyFoil reports whether the set's packs give foils (then cards without a foil entry still get a foil price).
+func anyFoil(sp *epl.SetPlan) bool {
+	for _, pp := range sp.Packs {
+		if pp.FoilChance > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(list []string, s string) bool {

@@ -326,6 +326,10 @@ export function PickAccessoryImage() {
   return window['go']['main']['App']['PickAccessoryImage']();
 }
 
+export function PickEPLFolder() {
+  return window['go']['main']['App']['PickEPLFolder']();
+}
+
 export function PickEPLMod() {
   return window['go']['main']['App']['PickEPLMod']();
 }
@@ -520,6 +524,10 @@ export function UpdateSetup(arg1, arg2, arg3) {
 
 export function UseProductPhoto(arg1, arg2) {
   return window['go']['main']['App']['UseProductPhoto'](arg1, arg2);
+}
+
+export function UseSourceRarities(arg1) {
+  return window['go']['main']['App']['UseSourceRarities'](arg1);
 }
 
 export function ValidateProject(arg1) {

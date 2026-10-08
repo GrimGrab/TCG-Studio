@@ -33,13 +33,24 @@ func init() {
 	}
 }
 
-// PickEPLMod asks for an EPL mod: its downloaded .zip, or any .json inside its folder (Windows has no dialog that picks
-// a file or a folder). Returns the mod's path for PreviewEPL ("" when cancelled); dropping the folder works too.
+// PickEPLMod asks for an EPL mod with one dialog for both kinds (Windows has no file-or-folder dialog): its download
+// (.zip/.rar/.7z), or any file inside the unpacked mod's folder — epl.ModPath walks up to the mod. All files are shown first
+// so an unpacked folder's contents are clickable. Returns the mod's path for PreviewEPL ("" when cancelled); dropping works too.
 func (a *App) PickEPLMod() (string, error) {
 	p, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Select an Enhanced Prefab Loader mod: its .zip/.rar/.7z, or any .json in its folder",
 		Filters: []runtime.FileFilter{{DisplayName: "EPL mod (.zip/.rar/.7z, or a .json in the mod folder)", Pattern: "*.zip;*.rar;*.7z;*.json"},
 			{DisplayName: "All files", Pattern: "*.*"}}})
+	if err != nil || p == "" {
+		return "", err
+	}
+	return epl.ModPath(p)
+}
+
+// PickEPLFolder asks for an unpacked mod's folder ("" when cancelled). Windows has no file-or-folder dialog, so the Import page
+// has this next to Choose download… (archives).
+func (a *App) PickEPLFolder() (string, error) {
+	p, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "Select the unpacked Enhanced Prefab Loader mod's folder"})
 	if err != nil || p == "" {
 		return "", err
 	}

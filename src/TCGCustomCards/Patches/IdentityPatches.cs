@@ -126,14 +126,22 @@ namespace TCGCustomCards.Patches
         }
     }
 
-    /// <summary>Graded slabs translate expansionType.ToString() ("100" for a custom set) — answer with the set name.</summary>
+    /// <summary>
+    /// Graded slabs translate expansionType.ToString() ("100" for a custom set) — answer with the set name. The workbench / quick-fill
+    /// rarity label translates rarityLimit.ToString() ("1000" for a set's own rarity) — answer with the rarity name.
+    /// </summary>
     [HarmonyPatch(typeof(LocalizationManager), nameof(LocalizationManager.GetTranslation))]
     internal static class GetTranslationPatch
     {
         private static void Postfix(string Term, ref string __result)
         {
             if (!string.IsNullOrEmpty(__result) || string.IsNullOrEmpty(Term) || Term.Length > 6) return;
-            if (int.TryParse(Term, out int n) && n >= Registry.ExpansionBase)
+            if (!int.TryParse(Term, out int n)) return;
+            if (Registry.IsCustomRarity((ERarity)n))
+            {
+                if (Registry.TryGetRarity((ERarity)n, out _, out var rarity)) __result = rarity.Name;
+            }
+            else if (n >= Registry.ExpansionBase)
             {
                 var set = Registry.Get((ECardExpansionType)n);
                 if (set != null) __result = set.Def.Name;

@@ -42,6 +42,9 @@ type Options struct {
 	// StripNumbers (image-folder imports): a number at the start of a file name is the card's number, not part of its
 	// name ("001 Captain Marvel.png" → #001 "Captain Marvel"). Off: the whole file name is the card's name.
 	StripNumbers bool `json:"stripNumbers,omitempty"`
+	// KeepRarities: the set keeps the source's own rarities ("Secret Rare", "SR"…) as its rarity list (each counting as the
+	// game rarity RarityMap gives it) instead of only the 4 game rarities. See KeepSourceRarities.
+	KeepRarities bool `json:"keepRarities,omitempty"`
 	// Origin of converted mod content as the player names it on the Import page (EPL mods; "" = the mod's own name).
 	OriginMod    string `json:"originMod,omitempty"`
 	OriginAuthor string `json:"originAuthor,omitempty"`
@@ -284,7 +287,7 @@ func FillNames(ctx context.Context, sf *scryfall.Client, p *project.Project) (in
 	return n, nil
 }
 
-// RealPrice maps Scryfall prices to a card price: base = USD (EUR×1.08 fallback, min 0.10),
+// RealPrice maps Scryfall prices to a card price: base = USD (EUR×1.08 fallback, min 0.01; no price at all = 0.10),
 // foil multiplier from the real foil price when both exist.
 func RealPrice(m project.CardMeta) setfmt.CardPrice {
 	var base float64
@@ -298,7 +301,7 @@ func RealPrice(m project.CardMeta) setfmt.CardPrice {
 	default:
 		base = 0.10
 	}
-	base = math.Max(0.10, math.Round(base*100)/100)
+	base = math.Max(0.01, math.Round(base*100)/100)
 	p := setfmt.CardPrice{Base: base}
 	if m.USD != nil && *m.USD > 0 && m.USDFoil != nil && *m.USDFoil > 0 {
 		f := math.Round(math.Min(50, math.Max(1, *m.USDFoil / *m.USD))*100) / 100

@@ -764,6 +764,7 @@ export namespace importer {
 	    useLibrary?: boolean;
 	    setName?: string;
 	    stripNumbers?: boolean;
+	    keepRarities?: boolean;
 	    originMod?: string;
 	    originAuthor?: string;
 	    originLink?: string;
@@ -782,6 +783,7 @@ export namespace importer {
 	        this.useLibrary = source["useLibrary"];
 	        this.setName = source["setName"];
 	        this.stripNumbers = source["stripNumbers"];
+	        this.keepRarities = source["keepRarities"];
 	        this.originMod = source["originMod"];
 	        this.originAuthor = source["originAuthor"];
 	        this.originLink = source["originLink"];
@@ -2278,6 +2280,7 @@ export namespace project {
 	    pricesUpdated: any;
 	    tier: number;
 	    pricing?: Pricing;
+	    srcPriceDefaults?: setfmt.PriceDefaults;
 	    cards: Record<string, CardMeta>;
 	    packArt?: Record<string, any>;
 	
@@ -2299,6 +2302,7 @@ export namespace project {
 	        this.pricesUpdated = this.convertValues(source["pricesUpdated"], null);
 	        this.tier = source["tier"];
 	        this.pricing = this.convertValues(source["pricing"], Pricing);
+	        this.srcPriceDefaults = this.convertValues(source["srcPriceDefaults"], setfmt.PriceDefaults);
 	        this.cards = this.convertValues(source["cards"], CardMeta, true);
 	        this.packArt = source["packArt"];
 	    }
@@ -2998,6 +3002,22 @@ export namespace setfmt {
 	        this.minimum = source["minimum"];
 	    }
 	}
+	export class Rarity {
+	    id: string;
+	    name: string;
+	    color?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Rarity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.color = source["color"];
+	    }
+	}
 	export class SetMtg {
 	    setCode: string;
 	
@@ -3018,6 +3038,7 @@ export namespace setfmt {
 	    frameTemplate: string;
 	    cardBack?: string;
 	    mtg?: SetMtg;
+	    rarities?: Rarity[];
 	    priceDefaults: PriceDefaults;
 	    packs: Pack[];
 	    cards: Card[];
@@ -3035,6 +3056,7 @@ export namespace setfmt {
 	        this.frameTemplate = source["frameTemplate"];
 	        this.cardBack = source["cardBack"];
 	        this.mtg = this.convertValues(source["mtg"], SetMtg);
+	        this.rarities = this.convertValues(source["rarities"], Rarity);
 	        this.priceDefaults = this.convertValues(source["priceDefaults"], PriceDefaults);
 	        this.packs = this.convertValues(source["packs"], Pack);
 	        this.cards = this.convertValues(source["cards"], Card);

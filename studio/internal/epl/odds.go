@@ -34,9 +34,12 @@ type PlannedCard struct {
 	Variant string // tier tag added to the name when the same name appears in several tiers
 	Element string // Fire/Earth/Water/Wind
 	Order   int    // 1… in EPL card order
+	// EPL rarities of its plain and foil entries (prices, see price.go); "" when it has none of that kind.
+	PlainRarity, FoilRarity string
 }
 
-// Tier is one of the expansion's rarities (foil tiers folded into their base tier).
+// Tier is one of the expansion's rarities (foil tiers folded into their base tier). With the mod's rarities kept, each tier is a
+// rarity of the set (Rarity then only orders the list); otherwise Rarity is the game rarity its cards get.
 type Tier struct {
 	Name    string  `json:"name"`
 	Cards   int     `json:"cards"`
@@ -88,9 +91,19 @@ func PlanSet(d *Descriptor, exp *CardExpansion) *SetPlan {
 		}
 		i, seen := bySprite[c.Sprite]
 		if !seen {
-			bySprite[c.Sprite] = len(sp.Cards)
+			i = len(sp.Cards)
+			bySprite[c.Sprite] = i
 			sp.Cards = append(sp.Cards, PlannedCard{Sprite: c.Sprite, Name: strings.TrimSpace(c.Name), Tier: tierOf(c.Rarity),
 				Element: element(c.ElementType), Order: len(sp.Cards) + 1})
+		}
+		if pc := &sp.Cards[i]; c.IsFoil || IsFoilTier(c.Rarity) {
+			if pc.FoilRarity == "" {
+				pc.FoilRarity = c.Rarity
+			}
+		} else if pc.PlainRarity == "" {
+			pc.PlainRarity = c.Rarity
+		}
+		if !seen {
 			continue
 		}
 		if IsFoilTier(sp.Cards[i].Tier) && !IsFoilTier(c.Rarity) { // a foil entry came first
@@ -425,7 +438,7 @@ func (pp *PackPlan) Slots(rarity map[string]string) []setfmt.Slot {
 			}
 		}
 		for g, v := range w {
-			w[g] = math.Round(v*10000) / 100 // percent, two decimals
+			w[g] = roundSig(v*100, 4) // percent; significant digits, so rare tiers (0.0004 %) keep their odds
 			if w[g] == 0 {
 				delete(w, g)
 			}
@@ -440,6 +453,15 @@ func (pp *PackPlan) Slots(rarity map[string]string) []setfmt.Slot {
 		out = append(out, setfmt.Slot{Count: 1, Weights: w})
 	}
 	return out
+}
+
+// roundSig rounds v to n significant digits.
+func roundSig(v float64, n int) float64 {
+	if v == 0 {
+		return 0
+	}
+	p := math.Pow(10, float64(n)-math.Ceil(math.Log10(math.Abs(v))))
+	return math.Round(v*p) / p
 }
 
 func sameWeights(a, b map[string]float64) bool {

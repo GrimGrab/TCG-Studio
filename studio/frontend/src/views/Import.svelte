@@ -77,6 +77,8 @@
     sets = [];
     group = 'main';
     options = await App.DefaultImportOptions(id);
+    // Keep the set's own rarities: on by default for every source, remembered per source once changed.
+    options.keepRarities = remembered('keepRarities.' + id, '1') === '1';
     if (langs.length && !langs.includes(lang)) lang = langs[0];
     load();
   }
@@ -137,7 +139,7 @@
   let originLink = $state('');
   let originFor = ''; // the mod path these were filled for
   const eplCount = $derived(Object.values(pickSets).filter(Boolean).length + Object.values(pickItems).filter(Boolean).length);
-  const GAME_RARITIES = ['Common', 'Rare', 'Epic', 'Legendary', 'SuperLegend'];
+  const GAME_RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
 
   async function useEPL(path: string) {
     if (!path) return;
@@ -146,8 +148,8 @@
     await previewEPL();
   }
 
-  async function chooseEPL() {
-    try { await useEPL(await App.PickEPLMod()); } catch (e) { notify(errText(e), 'error'); }
+  async function chooseEPL(folder: boolean) {
+    try { await useEPL(await (folder ? App.PickEPLFolder() : App.PickEPLMod())); } catch (e) { notify(errText(e), 'error'); }
   }
 
   // Dropping the mod's folder or .zip (or a file inside the folder) anywhere on the page while EPL mod is chosen.
@@ -331,6 +333,9 @@
           <option value="png">PNG (best quality)</option><option value="jpg">JPEG (about 6× smaller)</option>
         </select>
       </label>
+      <label class="check" title="On: the set keeps the source's own rarities (Secret Rare, SR, Mythic…, or a mod's tiers) as rarities of its own in game — their names on the cards, in the binder and in Check Price, and pack odds per rarity. Off: every card gets one of the game's 4 rarities.">
+        <input type="checkbox" bind:checked={options.keepRarities} onchange={() => remember('keepRarities.' + sourceId, options.keepRarities ? '1' : '')} />
+        Keep the set's own rarities</label>
     {/if}
   </div>
 
@@ -349,12 +354,14 @@
         furniture. EPL isn't needed in the game.
         The art belongs to the mod's authors, so converted sets stay on this PC (they're left out of setup exports).</p>
       <div class="row">
-        <button class="primary" disabled={!!importing || eplBusy} onclick={chooseEPL}
-          title="Pick the mod's .zip/.rar/.7z, or any .json inside the mod's folder — or drop the folder or download on this page">Choose mod…</button>
+        <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(false)}
+          title="Pick the mod's download: .zip, .rar or .7z — or drop it on this page">Choose download…</button>
+        <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(true)}
+          title="Pick the mod's folder after unpacking it (the one with BepInEx or plugins in it, or the mod's own folder) — or drop it on this page">Choose folder…</button>
         <span class="grow path" title={eplPath}>{eplPath || 'No mod chosen'}</span>
         {#if eplPath}<button class="small" disabled={!!importing || eplBusy} onclick={previewEPL}>Re-read</button>{/if}
       </div>
-      <p class="muted small">Pick the mod's download (<b>.zip</b>, <b>.rar</b> or <b>.7z</b>), or any <b>.json</b> inside its folder — or just drag the mod's folder or download onto this page.</p>
+      <p class="muted small">Pick the mod's download (<b>.zip</b>, <b>.rar</b> or <b>.7z</b>) or, if you unpacked it, its folder — or just drag either onto this page.</p>
       <label class="check opt">
         <input type="checkbox" bind:checked={stripNumbers} onchange={() => { remember('stripNumbers', stripNumbers ? '1' : ''); if (eplPath) previewEPL(); }} disabled={!!importing || eplBusy} />
         <span><b>Strip leading numbers</b><br />
@@ -391,19 +398,30 @@
               <p class="warn">⚠ {set.problemCount} card(s) can't be read and will be left out: {(set.problems ?? []).join('; ')}{set.problemCount > (set.problems ?? []).length ? ' …' : ''}</p>
             {/if}
             <details>
-              <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod → our 4)</summary>
-              <p class="muted small">Picked by how often the mod's packs give a card of each tier; change any of them. Per pack = cards of that tier in an average pack.</p>
-              <table class="rar">
-                <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th><th>Game rarity</th></tr></thead>
-                <tbody>
-                  {#each set.tiers ?? [] as t}
-                    <tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td>
-                      <td><select bind:value={rarityChoice[set.code][t.name]} disabled={!!importing}>
-                        {#each GAME_RARITIES as r}<option value={r}>{r}</option>{/each}
-                      </select></td></tr>
-                  {/each}
-                </tbody>
-              </table>
+              {#if options?.keepRarities}
+                <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod, each kept as a rarity of its own)</summary>
+                <p class="muted small">Every tier becomes a rarity of the set with the mod's own name, pack odds and card prices.
+                  Per pack = cards of that tier in an average pack.</p>
+                <table class="rar">
+                  <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th></tr></thead>
+                  <tbody>{#each set.tiers ?? [] as t}<tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td></tr>{/each}</tbody>
+                </table>
+              {:else}
+                <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod → our 4)</summary>
+                <p class="muted small">Picked by how often the mod's packs give a card of each tier; change any of them. Per pack = cards of that tier in an average pack.
+                  Tick “Keep the set's own rarities” above to keep every tier instead.</p>
+                <table class="rar">
+                  <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th><th>Game rarity</th></tr></thead>
+                  <tbody>
+                    {#each set.tiers ?? [] as t}
+                      <tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td>
+                        <td><select bind:value={rarityChoice[set.code][t.name]} disabled={!!importing}>
+                          {#each GAME_RARITIES as r}<option value={r}>{r}</option>{/each}
+                        </select></td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              {/if}
             </details>
             {#if set.imported}
               <div class="row">
@@ -420,7 +438,9 @@
         {/each}
         {#if (epl.items ?? []).length}
           <div class="eplset">
-            <b>Accessories, figurines &amp; furniture ({epl.items.length})</b>
+            <div class="row"><b class="grow">Accessories, figurines &amp; furniture ({epl.items.length})</b>
+              <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, true])))}>Select all</button>
+              <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, false])))}>Deselect all</button></div>
             <p class="muted small">Go to the Accessories and Furniture pages with the mod's own textures and models; fine-tune them there
               (figurine size on the shelf, furniture item spots).</p>
             {#each epl.items as it (it.key)}
@@ -473,7 +493,7 @@
           </table>
         {/if}
         <table class="rar">
-          <thead><tr><th>Rarity</th><th>Cards</th><th>In game</th></tr></thead>
+          <thead><tr><th>Rarity</th><th>Cards</th><th>{options?.keepRarities ? "Counts as" : "In game"}</th></tr></thead>
           <tbody>{#each preview.rarities as r}<tr><td>{r.name}</td><td>{r.cards}</td><td>{r.game}</td></tr>{/each}</tbody>
         </table>
         {#each preview.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
@@ -506,9 +526,11 @@
   2 Rare\    …
   3 Legendary\ …</pre>
         <ul>
-          <li><b>Rarity</b> = the subfolder, lowest first by name (a leading number like “1 ” is dropped). Images not in a
-            subfolder are Common. Common, Uncommon, Rare, Epic, Legendary, Mythic, Secret… are known; other names are spread
-            over the game's rarities in folder order.</li>
+          <li><b>Rarity</b> = the subfolder, lowest first by name (a leading number like “1 ” only sets the order and is
+            dropped from the name). Images not in a subfolder are Common. With <b>Keep the set's own rarities</b> ticked, each
+            subfolder becomes a rarity of the set with that name (“Secret Rare”, “Gold Foil”…), in that order; unticked, they're
+            put on the game's Common / Rare / Epic / Legendary (known names like Uncommon, Mythic, Secret by meaning, others
+            by folder order).</li>
           <li><b>Name</b> = the file name (<code>Captain Marvel.png</code> → “Captain Marvel”; underscores become spaces).
             Cards are numbered 1, 2, 3… in file-name order — or tick <b>Strip leading numbers</b> when the files start with
             the card number. Adding or renaming other images later never changes which card is which in saves.</li>

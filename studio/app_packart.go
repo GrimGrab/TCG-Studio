@@ -290,11 +290,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 		}
 	}
 
-	// Cards, best first: real price (the higher of normal and foil), then game rarity.
-	rank := map[string]int{}
-	for i, r := range setfmt.Rarities {
-		rank[r] = i
-	}
+	// Cards, best first: real price (the higher of normal and foil), then rarity.
 	price := func(cid string) float64 {
 		m, ok := p.Meta.Cards[cid]
 		if !ok {
@@ -318,7 +314,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 		if pi, pj := price(list[i].ID), price(list[j].ID); pi != pj {
 			return pi > pj
 		}
-		return rank[list[i].Rarity] > rank[list[j].Rarity]
+		return p.Set.RankOf(list[i].Rarity) > p.Set.RankOf(list[j].Rarity)
 	})
 	for _, c := range list {
 		if len(out.Cards) == 3 {

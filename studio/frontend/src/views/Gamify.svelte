@@ -88,7 +88,7 @@
         <select bind:value={settings.mode} onchange={() => (preview = null)}>
           <option value="game">Game-like — fixed price per rarity (recommended)</option>
           <option value="hybrid">Hybrid — game price bands, ranked by real price</option>
-          <option value="real">Real — market USD prices</option>
+          <option value="real">Real — market USD prices (sets from mods: the mod's own prices)</option>
         </select>
       </label>
       <label class="field">Border & foil values
@@ -155,7 +155,8 @@
           {/each}
         </tbody>
       </table>
-      <p class="muted small">Averages are base prices (Base border, non-foil). Border and foil variants multiply them.</p>
+      <p class="muted small">Averages are base prices (Base border, non-foil). Border and foil variants multiply them. Sets with their own
+        rarities are shown by each rarity's place in the list; Game-like and Hybrid prices step up the whole price range in list order.</p>
     </section>
   {/if}
   {/if}

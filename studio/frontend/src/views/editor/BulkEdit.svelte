@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { App, RARITIES, ELEMENTS, LANES, money, errText } from '../../lib/api';
+  import { App, setRarities, rarityName, ELEMENTS, LANES, money, errText } from '../../lib/api';
 
   let { project, cards, notify, onimages, ondelete }: {
     project: any; cards: any[]; notify: (t: string, k?: string) => void; onimages: (what: string) => Promise<void>; ondelete: () => void;
@@ -59,10 +59,10 @@
   <div class="muted small">Total base value {money(total)} · {cards.length - unlocked.length} locked (price changes skip locked cards)</div>
 
   <section>
-    <b>Rarity</b> <span class="muted small">now: {common((c) => c.rarity)}</span>
+    <b>Rarity</b> <span class="muted small">now: {common((c) => rarityName(project.set, c.rarity))}</span>
     <div class="row">
-      <select class="grow" bind:value={rarity}><option value="">Choose…</option>{#each RARITIES as r}<option>{r}</option>{/each}</select>
-      <button disabled={!rarity} onclick={() => apply(`Rarity ${rarity}`, (c) => (c.rarity = rarity))}>Apply</button>
+      <select class="grow" bind:value={rarity}><option value="">Choose…</option>{#each setRarities(project.set) as r}<option value={r.id}>{r.name}</option>{/each}</select>
+      <button disabled={!rarity} onclick={() => apply(`Rarity ${rarityName(project.set, rarity)}`, (c) => (c.rarity = rarity))}>Apply</button>
     </div>
   </section>
 

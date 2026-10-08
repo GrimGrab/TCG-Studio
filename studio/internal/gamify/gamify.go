@@ -79,7 +79,7 @@ type Preview struct {
 	PackCost  float64            `json:"packCost"`
 	Like      string             `json:"like"` // vanilla product this tier mirrors
 	Installed bool               `json:"installed"`
-	AvgBefore map[string]float64 `json:"avgBefore"` // by rarity
+	AvgBefore map[string]float64 `json:"avgBefore"` // by game rarity (a set's own rarities by their place in its list, TierOf)
 	AvgAfter  map[string]float64 `json:"avgAfter"`
 	Top       []TopCard          `json:"top"` // most valuable cards after
 	Locked    int                `json:"locked"`
@@ -94,16 +94,19 @@ type TopCard struct {
 
 // Apply re-prices one project: tier is its 1-based order, pos its place on the vanilla curve (see Position).
 func Apply(p *project.Project, tier int, pos float64, s Settings) Preview {
-	pv := Preview{ID: p.ID, Name: p.Set.Name, Tier: tier, AvgBefore: avgByRarity(p.Set.Cards), AvgAfter: map[string]float64{}}
+	pv := Preview{ID: p.ID, Name: p.Set.Name, Tier: tier, AvgBefore: avgByRarity(p.Set), AvgAfter: map[string]float64{}}
 	before := map[string]float64{}
 	for _, c := range p.Set.Cards {
 		before[c.ID] = c.Price.Base
 	}
 	tierMult := 1 + s.TierStep*pos
 
-	if s.Mode != "real" {
+	switch {
+	case s.Mode != "real":
 		p.Set.PriceDefaults = curve(s.BorderCurve)
-	} else {
+	case p.Meta.SrcPriceDefaults != nil: // the source's own border/foil multipliers (EPL mods)
+		p.Set.PriceDefaults = *p.Meta.SrcPriceDefaults
+	default:
 		p.Set.PriceDefaults = setfmt.DefaultPriceDefaults()
 	}
 
@@ -138,11 +141,11 @@ func Apply(p *project.Project, tier int, pos float64, s Settings) Preview {
 			c.Price = importer.RealPrice(m)
 			c.Price.Base = round2(math.Min(500, c.Price.Base*tierMult))
 		case "game":
-			b := band(c.Rarity)
+			b := bandOf(p.Set, c.Rarity)
 			mid := math.Sqrt(b[0] * b[1])
 			c.Price = setfmt.CardPrice{Base: round2(mid * jitter(c.ID) * tierMult)}
 		default: // hybrid
-			b := band(c.Rarity)
+			b := bandOf(p.Set, c.Rarity)
 			r, ok := ranks[c.ID]
 			if !ok {
 				r = 0.5
@@ -172,7 +175,7 @@ func Apply(p *project.Project, tier int, pos float64, s Settings) Preview {
 	p.Meta.Tier = tier
 	p.Meta.Pricing = &project.Pricing{Mode: s.Mode, BorderCurve: s.BorderCurve, TierStep: s.TierStep, Position: pos}
 
-	pv.AvgAfter = avgByRarity(p.Set.Cards)
+	pv.AvgAfter = avgByRarity(p.Set)
 	cards := append([]setfmt.Card(nil), p.Set.Cards...)
 	sort.Slice(cards, func(i, j int) bool { return cards[i].Price.Base > cards[j].Price.Base })
 	for i := 0; i < len(cards) && i < 5; i++ {
@@ -186,6 +189,21 @@ func band(r string) [2]float64 {
 		return b
 	}
 	return bands["Common"]
+}
+
+// bandOf is the price band of one of the set's rarities. Sets with their own list: the game's whole range (Common's low to
+// Legendary's high) cut into equal steps on a log scale, one per rarity in list order. Otherwise the game rarity's band.
+func bandOf(set *setfmt.Set, id string) [2]float64 {
+	if !set.OwnRarities() {
+		return band(id)
+	}
+	k, n := set.RankOf(id), float64(len(set.Rarities))
+	if k < 0 {
+		k = 0
+	}
+	lo, hi := bands["Common"][0], bands["Legendary"][1]
+	ratio := hi / lo
+	return [2]float64{lo * math.Pow(ratio, float64(k)/n), lo * math.Pow(ratio, float64(k+1)/n)}
 }
 
 func realUSD(p *project.Project, c setfmt.Card) float64 {
@@ -208,11 +226,12 @@ func jitter(id string) float64 {
 	return 0.85 + 0.30*float64(h.Sum32()%1000)/999
 }
 
-func avgByRarity(cards []setfmt.Card) map[string]float64 {
+func avgByRarity(set *setfmt.Set) map[string]float64 {
 	sum, n := map[string]float64{}, map[string]int{}
-	for _, c := range cards {
-		sum[c.Rarity] += c.Price.Base
-		n[c.Rarity]++
+	for _, c := range set.Cards {
+		b := set.TierOf(c.Rarity)
+		sum[b] += c.Price.Base
+		n[b]++
 	}
 	out := map[string]float64{}
 	for r, s := range sum {

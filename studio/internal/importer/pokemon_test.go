@@ -80,15 +80,15 @@ func TestFitSlots(t *testing.T) {
 		{Count: 1, Weights: map[string]float64{"Epic": 5, "Legendary": 2}},
 	}
 	cards := []setfmt.Card{{Rarity: "Common"}, {Rarity: "Epic"}, {Rarity: "Legendary"}} // no Rare (modern Yu-Gi-Oh!)
-	got := fitSlots(slots, cards)
+	got := fitSlots(slots, &setfmt.Set{Cards: cards})
 	if len(got) != 3 || got[1].Weights["Common"] != 1 || len(got[1].Weights) != 1 || got[2].Weights["Legendary"] != 2 {
 		t.Fatalf("no-Rare set: %+v", got)
 	}
-	got = fitSlots(slots, []setfmt.Card{{Rarity: "Common"}, {Rarity: "Rare"}, {Rarity: "Epic"}}) // no Legendary
+	got = fitSlots(slots, &setfmt.Set{Cards: []setfmt.Card{{Rarity: "Common"}, {Rarity: "Rare"}, {Rarity: "Epic"}}}) // no Legendary
 	if w := got[2].Weights; len(w) != 1 || w["Epic"] != 5 {
 		t.Fatalf("no-Legendary set: %+v", got)
 	}
-	got = fitSlots(slots, []setfmt.Card{{Rarity: "Legendary"}}) // promo set: everything Legendary
+	got = fitSlots(slots, &setfmt.Set{Cards: []setfmt.Card{{Rarity: "Legendary"}}}) // promo set: everything Legendary
 	for _, s := range got {
 		if len(s.Weights) != 1 || s.Weights["Legendary"] == 0 {
 			t.Fatalf("all-Legendary set: %+v", got)

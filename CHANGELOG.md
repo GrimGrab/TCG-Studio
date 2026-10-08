@@ -3,6 +3,23 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.2.0 - 2026-10-08
+
+Custom rarities: sets can have rarities of their own, and imports keep the real ones.
+
+- New: Sets can have their own rarities (Set tab → Rarities): add, rename, reorder and colour them. Each rarity is its own in the game: its name shows on the cards, in the binder, Check Price and on graded slabs, and it has its own weight in pack slots.
+- New: Imports keep the set's own rarities (Secret Rare, SR, Mythic…). The option "Keep the set's own rarities" is on the Import page and on by default. Sets imported earlier: Set tab → "Use the source's rarities".
+- New: EPL mod imports keep every tier of the mod as a rarity, with the mod's exact pack odds, and cards get the mod's own prices instead of $0.10.
+- New: The workbench and bulk donation rarity filter lists a set's own rarities.
+- New: Pack contents is now a table of rarities × slots, showing each weight's share of the slot, cards per pack and how often you pull a particular card.
+- New: View a card image full screen: double-click a card or click its picture; ← → to browse.
+- New: EPL import: "Choose folder…" for unzipped mods, and Select all / Deselect all for accessories, figurines and furniture.
+- Changed: The binder's rarity sort for custom sets follows the set's rarity order.
+- Changed: Imported card prices can now go down to $0.01 (was $0.10).
+- Fixed: EPL imports put the mod's pack art, box art and card back in the shared folder, so Storage no longer offers to move them right after an import.
+- Fixed: Image-folder imports sorted images outside any subfolder (Common) as the highest rarity.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.1.0 - 2026-10-08
 
 Paint your own furniture, and build custom furniture from every piece in the game.

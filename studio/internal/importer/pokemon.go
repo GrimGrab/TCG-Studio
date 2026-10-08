@@ -284,7 +284,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		{Count: 4, Weights: map[string]float64{"Common": 1}},
 		{Count: 2, Weights: map[string]float64{"Rare": 1}},
 		{Count: 1, Weights: map[string]float64{"Epic": 6, "Legendary": 1}},
-	}, set.Cards)
+	}, set)
 	pack.FoilChance = 15 // reverse holos are common in Pokémon packs
 	set.Packs = append(set.Packs, pack)
 

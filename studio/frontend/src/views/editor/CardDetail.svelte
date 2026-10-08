@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { App, projectFile, money, RARITIES, ELEMENTS, BORDERS, LANES, errText } from '../../lib/api';
+  import { App, projectFile, money, setRarities, ELEMENTS, BORDERS, LANES, errText } from '../../lib/api';
 
-  let { project, card, imgBust, notify, onimages, ondelete }: {
+  let { project, card, imgBust, notify, onimages, ondelete, onzoom }: {
     project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void;
-    onimages: (what: string) => Promise<void>; ondelete: () => void;
+    onimages: (what: string) => Promise<void>; ondelete: () => void; onzoom: () => void;
   } = $props();
 
   const meta = $derived(project.meta?.cards?.[card.id]);
@@ -80,7 +80,7 @@
 
 <div class="detail">
   <div class="preview" class:framed={project.set.renderMode === 'Framed'}>
-    {#if card.image}<img src={projectFile(project.id, card.image, imgBust)} alt={card.name} />{/if}
+    {#if card.image}<button class="zoom" title="View full screen" onclick={onzoom}><img src={projectFile(project.id, card.image, imgBust)} alt={card.name} /></button>{/if}
   </div>
   <div class="row">
     <button class="small" onclick={changeImage}>Change image…</button>
@@ -96,7 +96,7 @@
   </div>
   <div class="row">
     <label class="field grow">Rarity
-      <select bind:value={card.rarity}>{#each RARITIES as r}<option>{r}</option>{/each}</select>
+      <select bind:value={card.rarity}>{#each setRarities(project.set) as r}<option value={r.id}>{r.name}</option>{/each}</select>
     </label>
     <label class="field grow">Artist<input bind:value={card.artist} /></label>
   </div>
@@ -161,7 +161,8 @@
 <style>
   .detail { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
   .preview { display: flex; justify-content: center; background: var(--bg); border-radius: var(--radius); padding: 10px; }
-  .preview img { max-width: 240px; max-height: 330px; border-radius: 10px; }
+  .preview img { max-width: 240px; max-height: 330px; border-radius: 10px; display: block; }
+  .zoom { padding: 0; border: none; background: none; cursor: zoom-in; }
   .preview.framed img { border-radius: 4px; }
   .small { font-size: 12px; }
   .mults { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }

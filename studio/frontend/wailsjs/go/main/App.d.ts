@@ -179,6 +179,8 @@ export function PaintFurniture(arg1:string,arg2:string):Promise<setfmt.Furniture
 
 export function PickAccessoryImage():Promise<string>;
 
+export function PickEPLFolder():Promise<string>;
+
 export function PickEPLMod():Promise<string>;
 
 export function PickImage(arg1:string,arg2:string):Promise<string>;
@@ -276,6 +278,8 @@ export function UninstallProject(arg1:string):Promise<void>;
 export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
 
 export function UseProductPhoto(arg1:string,arg2:importer.SealedProduct):Promise<string>;
+
+export function UseSourceRarities(arg1:project.Project):Promise<project.Project>;
 
 export function ValidateProject(arg1:string):Promise<Array<setfmt.Issue>>;
 

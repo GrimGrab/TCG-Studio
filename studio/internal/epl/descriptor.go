@@ -35,6 +35,14 @@ type CardExpansion struct {
 	Rarities         []string `json:"Rarities"`
 	Cards            []Card   `json:"Cards"`
 	TradeUnlockLevel int      `json:"TradeUnlockLevel"`
+	// Card price generator (see price.go): "Default" / "RarityDriven" (or 1 / 2) and its settings.
+	CardPriceStrategy                string  `json:"CardPriceStrategy"`
+	DefaultBorderMultiplierBase      float64 `json:"DefaultBorderMultiplierBase"`
+	DefaultFoilMultiplier            float64 `json:"DefaultFoilMultiplier"`
+	RarityDrivenFloor                float64 `json:"RarityDrivenFloor"`
+	RarityDrivenStepSize             float64 `json:"RarityDrivenStepSize"`
+	RarityDrivenBorderMultiplierBase float64 `json:"RarityDrivenBorderMultiplierBase"`
+	RarityDrivenFoilMultiplier       float64 `json:"RarityDrivenFoilMultiplier"`
 }
 
 type Card struct {

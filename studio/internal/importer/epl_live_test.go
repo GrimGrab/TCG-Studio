@@ -43,7 +43,9 @@ func TestEPLLive(t *testing.T) {
 		}
 		t0 := time.Now()
 		last := ""
-		p, err := eplSource{}.Import(context.Background(), ws, s.Code, eplSource{}.DefaultOptions(), func(pr Progress) {
+		opt := eplSource{}.DefaultOptions()
+		opt.KeepRarities = os.Getenv("EPL_FLAT") == "" // EPL_FLAT=1: the game's 4 rarities only
+		p, err := eplSource{}.Import(context.Background(), ws, s.Code, opt, func(pr Progress) {
 			if pr.Stage == "done" {
 				last = pr.Message
 			}
@@ -61,6 +63,7 @@ func TestEPLLive(t *testing.T) {
 				pk.PackTexture, pk.PackIcon, pk.HasBox, pk.BoxTexture, pk.BoxIcon)
 		}
 		t.Logf("  card back %q, render %s, first card %+v", p.Set.CardBack, p.Set.RenderMode, p.Set.Cards[0])
+		t.Logf("  rarities %+v, price defaults %+v, pricing %+v", p.Set.Rarities, p.Set.PriceDefaults, p.Meta.Pricing)
 		for id, art := range p.Meta.PackArt {
 			t.Logf("  packArt %s: pack %s box %s", id, art["pack"], art["box"])
 		}

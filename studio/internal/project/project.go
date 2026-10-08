@@ -24,19 +24,21 @@ const (
 
 // Meta is studio-only data that the mod never reads.
 type Meta struct {
-	Source        string              `json:"source"` // import source id ("scryfall", "tcgdex", …) or "manual"
-	ScryfallCode  string              `json:"scryfallCode,omitempty"`
-	SetCode       string              `json:"setCode,omitempty"`     // the source's set id for sources other than Scryfall
-	SourceDir     string              `json:"sourceDir,omitempty"`   // image-folder imports: the folder read (Refresh prices re-reads its cards.csv)
-	RarityOrder   []string            `json:"rarityOrder,omitempty"` // the set's own rarities, lowest first, when the source has no fixed list
-	Origin        *origin.Origin      `json:"origin,omitempty"`      // converted content: where it came from (EPL mod)
-	Lang          string              `json:"lang,omitempty"`        // card language of the import, when the source has several
-	ReleasedAt    string              `json:"releasedAt,omitempty"`
-	ImportedAt    time.Time           `json:"importedAt"`
-	PricesUpdated time.Time           `json:"pricesUpdated"`
-	Tier          int                 `json:"tier"` // progression order for gamify (0 = unset)
-	Pricing       *Pricing            `json:"pricing,omitempty"`
-	Cards         map[string]CardMeta `json:"cards"`
+	Source        string         `json:"source"` // import source id ("scryfall", "tcgdex", …) or "manual"
+	ScryfallCode  string         `json:"scryfallCode,omitempty"`
+	SetCode       string         `json:"setCode,omitempty"`     // the source's set id for sources other than Scryfall
+	SourceDir     string         `json:"sourceDir,omitempty"`   // image-folder imports: the folder read (Refresh prices re-reads its cards.csv)
+	RarityOrder   []string       `json:"rarityOrder,omitempty"` // the set's own rarities, lowest first, when the source has no fixed list
+	Origin        *origin.Origin `json:"origin,omitempty"`      // converted content: where it came from (EPL mod)
+	Lang          string         `json:"lang,omitempty"`        // card language of the import, when the source has several
+	ReleasedAt    string         `json:"releasedAt,omitempty"`
+	ImportedAt    time.Time      `json:"importedAt"`
+	PricesUpdated time.Time      `json:"pricesUpdated"`
+	Tier          int            `json:"tier"` // progression order for gamify (0 = unset)
+	Pricing       *Pricing       `json:"pricing,omitempty"`
+	// SrcPriceDefaults: the source's own border/foil multipliers (EPL mods' price generators); Real pricing keeps them.
+	SrcPriceDefaults *setfmt.PriceDefaults `json:"srcPriceDefaults,omitempty"`
+	Cards            map[string]CardMeta   `json:"cards"`
 	// PackArt holds the pack editor's layouts per pack id: {"pack": layout, "box": layout} (layout = the accessory editor's
 	// JSON, see frontend lib/accessoryArt.ts). Packs without an entry use generated or chosen images only.
 	PackArt map[string]map[string]json.RawMessage `json:"packArt,omitempty"`

@@ -22,8 +22,16 @@ func TestPlanLive(t *testing.T) {
 			sp := PlanSet(d, &d.CardExpansions[i])
 			t.Logf("== %s / %s: %d cards, %d tiers, %d packs, back %q, warnings %v", filepath.Base(path), sp.Exp.Name,
 				len(sp.Cards), len(sp.Tiers), len(sp.Packs), sp.CardBack, sp.Warnings)
+			pm := PriceModelOf(sp.Exp)
+			ids := map[string]string{} // tiers kept as rarities (identity map)
 			for _, tr := range sp.Tiers {
-				t.Logf("   %-45s %4d cards  %.4f/pack  %.6f/card  -> %s", tr.Name, tr.Cards, tr.PerPack, tr.PerCard, tr.Rarity)
+				ids[tr.Name] = tr.Name
+				t.Logf("   %-45s %4d cards  %.4f/pack  %.6f/card  -> %-9s $%.2f (foil $%.2f)", tr.Name, tr.Cards, tr.PerPack, tr.PerCard, tr.Rarity,
+					pm.Price(tr.Name, 0, false), pm.Price(tr.Name, 0, true))
+			}
+			t.Logf("   prices: rarityDriven=%v border×%v foil×%.2f", pm.RarityDriven, pm.BorderMultipliers(), pm.FoilMult)
+			for _, pp := range sp.Packs {
+				t.Logf("   pack %q per tier: %v", pp.Item.Name, pp.Slots(ids))
 			}
 			for _, pp := range sp.Packs {
 				total := 0

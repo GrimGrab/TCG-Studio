@@ -228,7 +228,7 @@ namespace TCGCustomCards.Runtime.Mtg
                 TypeLine = m.TypeLine ?? "",
                 ManaCost = m.ManaCost ?? "",
                 Colors = m.Colors ?? new List<string>(),
-                Rarity = !string.IsNullOrEmpty(m.Rarity) ? m.Rarity : FallbackRarity(def.Rarity),
+                Rarity = !string.IsNullOrEmpty(m.Rarity) ? m.Rarity : FallbackRarity(set.Rarity(pos).Tier),
                 Cmc = m.Cmc > 0 ? m.Cmc : MtgDeckRules.CmcFromCost(m.ManaCost),
                 Text = def.Description ?? "",
                 SetId = set.Def.Id,

@@ -17,9 +17,6 @@ type ShrinkPreview struct {
 	JPEGSize int64  `json:"jpegSize"`
 }
 
-// rarityRank orders card rarities so the preview picks a detailed (rare) card.
-var rarityRank = map[string]int{"SuperLegend": 5, "Legendary": 4, "Epic": 3, "Rare": 2, "Common": 1}
-
 // Preview converts one PNG card of set id in setup setupID to JPEG in memory (the rarest card, often the most detailed).
 func Preview(h setups.Home, setupID, id string) (*ShrinkPreview, error) {
 	bySet, _, err := sets(h)
@@ -36,7 +33,7 @@ func Preview(h setups.Home, setupID, id string) (*ShrinkPreview, error) {
 			if !isPNG(c.Image) || !fileExists(l.p.ImagePath(c.Image)) {
 				continue
 			}
-			if r := rarityRank[c.Rarity]; r > rank {
+			if r := l.p.Set.RankOf(c.Rarity); r > rank { // the rarest card: often the most detailed
 				best, rank, name = c.Image, r, c.Name
 			}
 		}

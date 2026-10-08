@@ -115,7 +115,7 @@ namespace TCGCustomCards.Debug
         {
             if (list == null) { sb.AppendLine($"{name}: null"); return; }
             var rarities = list.Select(InventoryBase.GetMonsterData)
-                .GroupBy(m => m == null ? "null" : m.Rarity.ToString())
+                .GroupBy(m => m == null ? "null" : Runtime.Registry.RarityOf(m.MonsterType)?.Id ?? m.Rarity.ToString())
                 .Select(g => $"{g.Key}={g.Count()}");
             sb.AppendLine($"{name}: count={list.Count} ids={(list.Count > 0 ? $"{(int)list.Min()}..{(int)list.Max()}" : "-")} rarity[{string.Join(", ", rarities)}]");
         }

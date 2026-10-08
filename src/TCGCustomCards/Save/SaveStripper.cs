@@ -102,6 +102,15 @@ namespace TCGCustomCards.Save
                     stash.entries.Add(new StashEntry { field = name, mode = "remove", type = "monster", json = m.ToString() });
                 return champions.Where(m => !CustomRefWalker.IsCustomMonster(m)).ToList();
             }
+            if (type == typeof(ERarity))
+            {
+                // Rarity filters (workbench, quick fill, donation): a set's own rarity is kept by stable id.
+                var r = (ERarity)value;
+                if (!Registry.IsCustomRarity(r)) return value;
+                if (Registry.TryGetRarity(r, out var set, out var def))
+                    stash.entries.Add(new StashEntry { field = name, mode = "scalar", type = RarityType, json = $"{set.Def.Id}:{def.Id}" });
+                return ERarity.None;
+            }
             if (!CustomRefWalker.MayHold(type)) return value;
 
             if (type.IsEnum)
@@ -173,6 +182,8 @@ namespace TCGCustomCards.Save
             fCounts.SetValue(g, keptCounts);
         }
 
+        /// <summary>Stash type of a set's own rarity: json = "setId:rarityId".</summary>
+        private const string RarityType = "rarity";
         private const string WarehouseField = "m_WarehouseShelfSaveDataList";
         private const string BoxField = "m_PackageBoxItemSaveDataList";
 
@@ -298,6 +309,14 @@ namespace TCGCustomCards.Save
             if (f.Name == "m_ChampionCardCollectedList" && value is List<int> champions)
                 return champions.RemoveAll(CustomRefWalker.IsOrphanMonster);
 
+            if (type == typeof(ERarity))
+            {
+                var r = (ERarity)value;
+                if (!Registry.IsCustomRarity(r) || Registry.TryGetRarity(r, out _, out _)) return 0;
+                f.SetValue(null, ERarity.None);
+                return 1;
+            }
+
             if (!CustomRefWalker.MayHold(type)) return 0;
 
             if (type.IsEnum)
@@ -413,6 +432,15 @@ namespace TCGCustomCards.Save
 
             var target = typeof(CPlayerData).GetField(e.field, BindingFlags.Static | BindingFlags.Public);
             if (target == null) { Plugin.Log.LogWarning($"Restore: CPlayerData.{e.field} not found"); return false; }
+
+            if (e.type == RarityType)
+            {
+                var parts = e.json.Split(':');
+                var set = parts.Length == 2 ? Registry.Get(parts[0]) : null;
+                if (set == null || !set.Def.RarityById.TryGetValue(parts[1], out var rarity)) return false;
+                target.SetValue(null, rarity.Value);
+                return true;
+            }
 
             if (e.type == "monster")
             {

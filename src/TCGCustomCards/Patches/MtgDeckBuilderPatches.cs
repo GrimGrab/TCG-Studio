@@ -28,9 +28,12 @@ namespace TCGCustomCards.Patches
     /// </summary>
     internal static class MtgVanillaDeckStandIn
     {
-        public static void Run(System.Action sit)
+        public static void Run(System.Action sit) => Run(sit, always: false);
+
+        /// <param name="always">Also without the MTG deck builder (draft decks aren't vanilla decks either).</param>
+        public static void Run(System.Action sit, bool always)
         {
-            if (!MtgMode.UseMtgDecks) { sit(); return; }
+            if (!always && !MtgMode.UseMtgDecks) { sit(); return; }
             var decks = CPlayerData.m_DeckCompactCardDataList;
             int index = CPlayerData.m_CurrentSelectedDeckIndex;
             var standIn = new DeckCompactCardDataList { deckName = "MTG" };

@@ -48,6 +48,32 @@ namespace TCGCustomCards.Runtime.Mtg
             }
         }
 
+        /// <summary>
+        /// Exactly these copies (draft/sealed decks: the cards the player drafted, with their border/foil) and, optionally, the
+        /// opponent's own drafted copies (their foils too) instead of plain Base copies.
+        /// </summary>
+        public MtgCardFaces(IEnumerable<CardData> copies, IEnumerable<CardData> opponentCopies = null)
+        {
+            Fill(_mine, copies);
+            Fill(_theirs, opponentCopies);
+        }
+
+        private readonly Dictionary<string, Queue<CardData>> _theirs = new Dictionary<string, Queue<CardData>>(StringComparer.OrdinalIgnoreCase);
+
+        private static void Fill(Dictionary<string, Queue<CardData>> into, IEnumerable<CardData> copies)
+        {
+            foreach (var c in copies ?? Enumerable.Empty<CardData>())
+            {
+                if (c == null || !Registry.IsCustom(c.expansionType)) continue;
+                var set = Registry.Get(c.expansionType);
+                if (set == null || !set.PosByMonster.TryGetValue(c.monsterType, out int pos)) continue;
+                string name = set.Card(pos).Mtg?.Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                if (!into.TryGetValue(name, out var q)) into[name] = q = new Queue<CardData>();
+                q.Enqueue(c);
+            }
+        }
+
         /// <summary>Any card from the player's deck (its set's card back stands in for tokens), or null.</summary>
         public CardData Any() => _mine.Values.Where(q => q.Count > 0).Select(q => q.Peek()).FirstOrDefault();
 
@@ -64,6 +90,8 @@ namespace TCGCustomCards.Runtime.Mtg
             CardData data = null;
             if (owner == myPlayerId && name != null && _mine.TryGetValue(name, out var q) && q.Count > 0)
                 data = q.Dequeue(); // one of the player's own copies
+            else if (owner >= 0 && owner != myPlayerId && name != null && _theirs.TryGetValue(name, out var tq) && tq.Count > 0)
+                data = tq.Dequeue(); // one of the customer's drafted copies
             if (data == null && Find(set, name, out var cs, out int pos))
                 data = new CardData
                 {

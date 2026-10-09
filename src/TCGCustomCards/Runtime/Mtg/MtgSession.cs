@@ -9,17 +9,12 @@ using UnityEngine;
 namespace TCGCustomCards.Runtime.Mtg
 {
     /// <summary>
-    /// An MTG game played inside a normal play-table session: the vanilla sit (customer, seat, camera) runs, then
-    /// <see cref="Run"/> replaces the Tetramon board (PlayTableGame.DelayStart) and finishes with PlayTableGame.ReportWinner, so the
+    /// An MTG game played inside a normal play-table session (<see cref="Hooks.TableSession"/> via <see cref="MtgTableGame"/>):
+    /// the vanilla sit (customer, seat, camera) runs, then <see cref="Run"/> replaces the Tetramon board (PlayTableGame.DelayStart) and finishes with PlayTableGame.ReportWinner, so the
     /// vanilla win/lose screen, win counts, achievement, rematch/leave, end-game gift and customer leave all apply.
     /// </summary>
     internal static class MtgSession
     {
-        /// <summary>Set when the player picked "Magic" and the vanilla sit is about to start a game.</summary>
-        public static bool Pending;
-        /// <summary>True from the first MTG game at a table until the player leaves (rematches stay MTG).</summary>
-        public static bool InSession;
-
         // Latest data from Forge (main thread).
         public static JObject State, Prompt, Ask;
         /// <summary>Which in-game copy each Forge card is drawn as (3D table, dialogs, previews) for the current game.</summary>
@@ -36,6 +31,19 @@ namespace TCGCustomCards.Runtime.Mtg
 
         private static MtgRunner _runner;
 
+        /// <summary>
+        /// Decks for the next games instead of <see cref="MtgMode.BuildDecks"/> (draft: the player's built deck vs that customer's
+        /// drafted deck, faces = the drafted copies). Set by the table game before each Run; null = constructed.
+        /// </summary>
+        public sealed class DeckPair
+        {
+            public MtgDeck Player, Opponent;
+            public MtgCardFaces Faces;
+            /// <summary>Shown as the customer's deck (chip + reveal), <c>aideck</c> format.</summary>
+            public JObject OpponentInfo;
+        }
+        public static DeckPair Override;
+
         public static void EnsureRunner()
         {
             if (_runner != null) return;
@@ -50,6 +58,9 @@ namespace TCGCustomCards.Runtime.Mtg
         /// <summary>Drains the bridge inbox (every frame).</summary>
         public static void Pump()
         {
+            MtgDeckCheck.Tick();
+            MtgDraft.Tick();
+            MtgDraftEvent.Tick();
             JObject m;
             while ((m = ForgeBridge.Poll()) != null)
             {
@@ -57,8 +68,13 @@ namespace TCGCustomCards.Runtime.Mtg
                 {
                     case "state": State = m; break;
                     case "prompt": Prompt = m; break;
-                    case "ask": Ask = m; break;
+                    case "ask":
+                        if ((string)m["kind"] == "draftpick") MtgDraft.OnAsk(m);
+                        else Ask = m;
+                        break;
+                    case "draftdone": MtgDraft.OnDone(m); break;
                     case "gameover": GameOver = m; break;
+                    case "validated": MtgDeckCheck.OnValidated(m); break;
                     case "message":
                     case "error":
                         AddMessage(((string)m["title"] is string t && t.Length > 0 ? t + ": " : "") + (string)m["text"]);
@@ -133,7 +149,12 @@ namespace TCGCustomCards.Runtime.Mtg
             SoundManager.BlendToMusic("BGM_FightOpening", 0.5f, isLinearBlend: true);
             SoundManager.QueueMusic("BGM_FightOpening", "BGM_FightLoop", 1f);
 
-            string err = MtgMode.BuildDecks(out var player, out var opponent, out var aiDeck);
+            MtgDeck player, opponent;
+            JObject aiDeck = null;
+            string err = null;
+            var pair = Override;
+            if (pair != null) { player = pair.Player; opponent = pair.Opponent; }
+            else err = MtgMode.BuildDecks(out player, out opponent, out aiDeck);
             if (err == null) err = ForgeBridge.EnsureStarted();
             if (err != null)
             {
@@ -154,7 +175,8 @@ namespace TCGCustomCards.Runtime.Mtg
             }
 
             Status = "";
-            CardFaces = MtgMode.Faces();
+            CardFaces = pair?.Faces ?? MtgMode.Faces();
+            if (pair?.OpponentInfo != null) { AiDeck = pair.OpponentInfo; AiDeckAt = Time.unscaledTime; }
             if (Plugin.MtgBoard3D.Value)
             {
                 try { MtgTable3d.Begin(game, CardFaces); }
@@ -170,7 +192,7 @@ namespace TCGCustomCards.Runtime.Mtg
                 ["lifeCustomer"] = Plugin.MtgCustomerStartingLife?.Value ?? 20,
             });
             Traverse.Create(game).Field("m_CurrentInteractablePlayTable").GetValue<InteractablePlayTable>()?.StartPlayerCardGame();
-            Traverse.Create(game).Field("m_CanExit").SetValue(true); // Esc → vanilla "quit battle?" → concede (MtgQuitBattle)
+            Traverse.Create(game).Field("m_CanExit").SetValue(true); // Esc → vanilla "quit battle?" → concede (TableSession QuitPatch)
 
             while (GameOver == null)
             {
@@ -211,8 +233,7 @@ namespace TCGCustomCards.Runtime.Mtg
             Playing = false;
             MtgTableUI.Hide();
             MtgTable3d.End();
-            InSession = false;
-            game.FinishLeaveGame(false);
+            game.FinishLeaveGame(false); // ends the table session (Hooks.TableSession)
         }
 
         private static bool _leftMidGame;

@@ -18,6 +18,14 @@ namespace TCGCustomCards.Runtime.Mtg
     /// <summary>[MTG - AI opponent] AiPlayStyle: Forge's AI profiles (res/ai/&lt;name&gt;.ai) or one of them at random.</summary>
     public enum AiPlayStyle { Default, Cautious, Reckless, Experimental, Random }
 
+    /// <summary>A deck the player can sit down with for MTG (MTG deck-builder deck or vanilla deck, by index).</summary>
+    internal sealed class MtgDeckChoice
+    {
+        public bool Store;
+        public int Index;
+        public string Name;
+    }
+
     /// <summary>MTG mode entry point: reads the selected in-game deck, builds Forge decks and launches Forge.</summary>
     internal static class MtgMode
     {
@@ -84,60 +92,96 @@ namespace TCGCustomCards.Runtime.Mtg
         }
 
         /// <summary>
-        /// Player deck (from the selected in-game deck) and an AI deck from the same sets; returns an error or null.
+        /// Player deck (the selected deck: <see cref="SelectedChoice"/>) and an AI deck; returns an error or null.
         /// <paramref name="aiDeck"/> = what the bridge needs to build the AI deck with Forge (style, set codes, card names);
         /// <paramref name="opponent"/> is our own simple deck, used when Forge can't (and in PlayInForgeWindow mode).
         /// </summary>
         public static string BuildDecks(out MtgDeck player, out MtgDeck opponent, out JObject aiDeck)
         {
-            if (UseMtgDecks) return BuildFromMtgDeck(out player, out opponent, out aiDeck);
-            player = opponent = null;
+            opponent = null;
             aiDeck = null;
-            var deck = SelectedDeck;
-            var sets = new HashSet<CustomSet>();
-            var cards = MtgCards(deck, sets, out int nonMtg);
-            if (cards.Count == 0) return "This deck has no MTG cards";
-
-            var pool = sets.SelectMany(s => s.Def.Cards.Select(c => ToMtg(s.Def, c))).Where(c => c != null).ToList();
-            string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.deckName) ? "Deck" : deck.deckName));
-            player = MtgDeckBuilder.FromPlayerDeck(name, cards, pool);
-            if (nonMtg > 0) player.Notes.Add($"{nonMtg} non-MTG card(s) left out");
+            string err = BuildPlayer(SelectedChoice(), out player, out var sets);
+            if (err != null) return err;
             var aiPool = AiPool(sets);
             opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, aiPool, Rng);
             aiDeck = AiDeckSpec(aiPool);
-            Plugin.Log.LogInfo($"MTG deck '{name}': {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}. " +
-                               string.Join("; ", player.Notes));
             return opponent == null ? "Couldn't build an opponent deck from these sets" : null;
         }
 
-        /// <summary>
-        /// Player deck = the active MTG deck exactly as built (its cards + the basics the player chose; nothing added or dropped),
-        /// AI deck from the sets it uses.
-        /// </summary>
-        private static string BuildFromMtgDeck(out MtgDeck player, out MtgDeck opponent, out JObject aiDeck)
+        /// <summary>The deck the player sits down with: the active MTG deck-builder deck, or the selected vanilla deck.</summary>
+        public static MtgDeckChoice SelectedChoice() => UseMtgDecks
+            ? new MtgDeckChoice { Store = true, Index = MtgDeckStore.Active }
+            : new MtgDeckChoice { Store = false, Index = CPlayerData.m_CurrentSelectedDeckIndex };
+
+        /// <summary>Every deck the player could play MTG with (deck picker): valid MTG deck-builder decks, or vanilla decks with MTG cards.</summary>
+        public static List<MtgDeckChoice> DeckChoices()
         {
-            player = opponent = null;
-            aiDeck = null;
-            var deck = MtgDeckStore.ActiveDeck;
-            if (deck == null) return "No active MTG deck - build one at the workbench and set it active";
-            if (!deck.Valid) return deck.Problems[0];
-            var sets = new HashSet<CustomSet>();
-            var cards = new List<(MtgCard, int)>();
-            foreach (var e in deck.Entries.Where(e => e.Live && e.Save.Count > 0))
+            var list = new List<MtgDeckChoice>();
+            if (UseMtgDecks)
             {
-                var card = ToMtg(e.Set.Def, e.Set.Card(e.Pos));
-                if (card == null) continue;
-                sets.Add(e.Set);
-                cards.Add((card, e.Save.Count));
+                for (int i = 0; i < MtgDeckStore.Decks.Count; i++)
+                    if (MtgDeckStore.Decks[i].Valid) list.Add(new MtgDeckChoice { Store = true, Index = i, Name = MtgDeckStore.Decks[i].Name });
+                return list;
             }
-            var pool = sets.SelectMany(s => s.Def.Cards.Select(c => ToMtg(s.Def, c))).Where(c => c != null).ToList();
-            string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.Name) ? "Deck" : deck.Name));
-            player = MtgDeckBuilder.FromMtgDeck(name, cards, deck.Save.Basics, pool);
-            var aiPool = AiPool(sets);
-            opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, aiPool, Rng);
-            aiDeck = AiDeckSpec(aiPool);
-            Plugin.Log.LogInfo($"MTG deck '{name}' (MTG deck builder): {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}");
-            return opponent == null ? "Couldn't build an opponent deck from these sets" : null;
+            var decks = CPlayerData.m_DeckCompactCardDataList;
+            for (int i = 0; decks != null && i < decks.Count; i++)
+                if (MtgCards(decks[i], null, out _).Count > 0)
+                    list.Add(new MtgDeckChoice { Store = false, Index = i, Name = string.IsNullOrWhiteSpace(decks[i].deckName) ? $"Deck {i + 1}" : decks[i].deckName });
+            return list;
+        }
+
+        public static bool IsSelected(MtgDeckChoice c) =>
+            c.Store == UseMtgDecks && c.Index == (c.Store ? MtgDeckStore.Active : CPlayerData.m_CurrentSelectedDeckIndex);
+
+        /// <summary>Makes <paramref name="c"/> the deck the next sit uses (active MTG deck / selected vanilla deck).</summary>
+        public static void Select(MtgDeckChoice c)
+        {
+            if (c.Store)
+            {
+                if (c.Index >= 0 && c.Index < MtgDeckStore.Decks.Count) MtgDeckStore.SetActive(MtgDeckStore.Decks[c.Index]);
+            }
+            else CPlayerData.m_CurrentSelectedDeckIndex = c.Index;
+        }
+
+        /// <summary>
+        /// The Forge deck for <paramref name="c"/> plus the sets its cards come from; returns an error or null. Vanilla decks:
+        /// basics dropped, free basics added to 60 (<see cref="MtgDeckBuilder.FromPlayerDeck"/>). MTG deck-builder decks: exactly
+        /// as built (cards + chosen basics, nothing added or dropped).
+        /// </summary>
+        public static string BuildPlayer(MtgDeckChoice c, out MtgDeck player, out HashSet<CustomSet> sets)
+        {
+            player = null;
+            sets = new HashSet<CustomSet>();
+            if (c.Store)
+            {
+                var deck = c.Index >= 0 && c.Index < MtgDeckStore.Decks.Count ? MtgDeckStore.Decks[c.Index] : null;
+                if (deck == null) return "No active MTG deck - build one at the workbench and set it active";
+                if (!deck.Valid) return deck.Problems[0];
+                var cards = new List<(MtgCard, int)>();
+                foreach (var e in deck.Entries.Where(e => e.Live && e.Save.Count > 0))
+                {
+                    var card = ToMtg(e.Set.Def, e.Set.Card(e.Pos));
+                    if (card == null) continue;
+                    sets.Add(e.Set);
+                    cards.Add((card, e.Save.Count));
+                }
+                var pool = sets.SelectMany(s => s.Def.Cards.Select(d => ToMtg(s.Def, d))).Where(x => x != null).ToList();
+                string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.Name) ? "Deck" : deck.Name));
+                player = MtgDeckBuilder.FromMtgDeck(name, cards, deck.Save.Basics, pool);
+                Plugin.Log.LogInfo($"MTG deck '{name}' (MTG deck builder): {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}");
+                return null;
+            }
+            var decks = CPlayerData.m_DeckCompactCardDataList;
+            var vdeck = decks != null && c.Index >= 0 && c.Index < decks.Count ? decks[c.Index] : null;
+            var vcards = MtgCards(vdeck, sets, out int nonMtg);
+            if (vcards.Count == 0) return "This deck has no MTG cards";
+            var vpool = sets.SelectMany(s => s.Def.Cards.Select(d => ToMtg(s.Def, d))).Where(x => x != null).ToList();
+            string vname = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(vdeck.deckName) ? "Deck" : vdeck.deckName));
+            player = MtgDeckBuilder.FromPlayerDeck(vname, vcards, vpool);
+            if (nonMtg > 0) player.Notes.Add($"{nonMtg} non-MTG card(s) left out");
+            Plugin.Log.LogInfo($"MTG deck '{vname}': {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}. " +
+                               string.Join("; ", player.Notes));
+            return null;
         }
 
         /// <summary>MTG cards of the sets the customer plays (see <see cref="ChooseAiSets"/>).</summary>
@@ -148,7 +192,7 @@ namespace TCGCustomCards.Runtime.Mtg
             return chosen.SelectMany(s => s.Def.Cards.Select(c => ToMtg(s.Def, c))).Where(c => c != null).ToList();
         }
 
-        private static bool HasMtg(CustomSet s) => s.Def.Cards.Any(c => ToMtg(s.Def, c) != null);
+        public static bool HasMtg(CustomSet s) => s.Def.Cards.Any(c => ToMtg(s.Def, c) != null);
 
         /// <summary>A set counts as licensed when any restock row of one of its packs is unlocked in the shop.</summary>
         private static bool IsLicensed(CustomSet s)
@@ -163,6 +207,8 @@ namespace TCGCustomCards.Runtime.Mtg
         /// </summary>
         private static List<CustomSet> ChooseAiSets(HashSet<CustomSet> deckSets)
         {
+            var eventSets = MtgEvents.TournamentAiSets();
+            if (eventSets != null) return eventSets; // MTG tournament: the customer plays the event's sets
             var mode = Plugin.MtgAiDeckSets?.Value ?? AiDeckSets.RandomLicensed;
             if (mode == AiDeckSets.MatchMyDeck) return deckSets.ToList();
             var eligible = Registry.Sets.Where(HasMtg).ToList();

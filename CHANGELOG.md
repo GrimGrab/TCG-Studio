@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.6.0 - 2026-10-09
+
+Magic tournaments: Constructed with your own set list, plus booster Draft and Sealed with packs you put up.
+
+- New: Host Tournament has a format panel: Tetramon, Magic: Constructed, Magic: Draft or Magic: Sealed. It can be minimized.
+- New: Magic: Constructed tournaments use the sets you pick (one or many). Forge checks every deck against them and only legal decks can play; the customers' decks use the same sets.
+- New: Choose your deck when you sit down to play Magic at any table.
+- New: Magic: Draft and Magic: Sealed tournaments. Hold MTG packs and right-click the Tournament Prize Shelf to put them up for the tournament: only entrants get them, and leftovers come back as delivered boxes (cancelling returns them all). Entrants pay your pack price on top of the entry fee; overpriced packs mean fewer sign-ups. On the day, go to your table to draft (or open your sealed pool) and build a 40-card deck; the cards are yours to keep. Forge drafts and builds the customers' decks, and the stronger deck wins customer matches more often.
+- New settings: MTG - Draft → PodSize, MinPicksPerPlayer, StrengthWeight, PausesClock (the shop clock stops while you draft). Debug → TestDraft (Shift+F10) tries a draft without a tournament.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.5.0 - 2026-10-08
 
 Bigger packs, real booster layouts for every game, and per-set card versions.

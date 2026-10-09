@@ -10,6 +10,7 @@ namespace TCGCustomCards.Debug
     {
         internal static ConfigEntry<KeyboardShortcut> GrantKey;
         internal static ConfigEntry<KeyboardShortcut> GrantAllVariantsKey;
+        internal static ConfigEntry<KeyboardShortcut> TestDraftKey;
 
         public static void Init(ConfigFile config)
         {
@@ -17,6 +18,8 @@ namespace TCGCustomCards.Debug
                 "Adds one Base copy and one random variant of every custom card to the collection.");
             GrantAllVariantsKey = config.Bind("Debug", "GrantAllVariants", new KeyboardShortcut(KeyCode.F9, KeyCode.LeftShift),
                 "Adds one copy of every border/foil variant of every custom card.");
+            TestDraftKey = config.Bind("Debug", "TestDraft", new KeyboardShortcut(KeyCode.F10, KeyCode.LeftShift),
+                "MTG booster draft test without a tournament: drafts the MTG packs in your hands (or 3 test packs) against 7 Forge seats, then the next table plays your deck. Nothing is used up; your picks go into the collection.");
 
             var go = new GameObject("TCGCustomCards_Runner");
             DontDestroyOnLoad(go);
@@ -28,6 +31,7 @@ namespace TCGCustomCards.Debug
         {
             if (GrantAllVariantsKey.Value.IsDown()) Grant(allVariants: true);
             else if (GrantKey.Value.IsDown()) Grant(allVariants: false);
+            else if (TestDraftKey.Value.IsDown()) DraftTest.Run();
         }
 
         private static void Grant(bool allVariants)

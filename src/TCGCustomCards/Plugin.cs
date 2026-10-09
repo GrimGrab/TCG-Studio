@@ -39,6 +39,9 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> MtgAiPowerFollowsShopLevel, MtgAiKeepDeckOnRematch, MtgAiRevealDeck;
         internal static ConfigEntry<Runtime.Mtg.AiPlayStyle> MtgAiPlayStyle;
         internal static ConfigEntry<int> MtgYourStartingLife, MtgCustomerStartingLife;
+        internal static ConfigEntry<int> MtgDraftPodSize, MtgDraftMinPicks;
+        internal static ConfigEntry<float> MtgDraftStrengthWeight;
+        internal static ConfigEntry<bool> MtgDraftPausesClock;
         internal static ConfigEntry<int> MtgAiDeckColorsMin, MtgAiDeckColorsMax;
         /// <summary>[MTG] AiDeckWeight1Color … AiDeckWeight5Colors: how often each colour count is rolled.</summary>
         internal static readonly ConfigEntry<int>[] MtgAiDeckColorWeights = new ConfigEntry<int>[5];
@@ -262,6 +265,18 @@ namespace TCGCustomCards
                 "Your life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
             MtgCustomerStartingLife = Config.Bind(match, "CustomerStartingLife", 20, new ConfigDescription(
                 "The customer's life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
+            const string draft = "MTG - Draft";
+            MtgDraftPodSize = Config.Bind(draft, "PodSize", 8, new ConfigDescription(
+                "Magic: Draft tournaments: most players per draft table (pod). Bigger tournaments are split into even pods; your pod " +
+                "drafts with you, the others are drafted by Forge.", new AcceptableValueRange<int>(2, 16)));
+            MtgDraftMinPicks = Config.Bind(draft, "MinPicksPerPlayer", 23, new ConfigDescription(
+                "Magic: Draft tournaments: hosting needs at least this many cards per player (packs per player × the smallest pack " +
+                "size of the chosen sets). 23 = enough for a 40-card deck with 17 lands.", new AcceptableValueRange<int>(1, 100)));
+            MtgDraftStrengthWeight = Config.Bind(draft, "StrengthWeight", 0.015f, new ConfigDescription(
+                "Magic: Draft tournaments: how much a better drafted deck (Forge's card ratings) wins customer-vs-customer matches. " +
+                "0 = coin flip; the chance stays between 20% and 80%.", new AcceptableValueRange<float>(0f, 0.1f)));
+            MtgDraftPausesClock = Config.Bind(draft, "PausesClock", true,
+                "On = the shop's clock stops while you pick cards and build your draft deck.");
             ShowVanillaCards.SettingChanged += (_, __) => VanillaFilter.Apply();
             ShowVanillaPacks.SettingChanged += (_, __) => VanillaFilter.Apply();
             DevTools.Init(Config);
@@ -274,6 +289,9 @@ namespace TCGCustomCards
 
             _harmony = new Harmony(Guid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
+            Hooks.TableSession.OnSit = Runtime.Mtg.MtgTableChoice.OnSit;
+            Runtime.Mtg.MtgEvents.Register();
+            Runtime.Mtg.MtgDraftEvent.Register();
 
             Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s), {Registry.Decorations.Count} decoration(s)");
             Log.LogInfo("Supports " + Core.SetDef.LibraryCapability + " (shared card art in the plugin's Library folder)");

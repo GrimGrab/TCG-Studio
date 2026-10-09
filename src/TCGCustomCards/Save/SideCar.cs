@@ -30,6 +30,12 @@ namespace TCGCustomCards.Save
             /// <summary>MTG decks of the MTG deck builder (cards in them are out of the collection counts above).</summary>
             public List<Runtime.Mtg.MtgDeckSave> mtgDecks;
             public int activeMtgDeck = -1;
+            /// <summary>Options of the hosted tournament beyond vanilla's (format, sets, packs); null = vanilla.</summary>
+            public Hooks.ShopEventConfig shopEvent;
+            /// <summary>Packs the player put up for a pack tournament (stable pack key → count).</summary>
+            public Dictionary<string, int> shopEventStock;
+            /// <summary>Today's Magic: Draft tournament (pods, packs, decks).</summary>
+            public Runtime.Mtg.DraftEventSave draftEvent;
         }
 
         /// <summary>Stash produced by the save strip currently in progress; written with the side-car.</summary>
@@ -162,6 +168,9 @@ namespace TCGCustomCards.Save
             ApplyLicenses(_pending.licenses);
             ApplyItems(_pending.items, keepCountsWhenMissing: true);
             Runtime.Mtg.MtgDeckStore.Load(_pending.mtgDecks, _pending.activeMtgDeck);
+            Hooks.ShopEvents.Load(_pending.shopEvent);
+            Hooks.ShopEvents.LoadStock(_pending.shopEventStock);
+            Runtime.Mtg.MtgDraftEvent.Load(_pending.draftEvent);
             Plugin.Log.LogInfo($"MTG decks loaded: {Runtime.Mtg.MtgDeckStore.Decks.Count} (active {Runtime.Mtg.MtgDeckStore.Active})");
             _pending = null;
             Plugin.Log.LogInfo($"Side-car applied: {applied} card variants restored");
@@ -175,6 +184,9 @@ namespace TCGCustomCards.Save
             ApplyLicenses(new Dictionary<string, bool>());
             ApplyItems(new Dictionary<string, ItemSave>(), keepCountsWhenMissing: false);
             Runtime.Mtg.MtgDeckStore.Load(null, -1);
+            Hooks.ShopEvents.Load(null);
+            Hooks.ShopEvents.LoadStock(null);
+            Runtime.Mtg.MtgDraftEvent.Load(null);
         }
 
         /// <summary>Restores custom item prices; items without an entry get zeroed prices so RestockManager.Init regenerates them from the set definition.</summary>
@@ -279,7 +291,9 @@ namespace TCGCustomCards.Save
 
         public static void Write(int slot)
         {
-            var file = new SaveFile { stash = PendingStash, mtgDecks = Runtime.Mtg.MtgDeckStore.Export(), activeMtgDeck = Runtime.Mtg.MtgDeckStore.Active };
+            var file = new SaveFile { stash = PendingStash, mtgDecks = Runtime.Mtg.MtgDeckStore.Export(), activeMtgDeck = Runtime.Mtg.MtgDeckStore.Active,
+                                     shopEvent = Hooks.ShopEvents.Export(), shopEventStock = Hooks.ShopEvents.ExportStock(),
+                                     draftEvent = Runtime.Mtg.MtgDraftEvent.Export() };
             foreach (var kv in _orphans.sets) file.sets[kv.Key] = new Dictionary<string, Dictionary<string, VariantSave>>(kv.Value);
             foreach (var kv in _orphans.licenses) file.licenses[kv.Key] = kv.Value;
             foreach (var kv in _orphans.items) file.items[kv.Key] = kv.Value;

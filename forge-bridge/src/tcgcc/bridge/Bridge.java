@@ -3,7 +3,9 @@ package tcgcc.bridge;
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
 import forge.deck.Deck;
+import forge.deck.DeckFormat;
 import forge.deck.io.DeckSerializer;
+import forge.game.GameFormat;
 import forge.game.GameType;
 import forge.game.player.RegisteredPlayer;
 import forge.gamemodes.match.HostedMatch;
@@ -36,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "5";
+    public static final String VERSION = "6";
 
     private static PrintStream proto;
     private static PrintStream logStream;
@@ -94,6 +96,10 @@ public final class Bridge {
         if (t == null) return;
         switch (t) {
             case "start" -> startMatch(m);
+            case "validate" -> validate(m);
+            case "draft" -> Draft.start(m);
+            case "sealed" -> Draft.startSealed(m);
+            case "draftquit" -> cancelAsks(); // the player left the pick screen: the waiting draft pick gets null and aborts
             case "answer" -> {
                 CompletableFuture<Map<String, Object>> f = pending.remove(Json.i(m, "id", -1));
                 if (f != null) f.complete(m);
@@ -146,15 +152,56 @@ public final class Bridge {
         }
     }
 
+    /**
+     * Tournament deck check, decided by Forge only: {@code validate{id, deck (.dck path), kind: constructed|limited, sets[]}} →
+     * {@code validated{id, ok, problems[]}}. Problems = Forge's own messages: the deck-size/copy rules of DeckFormat.Constructed
+     * or Limited, then a GameFormat limited to the event's set codes (a card is legal when that name was printed in one of them).
+     */
+    private static void validate(Map<String, Object> m) {
+        int id = Json.i(m, "id", -1);
+        List<String> problems = new ArrayList<>();
+        try {
+            Deck deck = DeckSerializer.fromFile(new File(Json.s(m, "deck")));
+            if (deck == null) throw new IllegalArgumentException("deck file unreadable");
+            DeckFormat rules = "limited".equals(Json.s(m, "kind")) ? DeckFormat.Limited : DeckFormat.Constructed;
+            String p = rules.getDeckConformanceProblem(deck);
+            if (p != null) problems.add(p);
+            List<String> sets = new ArrayList<>();
+            if (m.get("sets") instanceof List<?> l) for (Object o : l) if (o != null) sets.add(String.valueOf(o).toUpperCase());
+            if (!sets.isEmpty()) {
+                String q = new GameFormat("Tournament", sets, new ArrayList<>()).getDeckConformanceProblem(deck);
+                if (q != null) problems.add(q);
+            }
+            log("validate " + deck.getName() + " sets " + sets + ": " + (problems.isEmpty() ? "ok" : problems));
+        } catch (Throwable t) {
+            log("validate failed: " + t);
+            problems.add("Forge couldn't check the deck: " + t.getMessage());
+        }
+        send(msg("validated", "id", id, "ok", problems.isEmpty(), "problems", problems));
+    }
+
     /** Sends a question and blocks the calling (game) thread until the game answers. Null if the bridge is shutting down. */
     static Map<String, Object> ask(Map<String, Object> q) {
+        return ask(q, true);
+    }
+
+    /** Completes every waiting question with null (its asker gives up). */
+    static void cancelAsks() {
+        for (Integer id : new ArrayList<>(pending.keySet())) {
+            CompletableFuture<Map<String, Object>> f = pending.remove(id);
+            if (f != null) f.complete(null);
+        }
+    }
+
+    /** {@code withContext}: add the resolving spell/ability (match questions); drafts have none. */
+    static Map<String, Object> ask(Map<String, Object> q, boolean withContext) {
         if (quitting) return null;
         int id = nextAsk.getAndIncrement();
         CompletableFuture<Map<String, Object>> f = new CompletableFuture<>();
         pending.put(id, f);
         q.put("t", "ask");
         q.put("id", id);
-        if (gui != null) gui.addContext(q); // which spell/ability is asking (Forge doesn't pass it to its dialogs)
+        if (withContext && gui != null) gui.addContext(q); // which spell/ability is asking (Forge doesn't pass it to its dialogs)
         send(q);
         try {
             return f.get();

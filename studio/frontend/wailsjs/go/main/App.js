@@ -354,6 +354,10 @@ export function OpenSetupFolder(arg1) {
   return window['go']['main']['App']['OpenSetupFolder'](arg1);
 }
 
+export function PackPresets() {
+  return window['go']['main']['App']['PackPresets']();
+}
+
 export function PaintFurniture(arg1, arg2) {
   return window['go']['main']['App']['PaintFurniture'](arg1, arg2);
 }

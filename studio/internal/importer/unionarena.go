@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 )
 
 // ---------------------------------------------------------------- Union Arena (TCGplayer catalog via TCGCSV)
@@ -169,11 +168,7 @@ func (s *unionArenaSource) Import(ctx context.Context, ws project.Workspace, cod
 		ReleasedAt: date10(g.PublishedOn), Cards: cards, Get: s.t.c.Download, Aspect: CardAspect,
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Legendary" }),
 		// Union Arena boosters: commons, uncommons, then a rare-or-better (super rares and star parallels).
-		Slots: []setfmt.Slot{
-			{Count: 4, Weights: map[string]float64{"Common": 1}},
-			{Count: 2, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 4, "Legendary": 1}},
-		}, FoilChance: 5}, opt, report)
+		Slots: UnionArenaBooster(date10(g.PublishedOn)).Slots, FoilChance: UnionArenaBooster(date10(g.PublishedOn)).FoilChance}, opt, report)
 }
 
 // RefreshMeta updates prices from TCGplayer.

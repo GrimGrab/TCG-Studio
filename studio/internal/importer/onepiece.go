@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 )
 
 // ---------------------------------------------------------------- One Piece Card Game (TCGplayer catalog via TCGCSV)
@@ -165,11 +164,7 @@ func (s *onePieceSource) Import(ctx context.Context, ws project.Workspace, code 
 		ReleasedAt: date10(g.PublishedOn), Cards: cards, Get: s.t.c.Download, Aspect: CardAspect,
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Legendary" }),
 		// One Piece boosters: commons, uncommons, then a rare-or-better (leaders, super rares, secrets, parallels).
-		Slots: []setfmt.Slot{
-			{Count: 4, Weights: map[string]float64{"Common": 1}},
-			{Count: 2, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 4, "Legendary": 1}},
-		}, FoilChance: 5}, opt, report)
+		Slots: OnePiece.Slots, FoilChance: OnePiece.FoilChance}, opt, report)
 }
 
 // RefreshMeta updates prices from TCGplayer.

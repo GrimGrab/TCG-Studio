@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/webapi"
 )
 
@@ -230,11 +229,7 @@ func (s *swuSource) Import(ctx context.Context, ws project.Workspace, code strin
 		ReleasedAt: swuDate(set.Released), Cards: cards, Get: s.c.Download, Rotate: true, // leaders and bases are landscape
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Rare" }),
 		// Star Wars: Unlimited boosters: commons, an uncommon, then a rare or legendary (plus a foil in every pack).
-		Slots: []setfmt.Slot{
-			{Count: 5, Weights: map[string]float64{"Common": 1}},
-			{Count: 1, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 5, "Legendary": 1}},
-		}, FoilChance: 15}, opt, report)
+		Slots: SwuBooster.Slots, FoilChance: SwuBooster.FoilChance}, opt, report)
 }
 
 func (s *swuSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {

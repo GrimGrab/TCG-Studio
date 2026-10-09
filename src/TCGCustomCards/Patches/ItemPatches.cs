@@ -131,8 +131,13 @@ namespace TCGCustomCards.Patches
 
             var output = isSecondaryRolledData ? Rolled2(__instance) : Rolled(__instance);
             if (clearList) output.Clear();
-            if (PackRoller.Roll(pack, isSecondaryRolledData ? Pool2(__instance) : Pool(__instance), output))
+            var pool = isSecondaryRolledData ? Pool2(__instance) : Pool(__instance);
+            PackSizePatches.EnsurePool(pool, pack.Def.CardsPerPack); // vanilla pools hold 10; the roller stops at the pool size
+            int before = output.Count;
+            if (PackRoller.Roll(pack, pool, output))
                 HasFoil(__instance) = true;
+            // Opening only has slots for 7 when the N-card patch couldn't apply (PackSizePatches logs why).
+            if (!PackSizePatches.RevealPatched && output.Count - before > 7) output.RemoveRange(before + 7, output.Count - before - 7);
             return false;
         }
     }

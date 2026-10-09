@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
@@ -43,6 +44,17 @@ namespace TCGCustomCards.Core
         [JsonProperty("rarities")] public List<RarityDef> Rarities = new List<RarityDef>();
 
         [JsonProperty("priceDefaults")] public PriceDefaults PriceDefaults = new PriceDefaults();
+
+        /// <summary>
+        /// Card versions the set has, named like the side-car keys ("Base", "Base_foil", "FullArt_foil", …). Empty = all 12.
+        /// Others are never generated (packs, trade customers) and are left out of the binder and Check Price unless owned.
+        /// </summary>
+        [JsonProperty("variants")] public List<string> Variants = new List<string>();
+        /// <summary>Allowed versions by slot offset (border + 6 if foil, like the save index); filled by SetLoader.</summary>
+        [JsonIgnore] public bool[] VariantMask = Enumerable.Repeat(true, 12).ToArray();
+        [JsonIgnore] public bool AllVariants => VariantMask.All(v => v);
+        public bool Allows(ECardBorderType border, bool foil) => VariantMask[(int)border + (foil ? 6 : 0)];
+
         [JsonProperty("packs")] public List<PackDef> Packs = new List<PackDef>();
         [JsonProperty("cards")] public List<CardDef> Cards = new List<CardDef>();
 
@@ -206,7 +218,7 @@ namespace TCGCustomCards.Core
 
         [JsonProperty("license")] public LicenseDef License = new LicenseDef();
 
-        /// <summary>Rarity weights per slot. Counts must add up to cardsPerPack. Empty = vanilla-like odds for every slot.</summary>
+        /// <summary>Rarity weights per slot; their counts add up to the pack size (cardsPerPack follows them). Empty = vanilla-like odds for every card.</summary>
         [JsonProperty("slots")] public List<PackSlot> Slots = new List<PackSlot>();
         /// <summary>Percent chance per card to be foil (vanilla 5).</summary>
         [JsonProperty("foilChance")] public float FoilChance = 5f;

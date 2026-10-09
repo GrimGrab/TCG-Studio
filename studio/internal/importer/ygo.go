@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/webapi"
 )
 
@@ -288,11 +287,7 @@ func (s *ygoSource) Import(ctx context.Context, ws project.Workspace, code strin
 		Aspect: CardAspect, // Yu-Gi-Oh! cards are 59×86 mm, narrower than the game's 63×88 slot
 		Rarity: rarityMapper(opt.RarityMap, ygoRarityFallback),
 		// Yu-Gi-Oh! boosters: commons, a rare, then a foil (super → ultra → secret).
-		Slots: []setfmt.Slot{
-			{Count: 5, Weights: map[string]float64{"Common": 1}},
-			{Count: 1, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 5, "Legendary": 2}},
-		}, FoilChance: 5}, opt, report)
+		Slots: YgoBooster(x.TCGDate).Slots, FoilChance: YgoBooster(x.TCGDate).FoilChance}, opt, report)
 }
 
 func (s *ygoSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {

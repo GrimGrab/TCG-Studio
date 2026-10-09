@@ -278,14 +278,12 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 		return nil, fmt.Errorf("no cards with images found in set %s (%s)", code, lang)
 	}
 
-	// Default booster: 7 cards like the other sources — 4 commons, 2 uncommons, 1 rare-or-better.
+	// The set's real booster for its era (boosters.go PokemonBooster).
+	b := PokemonBooster(tset.ReleaseDate)
 	pack := setfmt.NewPack("booster", tset.Name+" Booster")
-	pack.Slots = fitSlots([]setfmt.Slot{
-		{Count: 4, Weights: map[string]float64{"Common": 1}},
-		{Count: 2, Weights: map[string]float64{"Rare": 1}},
-		{Count: 1, Weights: map[string]float64{"Epic": 6, "Legendary": 1}},
-	}, set)
-	pack.FoilChance = 15 // reverse holos are common in Pokémon packs
+	pack.Slots = fitSlots(b.Slots, set)
+	pack.CardsPerPack = setfmt.SlotTotal(pack.Slots)
+	pack.FoilChance = b.FoilChance
 	set.Packs = append(set.Packs, pack)
 
 	// Set logo (a layer for the pack art editor).

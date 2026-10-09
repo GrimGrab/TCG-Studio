@@ -26,7 +26,7 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 	_ = png.Encode(&buf, img)
 	var calls atomic.Int32
 	in := setIn{ID: "x-set", Source: "test", Code: "SET", Name: "Set",
-		Cards: []cardIn{{SourceID: "a", Name: "A", Number: "1", Image: "u1"}, {SourceID: "b", Name: "B", Number: "2", Image: "u2"}},
+		Cards:  []cardIn{{SourceID: "a", Name: "A", Number: "1", Image: "u1"}, {SourceID: "b", Name: "B", Number: "2", Image: "u2"}},
 		Get:    func(context.Context, string) ([]byte, error) { calls.Add(1); return buf.Bytes(), nil },
 		Rarity: func(string) string { return "Common" },
 	}

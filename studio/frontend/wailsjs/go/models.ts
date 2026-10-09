@@ -501,6 +501,44 @@ export namespace gamify {
 
 export namespace importer {
 	
+	export class Booster {
+	    game: string;
+	    name: string;
+	    slots: setfmt.Slot[];
+	    foilChance: number;
+	    estimate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Booster(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.game = source["game"];
+	        this.name = source["name"];
+	        this.slots = this.convertValues(source["slots"], setfmt.Slot);
+	        this.foilChance = source["foilChance"];
+	        this.estimate = source["estimate"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class EPLItem {
 	    key: string;
 	    id: string;
@@ -3241,6 +3279,7 @@ export namespace setfmt {
 	    mtg?: SetMtg;
 	    rarities?: Rarity[];
 	    priceDefaults: PriceDefaults;
+	    variants?: string[];
 	    packs: Pack[];
 	    cards: Card[];
 	
@@ -3259,6 +3298,7 @@ export namespace setfmt {
 	        this.mtg = this.convertValues(source["mtg"], SetMtg);
 	        this.rarities = this.convertValues(source["rarities"], Rarity);
 	        this.priceDefaults = this.convertValues(source["priceDefaults"], PriceDefaults);
+	        this.variants = source["variants"];
 	        this.packs = this.convertValues(source["packs"], Pack);
 	        this.cards = this.convertValues(source["cards"], Card);
 	    }

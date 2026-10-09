@@ -194,6 +194,8 @@ export function OpenProjectFolder(arg1:string):Promise<void>;
 
 export function OpenSetupFolder(arg1:string):Promise<void>;
 
+export function PackPresets():Promise<Array<importer.Booster>>;
+
 export function PaintFurniture(arg1:string,arg2:string):Promise<setfmt.FurniturePaint>;
 
 export function PickAccessoryImage():Promise<string>;

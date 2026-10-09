@@ -165,12 +165,17 @@ func Apply(p *project.Project, tier int, pos float64, s Settings) Preview {
 		cost := round2(t.PackCost * scale)
 		for i := range p.Set.Packs {
 			pk := &p.Set.Packs[i]
+			// Vanilla's tier prices are for 7-card packs: bigger (or smaller) packs cost in proportion to their cards.
+			cards := PackCardFactor(pk.CardsPerPack)
 			pk.License = lic
-			pk.PackCost = cost
+			pk.PackCost = round2(cost * cards)
 			pk.BoxCost = nil // box follows the pack price ×8, like vanilla boxes
-			pk.MarketMin, pk.MarketMax = t.MarketMin, t.MarketMax
+			pk.MarketMin, pk.MarketMax = round2(t.MarketMin*cards), round2(t.MarketMax*cards)
+			if i == 0 {
+				pv.PackCost = pk.PackCost
+			}
 		}
-		pv.License, pv.PackCost, pv.Like = lic, cost, t.Name
+		pv.License, pv.Like = lic, t.Name
 	}
 	p.Meta.Tier = tier
 	p.Meta.Pricing = &project.Pricing{Mode: s.Mode, BorderCurve: s.BorderCurve, TierStep: s.TierStep, Position: pos}
@@ -294,4 +299,12 @@ func (t TierData) License() setfmt.License {
 	pbl, pbp, bbl, bbp := t.PackBigLevel, t.PackBigPrice, t.BoxBigLevel, t.BoxBigPrice
 	return setfmt.License{PackLevel: t.PackLevel, PackPrice: t.PackPrice, PackBigLevel: &pbl, PackBigPrice: &pbp,
 		BoxLevel: t.BoxLevel, BoxPrice: t.BoxPrice, BoxBigLevel: &bbl, BoxBigPrice: &bbp}
+}
+
+// PackCardFactor is how a pack's price compares with a vanilla 7-card pack of the same tier (cards / 7; 0 = 7 cards).
+func PackCardFactor(cardsPerPack int) float64 {
+	if cardsPerPack <= 0 {
+		return 1
+	}
+	return float64(cardsPerPack) / 7
 }

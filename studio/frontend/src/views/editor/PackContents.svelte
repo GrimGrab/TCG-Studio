@@ -29,6 +29,8 @@
   const hidden = $derived(rarities.filter((r) => !used(r.id)));
   const neverCards = $derived(hidden.reduce((t, r) => t + (pool[r.id] ?? 0), 0));
   const slotSum = $derived(pack.slots.reduce((s: number, x: any) => s + (x.count || 0), 0));
+  // The slots decide the pack's size.
+  $effect(() => { if (pack.slots.length && pack.cardsPerPack !== slotSum) pack.cardsPerPack = slotSum; });
 
   function weight(slot: any, r: string, v: string) {
     const n = parseFloat(v);
@@ -111,7 +113,7 @@
     {#if neverCards}<span class="warn">{neverCards} card{neverCards === 1 ? '' : 's'} of those can never come out of this pack</span>{/if}
   {/if}
   <span class="grow"></span>
-  {#if slotSum !== pack.cardsPerPack}<span class="err">Slot cards add up to {slotSum}, must be {pack.cardsPerPack}</span>{/if}
+  {#if slotSum < 1 || slotSum > 24}<span class="err">A pack must have 1–24 cards (the slots add up to {slotSum})</span>{/if}
 </div>
 <p class="muted small">Weights are relative within a slot (the % beside each is its share). Each slot rolls a rarity, then any card of
   it — so “In each pack” is how many cards of a rarity you get, and “Each card” how often one particular card of it turns up.</p>

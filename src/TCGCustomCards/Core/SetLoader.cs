@@ -65,6 +65,7 @@ namespace TCGCustomCards.Core
             if (set.PriceDefaults?.BorderMultipliers?.Length != 6) errors.Add("priceDefaults.borderMultipliers must have 6 entries");
             if (set.Cards == null || set.Cards.Count == 0) errors.Add("no cards");
             bool defaultList = ValidateRarities(set, errors);
+            ValidateVariants(set, errors);
 
             var ids = new HashSet<string>();
             foreach (var c in set.Cards ?? new List<CardDef>())
@@ -99,11 +100,11 @@ namespace TCGCustomCards.Core
                 if (!IsSafeId(p.Id)) errors.Add($"{where}: id may not contain spaces, ':', '/' or '|'");
                 if (string.IsNullOrWhiteSpace(p.Name)) p.Name = $"{set.Name} Pack";
                 if (string.IsNullOrWhiteSpace(p.BoxName)) p.BoxName = p.Name.EndsWith(" Pack") ? p.Name.Substring(0, p.Name.Length - 5) + " Box" : p.Name + " Box";
-                if (p.CardsPerPack != 7) errors.Add($"{where}: cardsPerPack must be 7 (N-card packs are not supported yet)");
                 if (p.License == null) p.License = new LicenseDef();
                 if (p.Slots == null) p.Slots = new List<PackSlot>();
-                if (p.Slots.Count > 0 && p.Slots.Sum(s => s.Count) != p.CardsPerPack)
-                    errors.Add($"{where}: slot counts add up to {p.Slots.Sum(s => s.Count)}, expected {p.CardsPerPack}");
+                if (p.Slots.Count > 0) p.CardsPerPack = p.Slots.Sum(s => s.Count); // slots decide the pack's size
+                if (p.CardsPerPack < 1 || p.CardsPerPack > Patches.PackSizePatches.MaxCards)
+                    errors.Add($"{where}: a pack must have 1–{Patches.PackSizePatches.MaxCards} cards (has {p.CardsPerPack})");
                 foreach (var s in p.Slots)
                     foreach (var w in s.Weights.Keys)
                         if (!set.RarityById.ContainsKey(w)) errors.Add($"{where}: unknown rarity '{w}' in slot weights");
@@ -124,6 +125,29 @@ namespace TCGCustomCards.Core
         /// Fills <see cref="SetDef.RarityById"/> and each rarity's place (the default list when the set has none; returns true then).
         /// Values come from Registry.Build.
         /// </summary>
+        /// <summary>Fills <see cref="SetDef.VariantMask"/> from "variants" (empty = all 12).</summary>
+        private static void ValidateVariants(SetDef set, List<string> errors)
+        {
+            var mask = new bool[12];
+            if (set.Variants == null || set.Variants.Count == 0)
+            {
+                for (int i = 0; i < 12; i++) mask[i] = true;
+                set.VariantMask = mask;
+                return;
+            }
+            foreach (var v in set.Variants)
+            {
+                string name = v ?? "";
+                bool foil = name.EndsWith("_foil", System.StringComparison.OrdinalIgnoreCase);
+                if (foil) name = name.Substring(0, name.Length - 5);
+                if (!System.Enum.TryParse(name, true, out ECardBorderType border) || !System.Enum.IsDefined(typeof(ECardBorderType), border) || (int)border > 5)
+                    errors.Add($"variants: unknown version '{v}' (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)");
+                else mask[(int)border + (foil ? 6 : 0)] = true;
+            }
+            if (!mask.Any(x => x)) { errors.Add("variants: at least one version is needed"); for (int i = 0; i < 12; i++) mask[i] = true; }
+            set.VariantMask = mask;
+        }
+
         private static bool ValidateRarities(SetDef set, List<string> errors)
         {
             bool defaultList = set.Rarities == null || set.Rarities.Count == 0;

@@ -11,7 +11,6 @@ import (
 	"unicode"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/webapi"
 )
 
@@ -212,11 +211,7 @@ func (s *lorcanaSource) Import(ctx context.Context, ws project.Workspace, code s
 		ReleasedAt: set.Released, Cards: cards, Get: s.cdn.Download, Rotate: true, // locations are landscape
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Legendary" }),
 		// Lorcana boosters: commons, uncommons, then rares and up (plus a foil in every pack).
-		Slots: []setfmt.Slot{
-			{Count: 4, Weights: map[string]float64{"Common": 1}},
-			{Count: 2, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 5, "Legendary": 1}},
-		}, FoilChance: 15}, opt, report)
+		Slots: Lorcana.Slots, FoilChance: Lorcana.FoilChance}, opt, report)
 }
 
 func (s *lorcanaSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {

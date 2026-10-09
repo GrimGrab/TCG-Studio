@@ -158,6 +158,9 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 	for _, pk := range packs {
 		fitted := pk
 		fitted.Slots = fitSlots(pk.Slots, set)
+		if n := setfmt.SlotTotal(fitted.Slots); n > 0 {
+			fitted.CardsPerPack = n // the slots decide the pack's size
+		}
 		set.Packs = append(set.Packs, fitted)
 	}
 

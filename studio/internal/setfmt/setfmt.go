@@ -27,8 +27,11 @@ type Set struct {
 	Mtg           *SetMtg       `json:"mtg,omitempty"`      // real MTG set: lets the mod export decks to Forge
 	Rarities      []Rarity      `json:"rarities,omitempty"` // the set's own rarities, lowest first; empty = vanilla ones
 	PriceDefaults PriceDefaults `json:"priceDefaults"`
-	Packs         []Pack        `json:"packs"`
-	Cards         []Card        `json:"cards"`
+	// Variants: the card versions the set has ("Base", "Base_foil", "FullArt_foil", …); empty = all 12. Mirrors the mod's
+	// SetDef.Variants: others are never generated and are left out of the binder and Check Price unless owned.
+	Variants []string `json:"variants,omitempty"`
+	Packs    []Pack   `json:"packs"`
+	Cards    []Card   `json:"cards"`
 }
 
 type PriceDefaults struct {
@@ -139,6 +142,9 @@ func DefaultPriceDefaults() PriceDefaults {
 func DefaultPlay() Play { return Play{LaneAttack: []int{1, 1, 1, 1}, Element: "Fire"} }
 
 // NewPack returns a pack with the mod's defaults (vanilla-like odds when Slots is empty).
+// MaxCardsPerPack mirrors the mod's PackSizePatches.MaxCards (the opening's final reveal fits 3 rows of 8).
+const MaxCardsPerPack = 24
+
 func NewPack(id, name string) Pack {
 	return Pack{
 		ID: id, Name: name, CardsPerPack: 7, HasBox: true, PackCost: 1.5, MarketMin: 1.5, MarketMax: 2,
@@ -224,6 +230,10 @@ func (s *Set) normalize() {
 		if p.CardsPerPack == 0 {
 			p.CardsPerPack = 7
 		}
+		// Slots decide the pack's size: cardsPerPack is their total (it only matters on its own for packs without slots).
+		if n := SlotTotal(p.Slots); n > 0 {
+			p.CardsPerPack = n
+		}
 		if p.Slots == nil {
 			p.Slots = []Slot{}
 		}
@@ -260,6 +270,11 @@ func (s *Set) Validate(folders ...string) []Issue {
 	var out []Issue
 	add := func(level, where, format string, args ...any) {
 		out = append(out, Issue{Level: level, Where: where, Message: fmt.Sprintf(format, args...)})
+	}
+	for _, v := range s.Variants {
+		if !IsVariant(v) {
+			add("error", "set", "unknown card version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", v)
+		}
 	}
 	fileMissing := func(rel string) bool {
 		if rel == "" {
@@ -369,21 +384,18 @@ func (s *Set) Validate(folders ...string) []Issue {
 			add("error", w, "duplicate id")
 		}
 		packIDs[p.ID] = true
-		if p.CardsPerPack != 7 {
-			add("error", w, "cardsPerPack must be 7 (N-card packs are not supported yet)")
+		size := p.CardsPerPack
+		if n := SlotTotal(p.Slots); n > 0 {
+			size = n // slots decide the pack's size
 		}
-		if len(p.Slots) > 0 {
-			sum := 0
-			for _, sl := range p.Slots {
-				sum += sl.Count
-				for r := range sl.Weights {
-					if !knownRarity(r) {
-						add("error", w, "unknown rarity %q in slot weights", r)
-					}
+		if size < 1 || size > MaxCardsPerPack {
+			add("error", w, "a pack must have 1–%d cards (slots add up to %d)", MaxCardsPerPack, size)
+		}
+		for _, sl := range p.Slots {
+			for r := range sl.Weights {
+				if !knownRarity(r) {
+					add("error", w, "unknown rarity %q in slot weights", r)
 				}
-			}
-			if sum != p.CardsPerPack {
-				add("error", w, "slot counts add up to %d, expected %d", sum, p.CardsPerPack)
 			}
 		}
 		for b := range p.BorderOdds {
@@ -403,4 +415,41 @@ func (s *Set) Validate(folders ...string) []Issue {
 		}
 	}
 	return out
+}
+
+// SlotTotal is the number of cards a pack's slots give (0 = no slots).
+func SlotTotal(slots []Slot) int {
+	n := 0
+	for _, s := range slots {
+		n += s.Count
+	}
+	return n
+}
+
+// IsVariant reports whether v names one of the 12 card versions: a border, optionally + "_foil" (case-insensitive, like the mod).
+func IsVariant(v string) bool {
+	b := strings.TrimSuffix(strings.TrimSuffix(v, "_foil"), "_Foil")
+	for _, x := range Borders {
+		if strings.EqualFold(x, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsVariant reports whether the set has this version (no list = all 12).
+func (s *Set) AllowsVariant(border string, foil bool) bool {
+	if len(s.Variants) == 0 {
+		return true
+	}
+	want := border
+	if foil {
+		want += "_foil"
+	}
+	for _, v := range s.Variants {
+		if strings.EqualFold(v, want) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { App, projectFile, FRAME_TEMPLATES, BORDERS, errText } from '../../lib/api';
   import RaritiesEditor from './RaritiesEditor.svelte';
+  import VariantsEditor from './VariantsEditor.svelte';
 
   let { project, notify, imgBust }: { project: any; notify: (t: string, k?: string) => void; imgBust: number } = $props();
 
@@ -54,6 +55,8 @@
   </section>
 
   <RaritiesEditor {project} {notify} />
+
+  <VariantsEditor {project} />
 
   <section>
     <h3>Card back</h3>

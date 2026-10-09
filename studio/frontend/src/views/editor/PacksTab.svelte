@@ -21,17 +21,39 @@
   const rarities = $derived(setRarities(project.set));
   const ownRarities = $derived(!!project.set.rarities?.length);
   // Presets are written in the game's 4 rarities; sets with their own rarities share each one's weight over theirs by place in the list.
-  const preset = (name: string) => structuredClone(PRESETS[name]).map((s: any) => ({ ...s, weights: splitWeights(project.set, s.weights) }));
+  // Real boosters per game come from Go (importer/boosters.go, the same table the imports use); game-style packs live here.
+  type Preset = { game: string; name: string; slots: any[]; foilChance?: number; estimate?: boolean };
+  const GAME_STYLE: Preset[] = [
+    { game: 'Game style', name: 'Vanilla-like odds (all slots)', slots: [] },
+    { game: 'Game style', name: 'Rare pack (4 C · 2 R · 1 E/L)', slots: [
+      { count: 4, weights: { Common: 1 } }, { count: 2, weights: { Rare: 1 } }, { count: 1, weights: { Epic: 4, Legendary: 1 } }] },
+    { game: 'Game style', name: 'Premium (3 R · 3 E · 1 L)', slots: [
+      { count: 3, weights: { Rare: 1 } }, { count: 3, weights: { Epic: 1 } }, { count: 1, weights: { Legendary: 1 } }] }
+  ];
+  // Plain data ($state.raw): a deep $state proxy can't go through structuredClone (it threw, so presets did nothing).
+  let presets = $state.raw<Preset[]>(GAME_STYLE);
 
-  const PRESETS: Record<string, any[]> = {
-    'MTG-like (5 C · 1 U · 1 R/M)': [
-      { count: 5, weights: { Common: 1 } }, { count: 1, weights: { Rare: 1 } }, { count: 1, weights: { Epic: 7, Legendary: 1 } }],
-    'Vanilla-like odds (all slots)': [],
-    'Rare pack (4 C · 2 R · 1 E/L)': [
-      { count: 4, weights: { Common: 1 } }, { count: 2, weights: { Rare: 1 } }, { count: 1, weights: { Epic: 4, Legendary: 1 } }],
-    'Premium (3 R · 3 E · 1 L)': [
-      { count: 3, weights: { Rare: 1 } }, { count: 3, weights: { Epic: 1 } }, { count: 1, weights: { Legendary: 1 } }]
-  };
+  /** Whether the set has a version (Set tab → Card versions): border null = any border, foil null = normal or foil. */
+  function hasVersion(border: string | null, foil: boolean | null): boolean {
+    const v: string[] | undefined = project.set.variants;
+    if (!v?.length) return true;
+    const on = new Set(v.map((x) => x.toLowerCase()));
+    return BORDERS.some((b: string) => (border == null || b === border) &&
+      [false, true].some((f) => (foil == null || f === foil) && on.has((f ? `${b}_foil` : b).toLowerCase())));
+  }
+  App.PackPresets().then((list: any[]) => { presets = [...(list ?? []), ...GAME_STYLE]; }).catch(() => {});
+  const presetGames = $derived([...new Set(presets.map((p) => p.game))]);
+
+  // A preset brings its own card count (e.g. a 15-card booster) and the real pack's foil odds; "all slots" keeps the count.
+  function applyPreset(name: string) {
+    const p = presets.find((x) => x.name === name);
+    if (!p) return;
+    pack.slots = p.slots.map((s: any) => ({ count: s.count, weights: splitWeights(project.set, { ...s.weights }) }));
+    const n = pack.slots.reduce((a: number, s: any) => a + s.count, 0);
+    if (n > 0) pack.cardsPerPack = n;
+    if (p.foilChance != null && p.game !== 'Game style') pack.foilChance = p.foilChance;
+    if (p.estimate) notify(`${p.name}: the publisher doesn't publish the slot odds, so these are estimates.`);
+  }
 
   async function newPack() {
     await artEditor?.flush();
@@ -41,7 +63,7 @@
     project.set.packs.push({
       id, name: `${project.set.name} Booster${n > 1 ? ' ' + n : ''}`, cardsPerPack: 7, starter: false, hasBox: true,
       packCost: 1.5, marketMin: 1.5, marketMax: 2, license: { packLevel: 1, packPrice: 100, boxLevel: 3, boxPrice: 200 },
-      slots: preset('MTG-like (5 C · 1 U · 1 R/M)'), foilChance: 5,
+      slots: [], foilChance: 5,
       borderOdds: { FullArt: 0.25, EX: 1, Gold: 4, Silver: 8, FirstEdition: 20 }, allowDuplicates: false, cards: []
     });
     index = project.set.packs.length - 1;
@@ -53,7 +75,6 @@
     index = Math.max(0, index - 1);
   }
 
-  function applyPreset(name: string) { pack.slots = preset(name); }
 
   async function pick(field: string, title: string) {
     try {
@@ -112,9 +133,16 @@
       </section>
 
       <section>
-        <div class="row"><h3 class="grow">Contents ({pack.cardsPerPack} cards)</h3>
+        <div class="row"><h3 class="grow">Contents</h3>
+          {#if pack.slots.length}
+            <span class="muted" title="The slots decide the pack's size: change a slot's card count to change it. Up to 24; the opening's final reveal shows up to 8 in a row, bigger packs make a grid of smaller cards. Gamify prices packs by their card count.">{pack.cardsPerPack} cards (from the slots)</span>
+          {:else}
+            <label class="check" title="Cards in one pack (1–24) when every card uses vanilla-like odds. With slots, their counts decide the size. Gamify prices packs by their card count.">Cards per pack
+              <input type="number" min="1" max="24" style="width:4.5em" bind:value={pack.cardsPerPack} /></label>
+          {/if}
           <select onchange={(e) => { if (e.currentTarget.value) applyPreset(e.currentTarget.value); e.currentTarget.value = ''; }}>
-            <option value="">Apply preset…</option>{#each Object.keys(PRESETS) as k}<option>{k}</option>{/each}
+            <option value="">Apply preset…</option>
+            {#each presetGames as g}<optgroup label={g}>{#each presets.filter((p) => p.game === g) as p}<option value={p.name}>{p.name}{p.estimate ? ' (estimate)' : ''}</option>{/each}</optgroup>{/each}
           </select>
         </div>
         {#if pack.slots.length === 0}
@@ -125,9 +153,11 @@
           <PackContents {project} {pack} />
         {/if}
         <div class="grid4">
-          <label class="field">Foil chance %<input type="number" step="0.5" min="0" max="100" bind:value={pack.foilChance} /></label>
+          <label class="field" title={hasVersion(null, true) ? '' : 'The set has no foil versions (Set tab → Card versions): no card comes out foil.'}>Foil chance %{#if !hasVersion(null, true)} <span class="muted small">(no foil versions)</span>{/if}
+            <input type="number" step="0.5" min="0" max="100" bind:value={pack.foilChance} disabled={!hasVersion(null, true)} /></label>
           {#each BORDERS.slice(1) as b}
-            <label class="field">{b} %<input type="number" step="0.05" min="0" value={pack.borderOdds[b] ?? 0} oninput={(e) => (pack.borderOdds[b] = optNumber(e.currentTarget.value) ?? 0)} /></label>
+            <label class="field" title={hasVersion(b, null) ? '' : 'Off for this set (Set tab → Card versions): this border never comes out of packs.'}>{b} %{#if !hasVersion(b, null)} <span class="muted small">(off for this set)</span>{/if}
+              <input type="number" step="0.05" min="0" value={pack.borderOdds[b] ?? 0} disabled={!hasVersion(b, null)} oninput={(e) => (pack.borderOdds[b] = optNumber(e.currentTarget.value) ?? 0)} /></label>
           {/each}
         </div>
         <p class="muted small">Card pool: {pack.cards.length ? `${pack.cards.length} specific cards` : 'whole set'}

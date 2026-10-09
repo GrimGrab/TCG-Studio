@@ -61,8 +61,9 @@ namespace TCGCustomCards.Runtime
                 card.isDestiny = false;
                 card.isChampionCard = false;
                 card.cardGrade = 0;
+                card.borderType = RollBorder(def, set.Def);
                 card.isFoil = Random.Range(0f, 100f) < def.FoilChance;
-                card.borderType = RollBorder(def);
+                if (!set.Def.Allows(card.borderType, card.isFoil)) card.isFoil = !card.isFoil; // this border only exists the other way
                 anyFoil |= card.isFoil;
                 output.Add(card);
             }
@@ -109,13 +110,40 @@ namespace TCGCustomCards.Runtime
             return pos;
         }
 
-        private static ECardBorderType RollBorder(PackDef def)
+        /// <summary>
+        /// Border by the pack's odds, among the borders the set has (set.json "variants"); otherwise its lowest border
+        /// (Base, unless the set has no Base version).
+        /// </summary>
+        private static ECardBorderType RollBorder(PackDef def, SetDef set)
         {
-            if (def.BorderOdds == null) return ECardBorderType.Base;
-            foreach (var border in BorderCheckOrder)
-                if (def.BorderOdds.TryGetValue(border.ToString(), out float pct) && Random.Range(0f, 100f) < pct)
-                    return border;
+            if (def.BorderOdds != null)
+                foreach (var border in BorderCheckOrder)
+                    if (HasBorder(set, border) && def.BorderOdds.TryGetValue(border.ToString(), out float pct) && Random.Range(0f, 100f) < pct)
+                        return border;
+            return LowestBorder(set);
+        }
+
+        private static bool HasBorder(SetDef set, ECardBorderType b) => set.Allows(b, false) || set.Allows(b, true);
+
+        private static ECardBorderType LowestBorder(SetDef set)
+        {
+            for (int b = 0; b < CardStore.BordersPerCard; b++)
+                if (HasBorder(set, (ECardBorderType)b)) return (ECardBorderType)b;
             return ECardBorderType.Base;
+        }
+
+        /// <summary>
+        /// A version the set has, as close as possible to the one asked for: as is, else the same border the other way
+        /// (foil/normal), else a random allowed version. For cards the game makes up (trade customers).
+        /// </summary>
+        public static (ECardBorderType border, bool foil) FitVariant(SetDef set, ECardBorderType border, bool foil)
+        {
+            if (set.Allows(border, foil)) return (border, foil);
+            if (set.Allows(border, !foil)) return (border, !foil);
+            var allowed = new List<int>();
+            for (int i = 0; i < CardStore.SlotsPerCard; i++) if (set.VariantMask[i]) allowed.Add(i);
+            int pick = allowed[Random.Range(0, allowed.Count)];
+            return ((ECardBorderType)(pick % CardStore.BordersPerCard), pick >= CardStore.BordersPerCard);
         }
     }
 }

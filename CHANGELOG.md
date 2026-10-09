@@ -3,6 +3,18 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.5.0 - 2026-10-08
+
+Bigger packs, real booster layouts for every game, and per-set card versions.
+
+- New: packs can hold 1 to 24 cards. Big packs open like normal ones - every card is revealed in turn and the final screen lays them out in rows of up to 8. Vanilla packs open exactly as before.
+- New: imported sets get their game's real booster for their era: Magic (Play, Draft, Classic, 12- and 8-card), Pokemon (Scarlet & Violet, 2007-2023, e-Card/EX, Base Set-Neo), Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana, Flesh and Blood and Union Arena. The rarest slot comes last, like opening a real pack.
+- New: the Packs tab "Apply preset" list has the same real boosters, grouped by game. Applying one sets the slots, card count and foil chance.
+- New: Set tab "Card versions" - choose which of the 12 border/foil versions a set has. Versions that are off never come out of packs or trades and don't take binder or Check Price slots; cards you already own in them stay visible, and the binder's total counts only the versions that are on.
+- Changed: a pack's size now follows its slots. Gamify prices packs by their card count.
+- Changed: the old 7-card "MTG-like" preset is gone.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.4.0 - 2026-10-08
 
 MTG mode: choices that used to freeze the game now work, and the table shows more of what is going on.

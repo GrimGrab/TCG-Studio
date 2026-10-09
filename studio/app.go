@@ -391,6 +391,9 @@ func (a *App) PreviewImportFolder(dir string, opt importer.Options) (importer.Fo
 	return p, nil
 }
 
+// PackPresets lists the real boosters of every game we import (Packs tab "Apply preset…"; importer/boosters.go).
+func (a *App) PackPresets() []importer.Booster { return importer.PackPresets() }
+
 func (a *App) DefaultImportOptions(source string) (importer.Options, error) {
 	src, err := a.sources.Get(source)
 	if err != nil {

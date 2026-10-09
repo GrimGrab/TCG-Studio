@@ -169,14 +169,13 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		return nil, fmt.Errorf("no printable cards found in set %s", code)
 	}
 
-	// Default booster: MTG-like 5 commons, 1 uncommon, 1 rare/mythic.
+	// The set's real booster for its era (Play Booster, Draft Booster, classic 15, 12 or 8 cards; see boosters.go);
+	// rarities the set has no cards of are dropped (e.g. no mythics before 2008).
+	b := MtgBooster(sfSet.Code, sfSet.ReleasedAt)
 	pack := setfmt.NewPack("booster", sfSet.Name+" Booster")
-	pack.Slots = []setfmt.Slot{
-		{Count: 5, Weights: map[string]float64{"Common": 1}},
-		{Count: 1, Weights: map[string]float64{"Rare": 1}},
-		{Count: 1, Weights: map[string]float64{"Epic": 7, "Legendary": 1}},
-	}
-	pack.FoilChance = 10
+	pack.Slots = fitSlots(b.Slots, set)
+	pack.CardsPerPack = setfmt.SlotTotal(pack.Slots)
+	pack.FoilChance = b.FoilChance
 	set.Packs = append(set.Packs, pack)
 
 	// Set icon (used by the pack art generator).

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 )
 
 // ---------------------------------------------------------------- Flesh and Blood (TCGplayer catalog via TCGCSV)
@@ -212,11 +211,7 @@ func (s *fabSource) Import(ctx context.Context, ws project.Workspace, code strin
 		ReleasedAt: date10(g.PublishedOn), Cards: cards, Get: s.t.c.Download, Aspect: CardAspect,
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Rare" }),
 		// Flesh and Blood boosters: commons, rares, then a majestic or better (plus a rainbow foil in every pack).
-		Slots: []setfmt.Slot{
-			{Count: 4, Weights: map[string]float64{"Common": 1}},
-			{Count: 2, Weights: map[string]float64{"Rare": 1}},
-			{Count: 1, Weights: map[string]float64{"Epic": 5, "Legendary": 1}},
-		}, FoilChance: 15}, opt, report)
+		Slots: Fab.Slots, FoilChance: Fab.FoilChance}, opt, report)
 }
 
 func (s *fabSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {

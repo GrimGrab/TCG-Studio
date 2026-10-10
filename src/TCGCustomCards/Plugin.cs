@@ -32,13 +32,14 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> MtgBoard3D;
         internal static ConfigEntry<float> MtgHandHeight;
         internal static ConfigEntry<bool> MtgDeckBuilder;
+        internal static ConfigEntry<bool> MtgPreloadForge;
         internal static ConfigEntry<Runtime.Mtg.AiDeckStyle> MtgAiDeckStyle;
         internal static ConfigEntry<Runtime.Mtg.AiDeckSets> MtgAiDeckSets;
         internal static ConfigEntry<int> MtgAiDeckSetsMin, MtgAiDeckSetsMax, MtgAiDeckSize, MtgAiSealedBoosters, MtgAiFullPowerShopLevel;
         internal static ConfigEntry<Runtime.Mtg.AiDeckPower> MtgAiDeckPower;
         internal static ConfigEntry<bool> MtgAiPowerFollowsShopLevel, MtgAiKeepDeckOnRematch, MtgAiRevealDeck;
         internal static ConfigEntry<Runtime.Mtg.AiPlayStyle> MtgAiPlayStyle;
-        internal static ConfigEntry<int> MtgYourStartingLife, MtgCustomerStartingLife;
+        internal static ConfigEntry<int> MtgYourStartingLife, MtgCustomerStartingLife, MtgYourCommanderLife, MtgCustomerCommanderLife;
         internal static ConfigEntry<int> MtgDraftPodSize, MtgDraftMinPicks;
         internal static ConfigEntry<float> MtgDraftStrengthWeight;
         internal static ConfigEntry<bool> MtgDraftPausesClock;
@@ -196,6 +197,10 @@ namespace TCGCustomCards
             MtgModeEnabled = Config.Bind("MTG", "MtgMode", true,
                 "Offer Magic: The Gathering (played in Forge against the AI) when you sit at a play table with a deck that contains " +
                 "MTG cards. Needs TCG Studio > Setup > Install MTG mode.");
+            MtgPreloadForge = Config.Bind("MTG", "PreloadForge", true,
+                "On = start Forge in the background a few seconds after a save loads (only when MTG mode is on and installed), so the " +
+                "first MTG game, deck check or draft doesn't wait for it. Forge then uses memory for the whole session. Off = start it " +
+                "when it's first needed.");
             MtgForgeFolder = Config.Bind("MTG", "ForgeFolder", "",
                 "Folder of the Forge install made by TCG Studio. Empty = <game folder>\\TCGForge.");
             MtgPlayInWindow = Config.Bind("MTG", "PlayInForgeWindow", false,
@@ -265,6 +270,10 @@ namespace TCGCustomCards
                 "Your life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
             MtgCustomerStartingLife = Config.Bind(match, "CustomerStartingLife", 20, new ConfigDescription(
                 "The customer's life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
+            MtgYourCommanderLife = Config.Bind(match, "YourCommanderLife", 40, new ConfigDescription(
+                "Your life at the start of a Commander game (Commander's normal is 40; 20-30 makes 1v1 games faster)." + next, new AcceptableValueRange<int>(1, 100)));
+            MtgCustomerCommanderLife = Config.Bind(match, "CustomerCommanderLife", 40, new ConfigDescription(
+                "The customer's life at the start of a Commander game (Commander's normal is 40)." + next, new AcceptableValueRange<int>(1, 100)));
             const string draft = "MTG - Draft";
             MtgDraftPodSize = Config.Bind(draft, "PodSize", 8, new ConfigDescription(
                 "Magic: Draft tournaments: most players per draft table (pod). Bigger tournaments are split into even pods; your pod " +
@@ -327,6 +336,7 @@ namespace TCGCustomCards
 
         private void Update()
         {
+            Runtime.Mtg.MtgSession.PreloadTick();
             if (_cfgTouched)
             {
                 // Debounce: editors may write several times in a row.

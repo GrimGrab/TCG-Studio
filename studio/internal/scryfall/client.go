@@ -113,6 +113,15 @@ func (c *Card) FrontImage() *ImageURIs {
 	return nil
 }
 
+// BackImage returns the back face's image URIs for double-faced cards (transform, modal DFC, …: each face has its own
+// picture and the card has no top-level image), or nil. Split / adventure / flip cards are one picture: nil.
+func (c *Card) BackImage() *ImageURIs {
+	if c.ImageURIs != nil || len(c.CardFaces) < 2 {
+		return nil
+	}
+	return c.CardFaces[1].ImageURIs
+}
+
 func (c *Card) Text() string {
 	if c.OracleText != "" || len(c.CardFaces) == 0 {
 		return c.OracleText

@@ -13,7 +13,7 @@ namespace TCGCustomCards.UI
     /// every LateUpdate has run for it — our holo layer (FullImageFoilGlow.LateUpdate) and the game's foil update a frame late, so
     /// photographing right after SetCardUI put the previous card's holo on the picture.
     /// Requests come from OnGUI (the caller shows flat art until the picture exists). The hover preview has its own slot and is
-    /// re-photographed every frame so holos shimmer.
+    /// re-photographed every frame so holos shimmer; a second live lane serves a double-faced card's back beside it (idle otherwise).
     /// </summary>
     internal class CardRenderCache : MonoBehaviour
     {
@@ -34,22 +34,30 @@ namespace TCGCustomCards.UI
             public int StagedFrame;
         }
 
+        /// <summary>A live preview: its own slot, re-photographed every frame while it's asked for (0 = card, 1 = its back face).</summary>
+        private sealed class LiveLane
+        {
+            public Slot Slot;
+            public CardData Wanted;
+            public int WantedFrame = -10;
+            public RenderTexture Tex;
+            public string Key;
+        }
+
+        private const int LiveLanes = 2;
         private static CardRenderCache _inst;
         private Camera _cam;
         private readonly List<Slot> _grid = new List<Slot>();
-        private Slot _liveSlot;
+        private readonly LiveLane[] _lanes = { new LiveLane(), new LiveLane() };
         private readonly Dictionary<string, RenderTexture> _cache = new Dictionary<string, RenderTexture>();
         private readonly LinkedList<string> _lru = new LinkedList<string>();
         private readonly Dictionary<string, CardData> _pending = new Dictionary<string, CardData>();
 
-        private CardData _liveWanted;
-        private int _liveWantedFrame = -10;
-        private RenderTexture _liveTex;
-        private string _liveKey;
         private bool _failed, _loggedFrame;
 
         public static string Key(CardData d) =>
-            d == null ? null : $"{(int)d.expansionType}:{(int)d.monsterType}:{(int)d.borderType}:{(d.isFoil ? 1 : 0)}:{(d.isDestiny ? 1 : 0)}:{d.cardGrade}";
+            d == null ? null : $"{(int)d.expansionType}:{(int)d.monsterType}:{(int)d.borderType}:{(d.isFoil ? 1 : 0)}:{(d.isDestiny ? 1 : 0)}:{d.cardGrade}" +
+                               (Runtime.Mtg.MtgCardFaces.IsBack(d) ? ":back" : "");
 
         private static CardRenderCache Inst
         {
@@ -81,14 +89,15 @@ namespace TCGCustomCards.UI
         }
 
         /// <summary>Like <see cref="Get"/> but at preview size and re-photographed every frame (animated foil).</summary>
-        public static Texture GetLive(CardData data)
+        public static Texture GetLive(CardData data, int lane = 0)
         {
             if (data == null) return null;
             var c = Inst;
             if (c._failed) return null;
-            c._liveWanted = data;
-            c._liveWantedFrame = Time.frameCount;
-            if (c._liveKey == Key(data) && c._liveTex != null && c._liveTex.IsCreated()) return c._liveTex;
+            var l = c._lanes[Mathf.Clamp(lane, 0, LiveLanes - 1)];
+            l.Wanted = data;
+            l.WantedFrame = Time.frameCount;
+            if (l.Key == Key(data) && l.Tex != null && l.Tex.IsCreated()) return l.Tex;
             return Get(data); // the tile picture meanwhile
         }
 
@@ -114,10 +123,11 @@ namespace TCGCustomCards.UI
         /// <summary>End of frame: photograph slots staged in an earlier frame, then stage the next requests.</summary>
         private void Step()
         {
-            bool liveActive = Time.frameCount - _liveWantedFrame <= 1;
-            if (_pending.Count == 0 && !liveActive && _grid.TrueForAll(s => s.Key == null)) return;
-            if (!EnsureRig()) return;
             int frame = Time.frameCount;
+            bool anyLive = false;
+            foreach (var l in _lanes) anyLive |= frame - l.WantedFrame <= 1;
+            if (_pending.Count == 0 && !anyLive && _grid.TrueForAll(s => s.Key == null)) return;
+            if (!EnsureRig()) return;
 
             // 1) photograph what was staged before this frame
             foreach (var s in _grid)
@@ -130,14 +140,16 @@ namespace TCGCustomCards.UI
                 s.Key = null;
                 s.Data = null;
             }
-            if (liveActive && _liveSlot.Key != null && _liveSlot.StagedFrame < frame && _liveSlot.Key == Key(_liveWanted))
+            for (int i = 0; i < _lanes.Length; i++)
             {
-                if (_liveTex == null)
+                var l = _lanes[i];
+                if (frame - l.WantedFrame > 1 || l.Slot.Key == null || l.Slot.StagedFrame >= frame || l.Slot.Key != Key(l.Wanted)) continue;
+                if (l.Tex == null)
                 {
-                    _liveTex = new RenderTexture(LiveW, LiveH, 16, RenderTextureFormat.ARGB32) { name = "TCGCC_card_live" };
-                    _liveTex.Create();
+                    l.Tex = new RenderTexture(LiveW, LiveH, 16, RenderTextureFormat.ARGB32) { name = "TCGCC_card_live" + i };
+                    l.Tex.Create();
                 }
-                if (Photograph(_liveSlot, _liveTex, frozen: false)) _liveKey = _liveSlot.Key; // live: holo animates
+                if (Photograph(l.Slot, l.Tex, frozen: false)) l.Key = l.Slot.Key; // live: holo animates
             }
 
             // 2) stage the next cards (photographed at the end of the next frame)
@@ -151,10 +163,11 @@ namespace TCGCustomCards.UI
                 if (_cache.ContainsKey(key)) continue;
                 StageCard(s, key, data);
             }
-            if (liveActive && _liveSlot.Key != Key(_liveWanted))
+            foreach (var l in _lanes)
             {
-                _liveKey = null;
-                StageCard(_liveSlot, Key(_liveWanted), _liveWanted);
+                if (frame - l.WantedFrame > 1 || l.Slot.Key == Key(l.Wanted)) continue;
+                l.Key = null;
+                StageCard(l.Slot, Key(l.Wanted), l.Wanted);
             }
         }
 
@@ -190,7 +203,7 @@ namespace TCGCustomCards.UI
                 _cam.allowMSAA = false;
             }
             // Slots are pooled cards; a scene change destroys them (null) — take new ones then.
-            bool broken = _liveSlot == null || _liveSlot.Card == null || _grid.Count < GridSlots || _grid.Exists(s => s.Card == null);
+            bool broken = _grid.Count < GridSlots || _grid.Exists(s => s.Card == null) || System.Array.Exists(_lanes, l => l.Slot == null || l.Slot.Card == null);
             if (!broken) return true;
             var spawner = CSingleton<Card3dUISpawner>.Instance;
             if (spawner == null) return false; // not in the shop scene yet
@@ -198,7 +211,11 @@ namespace TCGCustomCards.UI
             {
                 _grid.Clear();
                 for (int i = 0; i < GridSlots; i++) _grid.Add(NewSlot(spawner, Stage + new Vector3(2f * i, 0f, 0f)));
-                _liveSlot = NewSlot(spawner, Stage + new Vector3(-2f, 0f, 0f));
+                for (int i = 0; i < _lanes.Length; i++)
+                {
+                    _lanes[i].Slot = NewSlot(spawner, Stage + new Vector3(-2f * (i + 1), 0f, 0f));
+                    _lanes[i].Key = null;
+                }
                 return true;
             }
             catch (System.Exception e)
@@ -278,7 +295,7 @@ namespace TCGCustomCards.UI
             if (!_loggedFrame)
             {
                 _loggedFrame = true;
-                Plugin.Log.LogInfo($"Card pictures: card {w:F3}×{h:F3}, {GridSlots} grid slots + 1 preview slot");
+                Plugin.Log.LogInfo($"Card pictures: card {w:F3}×{h:F3}, {GridSlots} grid slots + {LiveLanes} preview slots");
             }
             return true;
         }

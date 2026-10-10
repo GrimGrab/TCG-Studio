@@ -861,6 +861,42 @@ func (a *App) RefreshPrices(id string) (string, error) {
 	return msg, nil
 }
 
+// FetchBackFaces downloads the missing back-face pictures of a Scryfall set's double-faced cards (sets imported before
+// back faces existed), so the mod can show transformed cards; then saves and reinstalls the set like RefreshPrices.
+func (a *App) FetchBackFaces(id string) (string, error) {
+	p, err := a.ws().Load(id)
+	if err != nil {
+		return "", err
+	}
+	width := 512 // the importer's default card width; the shared library records the width it was made with
+	if lm := project.LoadLibMeta(p.LibFolder); lm != nil && lm.Width > 0 {
+		width = lm.Width
+	}
+	n, failed, err := importer.FetchBackFaces(a.ctx, a.sf, p, width, func(pr importer.Progress) {
+		runtime.EventsEmit(a.ctx, "import:progress", pr)
+	})
+	if err != nil {
+		return "", err
+	}
+	if n == 0 && len(failed) == 0 {
+		return "No double-faced cards without a back face in this set", nil
+	}
+	msg := fmt.Sprintf("Added %d back face(s)", n)
+	if len(failed) > 0 {
+		msg += fmt.Sprintf(" (%d failed: %s)", len(failed), strings.Join(failed, ", "))
+	}
+	if err := a.ws().Save(p); err != nil {
+		return "", err
+	}
+	if a.isInstalled(id) {
+		if err := a.ws().Install(p, a.settings.GameDir); err != nil {
+			return msg, fmt.Errorf("back faces added but reinstalling failed: %w", err)
+		}
+		msg += "; reinstalled in the game"
+	}
+	return msg, nil
+}
+
 var imageFilters = []runtime.FileFilter{{DisplayName: "Images (*.png;*.jpg;*.jpeg)", Pattern: "*.png;*.jpg;*.jpeg"}}
 
 // pickImageFile is the one image file dialog every "choose an image" button uses. Returns "" when cancelled.

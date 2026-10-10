@@ -60,7 +60,24 @@ final class StateWriter {
             putMana(mana, "C", p.getMana((byte) MagicColor.COLORLESS));
             pm.put("mana", mana);
             if (me != null && p.getId() == me.getId()) pm.put("hand", cards(p.getHand()));
-            for (ZoneType z : PUBLIC_ZONES) pm.put(z.name().toLowerCase(), cards(p.getCards(z)));
+            for (ZoneType z : PUBLIC_ZONES) pm.put(z.name().toLowerCase(), cards(visible(p.getCards(z), z)));
+            List<CardView> cmds = p.getCommanders();
+            if (cmds != null && !cmds.isEmpty()) {
+                List<Object> cl = new ArrayList<>();
+                for (CardView c : cmds) {
+                    Map<String, Object> cm = new LinkedHashMap<>();
+                    cm.put("id", c.getId());
+                    cm.put("name", c.getName());
+                    int cast = p.getCommanderCast(c);
+                    cm.put("cast", cast);
+                    cm.put("tax", 2 * cast); // CostAdjustment adds {2} per earlier cast from the command zone
+                    Map<String, Object> dmg = new LinkedHashMap<>();
+                    for (PlayerView o : gv.getPlayers()) if (o.getId() != p.getId()) dmg.put(String.valueOf(o.getId()), o.getCommanderDamage(c));
+                    cm.put("damageDealt", dmg);
+                    cl.add(cm);
+                }
+                pm.put("commanders", cl);
+            }
             players.add(pm);
         }
         s.put("players", players);
@@ -217,6 +234,17 @@ final class StateWriter {
         List<Object> r = new ArrayList<>();
         if (cs != null) for (CardView c : cs) r.add(card(c));
         return r;
+    }
+
+    /**
+     * The command zone also holds Forge's "Commander Effect" card (the rules object that lets commanders be cast from there
+     * and go back there); it isn't a game object for the player, so it's left out. Emblems and commanders stay.
+     */
+    private static Iterable<CardView> visible(Iterable<CardView> cards, ZoneType z) {
+        if (z != ZoneType.Command || cards == null) return cards;
+        List<CardView> out = new ArrayList<>();
+        for (CardView c : cards) if (c != null && !"Commander Effect".equals(c.getName())) out.add(c);
+        return out;
     }
 
     static Map<String, Object> card(CardView c) {

@@ -106,6 +106,8 @@ export function EPLModPath(arg1:string):Promise<string>;
 
 export function ExportSetup(arg1:string):Promise<string>;
 
+export function FetchBackFaces(arg1:string):Promise<string>;
+
 export function ForgeStatus():Promise<forge.Status>;
 
 export function FurniturePaintTemplate(arg1:string):Promise<main.FurniturePaintInfo>;

@@ -111,6 +111,8 @@ namespace TCGCustomCards.Core
 
         /// <summary>Image path relative to the set folder. FullImage: whole card. Framed: artwork only.</summary>
         [JsonProperty("image")] public string Image;
+        /// <summary>Double-faced cards: the back face's picture (relative path like <see cref="Image"/>), shown once transformed.</summary>
+        [JsonProperty("backImage")] public string BackImage;
 
         [JsonProperty("price")] public CardPrice Price = new CardPrice();
         [JsonProperty("play")] public PlayDef Play = new PlayDef();
@@ -162,6 +164,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("cmc")] public float Cmc;
         [JsonProperty("power")] public string Power;
         [JsonProperty("toughness")] public string Toughness;
+        /// <summary>Double-faced cards: the back face's name (Forge's card name once transformed / played as the back).</summary>
+        [JsonProperty("backName")] public string BackName;
     }
 
     public class CardPrice

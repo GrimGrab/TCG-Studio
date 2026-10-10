@@ -155,6 +155,17 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 		if cm.ManaCost == "" && len(c.CardFaces) > 0 {
 			cm.ManaCost = c.CardFaces[0].ManaCost // double-faced cards keep the cost on the faces
 		}
+		if back := c.BackImage(); back != nil {
+			bu := back.PNG
+			if bu == "" {
+				bu = back.Large
+			}
+			if bu != "" {
+				card.BackImage = art.rel(cid + "_back")
+				cm.BackName = c.CardFaces[1].Name
+				jobs = append(jobs, art.job(bu, cid+"_back"))
+			}
+		}
 		card.Price = RealPrice(cm)
 		set.Cards = append(set.Cards, card)
 		meta.Cards[cid] = cm
@@ -203,6 +214,89 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	}
 	report(Progress{Stage: "done", Done: len(jobs), Total: len(jobs), Message: msg})
 	return p, nil
+}
+
+// FetchBackFaces downloads the back-face pictures of a Scryfall set's double-faced cards that don't have one yet (sets
+// imported before back faces existed), next to each card's front image, and fills BackImage / meta BackName (FillMtg then
+// sets mtg.backName). Returns how many were added and the files whose download failed. The caller saves.
+func FetchBackFaces(ctx context.Context, sf *scryfall.Client, p *project.Project, width int, report func(Progress)) (int, []string, error) {
+	if p.Meta == nil || p.Meta.Source != "scryfall" || p.Meta.ScryfallCode == "" {
+		return 0, nil, fmt.Errorf("%s was not imported from Scryfall", p.ID)
+	}
+	report(Progress{Stage: "cards", Message: "Fetching card list…"})
+	cards, err := sf.SetCards(ctx, p.Meta.ScryfallCode, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	byID := map[string]*scryfall.Card{}
+	for i := range cards {
+		byID[cards[i].ID] = &cards[i]
+	}
+	type pending struct {
+		idx  int
+		rel  string
+		name string
+	}
+	var jobs []imageJob
+	var todo []pending
+	for i := range p.Set.Cards {
+		c := &p.Set.Cards[i]
+		m, ok := p.Meta.Cards[c.ID]
+		if !ok || c.BackImage != "" {
+			continue
+		}
+		sc := byID[m.ScryfallID]
+		if sc == nil {
+			continue
+		}
+		back := sc.BackImage()
+		if back == nil {
+			continue
+		}
+		u := back.PNG
+		if u == "" {
+			u = back.Large
+		}
+		if u == "" || c.Image == "" {
+			continue
+		}
+		// Next to the front image, same format: images/245.jpg -> images/245_back.jpg
+		ext := filepath.Ext(c.Image)
+		rel := strings.TrimSuffix(c.Image, ext) + "_back" + ext
+		rel, file := p.WriteTarget(rel)
+		format := "png"
+		if strings.EqualFold(ext, ".jpg") || strings.EqualFold(ext, ".jpeg") {
+			format = "jpg"
+		}
+		jobs = append(jobs, imageJob{url: u, path: file, format: format})
+		todo = append(todo, pending{idx: i, rel: rel, name: sc.CardFaces[1].Name})
+	}
+	if len(jobs) == 0 {
+		return 0, nil, nil
+	}
+	for _, j := range jobs {
+		if err := os.MkdirAll(filepath.Dir(j.path), 0o755); err != nil {
+			return 0, nil, err
+		}
+	}
+	failed := downloadImages(ctx, scryfall.NewUnthrottled().Download, jobs, width, report)
+	if ctx.Err() != nil {
+		return 0, nil, ctx.Err()
+	}
+	n := 0
+	for k, t := range todo {
+		c := &p.Set.Cards[t.idx]
+		if _, err := os.Stat(jobs[k].path); err != nil { // failed download (listed in failed by file name)
+			continue
+		}
+		c.BackImage = t.rel
+		m := p.Meta.Cards[c.ID]
+		m.BackName = t.name
+		p.Meta.Cards[c.ID] = m
+		n++
+	}
+	project.FillMtg(p)
+	return n, failed, nil
 }
 
 // RefreshMeta re-downloads the set's card list and updates the real prices kept in studio.json (matched by Scryfall id).

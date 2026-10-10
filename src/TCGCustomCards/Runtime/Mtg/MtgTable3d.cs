@@ -490,7 +490,8 @@ namespace TCGCustomCards.Runtime.Mtg
 
         private static bool SameCard(CardData a, CardData b) =>
             a != null && b != null && a.expansionType == b.expansionType && a.monsterType == b.monsterType &&
-            a.borderType == b.borderType && a.isFoil == b.isFoil && a.isDestiny == b.isDestiny;
+            a.borderType == b.borderType && a.isFoil == b.isFoil && a.isDestiny == b.isDestiny &&
+            MtgCardFaces.IsBack(a) == MtgCardFaces.IsBack(b); // transformed: same copy, other face
 
         /// <summary>Shows <paramref name="data"/> on the entry's existing card (same calls as <see cref="NewCard3d"/>).</summary>
         private static void Reskin(Entry e, CardData data)

@@ -178,6 +178,10 @@ export function ExportSetup(arg1) {
   return window['go']['main']['App']['ExportSetup'](arg1);
 }
 
+export function FetchBackFaces(arg1) {
+  return window['go']['main']['App']['FetchBackFaces'](arg1);
+}
+
 export function ForgeStatus() {
   return window['go']['main']['App']['ForgeStatus']();
 }

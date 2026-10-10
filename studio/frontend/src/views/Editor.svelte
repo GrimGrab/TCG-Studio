@@ -98,6 +98,28 @@
     }
   }
 
+  // Double-faced cards (transform, modal DFC…) imported before back faces existed: their back picture can be fetched.
+  const DFC_LAYOUTS = ['transform', 'modal_dfc', 'reversible_card'];
+  let missingBacks = $derived(project?.meta?.source === 'scryfall'
+    ? (project.set.cards ?? []).filter((c: any) => !c.backImage && DFC_LAYOUTS.includes(project.meta.cards?.[c.id]?.layout)).length
+    : 0);
+  let fetchingBacks = $state(false);
+
+  async function fetchBackFaces() {
+    if (dirty && !(await ask('Downloading back faces reloads the set from disk, so your unsaved changes will be lost. Continue?'))) return;
+    if (dirty) await save();
+    fetchingBacks = true;
+    try {
+      const msg = await App.FetchBackFaces(id);
+      await load();
+      notify(msg, 'ok');
+    } catch (e) {
+      notify(errText(e), 'error');
+    } finally {
+      fetchingBacks = false;
+    }
+  }
+
   function onKey(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -125,6 +147,11 @@
       </button>
       {#if sourceCode(project.meta)}
         <button onclick={refreshPrices} title="Pull today's {sourceName(project.meta.source)} prices (re-applies this set's Gamify settings)">Refresh prices</button>
+      {/if}
+      {#if missingBacks > 0}
+        <button onclick={fetchBackFaces} disabled={fetchingBacks}
+          title="Download the back-face pictures of this set's double-faced cards, so transformed cards show their other side in MTG games">
+          {fetchingBacks ? 'Downloading back faces…' : `Download back faces (${missingBacks})`}</button>
       {/if}
       <button onclick={() => App.OpenProjectFolder(id)}>Folder</button>
       {#if installState === 'current'}

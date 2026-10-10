@@ -53,6 +53,19 @@ namespace TCGCustomCards.Runtime
             return sprite;
         }
 
+        /// <summary>Double-faced card with a back-face picture.</summary>
+        public bool HasBackFace(int pos) => !string.IsNullOrEmpty(Card(pos).BackImage);
+
+        /// <summary>The back face as drawn on full-image cards (same border trim as <see cref="CardFace"/>), or null.</summary>
+        public Sprite BackFace(int pos)
+        {
+            var card = Card(pos);
+            if (string.IsNullOrEmpty(card.BackImage)) return null;
+            string path = Def.Resolve(card.BackImage);
+            if (!Plugin.HidePrintedBorders.Value) return ImageCache.Get(path);
+            return ImageCache.GetTrimmedCard(path, Mathf.Clamp(Plugin.PrintedBorderMax.Value, 0f, 0.2f), out _);
+        }
+
         /// <summary>Shallow copy of the template expansion's CardUISetting (frame sprites are shared, read-only).</summary>
         public CardUISetting UISetting
         {

@@ -74,6 +74,7 @@ type CardMeta struct {
 	Toughness  string   `json:"toughness,omitempty"`
 	SrcRarity  string   `json:"srcRarity,omitempty"`
 	Variant    []string `json:"variant,omitempty"` // Borderless / Showcase / Extended Art / Etched / Full Art
+	BackName   string   `json:"backName,omitempty"` // double-faced cards (transform, modal DFC): the back face's name
 	USD        *float64 `json:"usd,omitempty"`
 	USDFoil    *float64 `json:"usdFoil,omitempty"`
 	EUR        *float64 `json:"eur,omitempty"`
@@ -388,6 +389,7 @@ func installFiles(p *Project) map[string]bool {
 	add(p.Set.CardBack)
 	for _, c := range p.Set.Cards {
 		add(c.Image)
+		add(c.BackImage)
 	}
 	for _, pk := range p.Set.Packs {
 		add(pk.PackTexture)

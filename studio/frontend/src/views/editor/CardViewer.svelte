@@ -24,7 +24,10 @@
 {#if card}
   <div class="viewer" role="dialog" aria-modal="true" tabindex="-1" onclick={onclose} onkeydown={() => {}}>
     {#if card.image}
-      <img src={projectFile(project.id, card.image, imgBust)} alt={card.name} />
+      <div class="faces">
+        <img src={projectFile(project.id, card.image, imgBust)} alt={card.name} />
+        {#if card.backImage}<img src={projectFile(project.id, card.backImage, imgBust)} alt={card.mtg?.backName ?? 'Back'} />{/if}
+      </div>
     {:else}
       <div class="none">No image</div>
     {/if}
@@ -43,6 +46,8 @@
 <style>
   .viewer { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.88); display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px; padding: 24px 70px 16px; }
+  .faces { display: flex; gap: 18px; justify-content: center; align-items: center; max-width: 100%; min-height: 0; }
+  .faces img { max-width: 48vw; }
   img { max-width: 100%; max-height: calc(100vh - 90px); object-fit: contain; border-radius: 12px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6); }
   .none { color: #aaa; }
   .cap { color: #ddd; font-size: 14px; display: flex; gap: 12px; align-items: baseline; }

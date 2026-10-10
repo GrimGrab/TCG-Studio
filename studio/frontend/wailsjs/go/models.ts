@@ -2401,6 +2401,7 @@ export namespace project {
 	    toughness?: string;
 	    srcRarity?: string;
 	    variant?: string[];
+	    backName?: string;
 	    usd?: number;
 	    usdFoil?: number;
 	    eur?: number;
@@ -2424,6 +2425,7 @@ export namespace project {
 	        this.toughness = source["toughness"];
 	        this.srcRarity = source["srcRarity"];
 	        this.variant = source["variant"];
+	        this.backName = source["backName"];
 	        this.usd = source["usd"];
 	        this.usdFoil = source["usdFoil"];
 	        this.eur = source["eur"];
@@ -2709,6 +2711,7 @@ export namespace setfmt {
 	    cmc?: number;
 	    power?: string;
 	    toughness?: string;
+	    backName?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CardMtg(source);
@@ -2724,6 +2727,7 @@ export namespace setfmt {
 	        this.cmc = source["cmc"];
 	        this.power = source["power"];
 	        this.toughness = source["toughness"];
+	        this.backName = source["backName"];
 	    }
 	}
 	export class Play {
@@ -2770,6 +2774,7 @@ export namespace setfmt {
 	    rarity: string;
 	    number?: string;
 	    image: string;
+	    backImage?: string;
 	    price: CardPrice;
 	    play: Play;
 	    mtg?: CardMtg;
@@ -2787,6 +2792,7 @@ export namespace setfmt {
 	        this.rarity = source["rarity"];
 	        this.number = source["number"];
 	        this.image = source["image"];
+	        this.backImage = source["backImage"];
 	        this.price = this.convertValues(source["price"], CardPrice);
 	        this.play = this.convertValues(source["play"], Play);
 	        this.mtg = this.convertValues(source["mtg"], CardMtg);

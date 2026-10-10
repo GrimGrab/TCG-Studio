@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "6";
+    public static final String VERSION = "7";
 
     private static PrintStream proto;
     private static PrintStream logStream;
@@ -97,6 +97,7 @@ public final class Bridge {
         switch (t) {
             case "start" -> startMatch(m);
             case "validate" -> validate(m);
+            case "commanderok" -> commanderOk(m);
             case "draft" -> Draft.start(m);
             case "sealed" -> Draft.startSealed(m);
             case "draftquit" -> cancelAsks(); // the player left the pick screen: the waiting draft pick gets null and aborts
@@ -116,22 +117,29 @@ public final class Bridge {
             Deck human = DeckSerializer.fromFile(new File(Json.s(m, "deck")));
             Deck ai = DeckSerializer.fromFile(new File(Json.s(m, "opponent")));
             if (human == null || ai == null) throw new IllegalArgumentException("deck file unreadable");
+            boolean commander = "commander".equals(Json.s(m, "variant"));
             String profile = null;
             if (m.get("aiDeck") instanceof Map<?, ?> spec0) { // Forge builds the AI deck; the file is the fallback
                 @SuppressWarnings("unchecked")
                 Map<String, Object> spec = (Map<String, Object>) spec0;
                 AiDeckGen.Result r = AiDeckGen.build(spec, ai);
+                if (r.deck == null) throw new IllegalArgumentException(String.join("; ", r.lines));
                 ai = r.deck;
                 profile = Json.s(spec, "profile");
                 send(msg("aideck", "style", Json.s(spec, "style"), "source", r.source, "colors", r.colors,
-                        "cards", ai.getMain().countAll(), "lines", r.lines, "list", r.list, "profile", profile));
+                        "cards", ai.getMain().countAll() + ai.getCommanders().size(), "lines", r.lines, "list", r.list,
+                        "profile", profile, "commander", r.commander));
             }
+            if (commander && (human.getCommanders().isEmpty() || ai.getCommanders().isEmpty()))
+                throw new IllegalArgumentException(human.getCommanders().isEmpty() ? "your deck has no commander" : "the customer's deck has no commander");
             String name = Json.s(m, "name");
             String aiName = Json.s(m, "opponentName");
 
-            RegisteredPlayer rpHuman = new RegisteredPlayer(human);
+            // Commander: forCommander puts the decks' commanders in the command zone (Player.initVariantsZones); the rules
+            // (21 commander damage, commander effect) come from the applied variant below, not from the GameType.
+            RegisteredPlayer rpHuman = commander ? RegisteredPlayer.forCommander(human) : new RegisteredPlayer(human);
             rpHuman.setPlayer(GamePlayerUtil.getGuiPlayer(name == null ? "Player" : name, 0, 0, false));
-            RegisteredPlayer rpAi = new RegisteredPlayer(ai);
+            RegisteredPlayer rpAi = commander ? RegisteredPlayer.forCommander(ai) : new RegisteredPlayer(ai);
             LobbyPlayer aiPlayer = GamePlayerUtil.createAiPlayer(aiName == null ? "Opponent" : aiName, 1);
             if (profile != null && !profile.isEmpty() && aiPlayer instanceof LobbyPlayerAi lpa) lpa.setAiProfile(profile); // res/ai/<profile>.ai
             rpAi.setPlayer(aiPlayer);
@@ -143,7 +151,8 @@ public final class Bridge {
             gui = new BridgeGuiGame(null);
             HostedMatch match = new HostedMatch();
             gui.setMatch(match);
-            match.startMatch(GameType.Constructed, null, players, rpHuman, gui);
+            if (commander) match.startMatch(GameType.Commander, java.util.EnumSet.of(GameType.Commander), players, rpHuman, gui);
+            else match.startMatch(GameType.Constructed, null, players, rpHuman, gui);
             log("match started: " + human.getName() + " vs " + ai.getName());
         } catch (Throwable t) {
             log("start failed: " + t);
@@ -157,13 +166,38 @@ public final class Bridge {
      * {@code validated{id, ok, problems[]}}. Problems = Forge's own messages: the deck-size/copy rules of DeckFormat.Constructed
      * or Limited, then a GameFormat limited to the event's set codes (a card is legal when that name was printed in one of them).
      */
+    /**
+     * {@code commanderok{id, name, set}} → {@code commanderok{id, ok, reason}}: Forge's DeckFormat.Commander.isLegalCommander
+     * (legendary creature or "can be your commander", Commander ban list), asked when the player picks a commander.
+     */
+    private static void commanderOk(Map<String, Object> m) {
+        int id = Json.i(m, "id", -1);
+        boolean ok = false;
+        String reason = null;
+        try {
+            String name = Json.s(m, "name"), set = Json.s(m, "set");
+            var db = FModel.getMagicDb().getCommonCards();
+            var pc = set == null || set.isEmpty() ? null : db.getCard(name, set);
+            if (pc == null) pc = db.getCard(name);
+            if (pc == null) reason = "Forge doesn't know " + name;
+            else {
+                ok = DeckFormat.Commander.isLegalCommander(pc.getRules());
+                if (!ok) reason = name + " can't be a commander (Forge: legendary creatures and cards that say they can be your commander; banned cards can't)";
+            }
+        } catch (Throwable t) {
+            reason = "Forge couldn't check: " + t.getMessage();
+        }
+        send(msg("commanderok", "id", id, "ok", ok, "reason", reason));
+    }
+
     private static void validate(Map<String, Object> m) {
         int id = Json.i(m, "id", -1);
         List<String> problems = new ArrayList<>();
         try {
             Deck deck = DeckSerializer.fromFile(new File(Json.s(m, "deck")));
             if (deck == null) throw new IllegalArgumentException("deck file unreadable");
-            DeckFormat rules = "limited".equals(Json.s(m, "kind")) ? DeckFormat.Limited : DeckFormat.Constructed;
+            String kind = Json.s(m, "kind");
+            DeckFormat rules = "limited".equals(kind) ? DeckFormat.Limited : "commander".equals(kind) ? DeckFormat.Commander : DeckFormat.Constructed;
             String p = rules.getDeckConformanceProblem(deck);
             if (p != null) problems.add(p);
             List<String> sets = new ArrayList<>();

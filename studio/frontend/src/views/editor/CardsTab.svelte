@@ -195,6 +195,7 @@
           <div class="img" style="aspect-ratio: 63/88">
             {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt={c.name} loading="lazy" draggable="false" />{/if}
             {#if meta(c.id).locked}<span class="lock" title="Price locked">🔒</span>{/if}
+            {#if c.backImage}<span class="dfc" title="Double-faced card (double-click to see both sides)">⇄</span>{/if}
           </div>
           <div class="cap">
             <span class="dot" style="background:{rarityColor(project.set, c.rarity)}"></span>
@@ -238,6 +239,7 @@
   .img { position: relative; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .img img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .lock { position: absolute; top: 4px; right: 4px; font-size: 12px; }
+  .dfc { position: absolute; top: 4px; left: 4px; font-size: 12px; background: rgba(0, 0, 0, 0.65); color: #fff; border-radius: 4px; padding: 0 4px; }
   .cap { display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }

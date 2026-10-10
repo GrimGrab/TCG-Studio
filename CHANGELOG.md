@@ -3,6 +3,18 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.7.0 - 2026-10-09
+
+Magic: Commander against customers, plus double-faced cards you can turn over.
+
+- New: Commander decks in the MTG deck builder: + New Commander deck, right-click a legendary creature to make it your commander (Forge checks it can be one), then add 99 different cards. Forge checks the finished deck (colour identity, legal commander, ban list).
+- New: Play Commander at a table: pick a Commander deck when you sit down. 40 life, the customer brings a Commander deck Forge builds from your sets, and a commander row shows commander tax and commander damage (click your commander to cast it from the command zone).
+- New: Magic: Commander tournament format with its own set list; your deck is checked against those sets.
+- New: Double-faced cards show their back face: when a card transforms in a game, in the deck builder and draft previews (both sides side by side), and on the back of the card (display racks, your hand). Press F to turn a double-faced card over in the binder close-up or while holding it.
+- New: TCG Studio downloads back-face pictures for double-faced cards. For sets you already imported, open the set and click Download back faces. The card detail, full-screen viewer and grid show both sides.
+- New settings: MTG → PreloadForge (starts Forge in the background after a save loads, so the first game doesn't wait), MTG - Match → YourCommanderLife and CustomerCommanderLife.
+After updating: open Setup and click Install / Repair to update the mod in the game, then use Download back faces on your Magic sets.
+
 ## v1.6.0 - 2026-10-09
 
 Magic tournaments: Constructed with your own set list, plus booster Draft and Sealed with packs you put up.

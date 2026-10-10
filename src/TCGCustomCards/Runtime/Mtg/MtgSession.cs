@@ -52,6 +52,30 @@ namespace TCGCustomCards.Runtime.Mtg
             _runner = go.AddComponent<MtgRunner>();
         }
 
+        private static float _savedLoadedAt = -1f;
+        private static bool _preloaded;
+
+        /// <summary>
+        /// [MTG] PreloadForge: once per session, 10 s after a save has loaded in the shop, start the Forge bridge in the
+        /// background (only with MTG mode on and Forge + the bridge installed) so the first game/check/draft doesn't wait ~6 s.
+        /// </summary>
+        public static void PreloadTick()
+        {
+            if (_preloaded) return;
+            if (!GameInstance.m_FinishedSavefileLoading || UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "Start")
+            {
+                _savedLoadedAt = -1f;
+                return;
+            }
+            if (_savedLoadedAt < 0f) _savedLoadedAt = Time.unscaledTime;
+            if (Time.unscaledTime - _savedLoadedAt < 10f) return;
+            _preloaded = true;
+            if (Plugin.MtgPreloadForge?.Value != true || !MtgMode.Enabled || !CanPlayInGame || ForgeBridge.Running) return;
+            EnsureRunner();
+            string err = ForgeBridge.EnsureStarted();
+            Plugin.Log.LogInfo(err == null ? "Forge preloading in the background ([MTG] PreloadForge)" : $"Forge preload skipped: {err}");
+        }
+
         public static bool CanPlayInGame => ForgeLauncher.IsInstalled && System.IO.File.Exists(
             System.IO.Path.Combine(Plugin.PluginDir, "tcgcc-forge-bridge.jar"));
 
@@ -75,6 +99,7 @@ namespace TCGCustomCards.Runtime.Mtg
                     case "draftdone": MtgDraft.OnDone(m); break;
                     case "gameover": GameOver = m; break;
                     case "validated": MtgDeckCheck.OnValidated(m); break;
+                    case "commanderok": MtgDeckCheck.OnCommanderOk(m); break;
                     case "message":
                     case "error":
                         AddMessage(((string)m["title"] is string t && t.Length > 0 ? t + ": " : "") + (string)m["text"]);
@@ -188,8 +213,9 @@ namespace TCGCustomCards.Runtime.Mtg
                 ["name"] = string.IsNullOrWhiteSpace(CPlayerData.PlayerName) ? "Player" : CPlayerData.PlayerName,
                 ["opponentName"] = "Customer",
                 ["aiDeck"] = aiDeck,
-                ["lifeYou"] = Plugin.MtgYourStartingLife?.Value ?? 20,
-                ["lifeCustomer"] = Plugin.MtgCustomerStartingLife?.Value ?? 20,
+                ["variant"] = player.IsCommander ? "commander" : null,
+                ["lifeYou"] = player.IsCommander ? Plugin.MtgYourCommanderLife?.Value ?? 40 : Plugin.MtgYourStartingLife?.Value ?? 20,
+                ["lifeCustomer"] = player.IsCommander ? Plugin.MtgCustomerCommanderLife?.Value ?? 40 : Plugin.MtgCustomerStartingLife?.Value ?? 20,
             });
             Traverse.Create(game).Field("m_CurrentInteractablePlayTable").GetValue<InteractablePlayTable>()?.StartPlayerCardGame();
             Traverse.Create(game).Field("m_CanExit").SetValue(true); // Esc → vanilla "quit battle?" → concede (TableSession QuitPatch)

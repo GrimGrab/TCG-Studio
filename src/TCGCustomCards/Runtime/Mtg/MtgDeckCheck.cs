@@ -56,14 +56,53 @@ namespace TCGCustomCards.Runtime.Mtg
             return r;
         }
 
+        /// <summary>Forge's answer to "can this card be a commander?" (cached per card name; null = still asking).</summary>
+        public sealed class CommanderAnswer
+        {
+            public bool Done, Ok;
+            public string Reason;
+        }
+
+        private static readonly Dictionary<string, CommanderAnswer> CommanderAnswers = new Dictionary<string, CommanderAnswer>(System.StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<int, string> CommanderWaiting = new Dictionary<int, string>();
+
+        /// <summary>Asks Forge (DeckFormat.Commander.isLegalCommander) whether <paramref name="card"/> can be a commander.</summary>
+        public static CommanderAnswer CanBeCommander(MtgCard card)
+        {
+            if (CommanderAnswers.TryGetValue(card.Name, out var a) && !(a.Done && !a.Ok && a.Reason != null && a.Reason.StartsWith("Forge isn't")))
+                return a;
+            a = new CommanderAnswer();
+            CommanderAnswers[card.Name] = a;
+            string err = ForgeBridge.EnsureStarted();
+            if (err != null) { a.Done = true; a.Reason = err; return a; }
+            int id = _nextId++;
+            CommanderWaiting[id] = card.Name;
+            Outbox.Enqueue(new JObject { ["t"] = "commanderok", ["id"] = id, ["name"] = card.Name, ["set"] = card.SetCode });
+            return a;
+        }
+
+        public static void OnCommanderOk(JObject m)
+        {
+            int id = (int?)m["id"] ?? -1;
+            if (!CommanderWaiting.TryGetValue(id, out var name)) return;
+            CommanderWaiting.Remove(id);
+            if (!CommanderAnswers.TryGetValue(name, out var a)) return;
+            a.Ok = (bool?)m["ok"] ?? false;
+            a.Reason = (string)m["reason"];
+            a.Done = true;
+        }
+
         /// <summary>Every frame (MtgSession.Pump): send queued checks once Forge is ready; fail them if Forge stopped.</summary>
         public static void Tick()
         {
-            if (Outbox.Count == 0 && Waiting.Count == 0) return;
+            if (Outbox.Count == 0 && Waiting.Count == 0 && CommanderWaiting.Count == 0) return;
             if (!ForgeBridge.Running)
             {
                 foreach (var key in Waiting.Values.ToList()) Fail(key, "Forge isn't running (see TCGForge\\userdata\\tcgcc-bridge.log)");
                 Waiting.Clear();
+                foreach (var name in CommanderWaiting.Values)
+                    if (CommanderAnswers.TryGetValue(name, out var ca)) { ca.Done = true; ca.Reason = "Forge isn't running"; }
+                CommanderWaiting.Clear();
                 Outbox.Clear();
                 return;
             }

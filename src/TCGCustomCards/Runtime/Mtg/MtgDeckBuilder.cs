@@ -30,7 +30,10 @@ namespace TCGCustomCards.Runtime.Mtg
     {
         public string Name;
         public readonly List<MtgDeckLine> Main = new List<MtgDeckLine>();
-        public int Total => Main.Sum(l => l.Count);
+        /// <summary>Commander decks: the commander(s), written as the .dck [Commander] section (Forge: DeckSection.Commander).</summary>
+        public readonly List<MtgDeckLine> Commander = new List<MtgDeckLine>();
+        public bool IsCommander => Commander.Count > 0;
+        public int Total => Main.Sum(l => l.Count) + Commander.Sum(l => l.Count);
         /// <summary>Notes for the player (dropped basics, copy limit, added lands).</summary>
         public readonly List<string> Notes = new List<string>();
 
@@ -38,14 +41,22 @@ namespace TCGCustomCards.Runtime.Mtg
         public string ToDck()
         {
             var sb = new StringBuilder();
-            sb.Append("[metadata]\r\nName=").Append(Name).Append("\r\n[Main]\r\n");
-            foreach (var l in Main)
+            sb.Append("[metadata]\r\nName=").Append(Name).Append("\r\n");
+            if (Commander.Count > 0)
             {
-                sb.Append(l.Count).Append(' ').Append(l.Card.Name);
-                if (!string.IsNullOrEmpty(l.Card.SetCode)) sb.Append('|').Append(l.Card.SetCode);
-                sb.Append("\r\n");
+                sb.Append("[Commander]\r\n");
+                foreach (var l in Commander) Line(sb, l);
             }
+            sb.Append("[Main]\r\n");
+            foreach (var l in Main) Line(sb, l);
             return sb.ToString();
+        }
+
+        private static void Line(StringBuilder sb, MtgDeckLine l)
+        {
+            sb.Append(l.Count).Append(' ').Append(l.Card.Name);
+            if (!string.IsNullOrEmpty(l.Card.SetCode)) sb.Append('|').Append(l.Card.SetCode);
+            sb.Append("\r\n");
         }
     }
 

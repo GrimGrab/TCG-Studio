@@ -34,7 +34,8 @@ namespace TCGCustomCards.Patches
             if (!Registry.TryGetCard(cardData.monsterType, out var set, out int pos)) return;
             if (set.Def.RenderMode != Core.RenderMode.FullImage) return;
 
-            var sprite = set.CardFace(pos);
+            // MTG table: a transformed double-faced card shows its back face (MtgCardFaces marks that copy)
+            var sprite = Runtime.Mtg.MtgCardFaces.IsBack(cardData) && set.HasBackFace(pos) ? set.BackFace(pos) ?? set.CardFace(pos) : set.CardFace(pos);
             if (sprite == null) return;
             var overlay = Find(__instance) ?? Create(__instance);
             overlay.sprite = sprite;

@@ -12,6 +12,7 @@ namespace TCGCustomCards.Runtime.Mtg
     internal static class MtgEvents
     {
         public const string ConstructedId = "mtg-constructed";
+        public const string CommanderId = "mtg-commander";
 
         public static void Register()
         {
@@ -24,13 +25,25 @@ namespace TCGCustomCards.Runtime.Mtg
                 Unavailable = "Needs MTG mode: TCG Studio > Setup > Install MTG mode, and [MTG] MtgMode on.",
                 SetEligible = IsMtgSet,
             });
+            ShopEvents.Register(new ShopEventFormat
+            {
+                Id = CommanderId,
+                Name = "Magic: Commander",
+                Description = "Your Commander deck (commander + 99), only cards from the chosen sets (checked by Forge). Customers bring Forge-built Commander decks from those sets.",
+                Available = () => MtgMode.Enabled && MtgSession.CanPlayInGame,
+                Unavailable = "Needs MTG mode: TCG Studio > Setup > Install MTG mode, and [MTG] MtgMode on.",
+                SetEligible = IsMtgSet,
+            });
         }
 
         /// <summary>Installed set with MTG cards and a Forge set code.</summary>
         public static bool IsMtgSet(CustomSet s) => !string.IsNullOrWhiteSpace(s.Def.Mtg?.SetCode) && MtgMode.HasMtg(s);
 
         /// <summary>The hosted event is an MTG format (constructed now; draft/sealed later).</summary>
-        public static bool IsMtgEvent => ShopEvents.Is(ConstructedId);
+        public static bool IsMtgEvent => ShopEvents.Is(ConstructedId) || ShopEvents.Is(CommanderId);
+
+        /// <summary>The hosted MTG tournament is Commander (players use Commander decks).</summary>
+        public static bool IsCommanderEvent => ShopEvents.Is(CommanderId);
 
         /// <summary>Today's MTG tournament is running and the player plays in it.</summary>
         public static bool PlayerInMtgTournament =>

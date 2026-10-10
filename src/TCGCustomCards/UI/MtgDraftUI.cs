@@ -136,7 +136,20 @@ namespace TCGCustomCards.UI
             else DrawBuilding();
             GUI.enabled = true;
 
-            if (_hover != null) DrawPreview(_hover, new Rect(W - 400, 90, 360, 504));
+            if (_hover != null)
+            {
+                DrawPreview(_hover, new Rect(W - 400, 90, 360, 504));
+                var back = MtgCardFaces.BackFaceOf(_hover.Data); // double-faced: the back beside it
+                if (back != null)
+                {
+                    var r = new Rect(W - 400 - 372, 90, 360, 504);
+                    var tex = CardRenderCache.GetLive(back, lane: 1);
+                    if (tex != null) GUI.DrawTexture(r, tex, ScaleMode.ScaleToFit);
+                    else { GUI.Box(r, ""); GUI.Label(new Rect(r.x + 8, r.y + 8, r.width - 16, 60), _hover.Set.Card(_hover.Pos).Mtg?.BackName, _text); }
+                    GUI.Label(new Rect(r.x, r.yMax - 30, r.width, 26), $"<b>Back: {_hover.Set.Card(_hover.Pos).Mtg?.BackName}</b>",
+                        new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
+                }
+            }
             if (_confirmLeave) DrawLeave();
             if (Time.unscaledTime < _messageUntil)
                 GUI.Label(new Rect(40, H - 56, W - 80, 44), $"<color=#ffcc66><b>{_message}</b></color>", new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter });

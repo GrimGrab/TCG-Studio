@@ -73,8 +73,27 @@ namespace TCGCustomCards.UI
             PlayCardGameManager.OnCloseDeckListScreen(); // vanilla: back to the workbench, resets its editing state
         }
 
+        /// <summary>A right-clicked card waiting for Forge's "can it be a commander?" answer.</summary>
+        private (MtgDeckStore.Deck deck, CustomSet set, int pos, ECardBorderType border, bool foil)? _pendingCommander;
+
+        private void ResolvePendingCommander()
+        {
+            if (_pendingCommander == null) return;
+            var p = _pendingCommander.Value;
+            var card = MtgMode.ToMtg(p.set.Def, p.set.Card(p.pos));
+            if (card == null) { _pendingCommander = null; return; }
+            var answer = MtgDeckCheck.CanBeCommander(card);
+            if (!answer.Done) return;
+            _pendingCommander = null;
+            if (!answer.Ok) { Say(answer.Reason ?? $"{card.Name} can't be a commander"); return; }
+            string why = MtgDeckStore.SetCommander(p.deck, p.set, p.pos, p.border, p.foil);
+            Say(why ?? $"{card.Name} is your commander");
+            _dirty = true;
+        }
+
         private void Update()
         {
+            ResolvePendingCommander();
             if (!Input.GetKeyDown(KeyCode.Escape)) return;
             if (_setsOpen) _setsOpen = false;
             else if (_confirmDelete != null) _confirmDelete = null;
@@ -217,7 +236,7 @@ namespace TCGCustomCards.UI
             GUI.enabled = !modal;
             GUI.Label(new Rect(40, 24, 900, 44), "MTG Decks", _title);
             GUI.Label(new Rect(40, 70, 1400, 30), "<i>Build decks from the MTG cards in your collection. Cards in a deck leave your binder until you remove them. " +
-                                                  "A deck needs at least 60 cards to be played.</i>", _small);
+                                                  "A deck needs at least 60 cards; a Commander deck is a commander + 99 different cards (Forge checks it).</i>", _small);
             if (GUI.Button(new Rect(W - 260, 24, 220, 50), "Close", _big)) Close();
 
             var decks = MtgDeckStore.Decks;
@@ -229,13 +248,14 @@ namespace TCGCustomCards.UI
                 var row = new Rect(0, i * 78, view.width - 24, 70);
                 GUI.Box(row, "");
                 bool active = MtgDeckStore.Active == i;
-                string state = d.Valid ? "<color=#70ff80>✓ ready to play</color>" : $"<color=#ffaa55>{d.Problems.FirstOrDefault()}</color>";
-                GUI.Label(new Rect(row.x + 16, row.y + 8, 700, 30), $"{(active ? "<color=#ffd24a>★</color> " : "")}<b>{d.Name}</b>", _text);
-                GUI.Label(new Rect(row.x + 16, row.y + 38, 700, 26), $"{d.Total}/{MtgDeckRules.MinDeckSize} cards   {state}", _small);
+                string state = Status(d, short_: true);
+                string kind = d.IsCommander ? " <color=#c9a0ff>Commander</color>" : "";
+                GUI.Label(new Rect(row.x + 16, row.y + 8, 900, 30), $"{(active ? "<color=#ffd24a>★</color> " : "")}<b>{d.Name}</b>{kind}", _text);
+                GUI.Label(new Rect(row.x + 16, row.y + 38, 900, 26), $"{d.Total}/{d.Target} cards   {state}", _small);
                 if (GUI.Button(new Rect(row.xMax - 560, row.y + 12, 170, 46), "Edit", _button)) { _editing = d; _dirty = true; }
-                GUI.enabled = !modal && d.Valid && !active;
+                GUI.enabled = !modal && CanPlay(d) && !active;
                 if (GUI.Button(new Rect(row.xMax - 380, row.y + 12, 190, 46), active ? "Active" : "Set active", _button))
-                    Say(MtgDeckStore.SetActive(d) ? $"{d.Name} is now your MTG deck" : "Needs at least 60 cards");
+                    Say(MtgDeckStore.SetActive(d) ? $"{d.Name} is now your MTG deck" : StripTags(Status(d, short_: false)));
                 GUI.enabled = !modal;
                 if (GUI.Button(new Rect(row.xMax - 180, row.y + 12, 170, 46), "Delete", _button)) _confirmDelete = d;
             }
@@ -243,6 +263,12 @@ namespace TCGCustomCards.UI
             {
                 _editing = MtgDeckStore.Create();
                 _dirty = true;
+            }
+            if (GUI.Button(new Rect(320, decks.Count * 78, 380, 60), "+ New Commander deck", _big))
+            {
+                _editing = MtgDeckStore.Create(commander: true);
+                _dirty = true;
+                Say("Right-click a legendary creature to make it your commander, then add 99 different cards");
             }
             GUI.EndScrollView();
             GUI.enabled = true;
@@ -278,15 +304,15 @@ namespace TCGCustomCards.UI
             GUI.Label(new Rect(200, 24, 80, 32), "Name", _text);
             deck.Name = GUI.TextField(new Rect(270, 18, 420, 44), deck.Name ?? "", 40, new GUIStyle(GUI.skin.textField) { fontSize = 22 });
             int total = deck.Total;
-            string countCol = total >= MtgDeckRules.MinDeckSize ? "#70ff80" : "#ffaa55";
-            GUI.Label(new Rect(710, 20, 260, 44), $"<size=28><b><color={countCol}>{total}</color>/{MtgDeckRules.MinDeckSize}</b></size>", _text);
-            var problems = deck.Problems;
-            GUI.Label(new Rect(900, 26, 700, 36), problems.Count == 0 ? "<color=#70ff80>✓ Ready to play</color>" : $"<color=#ffaa55>{problems[0]}</color>", _text);
+            bool countOk = deck.IsCommander ? total == deck.Target : total >= deck.Target;
+            string countCol = countOk ? "#70ff80" : "#ffaa55";
+            GUI.Label(new Rect(710, 20, 260, 44), $"<size=28><b><color={countCol}>{total}</color>/{deck.Target}</b></size>", _text);
+            GUI.Label(new Rect(900, 18, W - 260 - 920, 52), Status(deck, short_: false), new GUIStyle(_text) { fontSize = 16 });
             bool active = MtgDeckStore.ActiveDeck == deck;
             bool enabledBefore = GUI.enabled; // may be off: the Sets popup keeps the editor inert (restore, never force on)
-            GUI.enabled = enabledBefore && deck.Valid && !active;
+            GUI.enabled = enabledBefore && CanPlay(deck) && !active;
             if (GUI.Button(new Rect(W - 260, 16, 240, 48), active ? "★ Active deck" : "Set active", _big))
-                Say(MtgDeckStore.SetActive(deck) ? $"{deck.Name} is now your MTG deck" : "Needs at least 60 cards");
+                Say(MtgDeckStore.SetActive(deck) ? $"{deck.Name} is now your MTG deck" : StripTags(Status(deck, short_: false)));
             GUI.enabled = enabledBefore;
 
             DrawFilters(new Rect(20, 76, 1330, 150));
@@ -471,17 +497,27 @@ namespace TCGCustomCards.UI
                     var data = t.Data;
                     var tile = new Rect(col * cellW + 4, row * cellH + 4, tw, th);
                     int inDeck = MtgDeckStore.CopiesOf(deck, info.Name);
-                    bool full = MtgDeckRules.CanAddCopy(info, inDeck) != null;
+                    bool full = MtgDeckRules.CanAddCopy(info, inDeck, deck.IsCommander) != null;
                     GUI.color = full ? new Color(0.55f, 0.55f, 0.55f) : Color.white;
                     DrawCard(tile, data, ArtOf(set, pos), $"<b>{info.Name}</b>\n{info.ManaCost}\n{info.TypeLine}", _small);
                     GUI.color = Color.white;
                     // badges: owned of this version (left), copies of the card in the deck (right)
                     Badge(new Rect(tile.x + 4, tile.yMax - 30, 64, 26), $"×{owned}", new Color(0, 0, 0, 0.75f));
-                    if (inDeck > 0) Badge(new Rect(tile.xMax - 68, tile.y + 4, 64, 26), $"{inDeck} in deck", new Color(0.1f, 0.35f, 0.6f, 0.9f));
+                    bool isCmd = deck.Commander?.Live == true && deck.Commander.Set == set && deck.Commander.Pos == pos;
+                    if (isCmd) Badge(new Rect(tile.xMax - 100, tile.y + 4, 96, 26), "Commander", new Color(0.45f, 0.25f, 0.65f, 0.95f));
+                    else if (inDeck > 0) Badge(new Rect(tile.xMax - 68, tile.y + 4, 64, 26), $"{inDeck} in deck", new Color(0.1f, 0.35f, 0.6f, 0.9f));
                     string version = t.Border == ECardBorderType.Base && !t.Foil ? "" : $" <color=#ffd24a>{VersionLabel(t.Border, t.Foil)}</color>";
                     GUI.Label(new Rect(tile.x, tile.yMax + 2, tile.width, 24), info.Name + version,
                         new GUIStyle(_small) { alignment = TextAnchor.UpperCenter, wordWrap = false, clipping = TextClipping.Clip });
                     if (tile.Contains(Event.current.mousePosition)) _hover = (set, pos, data);
+                    // Commander decks: right-click a card = make it the commander (Forge decides whether it can be one)
+                    if (deck.IsCommander && GUI.enabled && Event.current.type == EventType.MouseDown && Event.current.button == 1 &&
+                        tile.Contains(Event.current.mousePosition))
+                    {
+                        Event.current.Use();
+                        _pendingCommander = (deck, set, pos, t.Border, t.Foil); // Forge says whether it can be one (Update)
+                        Say($"Asking Forge whether {info.Name} can be a commander…");
+                    }
                     if (GUI.Button(tile, "", GUIStyle.none))
                     {
                         string why = MtgDeckStore.AddVariant(deck, set, pos, t.Border, t.Foil, info);
@@ -530,6 +566,29 @@ namespace TCGCustomCards.UI
 
             // Free basic lands
             float y = by + barH + 30;
+            if (deck.IsCommander)
+            {
+                var slot = new Rect(x, y - 4, w, 50);
+                GUI.color = new Color(0.45f, 0.25f, 0.65f, 0.35f);
+                GUI.DrawTexture(slot, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                var c = deck.Commander;
+                if (c?.Live == true)
+                {
+                    var cinfo = MtgDeckStore.Info(c.Set, c.Pos);
+                    if (GUI.Button(new Rect(slot.x + 4, slot.y + 4, slot.width - 8, slot.height - 8),
+                            $"<b>Commander:</b> {cinfo?.Name}  <color=#aaaaaa>{cinfo?.ManaCost}</color>  <size=12>(click to put it back)</size>",
+                            new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 15 }))
+                    {
+                        MtgDeckStore.ClearCommander(deck);
+                        _dirty = true;
+                    }
+                    if (slot.Contains(Event.current.mousePosition)) _hover = (c.Set, c.Pos, c.Data);
+                }
+                else GUI.Label(new Rect(slot.x + 10, slot.y + 4, slot.width - 20, slot.height - 8),
+                    "<b>Commander:</b> <i>none - right-click a legendary creature on the left</i>", _small);
+                y += 58;
+            }
             GUI.Label(new Rect(x, y, w, 26), "<b>Basic lands</b> <size=13>(free)</size>", _text);
             y += 28;
             float lw = (w - 10) / 3f;
@@ -553,6 +612,7 @@ namespace TCGCustomCards.UI
             string GroupOf(MtgCardInfo i) => i.FrontType.Contains("Creature") ? "Creatures" : i.FrontType.Contains("Land") ? "Lands" : "Spells";
             var ordered = live.OrderBy(t => Array.IndexOf(groups, GroupOf(t.info))).ThenBy(t => t.info.Cmc).ThenBy(t => t.info.Name).ToList();
             var listView = new Rect(x, y, w, r.yMax - y - 10);
+            if (listView.height < 60) listView.height = 60;
             float rowH = 30;
             int headerCount = groups.Count(g => ordered.Any(t => GroupOf(t.info) == g));
             _deckScroll = GUI.BeginScrollView(listView, _deckScroll, new Rect(0, 0, w - 20, (ordered.Count + headerCount) * rowH + 10));
@@ -584,15 +644,49 @@ namespace TCGCustomCards.UI
             GUI.EndScrollView();
         }
 
+        /// <summary>Playable: the builder's counting rules, and for Commander decks Forge's verdict (DeckFormat.Commander).</summary>
+        private static bool CanPlay(MtgDeckStore.Deck d)
+        {
+            if (!d.Valid) return false;
+            if (!d.IsCommander) return true;
+            var r = MtgDeckStore.ForgeCheck(d);
+            return r != null && r.Done && r.Ok;
+        }
+
+        private static string Status(MtgDeckStore.Deck d, bool short_)
+        {
+            if (!d.Valid) return $"<color=#ffaa55>{d.Problems.FirstOrDefault()}</color>";
+            if (!d.IsCommander) return "<color=#70ff80>✓ Ready to play</color>";
+            var r = MtgDeckStore.ForgeCheck(d);
+            if (r == null || !r.Done) return "<color=#cccccc>Checking with Forge…</color>";
+            if (r.Ok) return "<color=#70ff80>✓ Forge: legal Commander deck</color>";
+            string why = string.Join(" ", r.Problems).Replace("\n\n", ": ").Replace("\n", ", ");
+            if (short_ && why.Length > 90) why = why.Substring(0, 90) + "…";
+            return $"<color=#ffaa55>Forge: {why}</color>";
+        }
+
+        private static string StripTags(string s) => System.Text.RegularExpressions.Regex.Replace(s ?? "", "<[^>]+>", "");
+
+        /// <summary>Hover preview; double-faced cards show the back face beside the front.</summary>
         private void DrawPreview(CustomSet set, int pos, CardData data)
         {
-            float pw = 360, ph = pw * 1.4f;
+            float pw = 360, ph = pw * 1.4f, gap = 12;
+            var back = MtgCardFaces.BackFaceOf(data);
+            float total = back != null ? pw * 2 + gap : pw;
             var mouse = Event.current.mousePosition;
-            float px = mouse.x + 30 + pw > W ? mouse.x - 30 - pw : mouse.x + 30;
+            float px = mouse.x + 30 + total > W ? mouse.x - 30 - total : mouse.x + 30;
+            px = Mathf.Clamp(px, 8, W - total - 8);
             float py = Mathf.Clamp(mouse.y - ph / 2, 8, H - ph - 8);
             var info = MtgDeckStore.Info(set, pos);
             DrawCard(new Rect(px, py, pw, ph), data, ArtOf(set, pos),
                 $"<b><size=20>{info?.Name}</size></b>  {info?.ManaCost}\n<i>{info?.TypeLine}</i>\n\n{info?.Text}", _text, live: true);
+            if (back == null) return;
+            var r = new Rect(px + pw + gap, py, pw, ph);
+            var tex = CardRenderCache.GetLive(back, lane: 1); // preview size + animated foil, like the front
+            if (tex != null) GUI.DrawTexture(r, tex, ScaleMode.ScaleToFit);
+            else DrawCard(r, back, null, $"<b><size=20>{set.Card(pos).Mtg?.BackName}</size></b>", _text);
+            GUI.Label(new Rect(r.x, r.yMax - 30, r.width, 26), $"<color=#ffffff><b>Back: {set.Card(pos).Mtg?.BackName}</b></color>",
+                new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
         }
     }
 }

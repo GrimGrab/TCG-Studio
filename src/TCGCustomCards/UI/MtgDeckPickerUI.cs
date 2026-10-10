@@ -74,7 +74,10 @@ namespace TCGCustomCards.UI
                     var colors = new HashSet<string>(row.Deck.Main.SelectMany(l => l.Card.Colors ?? new List<string>()).Select(x => x.ToUpperInvariant()));
                     row.Colors = colors.Count == 0 ? "Colourless" : string.Concat("WUBRG".Where(ch => colors.Contains(ch.ToString())));
                     row.Sets = string.Join(" ", sets.Select(s => (s.Def.Mtg?.SetCode ?? s.Def.Id).ToUpperInvariant()).Distinct().OrderBy(x => x));
-                    if (_setCodes != null && row.Error == null) row.Check = MtgDeckCheck.Check(row.Deck, _setCodes);
+                    // Commander decks are always checked by Forge (DeckFormat.Commander); constructed decks at tournaments.
+                    if (row.Error == null && row.Deck.IsCommander) row.Check = MtgDeckCheck.Check(row.Deck, _setCodes ?? new List<string>(), "commander");
+                    else if (_setCodes != null && row.Error == null) row.Check = MtgDeckCheck.Check(row.Deck, _setCodes);
+                    if (row.Deck.IsCommander) row.Colors = "Commander: " + row.Deck.Commander[0].Card.Name + "   " + row.Colors;
                 }
                 _rows.Add(row);
             }

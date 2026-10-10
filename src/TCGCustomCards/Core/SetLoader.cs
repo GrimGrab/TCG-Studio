@@ -87,6 +87,8 @@ namespace TCGCustomCards.Core
                 if (c.Play.LaneAttack == null || c.Play.LaneAttack.Length != 4) errors.Add($"{where}: play.laneAttack must have 4 entries");
                 if (string.IsNullOrEmpty(c.Image)) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: no image");
                 else if (!File.Exists(set.Resolve(c.Image))) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{c.Image}'");
+                if (!string.IsNullOrEmpty(c.BackImage) && !File.Exists(set.Resolve(c.BackImage)))
+                    Plugin.Log.LogWarning($"Set '{set.Id}' {where}: back image not found '{c.BackImage}'");
             }
             foreach (var c in set.Cards ?? new List<CardDef>())
                 if (!string.IsNullOrEmpty(c.Play?.EvolvesFrom) && !ids.Contains(c.Play.EvolvesFrom))

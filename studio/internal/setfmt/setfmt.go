@@ -48,6 +48,7 @@ type Card struct {
 	Rarity      string    `json:"rarity"` // id from Set.Rarities (vanilla name when the set has none)
 	Number      string    `json:"number,omitempty"`
 	Image       string    `json:"image"`
+	BackImage   string    `json:"backImage,omitempty"` // double-faced cards: the back face's picture (mod shows it once transformed)
 	Price       CardPrice `json:"price"`
 	Play        Play      `json:"play"`
 	Mtg         *CardMtg  `json:"mtg,omitempty"`
@@ -69,6 +70,7 @@ type CardMtg struct {
 	CMC       float64 `json:"cmc,omitempty"`       // mana value
 	Power     string  `json:"power,omitempty"`     // creatures only; may be "*"
 	Toughness string  `json:"toughness,omitempty"` // creatures only
+	BackName  string  `json:"backName,omitempty"`  // double-faced cards: the back face's name (Forge's name once transformed)
 }
 
 type CardPrice struct {
@@ -366,6 +368,9 @@ func (s *Set) Validate(folders ...string) []Issue {
 			add("warning", w, "no image")
 		} else if fileMissing(c.Image) {
 			add("warning", w, "image not found %q", c.Image)
+		}
+		if c.BackImage != "" && fileMissing(c.BackImage) {
+			add("warning", w, "back image not found %q", c.BackImage)
 		}
 	}
 	for _, c := range s.Cards {

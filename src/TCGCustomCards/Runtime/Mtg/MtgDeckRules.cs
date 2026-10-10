@@ -38,6 +38,8 @@ namespace TCGCustomCards.Runtime.Mtg
     {
         public const int MinDeckSize = 60;
         public const int MaxCopies = 4;
+        /// <summary>Commander decks: the commander + 99 (Forge's DeckFormat.Commander decides the rest: identity, legality).</summary>
+        public const int CommanderDeckSize = 100;
         public static readonly string[] Wubrg = { "W", "U", "B", "R", "G" };
         public static readonly string[] CardTypes = { "Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Planeswalker", "Land", "Battle" };
         public static readonly string[] RarityOrder = { "common", "uncommon", "rare", "mythic" };
@@ -134,17 +136,33 @@ namespace TCGCustomCards.Runtime.Mtg
             return Array.IndexOf(Wubrg, cols.First());
         }
 
-        /// <summary>Why another copy of a card can't be added (null = allowed). copiesInDeck = copies of that MTG name.</summary>
-        public static string CanAddCopy(MtgCardInfo c, int copiesInDeck)
+        /// <summary>
+        /// Why another copy of a card can't be added (null = allowed). copiesInDeck = copies of that MTG name (the commander
+        /// counts). Commander decks are singleton.
+        /// </summary>
+        public static string CanAddCopy(MtgCardInfo c, int copiesInDeck, bool commander = false)
         {
             if (c.IsBasicLand) return null;
+            if (commander) return copiesInDeck >= 1 ? $"{c.Name} is already in this Commander deck (one copy of each card)" : null;
             return copiesInDeck >= MaxCopies ? $"You already have {MaxCopies} {c.Name} (max {MaxCopies} copies)" : null;
         }
 
-        /// <summary>Problems that stop a deck from being played (empty = valid).</summary>
-        public static List<string> Problems(int totalCards)
+        /// <summary>
+        /// The builder's counting rules (empty = can go to Forge / be played). Commander legality itself (colour identity,
+        /// legal commander, ban list) is Forge's: MtgDeckCheck kind "commander".
+        /// </summary>
+        public static List<string> Problems(int totalCards, bool commanderDeck = false, bool hasCommander = false)
         {
             var p = new List<string>();
+            if (commanderDeck)
+            {
+                if (!hasCommander) p.Add("Choose a commander: right-click a legendary creature");
+                if (totalCards != CommanderDeckSize)
+                    p.Add(totalCards < CommanderDeckSize
+                        ? $"{CommanderDeckSize - totalCards} more card(s) needed (exactly {CommanderDeckSize} with the commander)"
+                        : $"{totalCards - CommanderDeckSize} card(s) too many (exactly {CommanderDeckSize} with the commander)");
+                return p;
+            }
             if (totalCards < MinDeckSize) p.Add($"{MinDeckSize - totalCards} more card(s) needed (minimum {MinDeckSize})");
             return p;
         }

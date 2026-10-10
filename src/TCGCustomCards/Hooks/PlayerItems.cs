@@ -145,6 +145,12 @@ namespace TCGCustomCards.Hooks
             _instance = go.AddComponent<HooksRunner>();
         }
 
-        private void OnGUI() => PlayerItems.DrawHint();
+        private void Update() => Patches.CardFlip.Tick();
+
+        private void OnGUI()
+        {
+            PlayerItems.DrawHint();
+            Patches.CardFlip.DrawHint();
+        }
     }
 }

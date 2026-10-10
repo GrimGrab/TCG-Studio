@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using TCGCustomCards.Hooks;
 using TCGCustomCards.Patches;
 using TCGCustomCards.UI;
@@ -43,15 +44,17 @@ namespace TCGCustomCards.Runtime.Mtg
             if (MtgEvents.PlayerInMtgTournament)
             {
                 if (!MtgEvents.TournamentTableOk(table)) return false; // vanilla says why (wrong table, round reported…)
-                var decks = MtgMode.DeckChoices();
+                bool cmdr = MtgEvents.IsCommanderEvent;
+                var decks = MtgMode.DeckChoices().Where(c => c.Commander == cmdr).ToList();
                 if (decks.Count == 0)
                 {
-                    Toast.Show(MtgMode.UseMtgDecks
-                        ? "Magic tournament: build an MTG deck (60+ cards) at the workbench first"
+                    Toast.Show(cmdr ? "Commander tournament: build a Commander deck in the MTG deck builder ([MTG] MtgDeckBuilder) first"
+                        : MtgMode.UseMtgDecks ? "Magic tournament: build an MTG deck (60+ cards) at the workbench first"
                         : "Magic tournament: you need a deck with MTG cards");
                     return true;
                 }
-                MtgDeckPickerUI.Open("Choose your deck - Magic tournament", decks, MtgEvents.EventSetCodes(), c => PlayMagic(table, c));
+                MtgDeckPickerUI.Open(cmdr ? "Choose your deck - Commander tournament" : "Choose your deck - Magic tournament",
+                    decks, MtgEvents.EventSetCodes(), c => PlayMagic(table, c));
                 return true;
             }
 
@@ -68,6 +71,11 @@ namespace TCGCustomCards.Runtime.Mtg
             MtgMode.Select(deck);
             if (Plugin.MtgPlayInWindow.Value || !MtgSession.CanPlayInGame)
             {
+                if (deck.Commander)
+                {
+                    Toast.Show("Commander games are played at the table: turn off [MTG] PlayInForgeWindow");
+                    return;
+                }
                 if (MtgEvents.PlayerInMtgTournament)
                 {
                     Toast.Show("Tournament rounds are played at the table: turn off [MTG] PlayInForgeWindow");

@@ -10,7 +10,7 @@ namespace TCGCustomCards.Runtime
     /// 3D cards (hand, pack opening, shelves, play table) draw their back with <c>Card3dUIGroup.m_CardBackMesh</c>, a mesh using one
     /// shared material (<c>LightManager.m_CardBackMat</c>) — the per-expansion <c>CardUI.m_CardBackImage</c> sprite isn't what shows there.
     /// Custom sets with a card back get a MaterialPropertyBlock on that renderer with the back texture; vanilla cards get it cleared
-    /// (CardUIs are pooled and reused).
+    /// (CardUIs are pooled and reused). Double-faced cards (a back-face picture) show their back face there instead.
     /// </summary>
     internal static class CardBackMesh
     {
@@ -41,7 +41,14 @@ namespace TCGCustomCards.Runtime
             if (renderer == null) return;
             if (!_logged) LogOnce(ui, group, renderer);
 
-            string path = Registry.IsCustom(data.expansionType) ? Registry.Get(data.expansionType)?.CardBackPath : null;
+            string path = null;
+            if (Registry.IsCustom(data.expansionType) && Registry.Get(data.expansionType) is CustomSet set)
+            {
+                // A double-faced card has no plain back: its back panel shows the back face (racks, hand, turning it over).
+                // MtgCardFaces.IsBack copies already show that face on the front, so they keep the set's back.
+                path = !Mtg.MtgCardFaces.IsBack(data) && set.PosByMonster.TryGetValue(data.monsterType, out int pos) && set.HasBackFace(pos)
+                    ? set.Def.Resolve(set.Card(pos).BackImage) : set.CardBackPath;
+            }
             var tex = path != null ? TextureFor(path, renderer) : null;
             if (tex == null)
             {

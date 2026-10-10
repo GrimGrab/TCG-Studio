@@ -76,12 +76,23 @@
       return [b, o[b] ?? Math.max(min, card.price.base * bm), o[b + '_foil'] ?? Math.max(min, card.price.base * bm * fm)];
     })
   );
+  // Double-faced cards: which side the preview shows (back faces come from the Scryfall import / "Download back faces").
+  let showBack = $state(false);
+  let lastCardId = '';
+  $effect(() => { if (card.id !== lastCardId) { lastCardId = card.id; showBack = false; } });
 </script>
 
 <div class="detail">
   <div class="preview" class:framed={project.set.renderMode === 'Framed'}>
-    {#if card.image}<button class="zoom" title="View full screen" onclick={onzoom}><img src={projectFile(project.id, card.image, imgBust)} alt={card.name} /></button>{/if}
+    {#if card.image}<button class="zoom" title="View full screen" onclick={onzoom}><img src={projectFile(project.id, showBack && card.backImage ? card.backImage : card.image, imgBust)} alt={card.name} /></button>{/if}
   </div>
+  {#if card.backImage}
+    <div class="row">
+      <button class="small" onclick={() => (showBack = !showBack)} title="Double-faced card: show the other side">
+        {showBack ? '⇄ Show front' : '⇄ Show back'}</button>
+      <span class="muted small">{showBack ? `Back: ${card.mtg?.backName ?? ''}` : 'Double-faced card'}</span>
+    </div>
+  {/if}
   <div class="row">
     <button class="small" onclick={changeImage}>Change image…</button>
     <button class="small" disabled={!card.image || rotating} onclick={() => rotate(-1)} title="Rotate left">⟲</button>

@@ -28,7 +28,7 @@ func FillMtg(p *Project) bool {
 			continue
 		}
 		want := setfmt.CardMtg{Name: ForgeName(c.Name, m), TypeLine: m.TypeLine, ManaCost: m.ManaCost, Colors: m.Colors,
-			Rarity: m.SrcRarity, CMC: m.CMC, Power: m.Power, Toughness: m.Toughness}
+			Rarity: m.SrcRarity, CMC: m.CMC, Power: m.Power, Toughness: m.Toughness, BackName: m.BackName}
 		if c.Mtg == nil || !sameMtg(*c.Mtg, want) {
 			c.Mtg = &want
 			changed = true
@@ -93,7 +93,7 @@ func onlyVariantTags(s string) bool {
 
 func sameMtg(a, b setfmt.CardMtg) bool {
 	return a.Name == b.Name && a.TypeLine == b.TypeLine && a.ManaCost == b.ManaCost && strings.Join(a.Colors, "") == strings.Join(b.Colors, "") &&
-		a.Rarity == b.Rarity && a.CMC == b.CMC && a.Power == b.Power && a.Toughness == b.Toughness
+		a.Rarity == b.Rarity && a.CMC == b.CMC && a.Power == b.Power && a.Toughness == b.Toughness && a.BackName == b.BackName
 }
 
 // ForgeName is the card name Forge accepts in a .dck: split cards keep "A // B", every other multi-face layout

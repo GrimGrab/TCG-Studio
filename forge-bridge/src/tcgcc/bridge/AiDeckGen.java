@@ -7,6 +7,7 @@ import forge.card.MagicColor;
 import forge.deck.CardPool;
 import forge.deck.Deck;
 import forge.deck.DeckFormat;
+import forge.deck.DeckSection;
 import forge.deck.generation.DeckGenerator2Color;
 import forge.deck.generation.DeckGenerator3Color;
 import forge.deck.generation.DeckGenerator4Color;
@@ -14,6 +15,7 @@ import forge.deck.generation.DeckGenerator5Color;
 import forge.deck.generation.DeckGeneratorBase;
 import forge.deck.generation.DeckGeneratorMonoColor;
 import forge.gamemodes.limited.CardRanker;
+import forge.gamemodes.limited.CardThemedCommanderDeckBuilder;
 import forge.gamemodes.limited.SealedDeckBuilder;
 import forge.item.PaperCard;
 import forge.item.SealedTemplate;
@@ -59,6 +61,8 @@ final class AiDeckGen {
         Deck deck;
         String source = "fallback";
         String colors = "";
+        /** Commander style: the commander's name (public: it starts in the command zone). */
+        String commander;
         final List<String> lines = new ArrayList<>();
         /** The deck for the after-match reveal: {n, name, set, kind: creature|spell|land}. */
         final List<Map<String, Object>> list = new ArrayList<>();
@@ -76,13 +80,15 @@ final class AiDeckGen {
             again.deck = last.deck;
             again.source = last.source;
             again.colors = last.colors;
+            again.commander = last.commander;
             again.lines.add("Same customer, same deck");
             again.lines.addAll(last.lines);
             again.list.addAll(last.list);
             return again;
         }
         Result r = new Result();
-        String style = "sealed".equalsIgnoreCase(Json.s(spec, "style")) ? "sealed" : "random";
+        String style = "sealed".equalsIgnoreCase(Json.s(spec, "style")) ? "sealed"
+                : "commander".equalsIgnoreCase(Json.s(spec, "style")) ? "commander" : "random";
         int size = Math.max(40, Math.min(100, Json.i(spec, "size", 60)));
         int boosters = Math.max(1, Math.min(24, Json.i(spec, "boosters", 6)));
         double power = Math.max(-1, Math.min(1, num(spec, "power", 0)));
@@ -93,7 +99,9 @@ final class AiDeckGen {
             Bridge.log("AI deck (" + style + ", power " + power + "): " + pool.size() + " cards known to Forge, sets " + bySet.keySet());
             Map<String, Object> colors = spec.get("colors") instanceof Map<?, ?> c ? (Map<String, Object>) c : Map.of();
             Deck d;
-            if (style.equals("sealed")) {
+            if (style.equals("commander")) {
+                d = commander(pool, power, r);
+            } else if (style.equals("sealed")) {
                 int n = power > 0 ? (int) Math.round(boosters * (1 + power * 0.5)) : boosters;
                 d = sealed(bySet, n, power < 0 ? -power : 0, r);
             } else {
@@ -115,10 +123,22 @@ final class AiDeckGen {
             Bridge.log("AI deck generation failed: " + t);
             t.printStackTrace();
         }
+        if (r.deck == null && style.equals("commander")) {
+            r.lines.add("Forge couldn't build a Commander deck from these sets");
+            return r; // no fallback: a constructed deck can't play Commander (Bridge refuses to start)
+        }
         if (r.deck == null) {
             r.deck = fallback;
             r.lines.clear();
             r.lines.add("Forge couldn't build a deck from these sets - using a simple random deck");
+        }
+        for (PaperCard c : r.deck.getCommanders()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("n", 1);
+            row.put("name", c.getName());
+            row.put("set", c.getEdition());
+            row.put("kind", "commander");
+            r.list.add(row);
         }
         for (Map.Entry<PaperCard, Integer> e : r.deck.getMain()) {
             var t = e.getKey().getRules().getType();
@@ -132,6 +152,64 @@ final class AiDeckGen {
         logDeck(r.deck);
         last = r;
         return r;
+    }
+
+    // --- Commander: Forge's Commander deck builder over the pool ----------------------------------------------------------
+
+    /**
+     * A legal Commander deck from the pool: a commander Forge allows (DeckFormat.Commander.isLegalCommander), chosen by
+     * {@code power} over Forge's ratings, then CardThemedCommanderDeckBuilder over the pool cards that fit it
+     * (Forge's colour identity) for 99 singleton cards (Forge adds basics). Accepted only when Forge's own
+     * DeckFormat.Commander check passes; up to 4 commanders are tried.
+     */
+    private static Deck commander(List<PaperCard> pool, double power, Result r) {
+        DeckFormat fmt = DeckFormat.Commander;
+        Map<String, PaperCard> byName = new LinkedHashMap<>();
+        for (PaperCard pc : pool) byName.putIfAbsent(pc.getName(), pc);
+        List<PaperCard> cards = new ArrayList<>(byName.values());
+        List<PaperCard> legal = new ArrayList<>();
+        for (PaperCard pc : cards) if (fmt.isLegalCommander(pc.getRules())) legal.add(pc);
+        if (legal.isEmpty()) {
+            Bridge.log("AI commander: no legal commander among " + cards.size() + " cards");
+            return null;
+        }
+        legal.sort(Comparator.comparingDouble(AiDeckGen::score).reversed());
+        // power > 0: only the better-rated commanders; < 0: the best |power|*40 % left out (like the Random style)
+        int from = power < 0 ? (int) Math.floor(legal.size() * -power * 0.4) : 0;
+        int to = power > 0 ? Math.max(1, (int) Math.ceil(legal.size() * (1 - power * 0.5))) : legal.size();
+        List<PaperCard> candidates = new ArrayList<>(legal.subList(Math.min(from, legal.size() - 1), Math.max(Math.min(to, legal.size()), Math.min(from, legal.size() - 1) + 1)));
+        java.util.Collections.shuffle(candidates, rng);
+        for (int i = 0; i < candidates.size() && i < 4; i++) {
+            PaperCard cmd = candidates.get(i);
+            try {
+                // Cards Forge allows in Commander whose colour identity (Forge's CardRules.getColorIdentity) fits the commander's.
+                // (isLegalCardForCommanderPredicate is the partner-commander filter, not this.)
+                ColorSet identity = cmd.getRules().getColorIdentity();
+                List<PaperCard> dList = new ArrayList<>();
+                for (PaperCard pc : cards)
+                    if (!pc.getName().equals(cmd.getName()) && fmt.isLegalCard(pc) && pc.getRules().getColorIdentity().hasNoColorsExcept(identity))
+                        dList.add(pc);
+                int fitting = dList.size(); // the builder takes cards out of dList as it uses them
+                CardThemedCommanderDeckBuilder b = new CardThemedCommanderDeckBuilder(cmd, null, dList, true, fmt);
+                b.setSingleton(true);
+                CardPool main = b.getDeck(99, true);
+                Deck d = new Deck(DECK_NAME);
+                d.getMain().addAll(main);
+                d.getOrCreate(DeckSection.Commander).add(cmd);
+                String problem = fmt.getDeckConformanceProblem(d);
+                if (problem == null) {
+                    r.commander = cmd.getName();
+                    r.colors = String.valueOf(cmd.getRules().getColorIdentity());
+                    r.lines.add("Commander deck built by Forge from " + fitting + " fitting cards");
+                    Bridge.log("AI commander: " + cmd.getName() + " (" + fitting + " fitting cards, " + d.getMain().countAll() + " in main)");
+                    return d;
+                }
+                Bridge.log("AI commander: " + cmd.getName() + " rejected by Forge: " + problem);
+            } catch (Throwable t) {
+                Bridge.log("AI commander: building around " + cmd.getName() + " failed: " + t);
+            }
+        }
+        return null;
     }
 
     // --- Power: Forge's card ratings -------------------------------------------------------------------------------------

@@ -15,6 +15,51 @@ namespace TCGCustomCards.Runtime.Mtg
     {
         private readonly Dictionary<string, Queue<CardData>> _mine = new Dictionary<string, Queue<CardData>>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, CardData> _byForgeId = new Dictionary<int, CardData>();
+        private readonly Dictionary<int, CardData> _backByForgeId = new Dictionary<int, CardData>();
+
+        /// <summary>Copies that show their back face (a transformed / back-played double-faced card). Weak: copies die with the game.</summary>
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardData, object> Backs =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<CardData, object>();
+
+        public static bool IsBack(CardData d) => d != null && Backs.TryGetValue(d, out _);
+
+        private static readonly Dictionary<string, CardData> BackCopies = new Dictionary<string, CardData>();
+
+        /// <summary>
+        /// A copy of <paramref name="front"/> (same border/foil) that draws its back face, reused per card version so pictures
+        /// render once (deck builder previews); null when the card has no back-face picture.
+        /// </summary>
+        public static CardData BackFaceOf(CardData front)
+        {
+            if (front == null || !Registry.IsCustom(front.expansionType)) return null;
+            var set = Registry.Get(front.expansionType);
+            if (set == null || !set.PosByMonster.TryGetValue(front.monsterType, out int pos) || !set.HasBackFace(pos)) return null;
+            string key = UI.CardRenderCache.Key(front);
+            if (!BackCopies.TryGetValue(key, out var back)) BackCopies[key] = back = BackOf(front);
+            return back;
+        }
+
+        /// <summary>The same copy (border, foil) showing its back face.</summary>
+        private static CardData BackOf(CardData front)
+        {
+            var b = new CardData
+            {
+                expansionType = front.expansionType, monsterType = front.monsterType, borderType = front.borderType,
+                isFoil = front.isFoil, isDestiny = front.isDestiny, cardGrade = front.cardGrade,
+            };
+            Backs.Add(b, null);
+            return b;
+        }
+
+        /// <summary>Forge's current name is the card's back face (it transformed, or a modal card was played as its back).</summary>
+        private static bool ShowsBack(CardData d, string currentName)
+        {
+            if (d == null || string.IsNullOrEmpty(currentName) || !Registry.IsCustom(d.expansionType)) return false;
+            var set = Registry.Get(d.expansionType);
+            if (set == null || !set.PosByMonster.TryGetValue(d.monsterType, out int pos) || !set.HasBackFace(pos)) return false;
+            string back = set.Card(pos).Mtg?.BackName;
+            return !string.IsNullOrEmpty(back) && string.Equals(back, currentName, StringComparison.OrdinalIgnoreCase);
+        }
         private static Dictionary<string, (CustomSet set, int pos)> _lookup;
 
         public MtgCardFaces(DeckCompactCardDataList deck)
@@ -38,7 +83,7 @@ namespace TCGCustomCards.Runtime.Mtg
         public MtgCardFaces(MtgDeckStore.Deck deck)
         {
             if (deck == null) return;
-            foreach (var e in deck.Entries)
+            foreach (var e in deck.Entries.Concat(deck.Commander?.Live == true ? new[] { deck.Commander } : new MtgDeckStore.Entry[0]))
             {
                 if (!e.Live || e.Save.Count <= 0) continue;
                 string name = e.Set.Card(e.Pos).Mtg?.Name;
@@ -75,14 +120,23 @@ namespace TCGCustomCards.Runtime.Mtg
         }
 
         /// <summary>Any card from the player's deck (its set's card back stands in for tokens), or null.</summary>
-        public CardData Any() => _mine.Values.Where(q => q.Count > 0).Select(q => q.Peek()).FirstOrDefault();
+        public CardData Any()
+        {
+            var all = _mine.Values.Where(q => q.Count > 0).Select(q => q.Peek()).ToList();
+            // Double-faced cards draw their back face on the back panel: a plain-backed card stands in for hidden cards.
+            return all.FirstOrDefault(d => !HasBackFace(d)) ?? all.FirstOrDefault();
+        }
+
+        private static bool HasBackFace(CardData d) =>
+            Registry.IsCustom(d.expansionType) && Registry.Get(d.expansionType) is CustomSet set &&
+            set.PosByMonster.TryGetValue(d.monsterType, out int pos) && set.HasBackFace(pos);
 
         /// <summary>The in-game card for a Forge card (state JSON), or null when there's none.</summary>
         public CardData For(JObject card, int myPlayerId)
         {
             if (card == null) return null;
             int id = card["id"]?.Type == JTokenType.Integer ? (int)card["id"] : -1;
-            if (_byForgeId.TryGetValue(id, out var known)) return known;
+            if (_byForgeId.TryGetValue(id, out var known)) return Face(id, known, (string)card["name"]);
 
             string name = (string)card["oracleName"] ?? (string)card["name"];
             string set = (string)card["set"];
@@ -101,7 +155,15 @@ namespace TCGCustomCards.Runtime.Mtg
                     isFoil = false,
                 };
             if (id >= 0 && data != null) _byForgeId[id] = data;
-            return data;
+            return Face(id, data, (string)card["name"]);
+        }
+
+        /// <summary>The front copy, or its back-face twin (one per Forge card) while Forge shows the back face.</summary>
+        private CardData Face(int id, CardData front, string currentName)
+        {
+            if (!ShowsBack(front, currentName)) return front;
+            if (!_backByForgeId.TryGetValue(id, out var back)) _backByForgeId[id] = back = BackOf(front);
+            return back;
         }
 
         /// <summary>Custom card for a Forge set code + name (set code first, then any set).</summary>
@@ -118,6 +180,12 @@ namespace TCGCustomCards.Runtime.Mtg
                         string code = s.Def.Mtg?.SetCode ?? "";
                         if (!_lookup.ContainsKey(code + "|" + m.Name)) _lookup[code + "|" + m.Name] = (s, i);
                         if (!_lookup.ContainsKey("|" + m.Name)) _lookup["|" + m.Name] = (s, i);
+                        // back faces: a card Forge shows as its back (e.g. an opponent's transformed or back-played card) is found too
+                        if (!string.IsNullOrEmpty(m.BackName))
+                        {
+                            if (!_lookup.ContainsKey(code + "|" + m.BackName)) _lookup[code + "|" + m.BackName] = (s, i);
+                            if (!_lookup.ContainsKey("|" + m.BackName)) _lookup["|" + m.BackName] = (s, i);
+                        }
                     }
             }
             set = null;

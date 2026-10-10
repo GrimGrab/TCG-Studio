@@ -318,7 +318,7 @@ namespace TCGCustomCards.UI
             GUI.Label(new Rect(r.x, r.y + 14, r.width, 60), $"<size=44><b>{MtgSession.Status}</b></size>", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
             string colors = S(d, "colors");
             GUI.Label(new Rect(r.x, r.y + 76, r.width, 30),
-                $"The customer's deck{(string.IsNullOrEmpty(colors) ? "" : " — " + colors)} · {I(d, "cards")} cards  <color=#aaaaaa>(hover a name to see the card)</color>",
+                $"The customer's deck{(string.IsNullOrEmpty(S(d, "commander")) ? "" : " — Commander: " + S(d, "commander"))}{(string.IsNullOrEmpty(colors) ? "" : " — " + colors)} · {I(d, "cards")} cards  <color=#aaaaaa>(hover a name to see the card)</color>",
                 new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter });
 
             // Lists (left), card preview (right)
@@ -476,12 +476,50 @@ namespace TCGCustomCards.UI
                 GUI.backgroundColor = oldZ;
                 x += 180;
             }
+            if (CommanderRowH(p) > 0)
+            {
+                DrawCommanders(new Rect(x, r.y, 330, r.height), p, st, selectable);
+                x += 340;
+            }
             if (!B(p, "ai"))
             {
                 if (mana != null)
                     foreach (var prop in mana.Properties())
                         if (GUI.Button(new Rect(x, r.y, 50, r.height), prop.Name, _button)) // spend floating mana while paying
                             ForgeBridge.Send(new JObject { ["t"] = "act", ["a"] = "mana", ["color"] = ManaByte(prop.Name) });
+            }
+        }
+
+        private static float CommanderRowH(JObject p) => p != null && Arr(p, "commanders").Any() ? 34f : 0f;
+
+        /// <summary>
+        /// Commander game: each commander with its picture, commander tax and the commander damage it has dealt (21 loses).
+        /// Your own commander in the command zone is a button: Forge casts it (or says why not), like a card in hand.
+        /// </summary>
+        private void DrawCommanders(Rect r, JObject p, JObject st, HashSet<int> selectable)
+        {
+            var cmds = Arr(p, "commanders").ToList();
+            float w = (r.width - 4 * (cmds.Count - 1)) / Math.Max(1, cmds.Count);
+            for (int i = 0; i < cmds.Count; i++)
+            {
+                var c = cmds[i];
+                int id = I(c, "id");
+                var inCommand = Arr(p, "command").FirstOrDefault(x => I(x, "id") == id);
+                var card = inCommand ?? FindCard(id);
+                int dealt = (c["damageDealt"] as JObject)?.Properties().Select(x => (int)x.Value).DefaultIfEmpty(0).Max() ?? 0;
+                bool mine = !B(p, "ai");
+                string where = inCommand != null ? "" : " <color=#aaaaaa>(in play)</color>";
+                string text = $"<b>{S(c, "name")}</b>{where}  Tax <b>+{I(c, "tax")}</b>  Dmg <b>{dealt}</b>/21";
+                var rr = new Rect(r.x + i * (w + 4), r.y, w, r.height);
+                var old = GUI.backgroundColor;
+                if (selectable.Contains(id)) GUI.backgroundColor = Selectable;
+                else GUI.backgroundColor = new Color(0.55f, 0.35f, 0.8f, 1f);
+                if (GUI.Button(rr, "", _button) && mine && inCommand != null) ForgeBridge.Act("card", id); // cast from the command zone
+                GUI.backgroundColor = old;
+                if (card != null) DrawThumb(new Rect(rr.x + 3, rr.y + 2, (rr.height - 4) * 0.72f, rr.height - 4), card);
+                GUI.Label(new Rect(rr.x + rr.height * 0.72f + 8, rr.y, rr.width - rr.height * 0.72f - 10, rr.height), text,
+                    new GUIStyle(_small) { alignment = TextAnchor.MiddleLeft, wordWrap = false, clipping = TextClipping.Clip, fontSize = 13 });
+                if (rr.Contains(Event.current.mousePosition) && card != null) _hover = card;
             }
         }
 
@@ -986,7 +1024,7 @@ namespace TCGCustomCards.UI
             GUI.color = Color.white;
             float x = r.x + 8, w = r.width - 16, y = r.y + 6;
 
-            y = PlayerBox(new Rect(x, y, w, 96), opp, st, selectable, picked) + 8;
+            y = PlayerBox(new Rect(x, y, w, 96 + CommanderRowH(opp)), opp, st, selectable, picked) + 8;
 
             // Whose turn (coloured banner) + phase
             bool myTurn = I(st, "activePlayer") == I(st, "me");
@@ -1050,10 +1088,10 @@ namespace TCGCustomCards.UI
             y = Math.Max(y, r.y + 600);
 
             // Log (fills the space down to the player's box)
-            float meTop = r.yMax - 96 - 48;
+            float meTop = r.yMax - 96 - CommanderRowH(me) - 48;
             DrawLog(new Rect(x, y, w, meTop - y - 8), st, 14);
 
-            PlayerBox(new Rect(x, meTop, w, 96), me, st, selectable, picked);
+            PlayerBox(new Rect(x, meTop, w, 96 + CommanderRowH(me)), me, st, selectable, picked);
             if (GUI.Button(new Rect(x, r.yMax - 44, w, 38), "Concede", _button)) _confirmConcede = true;
         }
 
@@ -1096,6 +1134,7 @@ namespace TCGCustomCards.UI
                 GUI.backgroundColor = oldZ;
                 bx += r.width / 2 + 4;
             }
+            if (CommanderRowH(p) > 0) DrawCommanders(new Rect(r.x, r.y + 96, r.width, 30), p, st, selectable);
             return r.yMax;
         }
 

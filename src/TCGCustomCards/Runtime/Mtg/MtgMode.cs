@@ -24,6 +24,8 @@ namespace TCGCustomCards.Runtime.Mtg
         public bool Store;
         public int Index;
         public string Name;
+        /// <summary>A Commander deck (MTG deck builder): the game is Commander.</summary>
+        public bool Commander;
     }
 
     /// <summary>MTG mode entry point: reads the selected in-game deck, builds Forge decks and launches Forge.</summary>
@@ -105,6 +107,12 @@ namespace TCGCustomCards.Runtime.Mtg
             var aiPool = AiPool(sets);
             opponent = MtgDeckBuilder.Opponent(ForgeLauncher.OpponentDeckName, aiPool, Rng);
             aiDeck = AiDeckSpec(aiPool);
+            if (player.IsCommander)
+            {
+                // Commander: Forge builds the customer a Commander deck from the same sets (no constructed fallback can play it)
+                aiDeck["style"] = "commander";
+                aiDeck["size"] = 99;
+            }
             return opponent == null ? "Couldn't build an opponent deck from these sets" : null;
         }
 
@@ -120,7 +128,8 @@ namespace TCGCustomCards.Runtime.Mtg
             if (UseMtgDecks)
             {
                 for (int i = 0; i < MtgDeckStore.Decks.Count; i++)
-                    if (MtgDeckStore.Decks[i].Valid) list.Add(new MtgDeckChoice { Store = true, Index = i, Name = MtgDeckStore.Decks[i].Name });
+                    if (MtgDeckStore.Decks[i].Valid)
+                        list.Add(new MtgDeckChoice { Store = true, Index = i, Name = MtgDeckStore.Decks[i].Name, Commander = MtgDeckStore.Decks[i].IsCommander });
                 return list;
             }
             var decks = CPlayerData.m_DeckCompactCardDataList;
@@ -168,7 +177,12 @@ namespace TCGCustomCards.Runtime.Mtg
                 var pool = sets.SelectMany(s => s.Def.Cards.Select(d => ToMtg(s.Def, d))).Where(x => x != null).ToList();
                 string name = ForgeLauncher.Safe(ForgeLauncher.DeckPrefix + (string.IsNullOrWhiteSpace(deck.Name) ? "Deck" : deck.Name));
                 player = MtgDeckBuilder.FromMtgDeck(name, cards, deck.Save.Basics, pool);
-                Plugin.Log.LogInfo($"MTG deck '{name}' (MTG deck builder): {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}");
+                if (deck.IsCommander && deck.Commander?.Live == true)
+                {
+                    var cmd = ToMtg(deck.Commander.Set.Def, deck.Commander.Set.Card(deck.Commander.Pos));
+                    if (cmd != null) { player.Commander.Add(new MtgDeckLine { Card = cmd, Count = 1 }); sets.Add(deck.Commander.Set); }
+                }
+                Plugin.Log.LogInfo($"MTG deck '{name}' (MTG deck builder{(player.IsCommander ? ", Commander" : "")}): {player.Total} cards from {string.Join(", ", sets.Select(s => s.Def.Id))}");
                 return null;
             }
             var decks = CPlayerData.m_DeckCompactCardDataList;

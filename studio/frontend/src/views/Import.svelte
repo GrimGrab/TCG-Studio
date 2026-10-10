@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { App, EventsOn, EventsOff, OnFileDrop, OnFileDropOff, errText, ask } from '../lib/api';
-  import { smartArtForProject, boxesFromPacks } from '../lib/smartArt';
+  import { onMount, onDestroy, untrack } from 'svelte';
+  import { App, OnFileDrop, OnFileDropOff, errText, ask } from '../lib/api';
+  import { boxesFromPacks } from '../lib/smartArt';
+  import { queue, enqueue, unqueue, cancel, listen, jobKey, isQueued, type ImportJob } from '../lib/importQueue.svelte';
   import { renderAccessoryIcon } from '../lib/accessoryArt';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
@@ -23,7 +24,8 @@
   let query = $state('');
   let group = $state('main');
   let options = $state<any>(null);
-  let importing = $state<string | null>(null);
+  const importing = $derived(queue.current);
+  let eplImporting = $state(false);
   // Sets the shared catalog has but this setup doesn't: added instantly instead of imported again.
   let inCatalog = $state<Record<string, boolean>>({});
   async function loadCatalog() {
@@ -36,7 +38,7 @@
       await loadCatalog();
     } catch (e) { notify(errText(e), 'error'); }
   }
-  let progress = $state<any>(null);
+  const progress = $derived(queue.progress);
 
   const today = new Date().toISOString().slice(0, 10);
   const source = $derived(sources.find((s) => s.id === sourceId));
@@ -71,7 +73,7 @@
   }
 
   async function pickSource(id: string) {
-    if (importing || id === sourceId && options) return;
+    if (eplImporting || id === sourceId && options) return;
     sourceId = id;
     remember('source', id);
     sets = [];
@@ -178,7 +180,7 @@
       eplErr = errText(e);
     }
     eplBusy = false;
-    progress = null;
+    if (!queue.current) queue.progress = null;
   }
 
   // Import EPL mod: every ticked set (one after another) and accessory in one go.
@@ -186,8 +188,8 @@
     const sets = (epl?.sets ?? []).filter((x: any) => pickSets[x.code]);
     const items = (epl?.items ?? []).filter((x: any) => pickItems[x.key]).map((x: any) => x.key);
     if (sets.some((x: any) => x.imported) && !(await ask('Some ticked sets are already imported. Delete them first to import them again — they will be skipped now. Continue?'))) return;
-    importing = epl.name;
-    progress = { stage: 'cards', done: 0, total: 0, message: 'Starting…' };
+    queue.current = epl.name; eplImporting = true;
+    queue.progress = { stage: 'cards', done: 0, total: 0, message: 'Starting…' };
     try {
       const r: any = await App.ImportEPL(eplPath, { sets: sets.filter((x: any) => !x.imported).map((x: any) => x.code), rarity: rarityChoice, items,
         options: { ...options, stripNumbers, originMod: originMod.trim(), originAuthor: originAuthor.trim(), originLink: originLink.trim() } } as any);
@@ -203,7 +205,7 @@
         const icons: Record<string, string> = {};
         let made = 0;
         for (const job of r.icons) {
-          progress = { stage: 'items', done: made, total: r.icons.length, message: `Making icons… ${made + 1} / ${r.icons.length}` };
+          queue.progress = { stage: 'items', done: made, total: r.icons.length, message: `Making icons… ${made + 1} / ${r.icons.length}` };
           try {
             models[job.kind] ??= await App.AccessoryModel(job.kind);
             const size = tpl?.items?.find((i: any) => i.type === job.base)?.iconRect ?? [512, 512];
@@ -216,7 +218,7 @@
       }
       // Packs the mod sells without a box get one with the pack's front on it.
       for (const [k, id] of r.sets.entries()) {
-        progress = { stage: 'art', done: k, total: r.sets.length, message: `Making boxes… ${k + 1} / ${r.sets.length}` };
+        queue.progress = { stage: 'art', done: k, total: r.sets.length, message: `Making boxes… ${k + 1} / ${r.sets.length}` };
         try {
           const p: any = await App.LoadProject(id);
           if (await boxesFromPacks(p)) await App.SaveProject(p);
@@ -226,8 +228,8 @@
     } catch (e) {
       notify(errText(e), 'error');
     }
-    importing = null;
-    progress = null;
+    queue.current = null; eplImporting = false;
+    queue.progress = null;
     await previewEPL();
   }
 
@@ -246,6 +248,18 @@
     choice = null;
   }
 
+  // One queue job for set s of the current source, with the page's options as they are now.
+  function job(s: any, useLibrary: boolean, openWhenDone: boolean): ImportJob {
+    const l = langs.length ? lang : '';
+    const folder = source?.id === 'folder';
+    return { key: jobKey(sourceId, s.code, l), source: sourceId, code: s.code, name: source?.local ? s.name : s.code.toUpperCase(),
+      cards: s.cards ?? 0, ownArt: !!source?.ownArt, open: openWhenDone,
+      opt: { ...$state.snapshot(options), lang: l, useLibrary, setName: folder ? folderName.trim() : '', stripNumbers: folder && stripNumbers } };
+  }
+  const keyOf = (s: any) => jobKey(sourceId, s.code, langs.length ? lang : '');
+  const waiting = (s: any) => isQueued(keyOf(s));
+
+  // Import button: starts right away, or joins the queue while another import runs.
   async function doImport(s: any) {
     const l = langs.length ? lang : '';
     let useLibrary = false;
@@ -255,40 +269,50 @@
       if (!v) return;
       useLibrary = v === 'use';
     }
-    importing = source?.local ? s.name : s.code;
-    progress = { stage: 'cards', done: 0, total: s.cards, message: 'Starting…' };
-    try {
-      const folder = source?.id === 'folder';
-      const id = await App.ImportSet(sourceId, s.code, { ...options, lang: l, useLibrary,
-        setName: folder ? folderName.trim() : '', stripNumbers: folder && stripNumbers,
-        rarityMap: source?.id === 'epl' ? rarityChoice[s.code] : options.rarityMap });
-      const done = progress?.message ?? 'Imported';
-      // Pack & box art from the set's product photos (or its best card art); the import's simple art stays if this fails.
-      // Sources that bring their own pack art (EPL mods) keep it.
-      if (!source?.ownArt) try {
-        const p: any = await App.LoadProject(id);
-        await smartArtForProject(p, (m) => (progress = { ...progress, stage: 'art', message: m }));
-        await App.SaveProject(p);
-      } catch (e) { notify('Pack art: ' + errText(e) + ' — kept the simple generated art', 'error'); }
-      notify(done, 'ok');
-      open(id);
-    } catch (e) {
-      notify(errText(e), 'error');
-    }
-    importing = null;
-    progress = null;
-    load();
+    enqueue([job(s, useLibrary, !importing)], notify, open);
   }
+
+  // Import all: every set in the list as filtered now (source, group, search) that isn't imported or queued yet.
+  // Catalog sets are added straight away; art already on this PC in another format is used as is (no dialog per set).
+  const notYet = $derived(shown.filter((s) => !s.imported && !waiting(s) && !(s.releasedAt && s.releasedAt > today)));
+  async function importAll() {
+    const fromCat = notYet.filter((s) => inCatalog[s.projectId]);
+    const fresh = notYet.filter((s) => !inCatalog[s.projectId]);
+    const upcoming = shown.filter((s) => !s.imported && s.releasedAt && s.releasedAt > today).length;
+    const cards = fresh.reduce((n, s) => n + (s.cards ?? 0), 0);
+    const msg = [`Import ${fresh.length} ${source?.game ?? ''} set${fresh.length === 1 ? '' : 's'}${cards ? ` (about ${cards.toLocaleString()} cards)` : ''} one after another?`];
+    if (fromCat.length) msg.push(`${fromCat.length} more ${fromCat.length === 1 ? 'is' : 'are'} in the catalog and will be added straight away.`);
+    if (upcoming) msg.push(`${upcoming} upcoming set${upcoming === 1 ? ' is' : 's are'} left out (card images may be missing).`);
+    msg.push('Sets whose card art is already on this PC in another format use that art. You can use other pages while it runs; "Cancel all" stops it.');
+    if (!(await ask(msg.join('\n\n')))) return;
+    if (fromCat.length) {
+      try {
+        const r = await App.AddFromCatalog('set', fromCat.map((s) => s.projectId));
+        if (r.added?.length) notify(`Added ${r.added.length} set${r.added.length === 1 ? '' : 's'} from the catalog`, 'ok');
+        await loadCatalog();
+      } catch (e) { notify(errText(e), 'error'); }
+    }
+    if (fresh.length) enqueue(fresh.map((s) => job(s, true, false)), notify, open);
+    else load();
+  }
+
+  // Reload the list after every finished import (the queue runs on while this page is closed).
+  let seen = queue.finished;
+  $effect(() => {
+    if (queue.finished === seen) return;
+    seen = queue.finished;
+    untrack(() => { load(); loadCatalog(); });
+  });
 
   onMount(async () => {
     loadCatalog();
-    EventsOn('import:progress', (p: any) => (progress = p));
+    listen();
     sources = await App.ImportSources();
     if (!sources.some((s) => s.id === sourceId)) sourceId = sources[0]?.id;
     await pickSource(sourceId);
   });
   onMount(() => OnFileDrop((_x: number, _y: number, paths: string[]) => dropped(paths), false));
-  onDestroy(() => { EventsOff('import:progress'); OnFileDropOff(); });
+  onDestroy(() => OnFileDropOff());
 </script>
 
 <div class="page">
@@ -299,7 +323,8 @@
 
   <div class="sources row">
     {#each sources as s (s.id)}
-      <button class="source" class:active={s.id === sourceId} disabled={!!importing} onclick={() => pickSource(s.id)}>
+      <button class="source" class:active={s.id === sourceId} disabled={eplImporting || (s.id === 'epl' && !!importing)} onclick={() => pickSource(s.id)}
+        title={s.id === 'epl' && importing && !eplImporting ? 'Wait for the import queue to finish' : ''}>
         <b>{s.game}</b><span class="muted small">from {s.name}</span>
       </button>
     {/each}
@@ -341,9 +366,21 @@
 
   {#if progress}
     <div class="progress">
-      <div class="row"><b class="grow">Importing {source?.local ? importing : importing?.toUpperCase()}</b><button class="small" onclick={() => App.CancelImport()}>Cancel</button></div>
+      <div class="row"><b class="grow">Importing {importing}{queue.jobs.length ? ` — ${queue.jobs.length} more queued` : ''}</b>
+        <button class="small" onclick={() => cancel(false)} title={queue.jobs.length ? 'Stop this set; the queue goes on with the next one' : ''}>Cancel</button>
+        {#if queue.jobs.length}<button class="small" onclick={() => cancel(true)}>Cancel all</button>{/if}</div>
       <div class="bar"><div style="width:{progress.total ? (100 * progress.done) / progress.total : 5}%"></div></div>
-      <div class="muted">{progress.stage === 'cards' ? 'Card list' : progress.stage === 'items' ? 'Accessories' : 'Images'} — {progress.message}</div>
+      <div class="muted">{progress.stage === 'cards' ? 'Card list' : progress.stage === 'items' ? 'Accessories' : progress.stage === 'art' ? 'Pack art' : 'Images'} — {progress.message}</div>
+      {#if queue.jobs.length}
+        <details>
+          <summary class="muted">Queue</summary>
+          <div class="queue">
+            {#each queue.jobs as j (j.key)}
+              <span class="chip">{j.name}<button class="x" title="Take it out of the queue" onclick={() => unqueue(j.key)}>×</button></span>
+            {/each}
+          </div>
+        </details>
+      {/if}
     </div>
   {/if}
 
@@ -509,8 +546,8 @@
               {#if inCatalog[preview.projectId]}
                 <button class="primary" onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
               {:else}
-                <button class="primary" disabled={!!importing || !preview.cards}
-                  onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>Import</button>
+                <button class="primary" disabled={eplImporting || !preview.cards || waiting({ code: preview.dir }) || queue.key === keyOf({ code: preview.dir })}
+                  onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>{importing ? 'Queue' : 'Import'}</button>
               {/if}
             </div>
           {/if}
@@ -544,7 +581,13 @@
   {:else if loading}
     <p class="muted">Loading sets from {source?.name ?? '…'}…</p>
   {:else}
-    <p class="muted">{shown.length} sets</p>
+    <div class="row listhead">
+      <span class="muted grow">{shown.length} sets</span>
+      {#if notYet.length}
+        <button disabled={eplImporting} onclick={importAll}
+          title="Imports every set in this list (as filtered by the menu and search) that isn't imported yet, one after another">Import all ({notYet.length})</button>
+      {/if}
+    </div>
     <div class="grid">
       {#each shown as s (s.code)}
         <div class="set">
@@ -564,7 +607,14 @@
               {#if inCatalog[s.projectId]}
                 <button class="primary" onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
               {:else}
-                <button class="primary" disabled={!!importing} onclick={() => doImport(s)}>Import</button>
+                {#if queue.key === keyOf(s)}
+                  <button class="primary" disabled>Importing…</button>
+                {:else if waiting(s)}
+                  <button onclick={() => unqueue(keyOf(s))} title="Waiting for the imports before it — click to take it out of the queue">Queued</button>
+                {:else}
+                  <button class="primary" disabled={eplImporting} onclick={() => doImport(s)}
+                    title={importing ? 'Imported after the sets already running or queued' : ''}>{importing ? 'Queue' : 'Import'}</button>
+                {/if}
               {/if}
             </div>
           {/if}
@@ -607,6 +657,10 @@
   .progress { background: var(--panel); border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
   .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .bar div { height: 100%; background: var(--accent); transition: width 0.2s; }
+  .listhead { margin-bottom: 8px; }
+  .queue { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+  .chip .x { padding: 0 5px; border: none; background: none; line-height: 1; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }
   .btnstack { display: flex; flex-direction: column; gap: 6px; }
   .set { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }

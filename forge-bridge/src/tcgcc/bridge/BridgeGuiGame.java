@@ -110,7 +110,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         CardView c = promptCard == null ? null : StateWriter.findCard(gv, promptCard);
         if (c == null) return null;
         try {
-            return StateWriter.card(c);
+            return StateWriter.card(c, humanView());
         } catch (RuntimeException e) {
             return null;
         }
@@ -140,7 +140,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
             ZoneType z = c.getZone();
             if (z == ZoneType.Battlefield || z == ZoneType.Stack) continue;
             if (z == ZoneType.Hand && me != null && c.getController() != null && c.getController().getId() == me.getId()) continue;
-            r.add(StateWriter.card(c));
+            r.add(StateWriter.card(c, humanView()));
         }
         return r;
     }
@@ -176,7 +176,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
             StackItemView top = gv.getStack().iterator().next();
             Map<String, Object> ctx = new LinkedHashMap<>();
             ctx.put("text", top.getText());
-            if (top.getSourceCard() != null) ctx.put("card", StateWriter.card(top.getSourceCard()));
+            if (top.getSourceCard() != null) ctx.put("card", StateWriter.card(top.getSourceCard(), humanView()));
             q.put("context", ctx);
         } catch (RuntimeException ignored) {
             // stack changed while reading it: no context this time
@@ -246,7 +246,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     // ------------------------------------------------------------------ questions (block the game thread until answered)
 
     /** One option per entry: display text + card id when the entry is (or has) a card. */
-    private static List<Map<String, Object>> options(List<?> items, FSerializableFunction<Object, String> display) {
+    private List<Map<String, Object>> options(List<?> items, FSerializableFunction<Object, String> display) {
         List<Map<String, Object>> r = new ArrayList<>();
         for (Object o : items) {
             Map<String, Object> e = new LinkedHashMap<>();
@@ -261,12 +261,12 @@ public final class BridgeGuiGame extends AbstractGuiGame {
                 } else {
                     // The option IS a card: full details so the game can show it (library/hidden cards aren't in its state)
                     e.put("card", cv.getId());
-                    e.put("cardInfo", StateWriter.card(cv));
+                    e.put("cardInfo", StateWriter.card(cv, humanView()));
                 }
             } else {
                 // An ability/mode/stack item: the text is what matters; its card is only context for the hover preview
                 CardView src = StateWriter.cardViewOf(o);
-                if (src != null) e.put("sourceInfo", StateWriter.card(src));
+                if (src != null) e.put("sourceInfo", StateWriter.card(src, humanView()));
             }
             r.add(e);
         }
@@ -336,7 +336,7 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         q.put("kind", "confirm");
         q.put("title", question == null ? "" : question);
         q.put("card", c == null ? null : c.getId());
-        if (c != null) q.put("cardInfo", StateWriter.card(c)); // may be a hidden card the state doesn't carry
+        if (c != null) q.put("cardInfo", StateWriter.card(c, humanView())); // may be a hidden card the state doesn't carry
         q.put("options", opts);
         q.put("default", defaultIsYes ? 0 : 1);
         sendState();

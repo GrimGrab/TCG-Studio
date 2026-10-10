@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.7.1 - 2026-10-10
+
+See the top of your library in Magic games, plus an import queue in TCG Studio.
+
+- New: Magic games show cards Forge lets you see in hidden zones. With Future Sight, Courser of Kruphix, Bolas's Citadel and similar cards, a "Top: <card>" button appears next to Graveyard and Exile: hover it to see the card, click it and then the card to play it. The opponent's revealed top card shows on their side, Telepathy shows their hand, and face-down cards you may look at (e.g. Gonti's) show their real face.
+- New: Graveyard, Exile and library buttons light up when they hold a card you can play or use right now (flashback, cast from exile, the top of your library).
+- Fixed: after clicking a card in the graveyard or exile view (e.g. to flashback it), the view now closes so you can pay the cost and pick targets.
+- New: TCG Studio imports queue up. Click Import on more sets while one is importing, or use Import all to import every set in the list. The queue keeps going while you use other pages; the Import tab shows a dot while it runs, and you can take sets out of the queue or cancel one or all.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.7.0 - 2026-10-09
 
 Magic: Commander against customers, plus double-faced cards you can turn over.

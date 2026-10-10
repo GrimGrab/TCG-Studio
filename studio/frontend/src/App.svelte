@@ -3,6 +3,7 @@
   import { App, EventsOn, BrowserOpenURL, errText } from './lib/api';
   import Projects from './views/Projects.svelte';
   import Import from './views/Import.svelte';
+  import { queue as importQueue } from './lib/importQueue.svelte';
   import Settings from './views/Settings.svelte';
   import Editor from './views/Editor.svelte';
   import Gamify from './views/Gamify.svelte';
@@ -155,7 +156,7 @@
     {/if}
     <button class:active={view === 'setup'} onclick={() => (view = 'setup')}>Setup{#if !setupReady}<span class="dot" title="Something needs installing"></span>{/if}</button>
     <button class:active={view === 'projects' || view === 'editor'} onclick={() => (view = 'projects')}>Sets</button>
-    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import</button>
+    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import{#if importQueue.current}<span class="dot busy" title={importQueue.jobs.length ? `Importing ${importQueue.current} — ${importQueue.jobs.length} more queued` : `Importing ${importQueue.current}`}></span>{/if}</button>
     <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
     <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
     <button class:active={view === 'decorations'} onclick={() => (view = 'decorations')}>Decorations</button>

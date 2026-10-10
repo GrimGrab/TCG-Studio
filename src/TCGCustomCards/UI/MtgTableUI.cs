@@ -59,7 +59,8 @@ namespace TCGCustomCards.UI
         private readonly HashSet<int> _tgtCards = new HashSet<int>(), _tgtPlayers = new HashSet<int>();
         private string _tgtLabel;                              // "Target: <spell>"
         private readonly Dictionary<int, (string label, int card)> _attackTo = new Dictionary<int, (string, int)>(); // attacker -> "→ X", planeswalker/battle id or -1
-        private string _zoneView; // "me:graveyard" etc.
+        private string _zoneView; // "me:graveyard", "opp:libraryShown" etc.
+        private bool _zoneClicked; // a card in the zone view was clicked this frame (the view then closes for Forge's prompt)
         private bool _confirmConcede;
         private bool _deckInfoOpen;           // "Customer's deck" panel toggled by the player
         private Vector2 _revealScroll;
@@ -461,19 +462,15 @@ namespace TCGCustomCards.UI
             // Players: Forge's highlight (e.g. the current attack target) comes in pickedPlayers (ids overlap card ids)
             if (Ids(MtgSession.Prompt, "pickedPlayers").Contains(id)) GUI.backgroundColor = Picked;
             else if (_tgtPlayers.Contains(id)) GUI.backgroundColor = Targeted;
-            if (GUI.Button(new Rect(r.x, r.y, 760, r.height), label, new GUIStyle(_button) { richText = true, alignment = TextAnchor.MiddleLeft }))
+            var zones = Zones(p);
+            float labelW = 760 - 180 * (zones.Count - 2); // extra zone buttons (library top, revealed hand) take from the name bar
+            if (GUI.Button(new Rect(r.x, r.y, labelW, r.height), label, new GUIStyle(_button) { richText = true, alignment = TextAnchor.MiddleLeft }))
                 ForgeBridge.Act("player", id);
             GUI.backgroundColor = old;
-            float x = r.x + 770;
-            foreach (var zone in new[] { "graveyard", "exile" })
+            float x = r.x + labelW + 10;
+            foreach (var zone in zones)
             {
-                int n = Arr(p, zone).Count();
-                string key = (B(p, "ai") ? "opp:" : "me:") + zone;
-                var oldZ = GUI.backgroundColor;
-                if (Arr(p, zone).Any(c => selectable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable; // holds a card you can pick now
-                if (GUI.Button(new Rect(x, r.y, 170, r.height), $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({n})", _button))
-                    _zoneView = _zoneView == key ? null : key;
-                GUI.backgroundColor = oldZ;
+                ZoneButton(new Rect(x, r.y, 170, r.height), p, st, zone, selectable);
                 x += 180;
             }
             if (CommanderRowH(p) > 0)
@@ -488,6 +485,64 @@ namespace TCGCustomCards.UI
                         if (GUI.Button(new Rect(x, r.y, 50, r.height), prop.Name, _button)) // spend floating mana while paying
                             ForgeBridge.Send(new JObject { ["t"] = "act", ["a"] = "mana", ["color"] = ManaByte(prop.Name) });
             }
+        }
+
+        /// <summary>
+        /// A player's zone buttons: graveyard and exile always; the library cards and opponent's hand cards Forge lets you
+        /// see (bridge libraryShown / handShown: Future Sight, Courser, Bolas's Citadel, Telepathy...) only while there are any.
+        /// </summary>
+        private static List<string> Zones(JObject p)
+        {
+            var z = new List<string> { "graveyard", "exile" };
+            if (Arr(p, "libraryShown").Any()) z.Add("libraryShown");
+            if (Arr(p, "handShown").Any()) z.Add("handShown");
+            return z;
+        }
+
+        private static string ZoneTitle(JObject p, string zone)
+        {
+            var cards = Arr(p, zone).ToList();
+            switch (zone)
+            {
+                case "libraryShown":
+                    return cards.Count == 1 ? "Top of library" : $"Library ({cards.Count} seen, top first)";
+                case "handShown": return $"Hand ({cards.Count} of {I(p, "handSize")} seen)";
+                default: return $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({cards.Count})";
+            }
+        }
+
+        /// <summary>
+        /// Opens/closes a zone view. Tinted when it holds a card Forge offers you right now: one to pick for the current
+        /// choice, or one Forge lists as usable from outside your hand (flashback, the top of a library, cast from exile).
+        /// Hovering a library button previews its top card.
+        /// </summary>
+        private void ZoneButton(Rect r, JObject p, JObject st, string zone, HashSet<int> selectable)
+        {
+            var cards = Arr(p, zone).ToList();
+            var usable = Ids(st, "usable");
+            string key = (B(p, "ai") ? "opp:" : "me:") + zone;
+            string text = zone == "libraryShown" && cards.Count == 1 ? $"Top: {S(Peek(cards[0]), "name")}" : ZoneTitle(p, zone);
+            var oldZ = GUI.backgroundColor;
+            if (cards.Any(c => selectable.Contains(I(c, "id")) || usable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable;
+            if (GUI.Button(r, text, new GUIStyle(_button) { clipping = TextClipping.Clip, wordWrap = false }))
+                _zoneView = _zoneView == key ? null : key;
+            GUI.backgroundColor = oldZ;
+            if (zone == "libraryShown" && cards.Count > 0 && r.Contains(Event.current.mousePosition)) _hover = Peek(cards[0]);
+        }
+
+        /// <summary>
+        /// A face-down card you may look at (bridge "real": your morph/foretell, Gonti's exiled card) as its real face, for
+        /// zone views and previews; any other card as it is.
+        /// </summary>
+        private static JObject Peek(JObject c)
+        {
+            if (!(c?["real"] is JObject real)) return c;
+            var v = (JObject)c.DeepClone();
+            foreach (var prop in real.Properties()) v[prop.Name] = prop.Value.DeepClone();
+            v["oracleName"] = real["name"];
+            v.Remove("real");
+            v.Remove("faceDown");
+            return v;
         }
 
         private static float CommanderRowH(JObject p) => p != null && Arr(p, "commanders").Any() ? 34f : 0f;
@@ -585,7 +640,11 @@ namespace TCGCustomCards.UI
                     new GUIStyle(_small) { fontSize = 13, alignment = TextAnchor.LowerCenter });
             }
             if (r.Contains(Event.current.mousePosition)) _hover = c;
-            if (GUI.Button(r, "", GUIStyle.none)) ForgeBridge.Act("card", id);
+            if (GUI.Button(r, "", GUIStyle.none))
+            {
+                ForgeBridge.Act("card", id);
+                _zoneClicked = true;
+            }
         }
 
         /// <summary>Highlights, stat labels and invisible click/hover areas over the 3D cards (screen rects from MtgTable3d).</summary>
@@ -1122,17 +1181,12 @@ namespace TCGCustomCards.UI
             var mana = p["mana"] as JObject;
             string pool = mana == null || !mana.HasValues ? "" : "   Mana " + string.Join(" ", mana.Properties().Select(m => $"{m.Name}{m.Value}"));
             GUI.Label(new Rect(r.x + 4, r.y + 36, r.width - 8, 22), $"Hand {I(p, "handSize")}   Library {I(p, "library")}{pool}", _small);
-            float bx = r.x;
-            foreach (var zone in new[] { "graveyard", "exile" })
+            var zones = Zones(p);
+            float zw = (r.width - 8 * (zones.Count - 1)) / zones.Count, bx = r.x;
+            foreach (var zone in zones)
             {
-                int n = Arr(p, zone).Count();
-                string key = (B(p, "ai") ? "opp:" : "me:") + zone;
-                var oldZ = GUI.backgroundColor;
-                if (Arr(p, zone).Any(c => selectable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable; // holds a card you can pick now
-                if (GUI.Button(new Rect(bx, r.y + 60, r.width / 2 - 4, 32), $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({n})", _button))
-                    _zoneView = _zoneView == key ? null : key;
-                GUI.backgroundColor = oldZ;
-                bx += r.width / 2 + 4;
+                ZoneButton(new Rect(bx, r.y + 60, zw, 32), p, st, zone, selectable);
+                bx += zw + 8;
             }
             if (CommanderRowH(p) > 0) DrawCommanders(new Rect(r.x, r.y + 96, r.width, 30), p, st, selectable);
             return r.yMax;
@@ -1211,7 +1265,7 @@ namespace TCGCustomCards.UI
                 // Every card the table shows (mine + public zones + stack) is remembered by name too: most log lines name
                 // cards without an id ("Customer cast Thallid Soothsayer").
                 foreach (var pl in Arr(st, "players"))
-                    foreach (var zone in new[] { "battlefield", "graveyard", "exile", "command", "hand" })
+                    foreach (var zone in new[] { "battlefield", "graveyard", "exile", "command", "hand", "libraryShown", "handShown" })
                         foreach (var c in Arr(pl, zone)) Remember(c);
                 foreach (var s in Arr(st, "stack")) Remember(s["card"] as JObject);
                 foreach (var c in _logCards.Values) Remember(c);
@@ -1352,12 +1406,17 @@ namespace TCGCustomCards.UI
         {
             var parts = _zoneView.Split(':');
             var p = parts[0] == "me" ? Me(st) : Opp(st);
-            var cards = Arr(p, parts[1]).ToList();
+            var cards = Arr(p, parts[1]).Select(Peek).ToList();
+            if (cards.Count == 0 && parts[1] != "graveyard" && parts[1] != "exile") { _zoneView = null; return; } // no longer seen
             var r = new Rect(60, 300, 1340, 420);
             GUI.Box(r, "");
-            GUI.Label(new Rect(r.x + 12, r.y + 8, 800, 30), $"<b>{S(p, "name")} — {parts[1]} ({cards.Count})</b>", _title);
+            GUI.Label(new Rect(r.x + 12, r.y + 8, 800, 30), $"<b>{S(p, "name")} — {ZoneTitle(p, parts[1])}</b>", _title);
             if (GUI.Button(new Rect(r.xMax - 130, r.y + 8, 120, 36), "Close", _button)) _zoneView = null;
+            // A click goes to Forge like any card click (play it, pick it...). The view then closes: it is modal, and
+            // Forge's next prompt (pay the cost, choose targets) needs the table and its buttons.
+            _zoneClicked = false;
             DrawRow(new Rect(r.x + 12, r.y + 52, r.width - 24, r.height - 64), cards, selectable, picked, combat, 150);
+            if (_zoneClicked) _zoneView = null;
         }
 
         /// <summary>Where the off-table choice strip goes (just its tab while collapsed): over the opponent's side of the board.</summary>
@@ -1750,7 +1809,7 @@ namespace TCGCustomCards.UI
             var st = MtgSession.State;
             if (st == null) return null;
             foreach (var p in Arr(st, "players"))
-                foreach (var z in new[] { "hand", "battlefield", "graveyard", "exile", "command" })
+                foreach (var z in new[] { "hand", "battlefield", "graveyard", "exile", "command", "libraryShown", "handShown" })
                     foreach (var c in Arr(p, z))
                         if (I(c, "id") == id) return c;
             foreach (var e in Arr(st, "stack"))

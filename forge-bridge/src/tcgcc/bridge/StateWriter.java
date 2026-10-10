@@ -59,8 +59,12 @@ final class StateWriter {
             putMana(mana, "G", p.getMana(MagicColor.GREEN));
             putMana(mana, "C", p.getMana((byte) MagicColor.COLORLESS));
             pm.put("mana", mana);
-            if (me != null && p.getId() == me.getId()) pm.put("hand", cards(p.getHand()));
-            for (ZoneType z : PUBLIC_ZONES) pm.put(z.name().toLowerCase(), cards(visible(p.getCards(z), z)));
+            boolean mine = me != null && p.getId() == me.getId();
+            if (mine) pm.put("hand", cards(p.getHand(), me));
+            else pm.put("handShown", cards(shownTo(p.getHand(), me), me)); // opponent's hand cards Forge lets me see (Telepathy)
+            // Library cards Forge lets me see (Future Sight / Courser reveal the top, Bolas's Citadel lets me look), top first
+            pm.put("libraryShown", cards(shownTo(p.getLibrary(), me), me));
+            for (ZoneType z : PUBLIC_ZONES) pm.put(z.name().toLowerCase(), cards(visible(p.getCards(z), z), me));
             List<CardView> cmds = p.getCommanders();
             if (cmds != null && !cmds.isEmpty()) {
                 List<Object> cl = new ArrayList<>();
@@ -81,12 +85,13 @@ final class StateWriter {
             players.add(pm);
         }
         s.put("players", players);
+        s.put("usable", usable(me));
 
         List<Object> stack = new ArrayList<>();
         for (StackItemView si : gv.getStack()) {
             Map<String, Object> e = new LinkedHashMap<>();
             e.put("text", si.getText());
-            e.put("card", si.getSourceCard() == null ? null : card(si.getSourceCard()));
+            e.put("card", si.getSourceCard() == null ? null : card(si.getSourceCard(), me));
             e.put("player", si.getActivatingPlayer() == null ? -1 : si.getActivatingPlayer().getId());
             List<Integer> targets = new ArrayList<>();
             if (si.getTargetCards() != null) for (CardView c : si.getTargetCards()) targets.add(c.getId());
@@ -143,12 +148,12 @@ final class StateWriter {
                     byId.putIfAbsent(e.sourceCard().getId(), e.sourceCard()); // tokens that are gone
                     // Most lines name their card without an id ("X cast Y"): the client matches the source card by name.
                     CardView src = byId.get(e.sourceCard().getId());
-                    if (canShow(src, me)) logCards.put(String.valueOf(src.getId()), card(src));
+                    if (canShow(src, me)) logCards.put(String.valueOf(src.getId()), card(src, me));
                 }
                 Matcher m = CARD_REF.matcher(e.message());
                 while (m.find()) {
                     CardView c = byId.get(Integer.parseInt(m.group(1)));
-                    if (c != null && namedBefore(e.message(), m.start(), c) && canShow(c, me)) logCards.put(String.valueOf(c.getId()), card(c));
+                    if (c != null && namedBefore(e.message(), m.start(), c) && canShow(c, me)) logCards.put(String.valueOf(c.getId()), card(c, me));
                 }
             }
         }
@@ -168,11 +173,49 @@ final class StateWriter {
             || (st != null && st.getName() != null && !st.getName().isEmpty() && before.endsWith(st.getName()));
     }
 
-    /** Log previews never show a hidden face: nothing now in a library, no face-down card the viewer doesn't control. */
+    /** Log previews never show a hidden face: no library card or face-down card Forge doesn't let the viewer see. */
     private static boolean canShow(CardView c, PlayerView me) {
-        if (c.getZone() == ZoneType.Library) return false;
-        if (c.isFaceDown()) return me != null && c.getController() != null && c.getController().getId() == me.getId();
+        if (c.getZone() == ZoneType.Library) return me != null && c.canBeShownTo(me);
+        if (c.isFaceDown()) return !hiddenFace(c, me);
         return true;
+    }
+
+    /**
+     * Cards outside my hand Forge offers me to use: its own "Flashback" zone (graveyard flashback, cast from exile, the
+     * top of a library…), which Forge keeps up to date in the views on its game thread. That zone also holds cards I may
+     * only look at ({@code PlayerZone} filters: {@code mayPlay || mayPlayerLook || …}); those are left out here: no
+     * may-play for me and only seen thanks to a look permission (library, hand, face-down). Only a hint for the table;
+     * the click itself still goes to Forge. Views only: running Forge's rules from this thread (getAllPossibleAbilities)
+     * raced the game thread and crashed it (ConcurrentModificationException in StaticEffects, headless 2026-10-10).
+     */
+    private static List<Integer> usable(PlayerView me) {
+        List<Integer> ids = new ArrayList<>();
+        if (me == null) return ids;
+        for (CardView c : me.getCards(ZoneType.Flashback)) {
+            if (c == null) continue;
+            boolean lookOnly = !c.getMayPlayPlayers(me) && c.mayPlayerLook(me)
+                && (c.getZone() == ZoneType.Library || c.getZone() == ZoneType.Hand || c.isFaceDown());
+            if (!lookOnly) ids.add(c.getId());
+        }
+        return ids;
+    }
+
+    /** The cards of a hidden zone that Forge's own rules let the viewer see ({@code CardView.canBeShownTo}), in zone order. */
+    private static List<CardView> shownTo(Iterable<CardView> cards, PlayerView me) {
+        List<CardView> out = new ArrayList<>();
+        if (me == null || cards == null) return out;
+        for (CardView c : cards) if (c != null && c.canBeShownTo(me)) out.add(c);
+        return out;
+    }
+
+    /**
+     * A face-down card whose real face the viewer may not see: Forge's {@code canFaceDownBeShownTo} (your own morphs,
+     * cards you may look at such as Gonti's exiled card). Without a viewer: the AI's face-down cards.
+     */
+    private static boolean hiddenFace(CardView c, PlayerView me) {
+        if (!c.isFaceDown()) return false;
+        if (me == null) return c.getController() == null || c.getController().isAI();
+        return !c.canFaceDownBeShownTo(me);
     }
 
     /**
@@ -230,9 +273,9 @@ final class StateWriter {
 
     private static void putMana(Map<String, Object> m, String k, int v) { if (v > 0) m.put(k, v); }
 
-    private static List<Object> cards(Iterable<CardView> cs) {
+    private static List<Object> cards(Iterable<CardView> cs, PlayerView me) {
         List<Object> r = new ArrayList<>();
-        if (cs != null) for (CardView c : cs) r.add(card(c));
+        if (cs != null) for (CardView c : cs) r.add(card(c, me));
         return r;
     }
 
@@ -247,13 +290,14 @@ final class StateWriter {
         return out;
     }
 
-    static Map<String, Object> card(CardView c) {
+    /** {@code me} = the viewer (the human player), whose view of face-down cards Forge decides. */
+    static Map<String, Object> card(CardView c, PlayerView me) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", c.getId());
         CardView.CardStateView st = c.getCurrentState();
-        // The AI's face-down cards (morph, manifest…) are hidden information: no name, set or text that would let the
-        // game's previews show the real card. The player's own face-down cards keep theirs.
-        boolean hidden = c.isFaceDown() && c.getController() != null && c.getController().isAI();
+        // Face-down cards the viewer may not look at (the AI's morphs, manifests…) are hidden information: no name, set or
+        // text that would let the game's previews show the real card. Forge decides (your own, or ones you may look at).
+        boolean hidden = hiddenFace(c, me);
         m.put("name", hidden ? "Face-down card" : st == null ? c.getName() : st.getName());
         if (!hidden) m.put("oracleName", c.getOracleName());
         if (st != null) {
@@ -277,7 +321,25 @@ final class StateWriter {
         if (c.isTapped()) m.put("tapped", true);
         if (c.isSick()) m.put("sick", true);
         if (c.isToken()) m.put("token", true);
-        if (c.isFaceDown()) m.put("faceDown", true);
+        if (c.isFaceDown()) {
+            m.put("faceDown", true);
+            // A face-down card the viewer may look at (own morph/foretell, Gonti's exiled card): its real face, which
+            // Forge keeps as the alternate state. Only for previews; the card itself stays face-down.
+            CardView.CardStateView real = hidden ? null : c.getAlternateState();
+            if (real != null) {
+                Map<String, Object> rm = new LinkedHashMap<>();
+                rm.put("name", real.getName());
+                rm.put("set", real.getSetCode());
+                rm.put("cost", real.getManaCost() == null ? "" : real.getManaCost().toString());
+                rm.put("text", real.getOracleText());
+                rm.put("type", real.getType() == null ? "" : real.getType().toString());
+                if (real.isCreature()) {
+                    rm.put("power", real.getPower());
+                    rm.put("toughness", real.getToughness());
+                }
+                m.put("real", rm);
+            }
+        }
         if (c.isAttacking()) m.put("attacking", true);
         if (c.isBlocking()) m.put("blocking", true);
         if (c.getDamage() > 0) m.put("damage", c.getDamage());

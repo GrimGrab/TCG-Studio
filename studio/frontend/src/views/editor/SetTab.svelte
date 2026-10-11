@@ -9,6 +9,8 @@
   let backColor = $state('#3a7bd5');
   let globalBack = $state('');
   $effect(() => { App.DefaultArtColor(project.id).then((c: string) => (backColor = c)); App.GlobalCardBack().then((u: string) => (globalBack = u)); });
+  let collections: string[] = $state([]);
+  $effect(() => { App.Collections().then((c: string[]) => (collections = c ?? [])); });
 
   async function pickBack() {
     try {
@@ -36,6 +38,15 @@
       <label class="field grow">Set name<input bind:value={project.set.name} /></label>
       <label class="field" style="width:200px">Id (stable)<input value={project.set.id} readonly /></label>
       <label class="field" style="width:110px" title="Progression order used by Gamify">Tier<input type="number" min="0" bind:value={project.meta.tier} /></label>
+    </div>
+    <div class="row">
+      <label class="field grow" title="The game or series this set belongs to. The in-game binder groups sets by it, so you can show e.g. every Gundam set at once.">Collection (binder group)
+        <input list="tcg-collections" placeholder="e.g. Magic: The Gathering, Gundam" bind:value={project.set.collection} />
+        <datalist id="tcg-collections">{#each collections as c}<option value={c}></option>{/each}</datalist>
+      </label>
+      <label class="field" style="width:170px" title="Orders sets inside their collection in the binder (oldest first).">Release date
+        <input type="date" bind:value={project.set.released} />
+      </label>
     </div>
     <div class="row">
       <span class="muted small grow">This setup's own copy: names, prices and tiers you change here don't affect your other setups.</span>

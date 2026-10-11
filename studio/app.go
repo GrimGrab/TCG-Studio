@@ -438,6 +438,9 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 	if err != nil {
 		return "", err
 	}
+	if a.fillCollection(p) {
+		_ = a.ws().Save(p)
+	}
 	if opt.KeepRarities && !p.Set.OwnRarities() {
 		if err := importer.KeepSourceRarities(p, src.Info().RarityOrder); err == nil {
 			_ = a.ws().Save(p)

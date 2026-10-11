@@ -90,6 +90,10 @@ export function ChooseShopPicture(arg1) {
   return window['go']['main']['App']['ChooseShopPicture'](arg1);
 }
 
+export function Collections() {
+  return window['go']['main']['App']['Collections']();
+}
+
 export function Confirm(arg1) {
   return window['go']['main']['App']['Confirm'](arg1);
 }

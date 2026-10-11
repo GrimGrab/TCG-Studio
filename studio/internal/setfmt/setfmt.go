@@ -21,6 +21,10 @@ type Set struct {
 	SchemaVersion int           `json:"schemaVersion"`
 	ID            string        `json:"id"`
 	Name          string        `json:"name"`
+	// Collection: the game or series the set belongs to ("Magic: The Gathering", "Gundam"…); the mod's binder groups sets
+	// by it. Released: "yyyy-mm-dd", orders sets inside a collection. Both optional (mirror of the mod's SetDef).
+	Collection    string        `json:"collection,omitempty"`
+	Released      string        `json:"released,omitempty"`
 	RenderMode    string        `json:"renderMode"`    // FullImage | Framed
 	FrameTemplate string        `json:"frameTemplate"` // vanilla expansion name
 	CardBack      string        `json:"cardBack,omitempty"`

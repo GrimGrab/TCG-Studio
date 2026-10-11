@@ -36,6 +36,8 @@ namespace TCGCustomCards.Save
             public Dictionary<string, int> shopEventStock;
             /// <summary>Today's Magic: Draft tournament (pods, packs, decks).</summary>
             public Runtime.Mtg.DraftEventSave draftEvent;
+            /// <summary>Enhanced binder: last panel choices, favourites, picked versions.</summary>
+            public Binder.BinderSave binder;
         }
 
         /// <summary>Stash produced by the save strip currently in progress; written with the side-car.</summary>
@@ -171,6 +173,7 @@ namespace TCGCustomCards.Save
             Hooks.ShopEvents.Load(_pending.shopEvent);
             Hooks.ShopEvents.LoadStock(_pending.shopEventStock);
             Runtime.Mtg.MtgDraftEvent.Load(_pending.draftEvent);
+            Binder.BinderStore.Load(_pending.binder);
             Plugin.Log.LogInfo($"MTG decks loaded: {Runtime.Mtg.MtgDeckStore.Decks.Count} (active {Runtime.Mtg.MtgDeckStore.Active})");
             _pending = null;
             Plugin.Log.LogInfo($"Side-car applied: {applied} card variants restored");
@@ -187,6 +190,7 @@ namespace TCGCustomCards.Save
             Hooks.ShopEvents.Load(null);
             Hooks.ShopEvents.LoadStock(null);
             Runtime.Mtg.MtgDraftEvent.Load(null);
+            Binder.BinderStore.Load(null);
         }
 
         /// <summary>Restores custom item prices; items without an entry get zeroed prices so RestockManager.Init regenerates them from the set definition.</summary>
@@ -293,7 +297,7 @@ namespace TCGCustomCards.Save
         {
             var file = new SaveFile { stash = PendingStash, mtgDecks = Runtime.Mtg.MtgDeckStore.Export(), activeMtgDeck = Runtime.Mtg.MtgDeckStore.Active,
                                      shopEvent = Hooks.ShopEvents.Export(), shopEventStock = Hooks.ShopEvents.ExportStock(),
-                                     draftEvent = Runtime.Mtg.MtgDraftEvent.Export() };
+                                     draftEvent = Runtime.Mtg.MtgDraftEvent.Export(), binder = Binder.BinderStore.Export() };
             foreach (var kv in _orphans.sets) file.sets[kv.Key] = new Dictionary<string, Dictionary<string, VariantSave>>(kv.Value);
             foreach (var kv in _orphans.licenses) file.licenses[kv.Key] = kv.Value;
             foreach (var kv in _orphans.items) file.items[kv.Key] = kv.Value;

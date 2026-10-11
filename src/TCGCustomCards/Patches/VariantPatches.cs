@@ -46,7 +46,9 @@ namespace TCGCustomCards.Patches
         private static readonly AccessTools.FieldRef<CollectionBinderUI, int> MaxCollectRef =
             AccessTools.FieldRefAccess<CollectionBinderUI, int>("m_MaxCardCollectionCount");
 
-        private static CustomSet BinderSet(CollectionBinderFlipAnimCtrl c) => GradedRef(c) ? null : Limited(ExpRef(c));
+        /// <summary>Enhanced binder's one-slot-per-card layout lists versions itself (<see cref="Binder.BinderIndex"/>).</summary>
+        private static CustomSet BinderSet(CollectionBinderFlipAnimCtrl c) =>
+            GradedRef(c) || EnhancedBinderPatches.Active(c) ? null : Limited(ExpRef(c));
 
         /// <summary>Every sort fills all 12 slots per card: drop the versions the set doesn't have (unless owned), so cards pack together.</summary>
         [HarmonyPatch]

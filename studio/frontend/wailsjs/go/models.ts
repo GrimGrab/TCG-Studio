@@ -2631,6 +2631,7 @@ export namespace project {
 	    installState: string;
 	    cover: string;
 	    origin?: string;
+	    collection?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Summary(source);
@@ -2651,6 +2652,7 @@ export namespace project {
 	        this.installState = source["installState"];
 	        this.cover = source["cover"];
 	        this.origin = source["origin"];
+	        this.collection = source["collection"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3346,6 +3348,8 @@ export namespace setfmt {
 	    schemaVersion: number;
 	    id: string;
 	    name: string;
+	    collection?: string;
+	    released?: string;
 	    renderMode: string;
 	    frameTemplate: string;
 	    cardBack?: string;
@@ -3365,6 +3369,8 @@ export namespace setfmt {
 	        this.schemaVersion = source["schemaVersion"];
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.collection = source["collection"];
+	        this.released = source["released"];
 	        this.renderMode = source["renderMode"];
 	        this.frameTemplate = source["frameTemplate"];
 	        this.cardBack = source["cardBack"];

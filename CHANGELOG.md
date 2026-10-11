@@ -3,6 +3,21 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.8.0 - 2026-10-11
+
+A rebuilt card binder: one slot per card, search and filters, and whole collections in one binder.
+
+- New: Enhanced binder. Each card takes one slot showing your best version; the small squares beside its count show which border/foil versions you own. Mouse wheel over a card switches between them.
+- New: Binder panel (your Sort Album key): pick sets, sort (set order, name, price, total value, copies, rarity, element, or mana value/colour for Magic), search by name, artist, number or type line, and filter by border, finish, rarity, duplicates, favourites, and Magic colour/type/mana value. The header shows collected cards, value and matches before you press Apply.
+- New: Collections. View any mix of sets as one binder: tick a whole collection (e.g. every Magic set) or single sets, or All sets.
+- New: Favourites. Press T over a card (or up close) to mark it with a red heart; filter to favourites in the panel.
+- New: The graded album gets the same panel: sort by grade, newest, price and more; filter by grade, set, rarity and more.
+- New: Home / End jump to the first / last binder page; the close-up shows the card's number and set.
+- New: Your binder choices, favourites and picked versions are saved with your game.
+- New (TCG Studio): Collection and Release date on the Set tab. Imported sets get them automatically; type one for image-folder or EPL sets (e.g. Gundam) so the binder can group them.
+- Changed: New settings Binder → EnhancedBinder (turn the new binder off to get the game's own), Binder → Layout (OnePerCard / Classic) and Binder → FavouriteKey.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.7.2 - 2026-10-11
 
 Phone wallpaper and your own open/closed sign.

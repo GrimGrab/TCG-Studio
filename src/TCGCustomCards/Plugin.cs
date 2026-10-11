@@ -66,6 +66,9 @@ namespace TCGCustomCards
         internal static readonly ConfigEntry<UnityEngine.Color>[] HoloFoilColor = new ConfigEntry<UnityEngine.Color>[6];
         internal static readonly ConfigEntry<float>[] HoloFoilStrength = new ConfigEntry<float>[6];
         internal static readonly ConfigEntry<HoloPattern>[] HoloFoilPattern = new ConfigEntry<HoloPattern>[6];
+        internal static ConfigEntry<bool> EnhancedBinder;
+        internal static ConfigEntry<Binder.BinderLayout> BinderLayout;
+        internal static ConfigEntry<KeyboardShortcut> BinderFavouriteKey;
         internal static string PluginDir;
 
         private Harmony _harmony;
@@ -76,6 +79,14 @@ namespace TCGCustomCards
             PluginDir = Path.GetDirectoryName(Info.Location);
 
             var cfgBefore = ConfigMoves.Snapshot(Config); // see ConfigMoves: settings moved to a sub-section keep their value
+            EnhancedBinder = Config.Bind("Binder", "EnhancedBinder", true,
+                "On = the improved binder (one slot per card with a version switcher, fast sorting). Off = the game's own binder, unchanged.");
+            BinderLayout = Config.Bind("Binder", "Layout", Binder.BinderLayout.OnePerCard,
+                "OnePerCard = each card gets one slot showing your best version; the small squares under it show which border/foil " +
+                "versions you own (top row normal, bottom row foil). Mouse wheel over a card switches between the versions you own. Classic = the game's 12 slots per card. Only with EnhancedBinder on.");
+            BinderFavouriteKey = Config.Bind("Binder", "FavouriteKey", new KeyboardShortcut(UnityEngine.KeyCode.T),
+                "In the binder, this key marks the card under the mouse (or held up close) as a favourite, or unmarks it. Favourites " +
+                "get a red heart in the binder and their own filter in the binder panel. Only with EnhancedBinder on.");
             DumpDiagnostics = Config.Bind("Debug", "DumpDiagnostics", true,
                 "Write runtime game data (list sizes, materials, restock entries) to diagnostics.txt once per session after a save loads.");
             ShowVanillaCards = Config.Bind("Content", "ShowVanillaCards", true,

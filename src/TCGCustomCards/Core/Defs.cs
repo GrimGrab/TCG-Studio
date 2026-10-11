@@ -24,6 +24,11 @@ namespace TCGCustomCards.Core
         [JsonProperty("id")] public string Id;
         [JsonProperty("name")] public string Name;
 
+        /// <summary>Game or series the set belongs to ("Magic: The Gathering", "Gundam"…): groups sets in the binder. Optional.</summary>
+        [JsonProperty("collection")] public string Collection;
+        /// <summary>Release date "yyyy-mm-dd" (orders sets inside a collection). Optional.</summary>
+        [JsonProperty("released")] public string Released;
+
         [JsonProperty("renderMode"), JsonConverter(typeof(StringEnumConverter))]
         public RenderMode RenderMode = RenderMode.Framed;
 

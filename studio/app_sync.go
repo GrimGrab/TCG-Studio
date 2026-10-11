@@ -43,6 +43,7 @@ func (a *App) SyncInstalledSets() (string, error) {
 				offline = true // keep what we have; retried next start since the version isn't marked synced
 			}
 		}
+		a.fillCollection(p) // binder grouping for sets imported before set.json had it
 		if err := a.ws().Save(p); err != nil {
 			failed = append(failed, p.Set.Name)
 			continue

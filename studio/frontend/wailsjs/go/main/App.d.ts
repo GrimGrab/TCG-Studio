@@ -62,6 +62,8 @@ export function ChooseSetCardBack(arg1:string):Promise<string>;
 
 export function ChooseShopPicture(arg1:string):Promise<main.ShopLookView>;
 
+export function Collections():Promise<Array<string>>;
+
 export function Confirm(arg1:string):Promise<boolean>;
 
 export function CreateProject(arg1:string,arg2:string):Promise<project.Project>;

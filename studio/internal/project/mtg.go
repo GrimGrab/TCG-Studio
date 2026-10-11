@@ -37,8 +37,9 @@ func FillMtg(p *Project) bool {
 	return changed
 }
 
-// PatchInstalledMtg copies the project's MTG export data (set + per card, matched by card id) into the copy of the set
-// installed in the game, and nothing else — prices, licenses or unsaved-to-game edits stay as the player installed them.
+// PatchInstalledMtg copies the project's MTG export data (set + per card, matched by card id) and the binder grouping
+// (collection, release date) into the copy of the set installed in the game, and nothing else — prices, licenses or
+// unsaved-to-game edits stay as the player installed them.
 // Returns true when the installed set.json changed.
 func PatchInstalledMtg(p *Project, gameDir string) (bool, error) {
 	if p == nil || p.Set == nil || !setfmt.SafeID(p.ID) || !game.IsGameDir(gameDir) {
@@ -53,6 +54,15 @@ func PatchInstalledMtg(p *Project, gameDir string) (bool, error) {
 		return false, err
 	}
 	changed := false
+	// Binder grouping (collection, release date): filled in by Studio for sets installed before these fields existed.
+	if p.Set.Collection != "" && inst.Collection != p.Set.Collection {
+		inst.Collection = p.Set.Collection
+		changed = true
+	}
+	if p.Set.Released != "" && inst.Released != p.Set.Released {
+		inst.Released = p.Set.Released
+		changed = true
+	}
 	if p.Set.Mtg != nil && (inst.Mtg == nil || *inst.Mtg != *p.Set.Mtg) {
 		m := *p.Set.Mtg
 		inst.Mtg = &m

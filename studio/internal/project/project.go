@@ -155,6 +155,7 @@ type Summary struct {
 	InstallState string `json:"installState"`
 	Cover        string `json:"cover"`            // relative image for the list thumbnail
 	Origin       string `json:"origin,omitempty"` // converted content: the mod it came from (for display and sorting)
+	Collection   string `json:"collection,omitempty"` // set.json collection (game/series), for the Set tab's suggestions
 }
 
 // OriginName is the mod a converted set came from ("" = not converted). Sets converted before origins were recorded show
@@ -234,7 +235,7 @@ func (w Workspace) List(gameDir string) ([]Summary, error) {
 		info, _ := os.Stat(filepath.Join(p.Folder, SetFile))
 		s := Summary{ID: p.ID, Name: p.Set.Name, Cards: len(p.Set.Cards), Packs: len(p.Set.Packs),
 			Source: p.Meta.Source, Code: p.Meta.SourceCode(), ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier,
-			Origin: p.Meta.OriginName()}
+			Origin: p.Meta.OriginName(), Collection: p.Set.Collection}
 		if info != nil {
 			s.Modified = info.ModTime()
 		}

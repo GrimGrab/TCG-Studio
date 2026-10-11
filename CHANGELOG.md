@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.8.1 - 2026-10-11
+
+Controller support for the improved binder, version totals, and EPL mods grouped by name.
+
+- New: Controller support in the binder panel: move with the d-pad or left stick, A to select, B to close, Y to apply, X to reset, LB/RB to scroll a list. The search box opens the on-screen keyboard.
+- New: While browsing the binder with a controller, R3 switches the card you're aiming at to its next version and L3 marks it as a favourite (Binder → ControllerVersionButton / ControllerFavouriteButton). The button hints at the bottom of the screen show both.
+- New: First page / Last page buttons in the binder panel.
+- New: A second count under the binder's cards collected: every border and foil version you own, out of all versions in the shown sets. The panel header shows it too.
+- Changed: Sets converted from EPL mods are now grouped by their mod in the binder panel instead of all under "Other sets". Installed sets pick this up when Studio starts; a collection name you typed yourself is kept.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.8.0 - 2026-10-11
 
 A rebuilt card binder: one slot per card, search and filters, and whole collections in one binder.

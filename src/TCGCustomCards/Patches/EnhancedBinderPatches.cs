@@ -1,6 +1,8 @@
 using HarmonyLib;
 using TCGCustomCards.Binder;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace TCGCustomCards.Patches
 {
@@ -89,6 +91,54 @@ namespace TCGCustomCards.Patches
             FillGraded(ctrl, 2, page - 1);
         }
 
+        /// <summary>Second line under the binder's collected text: every version (border × foil) owned.</summary>
+        private static TextMeshProUGUI _versionsText;
+
+        /// <summary>
+        /// The binder's collected text: unique cards owned ("120 / 300", the game's own line), and below it every version
+        /// owned ("180 / 3600", plain number: the user found a word ugly) in a smaller, dimmer copy of that text.
+        /// </summary>
+        internal static void ShowCollected(CollectionBinderUI ui, BinderStats st, ECardExpansionType exp)
+        {
+            ui.SetCardCollected(st.Owned, exp);
+            var t = VersionsText(ui);
+            if (t == null) return;
+            t.text = $"{st.VersionsOwned} / {st.Versions}";
+            t.gameObject.SetActive(true);
+        }
+
+        private static TextMeshProUGUI VersionsText(CollectionBinderUI ui)
+        {
+            var src = ui.m_CardCollectedText;
+            if (src == null) return null;
+            // A save load rebuilds the scene: the old copy is gone (== null) and the text has a new parent.
+            if (_versionsText != null && _versionsText.transform.parent == src.transform.parent) return _versionsText;
+            var go = Object.Instantiate(src.gameObject, src.transform.parent, false);
+            go.name = "TCGCC_VersionsCollected";
+            for (int i = go.transform.childCount - 1; i >= 0; i--) Object.Destroy(go.transform.GetChild(i).gameObject);
+            var le = go.GetComponent<LayoutElement>();
+            if (le == null) le = go.AddComponent<LayoutElement>();
+            le.ignoreLayout = true; // never moves the game's own layout
+            var t = go.GetComponent<TextMeshProUGUI>();
+            t.enableAutoSizing = false;
+            t.fontSize = src.fontSize * 0.7f;
+            t.color = new Color(src.color.r, src.color.g, src.color.b, src.color.a * 0.65f);
+            t.enableWordWrapping = false;
+            t.overflowMode = TextOverflowModes.Overflow;
+            var srt = src.rectTransform;
+            t.rectTransform.anchoredPosition = srt.anchoredPosition - new Vector2(0f, src.fontSize * 1.1f); // one line lower
+            _versionsText = t;
+            return t;
+        }
+
+        /// <summary>The versions line only belongs to the one-slot-per-card binder (graded / Classic / off: hidden).</summary>
+        private static void SyncVersionsText(CollectionBinderFlipAnimCtrl ctrl)
+        {
+            if (_versionsText == null) return;
+            bool on = Active(ctrl) && BookOpenRef(ctrl);
+            if (_versionsText.gameObject.activeSelf != on) _versionsText.gameObject.SetActive(on);
+        }
+
         /// <summary>The one-slot-per-card layout is filling this binder (not graded, setting on).</summary>
         internal static bool Active(CollectionBinderFlipAnimCtrl ctrl) =>
             Plugin.EnhancedBinder.Value && Plugin.BinderLayout.Value == BinderLayout.OnePerCard && !GradedRef(ctrl);
@@ -119,7 +169,7 @@ namespace TCGCustomCards.Patches
                 {
                     // "x / N" in cards, not versions. Field set directly: Mono inlines the one-line setter, so patching it never runs.
                     MaxCollectRef(ui) = BinderIndex.Stats.Cards;
-                    ui.SetCardCollected(BinderIndex.Stats.Owned, exp);
+                    ShowCollected(ui, BinderIndex.Stats, exp);
                     ui.SetTotalValue(BinderIndex.Stats.Value); // across every set shown
                 }
                 Fill(__instance, 0, IndexRef(__instance)); // may clamp the page to the new page count
@@ -297,16 +347,25 @@ namespace TCGCustomCards.Patches
             }
         }
 
-        /// <summary>Favourite key on the card under the mouse (or held up close); Home / End jump to the first / last page.</summary>
+        /// <summary>The favourite key / controller button was pressed this frame.</summary>
+        private static bool FavouritePressed() =>
+            Plugin.BinderFavouriteKey.Value.IsDown() || UI.PadInput.Down(Plugin.BinderPadFavourite.Value);
+
+        /// <summary>
+        /// Favourite key / button on the card under the mouse or aimed at with the controller (or held up close); Home / End
+        /// jump to the first / last page. Also keeps the binder's extra button hints up to date.
+        /// </summary>
         [HarmonyPatch(typeof(CollectionBinderFlipAnimCtrl), "Update")]
         private static class KeysPatch
         {
             private static void Postfix(CollectionBinderFlipAnimCtrl __instance)
             {
+                UI.BinderTooltips.Update(__instance);
+                SyncVersionsText(__instance);
                 if (!Plugin.EnhancedBinder.Value || GradedRef(__instance) || !BookOpenRef(__instance) || UI.BinderPanel.Typing) return;
                 if (__instance.m_IsHoldingCardCloseUp)
                 {
-                    if (__instance.m_IsExitingCardCloseUp || !Plugin.BinderFavouriteKey.Value.IsDown()) return;
+                    if (__instance.m_IsExitingCardCloseUp || !FavouritePressed()) return;
                     var card = __instance.m_CurrentViewInteractableCard3d?.m_Card3dUI?.m_CardUI?.GetCardData();
                     if (card == null) return;
                     bool fav = Favourites.Toggle(card);
@@ -319,7 +378,7 @@ namespace TCGCustomCards.Patches
                 if (!Active(__instance) || !CanFlipRef(__instance)) return;
                 if (__instance.m_CollectionBinderUI != null && __instance.m_CollectionBinderUI.IsSortAlbumScreenOpen()) return;
                 var hovered = __instance.m_CurrentRaycastedInteractableCard3d;
-                if (hovered != null && Plugin.BinderFavouriteKey.Value.IsDown())
+                if (hovered != null && FavouritePressed())
                 {
                     var card = hovered.m_Card3dUI?.m_CardUI?.GetCardData();
                     int j = __instance.m_InteractableCard3dList.IndexOf(hovered);
@@ -335,6 +394,9 @@ namespace TCGCustomCards.Patches
             }
         }
 
+        internal static void JumpToFirst(CollectionBinderFlipAnimCtrl ctrl) => JumpTo(ctrl, 1);
+        internal static void JumpToLast(CollectionBinderFlipAnimCtrl ctrl) => JumpTo(ctrl, MaxIndexRef(ctrl));
+
         private static void JumpTo(CollectionBinderFlipAnimCtrl ctrl, int page)
         {
             page = Mathf.Clamp(page, 1, Mathf.Max(1, MaxIndexRef(ctrl)));
@@ -348,13 +410,17 @@ namespace TCGCustomCards.Patches
             SoundManager.PlayAudio("SFX_AlbumFlip", 0.6f);
         }
 
-        /// <summary>Mouse wheel over a card: next / previous owned version in that slot.</summary>
+        /// <summary>
+        /// Mouse wheel over a card: next / previous owned version in that slot. Controller: the version button on the aimed
+        /// card steps to the next one (vanilla's d-pad selection aims the camera, so the raycast card is the selected one).
+        /// </summary>
         [HarmonyPatch(typeof(CollectionBinderFlipAnimCtrl), "Update")]
         private static class WheelPatch
         {
             private static void Postfix(CollectionBinderFlipAnimCtrl __instance)
             {
                 float wheel = Input.mouseScrollDelta.y;
+                if (wheel == 0f && UI.PadInput.Down(Plugin.BinderPadVersion.Value)) wheel = -1f; // = wheel down: next version
                 if (wheel == 0f || !Active(__instance)) return;
                 if (!BookOpenRef(__instance) || !CanFlipRef(__instance) || __instance.m_IsHoldingCardCloseUp) return;
                 if (__instance.m_CollectionBinderUI != null && __instance.m_CollectionBinderUI.IsSortAlbumScreenOpen()) return;

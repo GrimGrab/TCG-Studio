@@ -70,6 +70,8 @@ namespace TCGCustomCards.Binder
     internal struct BinderStats
     {
         public int Cards, Owned, Matching;
+        /// <summary>Card versions (border × foil) the shown sets have, and how many of them are owned.</summary>
+        public int Versions, VersionsOwned;
         public float Value;
     }
 
@@ -113,9 +115,18 @@ namespace TCGCustomCards.Binder
             stats = new BinderStats { Cards = all.Count };
             foreach (var e in all)
             {
-                if (e.Total() <= 0) continue;
+                int owned = 0;
+                for (int v = 0; v < e.Per; v++)
+                {
+                    if (e.Listed[v]) stats.Versions++; // listed = the set has it, or it's owned anyway
+                    int n = e.Count(v);
+                    if (n <= 0) continue;
+                    owned++;
+                    stats.Value += n * e.Price(v);
+                }
+                if (owned == 0) continue;
                 stats.Owned++;
-                stats.Value += e.TotalValue();
+                stats.VersionsOwned += owned;
             }
 
             if (q.Gaps && q.Sort == BinderSort.SetOrder && q.Unfiltered)

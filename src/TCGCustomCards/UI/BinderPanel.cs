@@ -15,9 +15,9 @@ namespace TCGCustomCards.UI
     /// Enhanced binder panel: opens on Sort Album in place of the vanilla sort screen's content (one-slot-per-card layout,
     /// not graded). It lives inside m_SortAlbumScreen, so the game still treats it as the sort screen (cursor, page flips
     /// blocked, closed with the binder). Sets, sort, search and filters are picked first; Apply changes the binder once.
-    /// Built in code from the screen's own background, button sprite and font.
+    /// Built in code from the screen's own background, button sprite and font. Controller: BinderPanel.Nav.cs.
     /// </summary>
-    internal static class BinderPanel
+    internal static partial class BinderPanel
     {
         private static readonly Color Selected = new Color(0.95f, 0.66f, 0.12f);
         private static readonly Color Normal = new Color(0.25f, 0.28f, 0.36f);
@@ -54,6 +54,7 @@ namespace TCGCustomCards.UI
         private static readonly List<(Button b, Func<bool> on)> _selectables = new List<(Button, Func<bool>)>();
         private static readonly List<(Image img, Func<Color> color)> _tinted = new List<(Image, Func<Color>)>();
         private static readonly List<ScrollRect> _scrolls = new List<ScrollRect>();
+        private static readonly List<GameObject> _pageButtons = new List<GameObject>();
 
         public static bool IsOpen => _root != null && _root.activeInHierarchy;
 
@@ -64,24 +65,26 @@ namespace TCGCustomCards.UI
         private static int _clickFrame = -10;
 
         /// <summary>
-        /// The binder must ignore its keys/clicks: while typing, and on the frame a panel button was clicked (+1). Apply/Close
-        /// close the panel inside that click, and the binder then read the same mouse release as a click on the card below.
+        /// The binder must ignore its keys/clicks: while typing, on the frame a panel button was clicked (+1), and while the
+        /// panel is driven by a controller. Apply/Close close the panel inside that click, and the binder then read the same
+        /// mouse release as a click on the card below.
         /// </summary>
         public static bool BlockBinderInput
         {
             get
             {
-                if (_swallowEsc)
+                if (_swallow)
                 {
-                    // The Esc that closed the panel: its release must not also close the binder.
-                    if (Input.GetKey(KeyCode.Escape) || Input.GetKeyUp(KeyCode.Escape)) return true;
-                    _swallowEsc = false;
+                    // The Esc / controller button that closed the panel: its release must not also act in the binder
+                    // (B = take card, A = close-up, X = close the binder, Y = open the panel again).
+                    if (Input.GetKey(KeyCode.Escape) || Input.GetKeyUp(KeyCode.Escape) || PadInput.FaceButtonBusy()) return true;
+                    _swallow = false;
                 }
-                return Typing || Time.frameCount - _clickFrame <= 1;
+                return Typing || Time.frameCount - _clickFrame <= 1 || IsOpen && PadInput.Active;
             }
         }
 
-        private static bool _swallowEsc;
+        private static bool _swallow;
 
         /// <summary>
         /// Esc (the pause key) while the panel is open: leave the search box, or close the panel. True = handled, the pause
@@ -92,7 +95,7 @@ namespace TCGCustomCards.UI
             if (!IsOpen) return false;
             if (Typing) _search.DeactivateInputField();
             else Close(); // plays the game's menu-close sound
-            _swallowEsc = true;
+            _swallow = true;
             return true;
         }
 
@@ -137,6 +140,8 @@ namespace TCGCustomCards.UI
                 RebuildSets();
                 RebuildSorts();
                 RebuildFilters();
+                foreach (var b in _pageButtons) if (b != null) b.SetActive(!graded); // graded slabs: vanilla pages
+                NavOpened();
             }
             catch (Exception e)
             {
@@ -162,6 +167,7 @@ namespace TCGCustomCards.UI
         {
             foreach (var g in _hiddenVanilla) if (g != null) g.SetActive(true);
             _hiddenVanilla.Clear();
+            NavClosed();
         }
 
         private static void Close()
@@ -174,11 +180,15 @@ namespace TCGCustomCards.UI
             ? !_pending.SameAs(BinderIndex.GradedQuery)
             : !_pending.SameAs(BinderIndex.Query) || !_pending.Sets.SequenceEqual(BinderIndex.SetsFor(_openExp));
 
-        private static void Apply()
+        private static void Apply() => Apply(null);
+
+        /// <summary>Apply; then <paramref name="after"/> once the binder shows the result in place (not after a set switch,
+        /// where the binder flips over to the other set).</summary>
+        private static void Apply(Action<CollectionBinderFlipAnimCtrl> after)
         {
             var ctrl = _ui.m_CollectionAlbum;
             _pending.Search = _search.text ?? "";
-            if (!Changed()) { Close(); return; }
+            if (!Changed()) { Close(); after?.Invoke(ctrl); return; }
             if (_graded)
             {
                 BinderIndex.GradedQuery = _pending.Clone();
@@ -186,6 +196,7 @@ namespace TCGCustomCards.UI
                 SoundManager.GenericConfirm();
                 _ui.CloseSortAlbumScreen();
                 EnhancedBinderPatches.Rebuild(ctrl);
+                after?.Invoke(ctrl);
                 return;
             }
             if (_pending.Sets.Count == 0) return;
@@ -201,6 +212,7 @@ namespace TCGCustomCards.UI
                 SoundManager.GenericConfirm();
                 _ui.CloseSortAlbumScreen();
                 EnhancedBinderPatches.Rebuild(ctrl);
+                after?.Invoke(ctrl);
             }
         }
 
@@ -483,7 +495,8 @@ namespace TCGCustomCards.UI
             _stats.text = _graded
                 ? $"<b>{SelectionName()}</b>   Slabs {st.Cards}   Showing {st.Matching}   Value {value}"
                 : $"<b>{SelectionName()}</b>   " +
-                  $"Collected {st.Owned} / {st.Cards}   Value {value}   Showing {st.Matching} card{(st.Matching == 1 ? "" : "s")}";
+                  $"Collected {st.Owned} / {st.Cards}   Versions {st.VersionsOwned} / {st.Versions}   Value {value}   " +
+                  $"Showing {st.Matching} card{(st.Matching == 1 ? "" : "s")}";
             bool canApply = _graded || _pending.Sets.Count > 0;
             _apply.GetComponent<Image>().color = !canApply ? Dim : Changed() ? Selected : Normal;
         }
@@ -519,6 +532,8 @@ namespace TCGCustomCards.UI
             _selectables.Clear();
             _tinted.Clear();
             _scrolls.Clear();
+            _pageButtons.Clear();
+            NavReset();
             ReadTemplate(ui);
 
             var screen = (RectTransform)ui.m_SortAlbumScreen.transform;
@@ -567,15 +582,26 @@ namespace TCGCustomCards.UI
             hint.enableAutoSizing = true; hint.fontSizeMax = _u * 0.7f; hint.fontSizeMin = _u * 0.45f;
             hint.color = new Color(_textColor.r, _textColor.g, _textColor.b, 0.6f);
             Place(hint.gameObject, panel, 0.02f, 0.02f, 0.44f, 0.07f);
+            _hintKeys = hint.gameObject;
+            _hintPad = Place(new GameObject("PadHint", typeof(RectTransform)), panel, 0.02f, 0.01f, 0.44f, 0.075f).gameObject;
+            _hintPad.SetActive(false);
 
-            // Footer
+            // Footer: page jumps (also the controller's way to the first / last page), then the panel's own buttons
             var footer = Place(new GameObject("Footer", typeof(RectTransform)), panel, 0.46f, 0.02f, 0.98f, 0.1f);
+            var first = MakeButton(footer, "First page", 0f, () => Apply(EnhancedBinderPatches.JumpToFirst));
+            Place(first.gameObject, footer, 0f, 0f, 0.18f, 1f);
+            var last = MakeButton(footer, "Last page", 0f, () => Apply(EnhancedBinderPatches.JumpToLast));
+            Place(last.gameObject, footer, 0.2f, 0f, 0.38f, 1f);
+            Tint(first, () => Dim);
+            Tint(last, () => Dim);
+            _pageButtons.Add(first.gameObject);
+            _pageButtons.Add(last.gameObject);
             var reset = MakeButton(footer, "Reset", 0f, Reset);
-            Place(reset.gameObject, footer, 0f, 0f, 0.3f, 1f);
+            Place(reset.gameObject, footer, 0.42f, 0f, 0.6f, 1f);
             var close = MakeButton(footer, "Close", 0f, Close);
-            Place(close.gameObject, footer, 0.35f, 0f, 0.65f, 1f);
+            Place(close.gameObject, footer, 0.62f, 0f, 0.8f, 1f);
             _apply = MakeButton(footer, "Apply", 0f, Apply);
-            Place(_apply.gameObject, footer, 0.7f, 0f, 1f, 1f);
+            Place(_apply.gameObject, footer, 0.82f, 0f, 1f, 1f);
 
             _root.SetActive(false);
             Plugin.Log.LogInfo($"Binder panel built (unit {_u:0.#}, panel {panel.rect.width:0}x{panel.rect.height:0}, font {(_font != null ? _font.name : "default")})");
@@ -808,11 +834,13 @@ namespace TCGCustomCards.UI
             }
         }
 
-        /// <summary>Mouse wheel scrolls the list under the cursor (Esc: <see cref="HandleEscape"/>).</summary>
+        /// <summary>Mouse wheel scrolls the list under the cursor (Esc: <see cref="HandleEscape"/>); controller: <see cref="NavUpdate"/>.</summary>
         private sealed class PanelInput : MonoBehaviour
         {
             private void Update()
             {
+                try { NavUpdate(); }
+                catch (Exception e) { Plugin.Log.LogError($"Binder panel controller: {e}"); }
                 float wheel = UnityEngine.Input.mouseScrollDelta.y;
                 if (Mathf.Abs(wheel) < 0.01f) return;
                 var canvas = GetComponentInParent<Canvas>();

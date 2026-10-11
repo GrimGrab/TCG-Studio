@@ -3,6 +3,8 @@
   "showWhen": {
     "Layout": { "setting": "EnhancedBinder", "is": ["true"] },
     "FavouriteKey": { "setting": "EnhancedBinder", "is": ["true"] },
+    "ControllerVersionButton": { "setting": "EnhancedBinder", "is": ["true"] },
+    "ControllerFavouriteButton": { "setting": "EnhancedBinder", "is": ["true"] },
     "AiDeckSetsMin": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
     "AiDeckSetsMax": { "setting": "AiDeckSets", "is": ["RandomInstalled", "RandomLicensed"] },
     "AiDeckSize": { "setting": "AiDeckStyle", "is": ["Random"] },

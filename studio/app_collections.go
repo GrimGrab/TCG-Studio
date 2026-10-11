@@ -8,15 +8,19 @@ import (
 )
 
 // fillCollection gives a set its binder grouping when it has none yet: the import source's game ("Magic: The Gathering",
-// "Pokémon"…) and the set's release date from studio.json. Local sources (image folder, EPL mod) don't know the game:
-// the player types it on the Set tab. Returns true when something was filled in.
+// "Pokémon"…), or for converted content (EPL mods) the mod it came from, as the Catalog names it — so each mod is its own
+// group instead of all landing in "Other sets". Image-folder sets don't know their game: the player types it on the Set
+// tab. Also the set's release date from studio.json. Returns true when something was filled in.
 func (a *App) fillCollection(p *project.Project) bool {
 	if p == nil || p.Set == nil || p.Meta == nil {
 		return false
 	}
 	changed := false
 	if p.Set.Collection == "" {
-		if src, err := a.sources.Get(p.Meta.Source); err == nil && !src.Info().Local && src.Info().Game != "" {
+		if n := p.Meta.OriginName(); n != "" {
+			p.Set.Collection = n
+			changed = true
+		} else if src, err := a.sources.Get(p.Meta.Source); err == nil && !src.Info().Local && src.Info().Game != "" {
 			p.Set.Collection = src.Info().Game
 			changed = true
 		}

@@ -744,6 +744,9 @@ func (a *App) InstallProject(id string) (SaveResult, error) {
 	if err != nil {
 		return SaveResult{}, err
 	}
+	if a.fillCollection(p) { // sets made before converted content got its mod as binder group
+		_ = a.ws().Save(p)
+	}
 	r := SaveResult{Issues: issues(p.Set.Validate(p.Folder, p.LibFolder))}
 	if hasErrors(r.Issues) {
 		r.InstallState = project.InstallState(p, a.settings.GameDir)

@@ -138,15 +138,8 @@ func ReadTMPText(o *Object) (t TMPText, err error) {
 		return t, err
 	}
 	r := m.fields
-	r.pptr()                     // m_Material
-	r.vec4()                     // m_Color
-	r.bool()                     // m_RaycastTarget
-	r.align()                    //
-	r.vec4()                     // m_RaycastPadding
-	r.bool()                     // m_Maskable
-	r.align()                    //
-	if n := r.count(4); n != 0 { // m_OnCullStateChanged.m_PersistentCalls.m_Calls
-		return t, fmt.Errorf("unexpected cull-state listeners")
+	if _, err := readGraphic(r); err != nil {
+		return t, err
 	}
 	t.Text = r.str()
 	r.bool() // right to left

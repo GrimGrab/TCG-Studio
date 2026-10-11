@@ -60,7 +60,7 @@ export function ChooseGlobalCardBack():Promise<string>;
 
 export function ChooseSetCardBack(arg1:string):Promise<string>;
 
-export function ChooseShopSign():Promise<main.ShopSignView>;
+export function ChooseShopPicture(arg1:string):Promise<main.ShopLookView>;
 
 export function Confirm(arg1:string):Promise<boolean>;
 
@@ -142,6 +142,8 @@ export function GetSettings():Promise<main.Settings>;
 
 export function GlobalCardBack():Promise<string>;
 
+export function ImportDoorBackground(arg1:string):Promise<main.ShopFile>;
+
 export function ImportEPL(arg1:string,arg2:main.EPLSelection):Promise<main.EPLResult>;
 
 export function ImportFigurineModel():Promise<main.FigurineSource>;
@@ -151,6 +153,8 @@ export function ImportModelWithTextures(arg1:string,arg2:main.ModelTextures):Pro
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
 
 export function ImportSetup(arg1:string):Promise<string>;
+
+export function ImportShopFont(arg1:string,arg2:string):Promise<main.ShopFile>;
 
 export function ImportSources():Promise<Array<importer.SourceInfo>>;
 
@@ -236,7 +240,7 @@ export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function RemoveGlobalCardBack():Promise<void>;
 
-export function RemoveShopSign():Promise<main.ShopSignView>;
+export function RemoveShopPicture(arg1:string):Promise<main.ShopLookView>;
 
 export function ResolveDiffering(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.StorageResult>;
 
@@ -266,6 +270,8 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
+export function SaveShopPictureText(arg1:string,arg2:string,arg3:string):Promise<main.ShopLookView>;
+
 export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveToCatalog(arg1:string,arg2:Array<string>):Promise<void>;
@@ -274,13 +280,13 @@ export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
 
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 
-export function SetShopSignCrop(arg1:Array<number>):Promise<main.ShopSignView>;
+export function SetShopPictureCrop(arg1:string,arg2:Array<number>):Promise<main.ShopLookView>;
 
-export function SetShopSignFont(arg1:string,arg2:string):Promise<main.ShopSignView>;
+export function SetShopSignFont(arg1:string,arg2:string):Promise<main.ShopLookView>;
 
-export function SetShopSignShowName(arg1:boolean):Promise<main.ShopSignView>;
+export function SetShopSignShowName(arg1:boolean):Promise<main.ShopLookView>;
 
-export function SetShopSignText(arg1:main.ShopSignText):Promise<main.ShopSignView>;
+export function SetShopSignText(arg1:main.ShopSignText):Promise<main.ShopLookView>;
 
 export function SetupRepair():Promise<string>;
 
@@ -288,7 +294,7 @@ export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
 
-export function ShopSign():Promise<main.ShopSignView>;
+export function ShopLook():Promise<main.ShopLookView>;
 
 export function ShopSignFonts():Promise<Array<main.ShopSignFont>>;
 

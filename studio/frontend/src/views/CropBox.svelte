@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cropFor } from '../lib/shopLook';
   // A fixed-shape crop box over an image: drag inside to move it, drag a corner to resize it (the shape stays `aspect`).
   // Everything outside the box is dimmed — the box is what will be shown. `crop` / onchange use fractions of the image
   // [x, y, w, h] from its top-left corner; null = the largest box in the middle.
@@ -16,20 +17,9 @@
   let box = $state<R | null>(null);
   let drag: { mode: 'move' | 'nw' | 'ne' | 'sw' | 'se'; px: number; py: number; start: R } | null = null;
 
-  /** Box height (fraction) for a width (fraction) that keeps the shape on this image. */
-  const hFor = (w: number) => (w * natural.w) / (natural.h * aspect);
-
-  function centred(): R {
-    const ia = natural.w / natural.h;
-    const w = ia > aspect ? aspect / ia : 1;
-    const h = hFor(w);
-    return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
-  }
-
+  /** The box from the crop prop (or the middle), kept inside the image. */
   function fromProp(): R {
-    if (!crop || crop.length !== 4) return centred();
-    const [x, y, w] = crop;
-    const h = hFor(w); // re-derive so the shape is exact
+    const [x, y, w, h] = cropFor(natural.w, natural.h, crop, aspect);
     return { x: Math.min(Math.max(x, 0), 1 - w), y: Math.min(Math.max(y, 0), Math.max(0, 1 - h)), w, h };
   }
 

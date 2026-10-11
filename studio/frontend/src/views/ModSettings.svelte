@@ -8,7 +8,7 @@
 
   let sections = $state<any[]>([]);
   let showWhen = $state<Record<string, { setting: string; is: string[] }>>({});
-  let elsewhere = $state<string[]>([]); // settings edited on another page (Settings → Shop sign)
+  let elsewhere = $state<string[]>([]); // settings edited on another page (Shop look)
   let gameRunning = $state(false);
   let setup = $state('');
   let error = $state('');

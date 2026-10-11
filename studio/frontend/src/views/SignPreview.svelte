@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { loadImage } from '../lib/accessoryArt';
+  import { drawCropped, fillOutlined, fontFamily, latestPerFrame } from '../lib/shopLook';
   // The shop sign as the game draws it (daylight): banner (custom crop or the vanilla art) plus the shop name in its font, colour,
   // size and outline. Layout, default font (Fredoka One as a TMP SDF atlas) and vanilla art come from the game files
   // (templates shopsign/sign.json). Mirrors the mod's Runtime/ShopSign.cs: TMP auto size in the name's rect, which grows in
@@ -19,11 +21,7 @@
   let atlas: { data: Uint8ClampedArray; w: number; h: number; img: HTMLImageElement } | null = null;
   let bg = $state<HTMLImageElement | null>(null);
   let family = $state(''); // loaded FontFace family for style.fontUrl, '' = the default SDF font
-  let fontCounter = 0;
 
-  const loadImage = (src: string) => new Promise<HTMLImageElement>((ok, fail) => {
-    const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src;
-  });
   const base = (u: string) => u.replace(/[^/]*$/, '');
 
   $effect(() => {
@@ -47,8 +45,7 @@
   $effect(() => {
     const url = style.fontUrl;
     if (!url) { family = ''; return; }
-    const fam = `tcgsign${++fontCounter}`;
-    new FontFace(fam, `url("${url}")`).load().then((f) => { document.fonts.add(f); family = fam; }).catch(() => (family = ''));
+    fontFamily(url).then((f) => (family = f)).catch(() => (family = ''));
   });
 
   const rgb = (c: number[], k = 1) => `rgb(${c.slice(0, 3).map((v) => Math.round(Math.min(1, v * k) * 255)).join(',')})`;
@@ -59,7 +56,8 @@
     return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
   };
 
-  $effect(() => { draw(canvas, width, layout, bg, family, image, crop, showName, name, style.color, style.size, style.outline, style.outlineColor); });
+  const later = latestPerFrame();
+  $effect(() => { later(draw.bind(null, canvas, width, layout, bg, family, image, crop, showName, name, style.color, style.size, style.outline, style.outlineColor)); });
 
   function draw(cv: HTMLCanvasElement | undefined, cssW: number, lay: any, back: HTMLImageElement | null, fam: string, img: string,
     cr: number[] | null, show: boolean, text: string, color: string, size: number, outline: number, outlineColor: string) {
@@ -70,15 +68,8 @@
     const g = cv.getContext('2d')!;
     g.fillStyle = '#333'; g.fillRect(0, 0, W, H);
     if (back) {
-      if (img) {
-        // The custom image: its crop box (or the largest sign-shaped box in the middle), stretched to the sign like the mod.
-        let [x, y, w, h] = cr && cr.length === 4 ? cr : [0, 0, 0, 0];
-        if (!(cr && cr.length === 4)) {
-          const ia = back.width / back.height;
-          if (ia > aspect) { w = aspect / ia; h = 1; x = (1 - w) / 2; y = 0; } else { w = 1; h = ia / aspect; x = 0; y = (1 - h) / 2; }
-        } else h = (w * back.width) / (back.height * aspect);
-        g.drawImage(back, x * back.width, y * back.height, w * back.width, h * back.height, 0, 0, W, H);
-      } else g.drawImage(back, 0, 0, W, H);
+      if (img) drawCropped(g, back, cr, aspect, 0, 0, W, H); // the custom image's crop box, stretched to the sign like the mod
+      else g.drawImage(back, 0, 0, W, H);
     }
     if (!lay || !show || !text) return;
 
@@ -123,11 +114,7 @@
       g.font = `${px}px "${fam}"`;
       g.textBaseline = 'alphabetic';
       g.fillStyle = fill(g);
-      g.fillText(text, left, baseline);
-      if (outline > 0) {
-        g.lineJoin = 'round'; g.lineWidth = outline * px; g.strokeStyle = rgb(outCol);
-        g.strokeText(text, left, baseline);
-      }
+      fillOutlined(g, text, left, baseline, px, outline, rgb(outCol));
       return;
     }
     if (!atlas) return;

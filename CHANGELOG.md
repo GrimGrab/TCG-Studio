@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.7.2 - 2026-10-11
+
+Phone wallpaper and your own open/closed sign.
+
+- New: Shop look page in TCG Studio (sidebar). The shop sign settings moved here from Settings.
+- New: Phone wallpaper: pick any picture and crop it to the phone's screen. The preview shows your app buttons on top.
+- New: Open/closed sign at the door: give each side a board colour or your own picture, and write your own words on top in any font, colour, size and outline. The sign's black frame and screws stay.
+- Changed: the shop sign's font, colour, size and outline controls are the same as the door sign's.
+- New F1 settings: Visuals - Shop look → PhoneWallpaperImage, PhoneWallpaperCrop, OpenSignImage, OpenSignCrop, ClosedSignImage, ClosedSignCrop (set from the Shop look page).
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.7.1 - 2026-10-10
 
 See the top of your library in Magic games, plus an import queue in TCG Studio.

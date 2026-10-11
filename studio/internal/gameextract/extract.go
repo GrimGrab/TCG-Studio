@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 11
+const Version = 12
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {
@@ -199,6 +199,10 @@ func (x *extractor) run() error {
 	x.progress("Extracting the shop sign…")
 	if err := x.shopSign(); err != nil {
 		x.warn("shop sign: %v", err) // optional: only the sign preview and game fonts
+	}
+	x.progress("Extracting the phone and the open/closed sign…")
+	if err := x.shopLook(); err != nil {
+		x.warn("shop look: %v", err) // optional: only the Shop look previews
 	}
 	acc := map[string]any{"version": 2, "items": items, "tables": tables, "itemPrefab": prefab, "shelves": shelves}
 	if err := writeJSON(filepath.Join(x.acc, "accessories.json"), acc); err != nil {

@@ -86,8 +86,8 @@ export function ChooseSetCardBack(arg1) {
   return window['go']['main']['App']['ChooseSetCardBack'](arg1);
 }
 
-export function ChooseShopSign() {
-  return window['go']['main']['App']['ChooseShopSign']();
+export function ChooseShopPicture(arg1) {
+  return window['go']['main']['App']['ChooseShopPicture'](arg1);
 }
 
 export function Confirm(arg1) {
@@ -250,6 +250,10 @@ export function GlobalCardBack() {
   return window['go']['main']['App']['GlobalCardBack']();
 }
 
+export function ImportDoorBackground(arg1) {
+  return window['go']['main']['App']['ImportDoorBackground'](arg1);
+}
+
 export function ImportEPL(arg1, arg2) {
   return window['go']['main']['App']['ImportEPL'](arg1, arg2);
 }
@@ -268,6 +272,10 @@ export function ImportSet(arg1, arg2, arg3) {
 
 export function ImportSetup(arg1) {
   return window['go']['main']['App']['ImportSetup'](arg1);
+}
+
+export function ImportShopFont(arg1, arg2) {
+  return window['go']['main']['App']['ImportShopFont'](arg1, arg2);
 }
 
 export function ImportSources() {
@@ -438,8 +446,8 @@ export function RemoveGlobalCardBack() {
   return window['go']['main']['App']['RemoveGlobalCardBack']();
 }
 
-export function RemoveShopSign() {
-  return window['go']['main']['App']['RemoveShopSign']();
+export function RemoveShopPicture(arg1) {
+  return window['go']['main']['App']['RemoveShopPicture'](arg1);
 }
 
 export function ResolveDiffering(arg1, arg2, arg3, arg4) {
@@ -498,6 +506,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SaveShopPictureText(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveShopPictureText'](arg1, arg2, arg3);
+}
+
 export function SaveTemplateImage(arg1, arg2) {
   return window['go']['main']['App']['SaveTemplateImage'](arg1, arg2);
 }
@@ -514,8 +526,8 @@ export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
 }
 
-export function SetShopSignCrop(arg1) {
-  return window['go']['main']['App']['SetShopSignCrop'](arg1);
+export function SetShopPictureCrop(arg1, arg2) {
+  return window['go']['main']['App']['SetShopPictureCrop'](arg1, arg2);
 }
 
 export function SetShopSignFont(arg1, arg2) {
@@ -542,8 +554,8 @@ export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
 }
 
-export function ShopSign() {
-  return window['go']['main']['App']['ShopSign']();
+export function ShopLook() {
+  return window['go']['main']['App']['ShopLook']();
 }
 
 export function ShopSignFonts() {

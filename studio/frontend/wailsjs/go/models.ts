@@ -1974,20 +1974,20 @@ export namespace main {
 		    return a;
 		}
 	}
-	export class ShopSignFont {
-	    source: string;
-	    id: string;
+	export class ShopFile {
+	    file: string;
 	    name: string;
+	    url: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new ShopSignFont(source);
+	        return new ShopFile(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.source = source["source"];
-	        this.id = source["id"];
+	        this.file = source["file"];
 	        this.name = source["name"];
+	        this.url = source["url"];
 	    }
 	}
 	export class ShopSignText {
@@ -2013,12 +2013,8 @@ export namespace main {
 	    }
 	}
 	export class ShopSignView {
-	    image: string;
-	    crop: number[];
 	    showName: boolean;
-	    aspect: number;
 	    text: ShopSignText;
-	    layout: string;
 	    shopName: string;
 	
 	    static createFrom(source: any = {}) {
@@ -2027,12 +2023,8 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.image = source["image"];
-	        this.crop = source["crop"];
 	        this.showName = source["showName"];
-	        this.aspect = source["aspect"];
 	        this.text = this.convertValues(source["text"], ShopSignText);
-	        this.layout = source["layout"];
 	        this.shopName = source["shopName"];
 	    }
 	
@@ -2054,6 +2046,81 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ShopPictureView {
+	    image: string;
+	    crop: number[];
+	    aspect: number;
+	    design: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopPictureView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.image = source["image"];
+	        this.crop = source["crop"];
+	        this.aspect = source["aspect"];
+	        this.design = source["design"];
+	    }
+	}
+	export class ShopLookView {
+	    pictures: Record<string, ShopPictureView>;
+	    sign: ShopSignView;
+	    signLayout: string;
+	    phoneLayout: string;
+	    doorLayout: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopLookView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pictures = this.convertValues(source["pictures"], ShopPictureView, true);
+	        this.sign = this.convertValues(source["sign"], ShopSignView);
+	        this.signLayout = source["signLayout"];
+	        this.phoneLayout = source["phoneLayout"];
+	        this.doorLayout = source["doorLayout"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ShopSignFont {
+	    source: string;
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShopSignFont(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	
+	
 	export class SmartArtCard {
 	    name: string;
 	    image: string;

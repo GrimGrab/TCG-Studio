@@ -46,9 +46,14 @@ func WriteDefaults(path, cached string) error {
 // them and the game hasn't run since), at their default values: after the last entry of their section, or in a new section
 // at the end. BepInEx keeps such entries. A setting that moved to another section (same key, old section no longer in the
 // defaults) keeps the file's value and its old entry is removed — the mod's ConfigMoves does the same. Returns how many
-// were added.
+// were added. Settings the mod no longer has (removedSettings) are dropped from the file.
 func AddMissing(path string) (int, error) {
 	return addMissing(path, defaultsCfg)
+}
+
+// removedSettings are "section/key" of settings the mod dropped; BepInEx keeps such entries, so Studio removes them.
+var removedSettings = map[string]bool{
+	"Binder/Layout": true, // now per save, in the binder panel
 }
 
 func addMissing(path string, defaults []byte) (int, error) {
@@ -71,11 +76,19 @@ func addMissing(path string, defaults []byte) (int, error) {
 	for _, b := range blocks {
 		inDefaults[b.section+"/"+b.key] = true
 	}
-	drop := map[int]bool{}       // file lines of moved entries' old blocks
+	drop := map[int]bool{}       // file lines of moved entries' old blocks and removed settings
 	insert := map[int][]string{} // after file line → lines to add
 	var newSecs []string         // sections the file doesn't have, in defaults order
 	newBlocks := map[string][]string{}
-	n := 0
+	n, removed := 0, 0
+	for _, s := range secs {
+		for _, e := range s.Entries {
+			if removedSettings[s.Name+"/"+e.Key] {
+				drop[e.line] = true
+				removed++
+			}
+		}
+	}
 	for _, b := range blocks {
 		if have[b.section+"/"+b.key] {
 			continue
@@ -101,7 +114,7 @@ func addMissing(path string, defaults []byte) (int, error) {
 		}
 		newBlocks[b.section] = append(append(newBlocks[b.section], ""), b.lines...)
 	}
-	if n == 0 {
+	if n == 0 && removed == 0 {
 		return 0, nil
 	}
 	lines, err := readLines(path)

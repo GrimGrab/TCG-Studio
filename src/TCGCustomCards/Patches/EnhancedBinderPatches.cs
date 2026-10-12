@@ -7,11 +7,11 @@ using UnityEngine.UI;
 namespace TCGCustomCards.Patches
 {
     /// <summary>
-    /// Enhanced binder ([Binder] EnhancedBinder), one-slot-per-card layout: the book, page flips, close-up, taking cards and
-    /// the card pickers (deck edit, bulk donation, grading) stay vanilla; only what fills the pages changes.
-    /// Pages come from <see cref="BinderIndex"/> (one entry per card, sorted once) instead of m_SortedIndexList (12 save
-    /// slots per card). Every picker only reads each slot's CardData, so a slot may show any version of the card.
-    /// Graded album and the Classic layout: vanilla.
+    /// Enhanced binder ([Binder] EnhancedBinder): the book, page flips, close-up, taking cards and the card pickers (deck
+    /// edit, bulk donation, grading) stay vanilla; only what fills the pages changes.
+    /// Pages come from <see cref="BinderIndex"/> (one entry per card, or per version with "Every version separately", sorted once)
+    /// instead of m_SortedIndexList. Every picker only reads each slot's CardData, so a slot may show any version of the card.
+    /// Graded album: the game's slab pages, filled from our sorted list.
     /// </summary>
     internal static class EnhancedBinderPatches
     {
@@ -100,6 +100,12 @@ namespace TCGCustomCards.Patches
         /// </summary>
         internal static void ShowCollected(CollectionBinderUI ui, BinderStats st, ECardExpansionType exp)
         {
+            if (BinderIndex.Separate)
+            {
+                ui.SetCardCollected(st.VersionsOwned, exp); // every version counts on its own: one line is enough
+                if (_versionsText != null) _versionsText.gameObject.SetActive(false);
+                return;
+            }
             ui.SetCardCollected(st.Owned, exp);
             var t = VersionsText(ui);
             if (t == null) return;
@@ -131,17 +137,16 @@ namespace TCGCustomCards.Patches
             return t;
         }
 
-        /// <summary>The versions line only belongs to the one-slot-per-card binder (graded / Classic / off: hidden).</summary>
+        /// <summary>The versions line only belongs to the one-slot-per-card binder (graded / every version separately / off: hidden).</summary>
         private static void SyncVersionsText(CollectionBinderFlipAnimCtrl ctrl)
         {
             if (_versionsText == null) return;
-            bool on = Active(ctrl) && BookOpenRef(ctrl);
+            bool on = Active(ctrl) && !BinderIndex.Separate && BookOpenRef(ctrl);
             if (_versionsText.gameObject.activeSelf != on) _versionsText.gameObject.SetActive(on);
         }
 
-        /// <summary>The one-slot-per-card layout is filling this binder (not graded, setting on).</summary>
-        internal static bool Active(CollectionBinderFlipAnimCtrl ctrl) =>
-            Plugin.EnhancedBinder.Value && Plugin.BinderLayout.Value == BinderLayout.OnePerCard && !GradedRef(ctrl);
+        /// <summary>The enhanced binder is filling this binder's pages (not graded, setting on; either layout).</summary>
+        internal static bool Active(CollectionBinderFlipAnimCtrl ctrl) => Plugin.EnhancedBinder.Value && !GradedRef(ctrl);
 
         // ------------------------------------------------------------------ list + pages
 
@@ -167,8 +172,8 @@ namespace TCGCustomCards.Patches
                 var ui = __instance.m_CollectionBinderUI;
                 if (ui != null)
                 {
-                    // "x / N" in cards, not versions. Field set directly: Mono inlines the one-line setter, so patching it never runs.
-                    MaxCollectRef(ui) = BinderIndex.Stats.Cards;
+                    // "x / N" in cards (every version separately: versions). Field set directly: Mono inlines the one-line setter, so patching it never runs.
+                    MaxCollectRef(ui) = BinderIndex.Separate ? BinderIndex.Stats.Versions : BinderIndex.Stats.Cards;
                     ShowCollected(ui, BinderIndex.Stats, exp);
                     ui.SetTotalValue(BinderIndex.Stats.Value); // across every set shown
                 }
@@ -239,7 +244,8 @@ namespace TCGCustomCards.Patches
                 return;
             }
             grp.SetSingleCard(j, e.Card(v), e.Count(v), plain); // count text: the shown version, vanilla style
-            VersionPips.Show(slot, e, v);
+            if (e.Fixed >= 0) VersionPips.ShowFavourite(slot, e);
+            else VersionPips.Show(slot, e, v);
         }
 
         /// <summary>The entry behind a slot of the open page (0..11), or null.</summary>
@@ -251,7 +257,7 @@ namespace TCGCustomCards.Patches
 
         // ------------------------------------------------------------------ panel
 
-        /// <summary>Sort Album opens our panel inside the vanilla sort screen (graded album / Classic: vanilla content).</summary>
+        /// <summary>Sort Album opens our panel inside the vanilla sort screen.</summary>
         [HarmonyPatch(typeof(CollectionBinderUI), nameof(CollectionBinderUI.OpenSortAlbumScreen))]
         private static class PanelOpenPatch
         {
@@ -421,7 +427,7 @@ namespace TCGCustomCards.Patches
             {
                 float wheel = Input.mouseScrollDelta.y;
                 if (wheel == 0f && UI.PadInput.Down(Plugin.BinderPadVersion.Value)) wheel = -1f; // = wheel down: next version
-                if (wheel == 0f || !Active(__instance)) return;
+                if (wheel == 0f || !Active(__instance) || BinderIndex.Separate) return;
                 if (!BookOpenRef(__instance) || !CanFlipRef(__instance) || __instance.m_IsHoldingCardCloseUp) return;
                 if (__instance.m_CollectionBinderUI != null && __instance.m_CollectionBinderUI.IsSortAlbumScreenOpen()) return;
                 var hovered = __instance.m_CurrentRaycastedInteractableCard3d;

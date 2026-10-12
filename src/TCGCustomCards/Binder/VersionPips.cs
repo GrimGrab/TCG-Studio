@@ -62,6 +62,22 @@ namespace TCGCustomCards.Binder
             var b = text.textBounds;
             p.Root.anchoredPosition = new Vector2(b.max.x + p.Gap, b.center.y);
             p.Root.gameObject.SetActive(true);
+            PlaceHeart(p, e, b);
+        }
+
+        /// <summary>Every-version-separately layout: no squares, only the favourite heart.</summary>
+        public static void ShowFavourite(Card3dUIGroup slot, BinderEntry e)
+        {
+            var p = Get(slot, e.Per);
+            if (p == null) return;
+            p.Root.gameObject.SetActive(false);
+            var text = slot.m_CardCountText;
+            text.ForceMeshUpdate();
+            PlaceHeart(p, e, text.textBounds);
+        }
+
+        private static void PlaceHeart(Pips p, BinderEntry e, Bounds b)
+        {
             bool fav = Favourites.Has(e);
             p.Fav.gameObject.SetActive(fav);
             if (fav) p.Fav.anchoredPosition = new Vector2(b.min.x - p.Gap - p.Fav.sizeDelta.x * 0.5f, b.center.y);

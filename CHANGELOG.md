@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.8.2 - 2026-10-12
+
+Binder: see every version of a card on its own.
+
+- New: "Every version separately" in the binder panel (Sort Album → Show). Each border and foil version gets its own slot, 12 per card like the game's binder, and keeps every enhanced binder feature: search, filters, sorts, several sets at once, favourites and Home/End. The counter at the top then counts versions. With "Gaps for missing", versions you don't own show as empty slots.
+- Changed: the choice is saved per save file, so an early-game save can show versions apart while a late-game save keeps one slot per card.
+- Removed: the Binder → Layout setting (it used to turn the enhanced binder off). Saves that don't have their own choice yet start with your old setting.
+After updating: open Setup and click Install / Repair to update the mod in the game.
+
 ## v1.8.1 - 2026-10-11
 
 Controller support for the improved binder, version totals, and EPL mods grouped by name.

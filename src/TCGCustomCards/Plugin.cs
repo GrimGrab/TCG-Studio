@@ -67,7 +67,8 @@ namespace TCGCustomCards
         internal static readonly ConfigEntry<float>[] HoloFoilStrength = new ConfigEntry<float>[6];
         internal static readonly ConfigEntry<HoloPattern>[] HoloFoilPattern = new ConfigEntry<HoloPattern>[6];
         internal static ConfigEntry<bool> EnhancedBinder;
-        internal static ConfigEntry<Binder.BinderLayout> BinderLayout;
+        /// <summary>The removed [Binder] Layout setting was Classic (first load of a save without its own layout).</summary>
+        internal static bool OldClassicLayout;
         internal static ConfigEntry<KeyboardShortcut> BinderFavouriteKey;
         internal static ConfigEntry<UI.BinderPadButton> BinderPadVersion;
         internal static ConfigEntry<UI.BinderPadButton> BinderPadFavourite;
@@ -83,9 +84,8 @@ namespace TCGCustomCards
             var cfgBefore = ConfigMoves.Snapshot(Config); // see ConfigMoves: settings moved to a sub-section keep their value
             EnhancedBinder = Config.Bind("Binder", "EnhancedBinder", true,
                 "On = the improved binder (one slot per card with a version switcher, fast sorting). Off = the game's own binder, unchanged.");
-            BinderLayout = Config.Bind("Binder", "Layout", Binder.BinderLayout.OnePerCard,
-                "OnePerCard = each card gets one slot showing your best version; the small squares under it show which border/foil " +
-                "versions you own (top row normal, bottom row foil). Mouse wheel over a card switches between the versions you own. Classic = the game's 12 slots per card. Only with EnhancedBinder on.");
+            // [Binder] Layout was removed: the layout is now per save (binder panel). Its old value is the default for older saves.
+            OldClassicLayout = cfgBefore.TryGetValue(("Binder", "Layout"), out var oldLayout) && oldLayout == "Classic";
             BinderFavouriteKey = Config.Bind("Binder", "FavouriteKey", new KeyboardShortcut(UnityEngine.KeyCode.T),
                 "In the binder, this key marks the card under the mouse (or held up close) as a favourite, or unmarks it. Favourites " +
                 "get a red heart in the binder and their own filter in the binder panel. Only with EnhancedBinder on.");
@@ -332,6 +332,7 @@ namespace TCGCustomCards
             ShowVanillaPacks.SettingChanged += (_, __) => VanillaFilter.Apply();
             DevTools.Init(Config);
             ConfigMoves.CarryMoved(Config, cfgBefore); // after every Bind
+            ConfigMoves.DropRemoved(Config, ("Binder", "Layout"));
 
             Registry.Build(SetLoader.LoadAll(Path.Combine(PluginDir, "Sets")));
             Registry.BuildAccessories(AccessoryLoader.Load(PluginDir));

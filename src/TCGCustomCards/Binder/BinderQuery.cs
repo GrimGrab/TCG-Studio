@@ -28,6 +28,8 @@ namespace TCGCustomCards.Binder
         /// <summary>Set order without filters: an empty spot for every card not owned (full-set binder). Off = owned cards packed together.</summary>
         public bool Gaps;
         public bool FavouritesOnly;
+        /// <summary>Every version its own slot instead of one slot per card.</summary>
+        public bool Separate;
         /// <summary>Borders 0..5 (Base … Full art); any owned version with one of these.</summary>
         public readonly HashSet<int> Borders = new HashSet<int>();
         /// <summary>false = normal, true = foil.</summary>
@@ -45,7 +47,7 @@ namespace TCGCustomCards.Binder
 
         public BinderQuery Clone()
         {
-            var q = new BinderQuery { Sort = Sort, Search = Search, In = In, Show = Show, Gaps = Gaps, FavouritesOnly = FavouritesOnly };
+            var q = new BinderQuery { Sort = Sort, Search = Search, In = In, Show = Show, Gaps = Gaps, FavouritesOnly = FavouritesOnly, Separate = Separate };
             q.Sets.AddRange(Sets);
             q.Borders.UnionWith(Borders); q.Foil.UnionWith(Foil); q.Rarities.UnionWith(Rarities);
             q.Elements.UnionWith(Elements); q.Colours.UnionWith(Colours); q.Types.UnionWith(Types);
@@ -55,7 +57,7 @@ namespace TCGCustomCards.Binder
         }
 
         public bool SameAs(BinderQuery o) =>
-            Sets.SequenceEqual(o.Sets) && Sort == o.Sort && Search == o.Search && In == o.In && Show == o.Show && Gaps == o.Gaps && FavouritesOnly == o.FavouritesOnly && Borders.SetEquals(o.Borders) &&
+            Sets.SequenceEqual(o.Sets) && Sort == o.Sort && Search == o.Search && In == o.In && Show == o.Show && Gaps == o.Gaps && FavouritesOnly == o.FavouritesOnly && Separate == o.Separate && Borders.SetEquals(o.Borders) &&
             Foil.SetEquals(o.Foil) && Rarities.SetEquals(o.Rarities) && Elements.SetEquals(o.Elements) &&
             Colours.SetEquals(o.Colours) && Types.SetEquals(o.Types) && ManaValues.SetEquals(o.ManaValues) && Grades.SetEquals(o.Grades);
 

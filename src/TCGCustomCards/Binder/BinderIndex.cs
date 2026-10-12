@@ -4,8 +4,6 @@ using TCGCustomCards.Patches;
 
 namespace TCGCustomCards.Binder
 {
-    internal enum BinderLayout { OnePerCard, Classic }
-
     /// <summary>
     /// One card of the binder in the one-slot-per-card layout: all its border × foil versions (save slots) together.
     /// Counts and prices are read live, so cards taken out or pulled while the binder is built stay right.
@@ -23,6 +21,8 @@ namespace TCGCustomCards.Binder
         /// <summary>Versions shown as squares: the set has it, or the player owns one.</summary>
         public bool[] Listed;
         public int Order;
+        /// <summary>Every-version-separately layout: the one version this slot shows (-1 = the card with all its versions).</summary>
+        public int Fixed = -1;
 
         public CardInfo Info => CardInfo.Of(Monster);
         public int SaveIndex(int v) => Pos * Per + v;
@@ -30,6 +30,7 @@ namespace TCGCustomCards.Binder
 
         public int Total()
         {
+            if (Fixed >= 0) return Count(Fixed);
             int n = 0;
             for (int v = 0; v < Per; v++) n += Count(v);
             return n;
@@ -37,6 +38,7 @@ namespace TCGCustomCards.Binder
 
         public float TotalValue()
         {
+            if (Fixed >= 0) return Count(Fixed) * Price(Fixed);
             float sum = 0f;
             for (int v = 0; v < Per; v++)
             {
@@ -60,6 +62,9 @@ namespace TCGCustomCards.Binder
         }
 
         public float Price(int v) => CPlayerData.GetCardMarketPrice(Card(v));
+
+        /// <summary>Same card, all fields copied (the key is shared).</summary>
+        public BinderEntry MemberwiseCopy() => (BinderEntry)MemberwiseClone();
 
         private string _key;
         /// <summary>Stable card key (<see cref="BinderKeys.Card(BinderEntry)"/>): favourites and picked versions.</summary>
@@ -96,6 +101,9 @@ namespace TCGCustomCards.Binder
         public static List<ECardExpansionType> SetsFor(ECardExpansionType exp) =>
             Query.Sets.Count > 0 && Query.Sets.Contains(exp) ? Query.Sets.ToList() : new List<ECardExpansionType> { exp };
 
+        /// <summary>Every version (border × foil) gets its own slot, like the game's binder (per save, binder panel).</summary>
+        public static bool Separate => Query.Separate;
+
         /// <summary>Fills <see cref="Entries"/> for the binder.</summary>
         public static void Build(ECardExpansionType exp)
         {
@@ -131,9 +139,16 @@ namespace TCGCustomCards.Binder
 
             if (q.Gaps && q.Sort == BinderSort.SetOrder && q.Unfiltered)
             {
-                stats.Matching = stats.Owned;
-                return all; // every card keeps its place: missing cards are gaps, like a real binder
+                // every card keeps its place: missing cards are gaps, like a real binder
+                if (!q.Separate)
+                {
+                    stats.Matching = stats.Owned;
+                    return all;
+                }
+                stats.Matching = stats.VersionsOwned;
+                return Versions(all, (e, v) => e.Listed[v]);
             }
+            if (q.Separate) all = Versions(all, (e, v) => Usable(e, q, v));
             var shown = all.Where(e => Shown(e, q) >= 0 && q.CardOk(e.Info) && (!q.FavouritesOnly || Favourites.Has(e))).ToList();
             stats.Matching = shown.Count;
             IEnumerable<BinderEntry> sorted;
@@ -150,6 +165,22 @@ namespace TCGCustomCards.Binder
                 default: sorted = shown; break;
             }
             return sorted is IOrderedEnumerable<BinderEntry> o ? o.ThenBy(e => e.Order).ToList() : sorted.ToList();
+        }
+
+        /// <summary>One entry per version of every card that passes <paramref name="keep"/>, in the game's order (card, then version).</summary>
+        private static List<BinderEntry> Versions(List<BinderEntry> cards, System.Func<BinderEntry, int, bool> keep)
+        {
+            var list = new List<BinderEntry>();
+            foreach (var e in cards)
+                for (int v = 0; v < e.Per; v++)
+                {
+                    if (!keep(e, v)) continue;
+                    var copy = e.MemberwiseCopy();
+                    copy.Fixed = v;
+                    copy.Order = list.Count;
+                    list.Add(copy);
+                }
+            return list;
         }
 
         /// <summary>The graded album's query (sets empty = every set).</summary>
@@ -231,6 +262,7 @@ namespace TCGCustomCards.Binder
         /// </summary>
         public static int Shown(BinderEntry e, BinderQuery q)
         {
+            if (e.Fixed >= 0) return Usable(e, q, e.Fixed) ? e.Fixed : -1;
             if (Picked.TryGetValue(e.Key, out int p) && p < e.Per && Usable(e, q, p)) return p;
             int best = -1;
             float bestPrice = -1f;
@@ -248,6 +280,7 @@ namespace TCGCustomCards.Binder
         /// <summary>Next (step +1) or previous (-1) usable version after the shown one; remembers the pick. False if there is no other.</summary>
         public static bool Switch(BinderEntry e, int step)
         {
+            if (e.Fixed >= 0) return false;
             int cur = Shown(e);
             if (cur < 0) return false;
             for (int i = 1; i < e.Per; i++)

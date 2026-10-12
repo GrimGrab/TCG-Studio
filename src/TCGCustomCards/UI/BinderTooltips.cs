@@ -28,7 +28,7 @@ namespace TCGCustomCards.UI
             var versionBtn = Plugin.BinderPadVersion.Value;
             var favBtn = Plugin.BinderPadFavourite.Value;
             var favKey = Plugin.BinderFavouriteKey.Value.MainKey;
-            bool showVersion = on && !ctrl.m_IsHoldingCardCloseUp && (!pad || versionBtn != BinderPadButton.None);
+            bool showVersion = on && !Binder.BinderIndex.Separate && !ctrl.m_IsHoldingCardCloseUp && (!pad || versionBtn != BinderPadButton.None);
             bool showFav = on && (pad ? favBtn != BinderPadButton.None : favKey != KeyCode.None);
 
             if (display != _display || _version == null || _favourite == null)

@@ -15,6 +15,8 @@ namespace TCGCustomCards.Binder
         public List<string> sets;
         public string sort, search, searchIn, show;
         public bool gaps, favouritesOnly;
+        /// <summary>Every version its own slot; null = a save from before this choice (the old [Binder] Layout setting decides).</summary>
+        public bool? separate;
         public List<int> borders;
         public List<bool> foil;
         public List<string> rarities, elements, colours, types;
@@ -84,7 +86,7 @@ namespace TCGCustomCards.Binder
         {
             sets = q.Sets.Select(BinderKeys.Set).ToList(),
             sort = q.Sort.ToString(), search = q.Search, searchIn = q.In.ToString(), show = q.Show.ToString(),
-            gaps = q.Gaps, favouritesOnly = q.FavouritesOnly,
+            gaps = q.Gaps, favouritesOnly = q.FavouritesOnly, separate = q.Separate,
             borders = q.Borders.ToList(), foil = q.Foil.ToList(), rarities = q.Rarities.ToList(),
             elements = q.Elements.Select(e => e.ToString()).ToList(), colours = q.Colours.ToList(), types = q.Types.ToList(),
             manaValues = q.ManaValues.ToList(), grades = q.Grades.ToList(),
@@ -129,6 +131,7 @@ namespace TCGCustomCards.Binder
             BinderIndex.Reset();
             _orphans = new BinderSave { favourites = new List<string>(), picked = new Dictionary<string, int>() };
             var q = Query(s, BinderSort.SetOrder);
+            q.Separate = s?.separate ?? Plugin.OldClassicLayout;
             BinderIndex.GradedQuery = Query(s?.graded, BinderSort.Grade);
             if (s != null)
             {
@@ -142,7 +145,8 @@ namespace TCGCustomCards.Binder
             }
             else Favourites.Load(null);
             BinderIndex.Query = q;
-            Plugin.Log.LogInfo($"Binder: {q.Sets.Count} set(s) picked, {Favourites.Count} favourite(s)");
+            Plugin.Log.LogInfo($"Binder: {q.Sets.Count} set(s) picked, {Favourites.Count} favourite(s), " +
+                               (q.Separate ? "every version separately" : "one slot per card"));
         }
 
         /// <summary>A custom card key whose set is installed, or any vanilla key.</summary>

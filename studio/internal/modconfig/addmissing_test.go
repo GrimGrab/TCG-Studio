@@ -79,3 +79,19 @@ func TestAddMissingMoved(t *testing.T) {
 		t.Errorf("RestoreDefaults(Foil) reset %d, want 1 (sub-section included)", n)
 	}
 }
+
+func TestAddMissingDropsRemoved(t *testing.T) {
+	keep := "[Binder]\r\n\r\n## On.\r\n# Setting type: Boolean\r\n# Default value: true\r\nEnhancedBinder = true\r\n"
+	file := keep + "\r\n## Old layout.\r\n# Setting type: BinderLayout\r\n# Default value: OnePerCard\r\nLayout = Classic\r\n"
+	p := filepath.Join(t.TempDir(), FileName)
+	if err := os.WriteFile(p, []byte(file), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := addMissing(p, []byte(keep)); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "Layout") || !strings.Contains(string(b), "EnhancedBinder = true") {
+		t.Errorf("removed setting not dropped cleanly:\n%s", b)
+	}
+}

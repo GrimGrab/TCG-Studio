@@ -60,6 +60,22 @@ namespace TCGCustomCards
             if (moved > 0) cfg.Save();
         }
 
+        /// <summary>Settings the mod no longer has: dropped from the file (BepInEx would keep them forever).</summary>
+        public static void DropRemoved(ConfigFile cfg, params (string section, string key)[] removed)
+        {
+            var orphans = OrphanedEntries(cfg);
+            if (orphans == null) return;
+            int n = 0;
+            foreach (var (section, key) in removed)
+            {
+                var def = new ConfigDefinition(section, key);
+                if (!orphans.Contains(def)) continue;
+                orphans.Remove(def);
+                n++;
+            }
+            if (n > 0) cfg.Save();
+        }
+
         /// <summary>BepInEx's entries read from the file but not bound (non-public in 5.4), or null.</summary>
         private static IDictionary OrphanedEntries(ConfigFile cfg)
         {

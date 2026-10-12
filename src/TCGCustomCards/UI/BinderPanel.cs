@@ -424,7 +424,8 @@ namespace TCGCustomCards.UI
             Group("Show", new[] { ("All cards", (Action)(() => _pending.Show = BinderShow.All), (Func<bool>)(() => _pending.Show == BinderShow.All)),
                                   ("Duplicates", () => _pending.Show = BinderShow.Duplicates, () => _pending.Show == BinderShow.Duplicates),
                                   ("Favourites", () => _pending.FavouritesOnly = !_pending.FavouritesOnly, () => _pending.FavouritesOnly),
-                                  ("Gaps for missing", () => _pending.Gaps = !_pending.Gaps, () => _pending.Gaps) });
+                                  ("Gaps for missing", () => _pending.Gaps = !_pending.Gaps, () => _pending.Gaps),
+                                  ("Every version separately", () => _pending.Separate = !_pending.Separate, () => _pending.Separate) });
             string[] borders = { "Base", "1st edition", "Silver", "Gold", "EX", "Full art" };
             Group("Border", borders.Select((b, i) => Toggle(b, _pending.Borders, i)).ToArray());
             Group("Finish", new[] { Toggle("Normal", _pending.Foil, false), Toggle("Foil", _pending.Foil, true) });
@@ -494,6 +495,9 @@ namespace TCGCustomCards.UI
             string value = GameInstance.GetPriceString(st.Value);
             _stats.text = _graded
                 ? $"<b>{SelectionName()}</b>   Slabs {st.Cards}   Showing {st.Matching}   Value {value}"
+                : _pending.Separate
+                ? $"<b>{SelectionName()}</b>   Collected {st.VersionsOwned} / {st.Versions}   Value {value}   " +
+                  $"Showing {st.Matching} version{(st.Matching == 1 ? "" : "s")}"
                 : $"<b>{SelectionName()}</b>   " +
                   $"Collected {st.Owned} / {st.Cards}   Versions {st.VersionsOwned} / {st.Versions}   Value {value}   " +
                   $"Showing {st.Matching} card{(st.Matching == 1 ? "" : "s")}";

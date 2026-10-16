@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { App, EventsOn, EventsOff, errText, ask } from '../lib/api';
+  import { onMount } from 'svelte';
+  import { Ev } from '../lib/events';
+  import { App, EventsOn, errText, ask } from '../lib/api';
   import DebugLog from './DebugLog.svelte';
 
   let { notify, onchange }: { notify: (t: string, k?: string) => void; onchange: () => void } = $props();
@@ -66,15 +67,17 @@
   async function verify() { check = await App.CheckModLoaded(); }
 
   onMount(() => {
-    EventsOn('setup:progress', (line: string) => (log = [...log, line]));
-    EventsOn('forge:progress', (p: any) => (forgeProg = p));
+    const offs = [
+      EventsOn(Ev.SetupProgress, (line: string) => (log = [...log, line])),
+      EventsOn(Ev.ForgeProgress, (p: any) => (forgeProg = p)),
+    ];
     refresh();
+    return () => offs.forEach((off) => off());
   });
-  onDestroy(() => { EventsOff('setup:progress'); EventsOff('forge:progress'); });
 </script>
 
 <div class="page">
-  <header class="row"><h2 class="grow">Setup</h2>
+  <header class="row"><h2 class="grow">Game &amp; mod</h2>
     <button onclick={refresh} disabled={busy}>Re-check</button>
   </header>
   <p class="muted intro">Installs everything needed to play with custom cards: the BepInEx mod loader, the in-game settings menu (F1)

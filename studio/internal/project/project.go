@@ -2,16 +2,16 @@
 package project
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setfmt"
@@ -73,7 +73,7 @@ type CardMeta struct {
 	Power      string   `json:"power,omitempty"`
 	Toughness  string   `json:"toughness,omitempty"`
 	SrcRarity  string   `json:"srcRarity,omitempty"`
-	Variant    []string `json:"variant,omitempty"` // Borderless / Showcase / Extended Art / Etched / Full Art
+	Variant    []string `json:"variant,omitempty"`  // Borderless / Showcase / Extended Art / Etched / Full Art
 	BackName   string   `json:"backName,omitempty"` // double-faced cards (transform, modal DFC): the back face's name
 	USD        *float64 `json:"usd,omitempty"`
 	USDFoil    *float64 `json:"usdFoil,omitempty"`
@@ -83,62 +83,33 @@ type CardMeta struct {
 
 type Project struct {
 	ID     string `json:"id"`
-	Folder string `json:"folder"`
-	// LibFolder is the set's folder in the shared card-art library (<workspace>\library\<id>), "" when there is none.
-	// Images are looked up in Folder first, then here (ImagePath).
+	Folder string `json:"folder"` // the setup's project folder: set.json and studio.json (game info)
+	// LibFolder is the set's shared folder (<workspace>\library\<id>): every file the set refers to lives there.
 	LibFolder string      `json:"libFolder"`
 	Set       *setfmt.Set `json:"set"`
 	Meta      *Meta       `json:"meta"`
 }
 
-// ImagePath is the file for an image path of the set: the project's own folder first (art changed in this setup), then the
-// shared card-art library. Returns the project-folder path when neither has it.
+// ImagePath is the file for a path the set refers to ("images/…"), in the set's shared folder.
 func (p *Project) ImagePath(rel string) string {
-	own := filepath.Join(p.Folder, filepath.FromSlash(rel))
-	if p.LibFolder == "" {
-		return own
-	}
-	if _, err := os.Stat(own); err == nil {
-		return own
-	}
-	if lib := filepath.Join(p.LibFolder, filepath.FromSlash(rel)); fileExists(lib) {
-		return lib
-	}
-	return own
-}
-
-// InLibrary reports whether rel is served from the shared library (not overridden in the project folder).
-func (p *Project) InLibrary(rel string) bool {
-	return p.LibFolder != "" && p.ImagePath(rel) != filepath.Join(p.Folder, filepath.FromSlash(rel))
+	return filepath.Join(p.LibFolder, filepath.FromSlash(rel))
 }
 
 // WriteTarget is where Studio writes a set file it makes or changes (pack/box art, Smart-art parts, card back, photos,
-// rotated card art) given as rel ("images/…"). New and edited files go to the set's shared folder, so a setup keeps only
-// its game info and an edit shows in every setup using the shared art; a set kept as its own art (ArtFolder) writes
-// into that named folder, never over the ordinary shared files. A file this setup still keeps itself (an own copy the
-// Storage page hasn't moved yet) is written there, so the setup never starts reading a different file. Returns the path
-// to store in set.json / studio.json and the file to write; without a library both are in the project folder.
+// rotated card art): the set's shared folder, so an edit shows in every setup using the set. Returns the path to store
+// in set.json / studio.json (rel itself) and the file to write.
 func (p *Project) WriteTarget(rel string) (string, string) {
-	if af := p.ArtFolder(); af != "" && !strings.HasPrefix(rel, af+"/") {
-		rel = af + "/" + rel
-	}
-	own := filepath.Join(p.Folder, filepath.FromSlash(rel))
-	if p.LibFolder == "" || fileExists(own) {
-		return rel, own
-	}
-	return rel, filepath.Join(p.LibFolder, filepath.FromSlash(rel))
+	return rel, p.ImagePath(rel)
 }
 
-// WriteFile writes a set file through WriteTarget (folders created) and returns the path to store.
+// WriteFile writes a set file into the set's shared folder (folders created) and returns the path to store.
 func (p *Project) WriteFile(rel string, b []byte) (string, error) {
 	rel, f := p.WriteTarget(rel)
 	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
 		return "", err
 	}
-	return rel, os.WriteFile(f, b, 0o644)
+	return rel, fsutil.WriteAtomic(f, b)
 }
-
-func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 type Summary struct {
 	ID         string    `json:"id"`
@@ -153,8 +124,8 @@ type Summary struct {
 	Installed  bool      `json:"installed"`
 	// InstallState: "none" (not in the game), "current" (the game has this version) or "stale" (edited since the last install).
 	InstallState string `json:"installState"`
-	Cover        string `json:"cover"`            // relative image for the list thumbnail
-	Origin       string `json:"origin,omitempty"` // converted content: the mod it came from (for display and sorting)
+	Cover        string `json:"cover"`                // relative image for the list thumbnail
+	Origin       string `json:"origin,omitempty"`     // converted content: the mod it came from (for display and sorting)
 	Collection   string `json:"collection,omitempty"` // set.json collection (game/series), for the Set tab's suggestions
 }
 
@@ -170,14 +141,15 @@ func (m *Meta) OriginName() string {
 	return ""
 }
 
-// Workspace is one setup's projects. Library is the workspace-wide card-art library root (<workspace>\library), shared by
-// every setup; "" = no library (images only in project folders).
+// Workspace is one setup's projects (Root = the setup folder, or the catalog). Library is the workspace-wide shared
+// folder of set files (<workspace>\library) every setup reads from.
 type Workspace struct {
 	Root    string
 	Library string
 }
 
-// LibraryDirName is the shared card-art library folder: in the studio workspace and in the mod folder (<plugin>\Library).
+// LibraryDirName is the workspace's shared library folder (every set's files); GameLibraryDirName the game-folder copy
+// older Studio versions made (unused now: the mod reads the workspace's library, see game.StudioPathsFile).
 const (
 	LibraryDirName     = "library"
 	GameLibraryDirName = "Library"
@@ -186,23 +158,18 @@ const (
 // LibraryDir is the card-art library of a studio workspace (the folder that holds the setups).
 func LibraryDir(workspace string) string { return filepath.Join(workspace, LibraryDirName) }
 
-// GameLibraryDir is the mod's shared card-art folder.
+// GameLibraryDir is the game-folder copy of set files older Studio versions made (library.RemoveGameCopies deletes it).
 func GameLibraryDir(gameDir string) string {
 	return filepath.Join(game.PluginDir(gameDir), GameLibraryDirName)
 }
 
-// ImagePath resolves an image path of project id like Project.ImagePath (project folder, then the shared library).
+// ImagePath is the file for a path set id refers to (see Project.ImagePath).
 func (w Workspace) ImagePath(id, rel string) string {
-	return (&Project{ID: id, Folder: w.Folder(id), LibFolder: w.LibFolder(id)}).ImagePath(rel)
+	return (&Project{ID: id, LibFolder: w.LibFolder(id)}).ImagePath(rel)
 }
 
-// LibFolder is set id's folder in the shared card-art library ("" without a library).
-func (w Workspace) LibFolder(id string) string {
-	if w.Library == "" {
-		return ""
-	}
-	return filepath.Join(w.Library, id)
-}
+// LibFolder is set id's shared folder.
+func (w Workspace) LibFolder(id string) string { return filepath.Join(w.Library, id) }
 
 func DefaultRoot() string {
 	home, _ := os.UserHomeDir()
@@ -239,8 +206,8 @@ func (w Workspace) List(gameDir string) ([]Summary, error) {
 		if info != nil {
 			s.Modified = info.ModTime()
 		}
-		if gameDir != "" {
-			s.InstallState = InstallState(p, gameDir)
+		if game.IsGameDir(gameDir) {
+			s.InstallState = w.InstallState(p, gameDir)
 			s.Installed = s.InstallState != StateNone
 		}
 		if len(p.Set.Cards) > 0 {
@@ -309,96 +276,32 @@ func (w Workspace) Delete(id string) error {
 	return os.RemoveAll(w.Folder(id))
 }
 
-// Install copies set.json and every referenced image into the game's Sets folder (replacing an older copy). Card art that
-// lives in the shared library (not changed in this setup) goes to the mod's Library folder instead when the installed mod
-// reads it: copied once, kept across setup switches, so installing and switching only copy the set's small files.
+// ModTooOld is Install's error when the game's mod doesn't read set files from Studio's library.
+var ModTooOld = errors.New("the mod in the game is older than this TCG Studio — open Game & mod and click Install / Repair")
+
+// Install puts the set into the game: it is saved and ticked in the setup's installed sets (setup.json), and the mod is
+// pointed at this setup and the shared library (game.StudioPathsFile). The game reads set.json from the project folder
+// and the set's files from the library when it next starts; nothing is written into the game folder.
 func (w Workspace) Install(p *Project, gameDir string) error {
 	if !game.IsGameDir(gameDir) {
 		return fmt.Errorf("game folder not set")
 	}
-	shared := game.ModHasLibrary(gameDir)
-	dest := filepath.Join(game.SetsDir(gameDir), p.ID)
-	tmp := dest + ".installing"
-	_ = os.RemoveAll(tmp)
-	if err := os.MkdirAll(tmp, 0o755); err != nil { // a set without images copies no file that would create it
+	if !game.ModReadsLibrary(gameDir) {
+		return ModTooOld
+	}
+	if err := w.Save(p); err != nil {
 		return err
 	}
-	for rel := range installFiles(p) {
-		src, dst := installPaths(p, gameDir, rel, shared)
-		if toGameLibrary(p, rel, shared) {
-			if !upToDate(src, dst) { // the game's library copy: only what's missing or changed
-				if err := copyFile(src, dst); err != nil && !os.IsNotExist(err) {
-					return err
-				}
-			}
-			continue
-		}
-		if err := copyFile(src, filepath.Join(tmp, filepath.FromSlash(rel))); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	if err := p.Set.Save(filepath.Join(tmp, SetFile)); err != nil {
+	if err := w.setInstalled(p.ID, true); err != nil {
 		return err
 	}
-	_ = os.RemoveAll(dest)
-	return os.Rename(tmp, dest)
-}
-
-// installPaths returns where rel comes from (project folder or library) and where Install puts it in the game: the set's
-// folder, or <plugin>\Library\<id> for library art when the mod reads it (shared).
-func installPaths(p *Project, gameDir, rel string, shared bool) (src, dst string) {
-	src = p.ImagePath(rel)
-	if toGameLibrary(p, rel, shared) {
-		return src, filepath.Join(GameLibraryDir(gameDir), p.ID, filepath.FromSlash(rel))
-	}
-	return src, filepath.Join(game.SetsDir(gameDir), p.ID, filepath.FromSlash(rel))
-}
-
-// toGameLibrary reports whether Install puts rel in the game's Library folder: shared library files the mod looks up
-// there (card images and the card back, through SetDef.Resolve). Pack/box art always goes into the set's folder — mods up
-// to 0.15.3 read it from there only — and it is only a few files.
-func toGameLibrary(p *Project, rel string, shared bool) bool {
-	if !shared || !p.InLibrary(rel) {
-		return false
-	}
-	for _, pk := range p.Set.Packs {
-		if rel == pk.PackTexture || rel == pk.PackIcon || rel == pk.BoxTexture || rel == pk.BoxIcon {
-			return false
+	return game.UpdateStudioPaths(gameDir, func(sp *game.StudioPaths) {
+		// Another setup of this workspace is the active one's business (a switch may have finished while this install ran);
+		// only a missing setup or another workspace is repointed here.
+		if sp.Setup == "" || !fsutil.Exists(sp.Setup) || !game.SameDir(sp.Library, w.Library) {
+			sp.Library, sp.Setup = w.Library, w.Root
 		}
-	}
-	return true
-}
-
-// upToDate reports whether dst is a current copy of src (same size, not older).
-func upToDate(src, dst string) bool {
-	s, err := os.Stat(src)
-	if err != nil {
-		return true // nothing to copy
-	}
-	d, err := os.Stat(dst)
-	return err == nil && d.Size() == s.Size() && !s.ModTime().After(d.ModTime())
-}
-
-// installFiles lists the project files Install copies into the game (relative paths).
-func installFiles(p *Project) map[string]bool {
-	files := map[string]bool{}
-	add := func(rel string) {
-		if rel != "" {
-			files[rel] = true
-		}
-	}
-	add(p.Set.CardBack)
-	for _, c := range p.Set.Cards {
-		add(c.Image)
-		add(c.BackImage)
-	}
-	for _, pk := range p.Set.Packs {
-		add(pk.PackTexture)
-		add(pk.PackIcon)
-		add(pk.BoxTexture)
-		add(pk.BoxIcon)
-	}
-	return files
+	})
 }
 
 const (
@@ -407,58 +310,23 @@ const (
 	StateStale   = "stale"
 )
 
-// InstallState compares the project with its copy in the game: StateNone when not installed, StateStale when set.json differs
-// from what Install would write or an image was edited since (missing, other size, or newer in the project), else StateCurrent.
-// Uses sizes and modification times, not hashes, so it stays cheap for sets with hundreds of card images.
-func InstallState(p *Project, gameDir string) string {
-	if gameDir == "" || !setfmt.SafeID(p.ID) {
+// InstallState is StateNone when the set isn't in the setup's installed sets, StateStale when the game doesn't read this
+// setup and library (another setup or workspace, or an older mod), else StateCurrent.
+func (w Workspace) InstallState(p *Project, gameDir string) string {
+	if gameDir == "" || !setfmt.SafeID(p.ID) || !w.Installed()[p.ID] {
 		return StateNone
 	}
-	dest := filepath.Join(game.SetsDir(gameDir), p.ID)
-	installed, err := os.ReadFile(filepath.Join(dest, SetFile))
-	if err != nil {
-		return StateNone
-	}
-	want, err := p.Set.Marshal()
-	if err != nil || !bytes.Equal(bytes.TrimSpace(installed), bytes.TrimSpace(want)) {
+	sp := game.ReadStudioPaths(gameDir)
+	if !game.ModReadsLibrary(gameDir) || !game.SameDir(sp.Library, w.Library) || !game.SameDir(sp.Setup, w.Root) {
 		return StateStale
-	}
-	shared := game.ModHasLibrary(gameDir)
-	for rel := range installFiles(p) {
-		src, dst := installPaths(p, gameDir, rel, shared)
-		if _, err := os.Stat(src); err != nil {
-			continue // Install skips missing files too
-		}
-		if !upToDate(src, dst) {
-			return StateStale
-		}
 	}
 	return StateCurrent
 }
 
-func Uninstall(id, gameDir string) error {
-	if !setfmt.SafeID(id) || !game.IsGameDir(gameDir) {
-		return fmt.Errorf("bad id or game folder")
+// Uninstall takes set id out of the setup's installed sets (the game no longer loads it).
+func (w Workspace) Uninstall(id string) error {
+	if !setfmt.SafeID(id) {
+		return fmt.Errorf("bad id")
 	}
-	return os.RemoveAll(filepath.Join(game.SetsDir(gameDir), id))
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
+	return w.setInstalled(id, false)
 }

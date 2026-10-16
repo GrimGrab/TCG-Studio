@@ -4,6 +4,9 @@ package origin
 
 import "time"
 
+// KindEPL is the Kind of content converted from an Enhanced Prefab Loader mod.
+const KindEPL = "EPL mod"
+
 type Origin struct {
 	Kind     string    `json:"kind"`              // "EPL mod"
 	Mod      string    `json:"mod"`               // the mod's name: the player's, else its descriptor's Name ("001 - 2019 Base")
@@ -14,4 +17,12 @@ type Origin struct {
 	Bundle   string    `json:"bundle,omitempty"`  // the descriptor inside the mod (X.json)
 	Item     string    `json:"item,omitempty"`    // the item's name in the mod (accessories, furniture)
 	Imported time.Time `json:"imported"`
+}
+
+// Name is the mod's name for display; Mod is empty for content converted before Studio recorded it.
+func (o Origin) Name() string {
+	if o.Mod != "" {
+		return o.Mod
+	}
+	return "an unnamed " + o.Kind
 }

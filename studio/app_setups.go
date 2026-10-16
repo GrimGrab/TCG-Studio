@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"os/exec"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -14,14 +14,14 @@ import (
 
 // setupsState is the active setup's folder (what ws() and the accessory library use) plus what startup found.
 type setupsState struct {
-	mu      sync.Mutex // serializes switch / create / import / export
-	rootMu  sync.RWMutex
+	mu      sync.Mutex   // serializes switch / create / import / export
+	rootMu  sync.RWMutex // root, err and message (read by bound methods while mu is held for a long switch)
 	root    string
 	err     string // migration failed: Studio keeps using the old single-workspace layout
 	message string // result of repairing an interrupted switch, shown once
 }
 
-func (a *App) home() setups.Home { return setups.Home{Root: a.settings.Workspace} }
+func (a *App) home() setups.Home { return setups.Home{Root: a.workspaceDir()} }
 
 // root is the active setup's folder, or the workspace itself when setups couldn't be set up.
 func (a *App) root() string {
@@ -30,7 +30,32 @@ func (a *App) root() string {
 	if a.setups.root != "" {
 		return a.setups.root
 	}
-	return a.settings.Workspace
+	return a.workspaceDir()
+}
+
+// setupsErr is the migration error that keeps Studio on the old layout, or nil.
+func (a *App) setupsErr() error {
+	a.setups.rootMu.RLock()
+	defer a.setups.rootMu.RUnlock()
+	if a.setups.err != "" {
+		return errors.New(a.setups.err)
+	}
+	return nil
+}
+
+func (a *App) setSetupsStatus(errText, message string) {
+	a.setups.rootMu.Lock()
+	a.setups.err, a.setups.message = errText, message
+	a.setups.rootMu.Unlock()
+}
+
+// takeSetupsStatus returns the error and the one-time message (cleared).
+func (a *App) takeSetupsStatus() (errText, message string) {
+	a.setups.rootMu.Lock()
+	defer a.setups.rootMu.Unlock()
+	errText, message = a.setups.err, a.setups.message
+	a.setups.message = ""
+	return
 }
 
 func (a *App) setRoot(dir string) {
@@ -43,22 +68,32 @@ func (a *App) setRoot(dir string) {
 func (a *App) initSetups() {
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
-	a.setups.err, a.setups.message = "", ""
 	a.setRoot("")
+	var errText, msg string
+	defer func() { a.setSetupsStatus(errText, msg) }()
 	h := a.home()
-	if game.IsGameDir(a.settings.GameDir) && !game.IsRunning() {
-		msg, err := h.Recover(a.settings.GameDir)
-		if err != nil {
-			a.setups.err = err.Error()
+	if gameDir, err := a.requireGameClosed(); err == nil {
+		if msg, err = h.Recover(gameDir); err != nil {
+			errText = err.Error()
 		}
-		a.setups.message = msg
 	}
 	dir, err := h.Ensure(Version)
 	if err != nil {
-		a.setups.err = err.Error()
+		errText = err.Error()
 		return
 	}
 	a.setRoot(dir)
+	a.pointGameAtWorkspace()
+}
+
+// pointGameAtWorkspace keeps the game's mod reading the active setup and this workspace's shared folders
+// (game.StudioPathsFile).
+func (a *App) pointGameAtWorkspace() {
+	if gameDir := a.gameDir(); game.IsGameDir(gameDir) {
+		_ = game.UpdateStudioPaths(gameDir, func(sp *game.StudioPaths) {
+			sp.Setup, sp.Library, sp.Assets = a.root(), a.wsDir().Library(), a.wsDir().Store().Dir
+		})
+	}
 }
 
 // SetupsView is the Setups page.
@@ -76,9 +111,9 @@ type SetupsView struct {
 
 func (a *App) ListSetups() (SetupsView, error) {
 	h := a.home()
-	v := SetupsView{GameRunning: game.IsRunning(), GameFound: game.IsGameDir(a.settings.GameDir), SteamCloud: setups.SteamCloud(),
-		Error: a.setups.err, Message: a.setups.message, Workspace: a.settings.Workspace, Setups: []setups.Summary{}}
-	a.setups.message = ""
+	v := SetupsView{GameRunning: game.IsRunning(), GameFound: game.IsGameDir(a.gameDir()), SteamCloud: setups.SteamCloud(),
+		Workspace: a.workspaceDir(), Setups: []setups.Summary{}}
+	v.Error, v.Message = a.takeSetupsStatus()
 	_, v.Pending = h.PendingSwitch()
 	if v.Error != "" && !v.Pending {
 		return v, nil
@@ -112,10 +147,11 @@ func (a *App) activeID() string {
 
 // snapshotActive copies the game-side state of the active setup into it (before duplicating or exporting it).
 func (a *App) snapshotActive(id string) error {
-	if id != a.activeID() || !game.IsGameDir(a.settings.GameDir) {
+	gameDir, err := a.requireGame()
+	if id != a.activeID() || err != nil {
 		return nil
 	}
-	return setups.Snapshot(a.home().Dir(id), a.settings.GameDir)
+	return setups.Snapshot(a.home().Dir(id), gameDir)
 }
 
 // CreateSetup makes a new setup: empty (copyFrom "") or a copy of another one, with that setup's saves when withSaves.
@@ -129,8 +165,8 @@ func (a *App) CreateSetup(name, copyFrom string, withSaves bool) (SetupsView, er
 func (a *App) createSetup(name, copyFrom string, withSaves bool) error {
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
-	if a.setups.err != "" {
-		return errors.New(a.setups.err)
+	if err := a.setupsErr(); err != nil {
+		return err
 	}
 	h := a.home()
 	active := copyFrom != "" && copyFrom == a.activeID()
@@ -168,22 +204,27 @@ func (a *App) MoveSetup(id string, to int) (SetupsView, error) {
 }
 
 func (a *App) DeleteSetup(id string) (SetupsView, error) {
-	a.setups.mu.Lock()
-	// Keep its sets and items available to the other setups (files are shared; only the game info is templated).
-	catalogMu.Lock()
-	err := a.catalog().KeepSetup(a.home().Dir(id))
-	if err != nil {
-		err = errors.New("couldn't keep its sets and items in the shared catalog, so it wasn't deleted: " + err.Error())
-	}
-	catalogMu.Unlock()
-	if err == nil {
-		err = a.home().Delete(id)
-	}
-	a.setups.mu.Unlock()
-	if err != nil {
+	if err := a.deleteSetup(id); err != nil {
 		return SetupsView{}, err
 	}
 	return a.ListSetups()
+}
+
+func (a *App) deleteSetup(id string) error {
+	a.setups.mu.Lock()
+	defer a.setups.mu.Unlock()
+	h := a.home()
+	if act, err := h.Active(); err == nil && act == id {
+		return errors.New("switch to another setup before deleting this one")
+	}
+	// Keep its sets and items available to the other setups (files are shared; only the game info is templated).
+	a.catalogMu.Lock()
+	err := a.catalog().KeepSetup(h.Dir(id))
+	a.catalogMu.Unlock()
+	if err != nil {
+		return errors.New("couldn't keep its sets and items in the shared catalog, so it wasn't deleted: " + err.Error())
+	}
+	return h.Delete(id)
 }
 
 // SwitchResult tells the frontend what happened; it reloads every view afterwards.
@@ -196,17 +237,18 @@ type SwitchResult struct {
 func (a *App) SwitchSetup(id string) (SwitchResult, error) {
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
-	if a.setups.err != "" {
-		return SwitchResult{}, errors.New(a.setups.err)
+	if err := a.setupsErr(); err != nil {
+		return SwitchResult{}, err
 	}
-	if !game.IsGameDir(a.settings.GameDir) {
-		return SwitchResult{}, errors.New("game folder not set (Settings → Game)")
+	gameDir, err := a.requireGameClosed()
+	if err != nil {
+		return SwitchResult{}, err
 	}
-	if game.IsRunning() {
-		return SwitchResult{}, errors.New("close the game first — its files are in use")
+	if !game.ModReadsLibrary(gameDir) {
+		return SwitchResult{}, errOldMod // an older mod reads the game folder, which a switch no longer changes
 	}
 	h := a.home()
-	warnings, err := h.Switch(id, a.settings.GameDir, func(s string) { runtime.EventsEmit(a.ctx, "setups:progress", s) })
+	warnings, err := h.Switch(id, gameDir, func(s string) { runtime.EventsEmit(a.ctx, evSetupsProgress, s) })
 	if act, aerr := h.Active(); aerr == nil {
 		a.setRoot(h.Dir(act))
 	}
@@ -214,8 +256,7 @@ func (a *App) SwitchSetup(id string) (SwitchResult, error) {
 		return SwitchResult{Warnings: warnings}, err
 	}
 	// The new setup's sets may predate this Studio version: let SyncInstalledSets look at them again.
-	a.settings.SyncedVersion = ""
-	_ = saveSettings(a.settings)
+	_, _ = a.updateSettings(func(s *Settings) { s.SyncedVersion = "" })
 	if warnings == nil {
 		warnings = []string{}
 	}
@@ -232,13 +273,9 @@ func (a *App) ExportSetup(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "Export setup", Filters: setupFilters,
-		DefaultFilename: safeFileName(in.Name) + setups.Ext})
+	dest, err := a.saveFileAs("Export setup", safeFileName(in.Name)+setups.Ext, setups.Ext, setupFilters)
 	if err != nil || dest == "" {
 		return "", err
-	}
-	if !strings.HasSuffix(strings.ToLower(dest), setups.Ext) {
-		dest += setups.Ext
 	}
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
@@ -246,7 +283,7 @@ func (a *App) ExportSetup(id string) (string, error) {
 		return "", err
 	}
 	err = h.Export(id, dest, Version, func(done, total int) {
-		runtime.EventsEmit(a.ctx, "setups:export", map[string]int{"done": done, "total": total})
+		runtime.EventsEmit(a.ctx, evSetupsExport, map[string]int{"done": done, "total": total})
 	})
 	return dest, err
 }
@@ -271,15 +308,33 @@ func (a *App) PickSetupFile() (*SetupFileInfo, error) {
 }
 
 // ImportSetup adds the setup in file as a new, inactive setup with no saves and returns its id.
-func (a *App) ImportSetup(file string) (string, error) {
+func (a *App) ImportSetup(file string) (SetupImport, error) {
 	a.setups.mu.Lock()
 	defer a.setups.mu.Unlock()
-	if a.setups.err != "" {
-		return "", errors.New(a.setups.err)
+	if err := a.setupsErr(); err != nil {
+		return SetupImport{}, err
 	}
-	return a.home().Import(file, Version)
+	id, kept, err := a.home().Import(file, Version)
+	r := SetupImport{ID: id}
+	if len(kept) > 0 {
+		r.Note = fmt.Sprintf("%d file(s) of its sets differ from the ones on this PC: this PC's were kept (%s).", len(kept), strings.Join(firstN(kept, 3), ", "))
+	}
+	return r, err
+}
+
+// SetupImport is an imported setup: its id and a note for the player ("" = nothing to say).
+type SetupImport struct {
+	ID   string `json:"id"`
+	Note string `json:"note"`
+}
+
+func firstN(list []string, n int) []string {
+	if len(list) > n {
+		return append(list[:n:n], "…")
+	}
+	return list
 }
 
 func (a *App) OpenSetupFolder(id string) {
-	_ = exec.Command("explorer", a.home().Dir(id)).Start()
+	reveal(a.home().Dir(id))
 }

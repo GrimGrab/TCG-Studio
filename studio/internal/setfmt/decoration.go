@@ -1,7 +1,7 @@
 package setfmt
 
 // Decorations (accessory library "decorations"): mirrors DecorationDef in the mod's Core/Defs.cs and
-// AccessoryLoader.LoadDecorations. See docs/set-format.md "Decorations".
+// AccessoryLoader.LoadDecorations.
 
 import (
 	"fmt"

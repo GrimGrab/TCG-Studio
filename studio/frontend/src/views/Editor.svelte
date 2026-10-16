@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { leaveGuard } from '../lib/leaveGuard';
   import { App, errText, ask, sourceName, sourceCode, BrowserOpenURL } from '../lib/api';
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
@@ -21,6 +22,7 @@
   async function showTab(t: typeof tab) { if (t !== tab) { await flushAll(); tab = t; } }
 
   const dirty = $derived(project ? JSON.stringify(project) !== saved : false);
+  $effect(() => leaveGuard(() => dirty, 'Leave this set without saving? Your unsaved changes will be lost.'));
   const errors = $derived(issues.filter((i) => i.level === 'error').length);
   const warnings = $derived(issues.filter((i) => i.level === 'warning').length);
 
@@ -48,7 +50,7 @@
       installState = r.installState as any;
       saved = JSON.stringify(project);
       if (r.synced) notify(`Saved and updated in the game — ${restartHint(r.gameRunning)}.`, 'ok');
-      else if (r.syncError) { notify(`Saved, but the game still has the old version: ${r.syncError}.`, 'error'); showIssues = errors > 0; }
+      else if (r.syncError) { notify(`Saved, but ${r.syncError}.`, 'error'); showIssues = errors > 0; }
       else if (installState === 'none') notify(`Saved.${errors ? ` Fix ${errors} error(s) before installing.` : ' Click "Install to game" to play with it.'}`, errors ? 'error' : 'ok');
       else notify('Saved.', 'ok');
     } catch (e) {
@@ -155,9 +157,9 @@
       {/if}
       <button onclick={() => App.OpenProjectFolder(id)}>Folder</button>
       {#if installState === 'current'}
-        <span class="chip ok" title="The game has this version of the set">In game ✓</span>
+        <span class="chip ok" title="Installed: the game loads the saved set at its next start">In game ✓</span>
       {:else if installState === 'stale'}
-        <button class="chip warn" onclick={install} title="The game has an older version of this set — click to update it">In game: outdated — Update</button>
+        <button class="chip warn" onclick={install} title="The game reads another setup or workspace, or its mod is older — click to fix">Not read by the game — Fix</button>
       {:else if installState === 'none'}
         <span class="chip" title="This set isn't in the game yet">Not in game</span>
       {/if}

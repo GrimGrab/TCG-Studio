@@ -7,7 +7,7 @@ using UnityEngine;
 namespace TCGCustomCards.Runtime
 {
     /// <summary>
-    /// Writes &lt;plugin&gt;\furniture-templates.txt once per session (with [Debug] DumpDiagnostics): every furniture prefab's component,
+    /// Writes &lt;game&gt;\BepInEx\TCGCustomCards\furniture-templates.txt once per session (with [Debug] DumpDiagnostics): every furniture prefab's component,
     /// shop data and spots in the accessories.json "spots" format (piece-local, as <see cref="FurnitureSpots"/> reads them), plus the
     /// hierarchy of the pieces custom furniture is built on. Starting point for writing spots and a check of the prefab layout.
     /// </summary>
@@ -47,7 +47,7 @@ namespace TCGCustomCards.Runtime
                     }
                     if (bases.Contains(od.objectType)) Hierarchy(sb, p.transform, p.transform, 0);
                 }
-                File.WriteAllText(System.IO.Path.Combine(Plugin.PluginDir, "furniture-templates.txt"), sb.ToString());
+                File.WriteAllText(System.IO.Path.Combine(Plugin.DumpDir, "furniture-templates.txt"), sb.ToString());
             }
             catch (System.Exception e)
             {

@@ -60,6 +60,24 @@ func TestSetKeepsFile(t *testing.T) {
 	}
 }
 
+func TestSetManyAllOrNothing(t *testing.T) {
+	p := write(t)
+	if _, err := SetMany(p, [][3]string{{"Foil", "HoloFoilMotion", "2"}, {"Foil", "BasePattern", "Glitter"}}); err == nil {
+		t.Fatal("unknown enum value accepted")
+	}
+	if b, _ := os.ReadFile(p); string(b) != sample {
+		t.Fatal("a failed SetMany wrote the file")
+	}
+	if _, err := SetMany(p, [][3]string{{"Foil", "HoloFoilMotion", "2"}, {"Content", "ShowVanillaCards", "true"}}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	want := strings.Replace(strings.Replace(sample, "HoloFoilMotion = 1.492958", "HoloFoilMotion = 2", 1), "ShowVanillaCards = false", "ShowVanillaCards = true", 1)
+	if string(b) != want {
+		t.Fatalf("file =\n%s", b)
+	}
+}
+
 func TestRestoreDefaults(t *testing.T) {
 	p := write(t)
 	n, err := RestoreDefaults(p, "Foil")

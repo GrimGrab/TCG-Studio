@@ -7,12 +7,13 @@ package assets
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"tcgstudio/internal/fsutil"
 )
 
 // DirName is the store folder in the workspace (outside library\, whose unknown folders the Storage page treats as
@@ -123,31 +124,14 @@ func (s Store) List() ([]Entry, error) {
 
 // Refs returns every store reference found in a JSON document (any string value, at any depth), deduplicated.
 func Refs(doc []byte) []string {
-	var v any
-	if json.Unmarshal(doc, &v) != nil {
-		return nil
-	}
 	seen := map[string]bool{}
 	var out []string
-	var walk func(any)
-	walk = func(v any) {
-		switch t := v.(type) {
-		case string:
-			if IsAsset(t) && !seen[t] {
-				seen[t] = true
-				out = append(out, t)
-			}
-		case []any:
-			for _, x := range t {
-				walk(x)
-			}
-		case map[string]any:
-			for _, x := range t {
-				walk(x)
-			}
+	for _, s := range fsutil.JSONStrings(doc) {
+		if IsAsset(s) && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
 		}
 	}
-	walk(v)
 	sort.Strings(out)
 	return out
 }

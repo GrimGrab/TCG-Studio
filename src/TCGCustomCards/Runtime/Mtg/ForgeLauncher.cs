@@ -132,7 +132,7 @@ namespace TCGCustomCards.Runtime.Mtg
         }
 
         /// <summary>
-        /// Start info for the headless bridge (forge-bridge\, protocol in docs/mtg-forge.md): Forge's jar + the bridge jar next
+        /// Start info for the headless bridge (forge-bridge\): Forge's jar + the bridge jar next
         /// to our DLL, stdin/stdout redirected. Null when Forge or the bridge jar is missing.
         /// </summary>
         public static ProcessStartInfo BridgeStartInfo(string logFile)

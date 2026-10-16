@@ -11,12 +11,9 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 
 	"tcgstudio/internal/figurine"
-	"tcgstudio/internal/game"
 	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/unityfs"
@@ -33,14 +30,7 @@ func (a *App) FurnitureTypes() []setfmt.FurnitureType { return setfmt.FurnitureT
 
 // FurnitureTemplates returns furniture.json of the game templates as raw JSON, or "" while it isn't available.
 func (a *App) FurnitureTemplates() string {
-	if !game.IsGameDir(a.settings.GameDir) {
-		return ""
-	}
-	b, err := os.ReadFile(filepath.Join(a.templatesDir(), gameextract.FurnitureDir, "furniture.json"))
-	if err != nil {
-		return ""
-	}
-	return string(b)
+	return a.templateJSON(gameextract.FurnitureDir, "furniture.json")
 }
 
 // furnitureBases maps each vanilla piece usable as a base to its furniture type (nil while the templates aren't read).
@@ -68,7 +58,7 @@ func (a *App) furnitureBases() map[string]string {
 }
 
 func (a *App) NewFurniture(typ, name, base string) (setfmt.Furniture, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return setfmt.Furniture{}, err
 	}
@@ -84,56 +74,34 @@ func (a *App) NewFurniture(typ, name, base string) (setfmt.Furniture, error) {
 	}
 	f := setfmt.Furniture{ID: l.NewID(name), Type: typ, Name: name, Base: base}
 	l.PutFurniture(f)
-	_, err = a.saveAndInstall(l)
+	_, err = a.saveLibrary(l)
 	return f, err
 }
 
 // SaveFurniture stores a piece and its editor state (layout JSON: imported model source, rotation, height; "" keeps it). iconPNG is
 // a data URL (or raw base64) of an icon made in the editor; empty keeps the current one.
 func (a *App) SaveFurniture(f setfmt.Furniture, layout, iconPNG string) (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
 	if !setfmt.SafeID(f.ID) {
 		return AccessoryView{}, errors.New("bad furniture id")
 	}
-	if iconPNG != "" {
-		b, err := decodeDataURL(iconPNG)
-		if err != nil {
-			return AccessoryView{}, err
-		}
-		rel, err := l.WriteImage(f.ID, "icon", b)
-		if err != nil {
-			return AccessoryView{}, err
-		}
-		f.Icon = rel
-	}
-	if layout != "" {
-		if !json.Valid([]byte(layout)) {
-			return AccessoryView{}, errors.New("layout is not valid JSON")
-		}
-		l.Meta.Layouts[f.ID] = json.RawMessage(layout)
+	if err := errors.Join(putEditorImage(l, f.ID, "icon", iconPNG, &f.Icon), putLayout(l, f.ID, layout)); err != nil {
+		return AccessoryView{}, err
 	}
 	l.PutFurniture(f)
-	return a.saveAndInstall(l)
+	return a.saveLibrary(l)
 }
 
 func (a *App) DeleteFurniture(id string) (AccessoryView, error) {
-	l, err := a.accLib()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if err := a.keepInCatalog("", []string{id}, l); err != nil {
-		return AccessoryView{}, err
-	}
-	l.DeleteFurniture(id)
-	return a.saveAndInstall(l)
+	return a.DeleteFurnitureMany([]string{id})
 }
 
 // DeleteFurnitureMany removes several pieces at once (one save and install).
 func (a *App) DeleteFurnitureMany(ids []string) (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
@@ -143,47 +111,21 @@ func (a *App) DeleteFurnitureMany(ids []string) (AccessoryView, error) {
 	for _, id := range ids {
 		l.DeleteFurniture(id)
 	}
-	return a.saveAndInstall(l)
-}
-
-// FurnitureBake is what BakeFurnitureModel wrote (library-relative paths for the piece's mesh / texture fields).
-type FurnitureBake struct {
-	Mesh      string     `json:"mesh"`
-	Texture   string     `json:"texture"`
-	Triangles int        `json:"triangles"`
-	Size      [3]float64 `json:"size"` // placed model bounds (metres)
+	return a.saveLibrary(l)
 }
 
 // BakeFurnitureModel places an imported source model (ImportFigurineModel) in the piece's root space: rotated, scaled to the
-// height (metres), bottom-centre on the anchor (usually the base piece's footprint centre), and writes images/<id>_model.obj +
-// images/<id>_texture.png.
-func (a *App) BakeFurnitureModel(id, model, texture string, p figurine.Placement) (FurnitureBake, error) {
+// height (metres), bottom-centre on the anchor (usually the base piece's footprint centre), and stores the model and its
+// texture in the shared store.
+func (a *App) BakeFurnitureModel(id, model, texture string, p figurine.Placement) (ModelBake, error) {
 	if !setfmt.SafeID(id) {
-		return FurnitureBake{}, errors.New("bad furniture id")
+		return ModelBake{}, errors.New("bad furniture id")
 	}
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
-		return FurnitureBake{}, err
+		return ModelBake{}, err
 	}
-	src, err := figurine.ReadSource(l.Resolve(model))
-	if err != nil {
-		return FurnitureBake{}, err
-	}
-	g, err := figurine.Place(src, p)
-	if err != nil {
-		return FurnitureBake{}, err
-	}
-	meshRel, err := l.PutBytes(figurine.GameOBJ(g), ".obj")
-	if err != nil {
-		return FurnitureBake{}, err
-	}
-	texRel, err := storedTexture(l, texture)
-	if err != nil {
-		return FurnitureBake{}, errors.New("model texture missing: " + err.Error())
-	}
-	lo, hi := g.Bounds()
-	return FurnitureBake{Mesh: meshRel, Texture: texRel, Triangles: g.Triangles(),
-		Size: [3]float64{hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]}}, nil
+	return bakeModel(l, model, texture, p, nil)
 }
 
 // ---------------------------------------------------------------- painting (face editor over the whole piece)
@@ -197,19 +139,16 @@ type FurniturePaintInfo struct {
 	Parts    []setfmt.PaintPart `json:"parts"`
 }
 
-// paintMu: one paint template is made at a time (the Furniture tab prepares the selected piece in the background while Paint may ask too).
-var paintMu sync.Mutex
-
 // FurniturePaintTemplate prepares a vanilla piece for painting. Made from the game files the first time (about a second), then
 // kept with the game templates.
 func (a *App) FurniturePaintTemplate(base string) (FurniturePaintInfo, error) {
-	paintMu.Lock()
-	defer paintMu.Unlock()
+	a.paintMu.Lock()
+	defer a.paintMu.Unlock()
 	dir, err := a.paintDir()
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
-	file, err := gameextract.PaintTemplate(a.settings.GameDir, dir, base)
+	file, err := gameextract.PaintTemplate(a.gameDir(), dir, base)
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
@@ -219,21 +158,17 @@ func (a *App) FurniturePaintTemplate(base string) (FurniturePaintInfo, error) {
 // FurniturePaintTemplateOwn prepares a piece's own model for painting, placed as it will be saved (BakeFurnitureModel): its
 // texture is the base look. Kept per model + texture + placement.
 func (a *App) FurniturePaintTemplateOwn(model, texture string, p figurine.Placement) (FurniturePaintInfo, error) {
-	paintMu.Lock()
-	defer paintMu.Unlock()
+	a.paintMu.Lock()
+	defer a.paintMu.Unlock()
 	dir, err := a.paintDir()
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
-	src, err := figurine.ReadSource(l.Resolve(model))
-	if err != nil {
-		return FurniturePaintInfo{}, err
-	}
-	g, err := figurine.Place(src, p)
+	g, err := placeModel(l, model, p)
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
@@ -277,18 +212,17 @@ func ownMesh(g *figurine.Mesh) *unityfs.Mesh {
 }
 
 func (a *App) paintDir() (string, error) {
-	if !game.IsGameDir(a.settings.GameDir) {
-		return "", errors.New("game folder not set (Settings → Game)")
+	if _, err := a.requireGame(); err != nil {
+		return "", err
 	}
-	dir := a.templatesDir()
-	if dir == "" {
-		return "", errors.New("the game templates aren't available yet (Settings → Game)")
+	if dir, source := a.templates(); source == "game" { // never into a leftover export in the game folder
+		return dir, nil
 	}
-	return dir, nil
+	return "", errNoTemplates
 }
 
 func (a *App) paintInfo(file string) (FurniturePaintInfo, error) {
-	b, err := os.ReadFile(filepath.Join(a.templatesDir(), gameextract.FurnitureDir, file))
+	b, err := os.ReadFile(a.templateFile(gameextract.FurnitureDir, file))
 	if err != nil {
 		return FurniturePaintInfo{}, err
 	}
@@ -313,7 +247,7 @@ func (a *App) PaintFurniture(template, texturePNG string) (setfmt.FurniturePaint
 	if err != nil {
 		return setfmt.FurniturePaint{}, err
 	}
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return setfmt.FurniturePaint{}, err
 	}
@@ -326,7 +260,7 @@ func (a *App) PaintFurniture(template, texturePNG string) (setfmt.FurniturePaint
 		return setfmt.FurniturePaint{}, err
 	}
 	for _, part := range info.Parts {
-		obj, err := os.ReadFile(filepath.Join(a.templatesDir(), gameextract.FurnitureDir, part.Mesh))
+		obj, err := os.ReadFile(a.templateFile(gameextract.FurnitureDir, part.Mesh))
 		if err != nil {
 			return setfmt.FurniturePaint{}, err
 		}

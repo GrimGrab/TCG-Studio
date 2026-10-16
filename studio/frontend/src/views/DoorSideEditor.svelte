@@ -1,35 +1,38 @@
 <script lang="ts">
   // One side of the door sign: a background (board colour or your own picture, cropped) with your words on top. The draft is
-  // drawn into `board` (the preview shows it as you edit) and saved by itself shortly after the last change, like the shop sign's
-  // settings: as the side's picture plus its design (App.SaveShopPictureText), so the mod paints it like any picture.
+  // drawn into `board` (the preview shows it as you edit). Nothing is stored here: the page's Save takes `pending()` (the drawn
+  // picture + its design, or going back to the game's sign) and sends it with the rest of the page (App.SaveShopLook).
   import { App, errText } from '../lib/api';
+  import { shopSignFile } from '../lib/urls';
   import { loadImage } from '../lib/accessoryArt';
   import { doorSignDefaults, drawSignText, fontFamily, latestPerFrame, type SignTextDesign } from '../lib/shopLook';
   import CropBox from './CropBox.svelte';
   import FontPicker from './FontPicker.svelte';
   import TextStyle from './TextStyle.svelte';
 
-  let { side, saved = '', custom = false, aspect, fonts, notify, onlook, board = $bindable(null) }: {
+  let { side, saved = '', custom = false, aspect, fonts, notify, board = $bindable(null), dirty = $bindable(false),
+    removed = $bindable(false) }: {
     side: 'open' | 'closed';
     custom?: boolean; // the side has a picture now (designed or not)
     saved?: string; // the stored design (JSON), '' = none
     aspect: number;
     fonts: { source: string; id: string; name: string }[];
     notify: (t: string, k?: string) => void;
-    onlook: (look: any) => void;
     board?: HTMLCanvasElement | null; // the drawn draft for the preview; null = show what the side has now
+    dirty?: boolean; // out: the side has unsaved changes
+    removed?: boolean; // out: the draft goes back to the game's own sign
   } = $props();
 
   const parse = (json: string): SignTextDesign => {
     try { return { ...doorSignDefaults[side], ...JSON.parse(json) }; } catch { return { ...doorSignDefaults[side] }; }
   };
   let draft = $state<SignTextDesign>(parse(''));
-  let sent = ''; // the design this editor saved last: its own save coming back must not reset what is being typed
-  $effect(() => { if (saved !== sent) draft = parse(saved); });
+  $effect(() => { draft = parse(saved); }); // a new stored design (after the page's Save) replaces the draft
   const changed = $derived(JSON.stringify(draft) !== JSON.stringify(parse(saved)));
-  const url = (file: string) => '/shopsign/' + encodeURIComponent(file);
+  $effect(() => { dirty = removed ? custom : changed; });
+  const url = (file: string) => shopSignFile(file);
 
-  // The chosen font and picture, once loaded (file = what they were loaded for; a save waits until they match the draft).
+  // The chosen font and picture, once loaded (file = what they were loaded for; `pending` waits until they match the draft).
   let font = $state({ file: '', family: '' });
   $effect(() => {
     const f = draft.font;
@@ -57,16 +60,23 @@
   const later = latestPerFrame();
   $effect(() => {
     JSON.stringify(draft); family; bg; // redraw on any change
-    if (!saved && !changed) { board = null; return; } // nothing designed yet: the preview shows the side as it is
+    if (removed || (!saved && !changed)) { board = null; return; } // the preview shows the side as stored / the game's sign
     later(() => (board = render(656)));
   });
 
-  // Save shortly after the last change (typing or dragging a colour fires many changes).
-  $effect(() => {
-    if (!changed || !ready) return;
-    const t = setTimeout(save, 500);
-    return () => clearTimeout(t);
-  });
+  /** What the page's Save stores for this side: the drawn picture + design, file '' = the game's sign; null = the chosen font
+   *  or picture is still loading. Only meaningful while `dirty`. */
+  export function pending(): { file?: string; png?: string; design?: string } | null {
+    if (removed) return { file: '' };
+    if (!ready) return null;
+    return { png: render(1312).toDataURL('image/png').split(',')[1], design: JSON.stringify(draft) };
+  }
+
+  /** Drops the unsaved changes. */
+  export function discard() {
+    draft = parse(saved);
+    removed = false;
+  }
 
   async function pickFont(source: string, id: string) {
     if (!source) { draft.font = null; return; }
@@ -82,42 +92,35 @@
       if (f.file) draft.background = { file: f.file, crop: null };
     } catch (e) { notify(errText(e), 'error'); }
   }
-
-  async function save() {
-    const design = JSON.stringify(draft);
-    try {
-      sent = design;
-      onlook(await App.SaveShopPictureText(side, render(1312).toDataURL('image/png').split(',')[1], design));
-    } catch (e) { sent = ''; notify(errText(e), 'error'); }
-  }
-
-  async function remove() {
-    try { sent = ''; onlook(await App.RemoveShopPicture(side)); } catch (e) { notify(errText(e), 'error'); }
-  }
 </script>
 
 <div class="editor">
-  <div class="row wrap">
-    <span class="muted small">Background</span>
+  {#if removed}
+    <p class="muted small">This side goes back to the game's own sign when you save.</p>
+    <div class="row"><button onclick={() => (removed = false)}>Keep my design</button></div>
+  {:else}
+    <div class="row wrap">
+      <span class="muted small">Background</span>
+      {#if draft.background}
+        <button onclick={pickBackground}>Other picture…</button>
+        <button onclick={() => draft.background && (draft.background = { ...draft.background, crop: null })} disabled={!draft.background.crop}>Centre</button>
+        <button onclick={() => (draft.background = null)}>Use a colour</button>
+      {:else}
+        <label>Board colour <input type="color" bind:value={draft.boardColor} /></label>
+        <button onclick={pickBackground}>Picture…</button>
+      {/if}
+    </div>
     {#if draft.background}
-      <button onclick={pickBackground}>Other picture…</button>
-      <button onclick={() => draft.background && (draft.background = { ...draft.background, crop: null })} disabled={!draft.background.crop}>Centre</button>
-      <button onclick={() => (draft.background = null)}>Use a colour</button>
-    {:else}
-      <label>Board colour <input type="color" bind:value={draft.boardColor} /></label>
-      <button onclick={pickBackground}>Picture…</button>
+      <CropBox src={url(draft.background.file)} {aspect} crop={draft.background.crop}
+        onchange={(c) => draft.background && (draft.background = { ...draft.background, crop: c })} />
     {/if}
-  </div>
-  {#if draft.background}
-    <CropBox src={url(draft.background.file)} {aspect} crop={draft.background.crop}
-      onchange={(c) => draft.background && (draft.background = { ...draft.background, crop: c })} />
+    <textarea rows="3" bind:value={draft.text} placeholder="Your words, one line per row (empty = picture only)"></textarea>
+    <div class="row wrap">
+      <FontPicker {fonts} current={draft.font?.name ?? ''} defaultLabel="Default (Impact)" onpick={pickFont} />
+      <TextStyle bind:style={draft} defaultColor="#ffffff" defaultLabel="white" />
+    </div>
+    {#if custom}<div class="row"><button class="danger" onclick={() => { draft = parse(saved); removed = true; }}>Remove</button></div>{/if}
   {/if}
-  <textarea rows="3" bind:value={draft.text} placeholder="Your words, one line per row (empty = picture only)"></textarea>
-  <div class="row wrap">
-    <FontPicker {fonts} current={draft.font?.name ?? ''} defaultLabel="Default (Impact)" onpick={pickFont} />
-    <TextStyle bind:style={draft} defaultColor="#ffffff" defaultLabel="white" />
-  </div>
-  {#if custom}<div class="row"><button class="danger" onclick={remove}>Remove</button></div>{/if}
 </div>
 
 <style>
@@ -126,4 +129,5 @@
   .wrap { flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
   label { display: flex; align-items: center; gap: 6px; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }
+  .small { font-size: 12px; margin: 0; }
 </style>

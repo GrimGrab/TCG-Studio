@@ -26,6 +26,10 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function AutoUpgrade() {
+  return window['go']['main']['App']['AutoUpgrade']();
+}
+
 export function BakeDecorationModel(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['BakeDecorationModel'](arg1, arg2, arg3, arg4);
 }
@@ -78,20 +82,16 @@ export function CheckModLoaded() {
   return window['go']['main']['App']['CheckModLoaded']();
 }
 
-export function ChooseGlobalCardBack() {
-  return window['go']['main']['App']['ChooseGlobalCardBack']();
-}
-
 export function ChooseSetCardBack(arg1) {
   return window['go']['main']['App']['ChooseSetCardBack'](arg1);
 }
 
-export function ChooseShopPicture(arg1) {
-  return window['go']['main']['App']['ChooseShopPicture'](arg1);
-}
-
 export function Collections() {
   return window['go']['main']['App']['Collections']();
+}
+
+export function CompressSaves() {
+  return window['go']['main']['App']['CompressSaves']();
 }
 
 export function Confirm(arg1) {
@@ -154,6 +154,10 @@ export function DeleteFurnitureMany(arg1) {
   return window['go']['main']['App']['DeleteFurnitureMany'](arg1);
 }
 
+export function DeleteKept() {
+  return window['go']['main']['App']['DeleteKept']();
+}
+
 export function DeleteProject(arg1) {
   return window['go']['main']['App']['DeleteProject'](arg1);
 }
@@ -162,16 +166,12 @@ export function DeleteSetup(arg1) {
   return window['go']['main']['App']['DeleteSetup'](arg1);
 }
 
-export function DeleteUnused(arg1, arg2) {
-  return window['go']['main']['App']['DeleteUnused'](arg1, arg2);
+export function DeleteUnused(arg1) {
+  return window['go']['main']['App']['DeleteUnused'](arg1);
 }
 
 export function DetectBoxFaces(arg1, arg2) {
   return window['go']['main']['App']['DetectBoxFaces'](arg1, arg2);
-}
-
-export function DifferPreview(arg1, arg2) {
-  return window['go']['main']['App']['DifferPreview'](arg1, arg2);
 }
 
 export function EPLModPath(arg1) {
@@ -222,8 +222,8 @@ export function GamifyAccessoryPreview(arg1) {
   return window['go']['main']['App']['GamifyAccessoryPreview'](arg1);
 }
 
-export function GamifyApply(arg1, arg2, arg3) {
-  return window['go']['main']['App']['GamifyApply'](arg1, arg2, arg3);
+export function GamifyApply(arg1, arg2) {
+  return window['go']['main']['App']['GamifyApply'](arg1, arg2);
 }
 
 export function GamifyDefaults() {
@@ -234,8 +234,8 @@ export function GamifyPreview(arg1, arg2) {
   return window['go']['main']['App']['GamifyPreview'](arg1, arg2);
 }
 
-export function GenerateGlobalCardBack(arg1, arg2) {
-  return window['go']['main']['App']['GenerateGlobalCardBack'](arg1, arg2);
+export function GenerateCardBack(arg1, arg2) {
+  return window['go']['main']['App']['GenerateCardBack'](arg1, arg2);
 }
 
 export function GeneratePackArt(arg1, arg2, arg3) {
@@ -252,6 +252,10 @@ export function GetSettings() {
 
 export function GlobalCardBack() {
   return window['go']['main']['App']['GlobalCardBack']();
+}
+
+export function ImportCardBack() {
+  return window['go']['main']['App']['ImportCardBack']();
 }
 
 export function ImportDoorBackground(arg1) {
@@ -282,6 +286,10 @@ export function ImportShopFont(arg1, arg2) {
   return window['go']['main']['App']['ImportShopFont'](arg1, arg2);
 }
 
+export function ImportShopPicture(arg1) {
+  return window['go']['main']['App']['ImportShopPicture'](arg1);
+}
+
 export function ImportSources() {
   return window['go']['main']['App']['ImportSources']();
 }
@@ -310,6 +318,10 @@ export function LibraryArt(arg1, arg2, arg3) {
   return window['go']['main']['App']['LibraryArt'](arg1, arg2, arg3);
 }
 
+export function LibraryFolder() {
+  return window['go']['main']['App']['LibraryFolder']();
+}
+
 export function ListProjects() {
   return window['go']['main']['App']['ListProjects']();
 }
@@ -332,10 +344,6 @@ export function ModSettings() {
 
 export function MoveAccessory(arg1, arg2) {
   return window['go']['main']['App']['MoveAccessory'](arg1, arg2);
-}
-
-export function MoveEverything() {
-  return window['go']['main']['App']['MoveEverything']();
 }
 
 export function MoveSetup(arg1, arg2) {
@@ -446,16 +454,8 @@ export function RemoveFromCatalog(arg1, arg2) {
   return window['go']['main']['App']['RemoveFromCatalog'](arg1, arg2);
 }
 
-export function RemoveGlobalCardBack() {
-  return window['go']['main']['App']['RemoveGlobalCardBack']();
-}
-
-export function RemoveShopPicture(arg1) {
-  return window['go']['main']['App']['RemoveShopPicture'](arg1);
-}
-
-export function ResolveDiffering(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['ResolveDiffering'](arg1, arg2, arg3, arg4);
+export function RemoveGameCopies() {
+  return window['go']['main']['App']['RemoveGameCopies']();
 }
 
 export function RestoreModDefaults(arg1) {
@@ -510,8 +510,8 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
-export function SaveShopPictureText(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveShopPictureText'](arg1, arg2, arg3);
+export function SaveShopLook(arg1) {
+  return window['go']['main']['App']['SaveShopLook'](arg1);
 }
 
 export function SaveTemplateImage(arg1, arg2) {
@@ -528,22 +528,6 @@ export function SetAccessoryIcons(arg1) {
 
 export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
-}
-
-export function SetShopPictureCrop(arg1, arg2) {
-  return window['go']['main']['App']['SetShopPictureCrop'](arg1, arg2);
-}
-
-export function SetShopSignFont(arg1, arg2) {
-  return window['go']['main']['App']['SetShopSignFont'](arg1, arg2);
-}
-
-export function SetShopSignShowName(arg1) {
-  return window['go']['main']['App']['SetShopSignShowName'](arg1);
-}
-
-export function SetShopSignText(arg1) {
-  return window['go']['main']['App']['SetShopSignText'](arg1);
 }
 
 export function SetupRepair() {
@@ -566,8 +550,8 @@ export function ShopSignFonts() {
   return window['go']['main']['App']['ShopSignFonts']();
 }
 
-export function ShrinkPreview(arg1, arg2) {
-  return window['go']['main']['App']['ShrinkPreview'](arg1, arg2);
+export function ShrinkPreview(arg1) {
+  return window['go']['main']['App']['ShrinkPreview'](arg1);
 }
 
 export function ShrinkSets(arg1) {
@@ -614,6 +598,18 @@ export function UpdateSetup(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateSetup'](arg1, arg2, arg3);
 }
 
+export function UpgradePreviewDiffer(arg1) {
+  return window['go']['main']['App']['UpgradePreviewDiffer'](arg1);
+}
+
+export function UpgradePreviewNamed(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpgradePreviewNamed'](arg1, arg2, arg3);
+}
+
+export function UpgradeStorage(arg1) {
+  return window['go']['main']['App']['UpgradeStorage'](arg1);
+}
+
 export function UseProductPhoto(arg1, arg2) {
   return window['go']['main']['App']['UseProductPhoto'](arg1, arg2);
 }
@@ -628,4 +624,8 @@ export function ValidateProject(arg1) {
 
 export function WaitReady() {
   return window['go']['main']['App']['WaitReady']();
+}
+
+export function WorkspaceHasSetups(arg1) {
+  return window['go']['main']['App']['WorkspaceHasSetups'](arg1);
 }

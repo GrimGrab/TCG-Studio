@@ -20,7 +20,7 @@ installs them into the game.
 
 - Windows 10 or 11
 - **TCG Card Shop Simulator** installed, with **BepInEx 5** in the game folder. The mod compiles against the game's DLLs and
-  BepInEx's DLLs. The easiest way to get BepInEx is to run the official TCG Studio once and click **Setup → Install / Repair**.
+  BepInEx's DLLs. The easiest way to get BepInEx is to run the official TCG Studio once and click **Game & mod → Install / Repair**.
   Or install [BepInEx 5.4.23.x x64](https://github.com/BepInEx/BepInEx/releases) by hand and start the game once.
 - [.NET SDK](https://dotnet.microsoft.com/download) 9 or newer
 - [Go](https://go.dev/dl/) 1.26 or newer
@@ -33,7 +33,7 @@ installs them into the game.
 
 Only needed to rebuild the prebuilt parts (you can skip these):
 - **Shaders:** Unity **2021.3.38f1** (the game's exact version), then `tools\build-shaders.ps1`
-- **Forge bridge:** a JDK 17+ and Forge installed through TCG Studio (Setup → Install MTG mode), then
+- **Forge bridge:** a JDK 17+ and Forge installed through TCG Studio (Game & mod → Install MTG mode), then
   `tools\build-bridge.ps1 -GamePath "<game folder>"`
 
 ## Build everything (one command)
@@ -52,7 +52,7 @@ The script:
 3. runs the installer and updater tests,
 4. builds TCG Studio with Wails.
 
-Result: **`dist\TCG Studio.exe`**. Run it and use **Setup → Install / Repair** like the official build.
+Result: **`dist\TCG Studio.exe`**. Run it and use **Game & mod → Install / Repair** like the official build.
 
 ### Updates in your own build
 
@@ -80,7 +80,7 @@ In `studio\`:
 
 | Command | What it does |
 |---|---|
-| `wails dev` | Runs Studio with hot reload. A dev build has no installer payload, so its Setup screen says so. Use `tools\package.ps1` for a full build. |
+| `wails dev` | Runs Studio with hot reload. A dev build has no installer payload, so its Game & mod page says so. Use `tools\package.ps1` for a full build. |
 | `wails generate module` | Regenerates the frontend bindings after you change a Go method on `App` |
 | `go test ./internal/...` | Go tests. Some are skipped unless their test data is present. |
 | `npx svelte-check` (in `studio\frontend\`) | Type-checks the Svelte frontend |

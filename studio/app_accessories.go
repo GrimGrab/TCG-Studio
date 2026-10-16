@@ -1,29 +1,25 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	astore "tcgstudio/internal/assets"
-	"tcgstudio/internal/origin"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tcgstudio/internal/accessories"
+	astore "tcgstudio/internal/assets"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gamify"
+	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/uvmap"
 )
 
 // ---------------------------------------------------------------- accessory library (custom deck boxes / playmats)
 //
-// The library is global (not part of a set). Every change is saved to the workspace and, when the game folder is set,
-// installed to <plugin>\Accessories right away (the mod reads it at game start).
+// The library belongs to the setup (not to a set). The game reads it from the active setup at its next start, so saving is
+// all a change takes (saveLibrary).
 
 // AccessoryView is the library as the frontend sees it; layouts are the editor's own JSON, kept as strings.
 type AccessoryView struct {
@@ -37,33 +33,12 @@ type AccessoryView struct {
 	Errors      []string                 `json:"errors"`
 }
 
-func (a *App) accLib() (*accessories.Library, error) { return accessories.Open(a.root(), a.store()) }
-
 // store is the workspace's shared asset store (accessory and furniture files; setups keep only the game info).
-func (a *App) store() astore.Store { return astore.For(a.settings.Workspace) }
+func (a *App) store() astore.Store { return a.wsDir().Store() }
 
 func (a *App) accView(l *accessories.Library) AccessoryView {
 	v := AccessoryView{Accessories: l.Lib.Accessories, Furniture: l.Lib.Furniture, Decorations: l.Lib.Decorations, Layouts: map[string]string{},
-		Origins: map[string]origin.Origin{}}
-	for id, o := range l.Meta.Origins {
-		v.Origins[id] = o
-	}
-	// Converted before origins were recorded: at least say they came from a mod.
-	for _, a := range l.Lib.Accessories {
-		if _, ok := v.Origins[a.ID]; !ok && accessories.IsConverted(a.ID) {
-			v.Origins[a.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
-		}
-	}
-	for _, f := range l.Lib.Furniture {
-		if _, ok := v.Origins[f.ID]; !ok && accessories.IsConverted(f.ID) {
-			v.Origins[f.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
-		}
-	}
-	for _, d := range l.Lib.Decorations {
-		if _, ok := v.Origins[d.ID]; !ok && accessories.IsConverted(d.ID) {
-			v.Origins[d.ID] = origin.Origin{Kind: "EPL mod", Mod: "an EPL mod"}
-		}
-	}
+		Origins: l.Meta.Origins}
 	if v.Furniture == nil {
 		v.Furniture = []setfmt.Furniture{}
 	}
@@ -78,9 +53,9 @@ func (a *App) accView(l *accessories.Library) AccessoryView {
 	v.Errors, v.Warnings = append(v.Errors, fe...), append(v.Warnings, fw...)
 	de, dw := l.Lib.ValidateDecorations(l.Resolve)
 	v.Errors, v.Warnings = append(v.Errors, de...), append(v.Warnings, dw...)
-	if game.IsGameDir(a.settings.GameDir) {
-		_, err := os.Stat(filepath.Join(accessories.InstalledDir(a.settings.GameDir), accessories.LibraryFile))
-		v.Installed = err == nil
+	if gameDir := a.gameDir(); game.IsGameDir(gameDir) { // the game reads this setup's library and the store (game.StudioPathsFile)
+		sp := game.ReadStudioPaths(gameDir)
+		v.Installed = game.SameDir(sp.Setup, a.root()) && game.SameDir(sp.Assets, a.store().Dir)
 	}
 	if v.Warnings == nil {
 		v.Warnings = []string{}
@@ -91,21 +66,17 @@ func (a *App) accView(l *accessories.Library) AccessoryView {
 	return v
 }
 
-// saveAndInstall writes the library and mirrors it into the game when a game folder is known.
-func (a *App) saveAndInstall(l *accessories.Library) (AccessoryView, error) {
+// saveLibrary writes the library; the game reads it from the active setup (pointGameAtWorkspace keeps it pointed there).
+func (a *App) saveLibrary(l *accessories.Library) (AccessoryView, error) {
 	if err := l.Save(); err != nil {
 		return AccessoryView{}, err
 	}
-	if game.IsGameDir(a.settings.GameDir) {
-		if err := l.Install(a.settings.GameDir); err != nil {
-			return a.accView(l), errors.New("saved, but installing into the game failed: " + err.Error())
-		}
-	}
+	a.pointGameAtWorkspace()
 	return a.accView(l), nil
 }
 
 func (a *App) Accessories() (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
@@ -117,16 +88,7 @@ func (a *App) AccessoryKinds() []setfmt.AccessoryKind { return setfmt.AccessoryK
 
 // AccessoryTemplates returns accessories.json of the game templates (items, meshes, textures, license rows, shelves; see
 // app_templates.go) as raw JSON, or "" while they aren't available.
-func (a *App) AccessoryTemplates() string {
-	if !game.IsGameDir(a.settings.GameDir) {
-		return ""
-	}
-	b, err := os.ReadFile(filepath.Join(a.templatesDir(), "accessories", "accessories.json"))
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
+func (a *App) AccessoryTemplates() string { return a.templateJSON("accessories", "accessories.json") }
 
 // AccessoryModel returns the editable face layout (net + texture mapping) of a kind's model.
 func (a *App) AccessoryModel(kind string) (uvmap.Model, error) {
@@ -138,7 +100,7 @@ func (a *App) AccessoryModel(kind string) (uvmap.Model, error) {
 }
 
 func (a *App) NewAccessory(kind, name, base string) (setfmt.Accessory, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return setfmt.Accessory{}, err
 	}
@@ -151,62 +113,35 @@ func (a *App) NewAccessory(kind, name, base string) (setfmt.Accessory, error) {
 	}
 	acc := setfmt.NewAccessory(kind, l.NewID(name), name, base)
 	l.Put(acc)
-	_, err = a.saveAndInstall(l)
+	_, err = a.saveLibrary(l)
 	return acc, err
 }
 
 // SaveAccessory stores an accessory's fields and editor layout. texturePNG / iconPNG are data URLs (or raw base64) of the
 // composed images from the editor; empty keeps the current files.
 func (a *App) SaveAccessory(acc setfmt.Accessory, layout string, texturePNG, iconPNG string) (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
 	if !setfmt.SafeID(acc.ID) {
 		return AccessoryView{}, errors.New("bad accessory id")
 	}
-	for _, img := range []struct {
-		data, suffix string
-		dst          *string
-	}{{texturePNG, "texture", &acc.Texture}, {iconPNG, "icon", &acc.Icon}} {
-		if img.data == "" {
-			continue
-		}
-		b, err := decodeDataURL(img.data)
-		if err != nil {
-			return AccessoryView{}, err
-		}
-		rel, err := l.WriteImage(acc.ID, img.suffix, b)
-		if err != nil {
-			return AccessoryView{}, err
-		}
-		*img.dst = rel
-	}
-	if layout != "" {
-		if !json.Valid([]byte(layout)) {
-			return AccessoryView{}, errors.New("layout is not valid JSON")
-		}
-		l.Meta.Layouts[acc.ID] = json.RawMessage(layout)
+	if err := errors.Join(putEditorImage(l, acc.ID, "texture", texturePNG, &acc.Texture),
+		putEditorImage(l, acc.ID, "icon", iconPNG, &acc.Icon), putLayout(l, acc.ID, layout)); err != nil {
+		return AccessoryView{}, err
 	}
 	l.Put(acc)
-	return a.saveAndInstall(l)
+	return a.saveLibrary(l)
 }
 
 func (a *App) DeleteAccessory(id string) (AccessoryView, error) {
-	l, err := a.accLib()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if err := a.keepInCatalog("", []string{id}, l); err != nil {
-		return AccessoryView{}, err
-	}
-	l.Delete(id)
-	return a.saveAndInstall(l)
+	return a.DeleteAccessories([]string{id})
 }
 
 // DeleteAccessories removes several accessories at once (one save and install).
 func (a *App) DeleteAccessories(ids []string) (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
@@ -216,16 +151,16 @@ func (a *App) DeleteAccessories(ids []string) (AccessoryView, error) {
 	for _, id := range ids {
 		l.Delete(id)
 	}
-	return a.saveAndInstall(l)
+	return a.saveLibrary(l)
 }
 
 func (a *App) MoveAccessory(id string, to int) (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
 	l.Move(id, to)
-	return a.saveAndInstall(l)
+	return a.saveLibrary(l)
 }
 
 // PickAccessoryImage lets the user choose an image for the editor and copies it into the library (images/src/…).
@@ -234,7 +169,7 @@ func (a *App) PickAccessoryImage() (string, error) {
 	if err != nil || file == "" {
 		return "", err
 	}
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return "", err
 	}
@@ -248,16 +183,10 @@ func (a *App) SaveTemplateImage(name, dataURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	file, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save painting template",
-		Filters:         []runtime.FileFilter{{DisplayName: "PNG image (*.png)", Pattern: "*.png"}},
-		DefaultFilename: safeFileName(strings.TrimSuffix(name, ".png")) + ".png",
-	})
+	file, err := a.saveFileAs("Save painting template", safeFileName(strings.TrimSuffix(name, ".png"))+".png", ".png",
+		[]runtime.FileFilter{{DisplayName: "PNG image (*.png)", Pattern: "*.png"}})
 	if err != nil || file == "" {
 		return "", err
-	}
-	if !strings.EqualFold(filepath.Ext(file), ".png") {
-		file += ".png"
 	}
 	return file, os.WriteFile(file, b, 0o644)
 }
@@ -269,7 +198,7 @@ func (a *App) SaveAccessorySourceImage(name, dataURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return "", err
 	}
@@ -277,21 +206,21 @@ func (a *App) SaveAccessorySourceImage(name, dataURL string) (string, error) {
 }
 
 func (a *App) InstallAccessories() (AccessoryView, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err
 	}
-	if !game.IsGameDir(a.settings.GameDir) {
-		return a.accView(l), errors.New("game folder not set (Settings → Game)")
+	if !game.IsGameDir(a.gameDir()) {
+		return a.accView(l), errNoGame
 	}
-	return a.saveAndInstall(l)
+	return a.saveLibrary(l)
 }
 
 func (a *App) OpenAccessoriesFolder() {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err == nil {
 		_ = os.MkdirAll(l.Folder, 0o755)
-		_ = exec.Command("explorer", l.Folder).Start()
+		reveal(l.Folder)
 	}
 }
 
@@ -302,7 +231,7 @@ func (a *App) GamifyAccessoryDefaults() gamify.AccessorySettings {
 }
 
 func (a *App) GamifyAccessoryPreview(s gamify.AccessorySettings) ([]gamify.AccessoryPreview, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return nil, err
 	}
@@ -311,22 +240,11 @@ func (a *App) GamifyAccessoryPreview(s gamify.AccessorySettings) ([]gamify.Acces
 }
 
 func (a *App) GamifyAccessoryApply(s gamify.AccessorySettings) ([]gamify.AccessoryPreview, error) {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return nil, err
 	}
 	rows := gamify.ApplyAccessories(l.Lib.Accessories, s)
-	_, err = a.saveAndInstall(l)
+	_, err = a.saveLibrary(l)
 	return rows, err
-}
-
-func decodeDataURL(s string) ([]byte, error) {
-	if i := strings.Index(s, ","); strings.HasPrefix(s, "data:") && i >= 0 {
-		s = s[i+1:]
-	}
-	b, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return nil, errors.New("bad image data: " + err.Error())
-	}
-	return b, nil
 }

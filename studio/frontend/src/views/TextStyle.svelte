@@ -7,7 +7,7 @@
     style: TextStyleValue;
     defaultColor: string; // where "Own colour" starts
     defaultLabel: string; // shown while the default colour is used, e.g. "game gold"
-    oncommit?: () => void; // e.g. save; the door sign saves with its own button
+    oncommit?: () => void; // when a control is released (the Shop look page saves with its Save button instead)
   } = $props();
 
   function ownColor(on: boolean) {

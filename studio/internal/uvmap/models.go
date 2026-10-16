@@ -2,7 +2,7 @@ package uvmap
 
 // Editable layouts of the game's accessory models (game 1.02). Every vanilla item of a kind shares one mesh (deck boxes
 // "DeckBox", playmats "PlayMatMesh" rolled / "PlayMatFlatMesh" on tables, sleeves "ItemCardSleeveMesh", dice "DiceBox",
-// comics "Manga_Mesh", collection books "ItemBinderBook", battle decks "PerconDeck_Mesh"); they differ only in texture, so one layout per kind covers all. Measured from the meshes the mod exports (see TestModelsMatchMeshes) — docs/runtime-facts.md.
+// comics "Manga_Mesh", collection books "ItemBinderBook", battle decks "PerconDeck_Mesh"); they differ only in texture, so one layout per kind covers all. Measured from the meshes the mod exports (see TestModelsMatchMeshes).
 //
 // A face is a rectangle in the editor's unfolded "net" (object units, y down) seen from outside, upright. Each target copies a
 // part of the face (Src, normalized 0..1 face coords) into a texture rectangle (Rect, pixels in a 1024² texture, origin
@@ -48,7 +48,7 @@ type Model struct {
 	// the vanilla playmat/book icons), "recolor" (the vanilla icon with the palette swatches recoloured), "pack" / "mesh" (the
 	// preview model rendered with the texture).
 	Icon string `json:"icon"`
-	// Bases: vanilla items the art can start from (pack/box editor). Each names its template texture (<plugin>\templates\<file>)
+	// Bases: vanilla items the art can start from (pack/box editor). Each names its texture in the game templates
 	// and, when that item's mesh reads a different texture area, where each face is in it (face id → targets; nil = Faces).
 	Bases []Base `json:"bases,omitempty"`
 	// Projected: no faces — the net is the Views, and the editor's GPU painter projects the layers onto every surface by its

@@ -67,11 +67,6 @@
     <!-- MTG mode: Forge bridge built by tools\build-bridge.ps1 (Java, GPL-3.0 — source in forge-bridge\). -->
     <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\tcgcc-forge-bridge.jar" DestinationFolder="$(PluginInstallDir)" SkipUnchangedFiles="true"
           Condition="Exists('$(MSBuildThisFileDirectory)Assets\tcgcc-forge-bridge.jar')" />
-    <!-- Dev convenience: install example sets with -p:InstallExamples=true (off by default). -->
-    <ItemGroup Condition="'$(InstallExamples)' == 'true'">
-      <ExampleSetFiles Include="$(MSBuildThisFileDirectory)..\..\examples\**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(ExampleSetFiles)" DestinationFiles="@(ExampleSetFiles->'$(PluginInstallDir)\Sets\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Message Importance="high" Text="Installed $(TargetFileName) -> $(PluginInstallDir)" />
   </Target>
 

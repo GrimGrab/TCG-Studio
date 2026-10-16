@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, EventsOn, BrowserOpenURL, errText } from './lib/api';
+  import { canLeave } from './lib/leaveGuard';
+  import { Ev } from './lib/events';
+  import { App, EventsOn, BrowserOpenURL, ask, errText } from './lib/api';
   import Projects from './views/Projects.svelte';
   import Import from './views/Import.svelte';
   import { queue as importQueue } from './lib/importQueue.svelte';
@@ -21,6 +23,35 @@
   let view = $state<View>('projects');
   let openId = $state('');
   let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
+  const AUTO_TASK = 'Updating your content for the game'; // App.runAutoUpgrade's storage task label
+  let upgradeChoices = $state(0); // differing art waiting for the player's choice (Storage → Finish the upgrade)
+  let upgradeWaiting = $state(''); // why the start-up upgrade couldn't run (the game is running)
+
+  // Start-up (and after Storage tasks / "Try again"): what the mod needs from an older TCG Studio happens on its own
+  // (App.AutoUpgrade), then, once per Studio version, installed sets get what this version adds (App.SyncInstalledSets).
+  // One message for all of it.
+  async function startupTasks(sync: boolean) {
+    const said: string[] = [];
+    try {
+      const r = await App.AutoUpgrade();
+      upgradeWaiting = r.waiting || '';
+      upgradeChoices = r.choices || 0;
+      if (r.files > 0 || r.notes?.length) said.push('Your content was moved to where the game now reads it' + (r.notes?.length ? ': ' + r.notes.join('; ') : '') + '.');
+      if (r.modUpdated) said.push('The mod in the game was updated.');
+      if (r.modUpdated || r.files > 0 || r.notes?.length) await refreshStatus();
+    } catch (e) {
+      notify('Updating your content for the game failed: ' + errText(e), 'error');
+    }
+    if (sync) {
+      try {
+        const msg = await App.SyncInstalledSets();
+        if (msg) said.push(msg);
+      } catch (e) {
+        notify(errText(e), 'error');
+      }
+    }
+    if (said.length) notify(said.join(' '), 'ok');
+  }
   let gameStatus = $state<any>(null);
   let setupReady = $state(true);
   let version = $state<any>(null);
@@ -64,8 +95,14 @@
     if (setupMenu) refreshSetup();
   }
 
-  function openSetups(action: any = null) {
+  // Pages with unsaved changes register a leave guard (lib/leaveGuard.ts); leaving them asks first.
+  async function go(v: View) {
+    if (v === view || (await canLeave())) view = v;
+  }
+
+  async function openSetups(action: any = null) {
     setupMenu = false;
+    if (!(await canLeave())) return;
     setupAction = action;
     view = 'setups';
   }
@@ -108,27 +145,26 @@
     }
   }
 
-  // Open on Setup when something isn't installed yet (e.g. a friend's first run) or right after an update
+  // Open on Game & mod when something isn't installed yet (e.g. a friend's first run) or right after an update
   // (the mod in the game then needs updating too).
   let ready = $state(false);
   onMount(async () => {
     await App.WaitReady(); // the backend's startup runs alongside the page load
     ready = true;
-    EventsOn('update:progress', (f: number) => (updateProgress = f));
-    EventsOn('storage:progress', () => (storageBusy = true));
-    EventsOn('storage:done', () => (storageBusy = false));
+    EventsOn(Ev.UpdateProgress, (f: number) => (updateProgress = f));
+    EventsOn(Ev.StorageProgress, () => (storageBusy = true));
+    // After a Storage task (e.g. Finish the upgrade) the banner follows what's left; not after the start-up run's own task.
+    EventsOn(Ev.StorageDone, (label: string) => { storageBusy = false; if (label !== AUTO_TASK) startupTasks(false); });
     version = await App.AppVersion();
     await refreshStatus();
+    await startupTasks(true); // may update the mod: before the notice below
     refreshSetup();
     if (version.updatedTo) {
-      notify(`Updated to v${version.updatedTo}.` + (setupReady ? '' : ' Update the mod in the game on the Setup screen.'), 'ok');
+      notify(`Updated to v${version.updatedTo}.` + (setupReady ? '' : ' Update the mod in the game on the Game & mod page.'), 'ok');
     }
     if (!setupReady) view = 'setup';
     checkUpdates(false);
-    // Once per Studio version: add what this version needs to the sets already installed in the game (no clicks needed).
-    App.SyncInstalledSets()
-      .then((msg: string) => msg && notify(msg, 'ok'))
-      .catch((e: unknown) => notify(errText(e), 'error'));
+
   });
 </script>
 
@@ -155,18 +191,22 @@
         {/if}
       </div>
     {/if}
-    <button class:active={view === 'setup'} onclick={() => (view = 'setup')}>Setup{#if !setupReady}<span class="dot" title="Something needs installing"></span>{/if}</button>
-    <button class:active={view === 'projects' || view === 'editor'} onclick={() => (view = 'projects')}>Sets</button>
-    <button class:active={view === 'import'} onclick={() => (view = 'import')}>Import{#if importQueue.current}<span class="dot busy" title={importQueue.jobs.length ? `Importing ${importQueue.current} — ${importQueue.jobs.length} more queued` : `Importing ${importQueue.current}`}></span>{/if}</button>
-    <button class:active={view === 'accessories'} onclick={() => (view = 'accessories')}>Accessories</button>
-    <button class:active={view === 'furniture'} onclick={() => (view = 'furniture')}>Furniture</button>
-    <button class:active={view === 'decorations'} onclick={() => (view = 'decorations')}>Decorations</button>
-    <button class:active={view === 'shoplook'} onclick={() => (view = 'shoplook')}>Shop look</button>
-    <button class:active={view === 'catalog'} onclick={() => (view = 'catalog')}>Catalog</button>
-    <button class:active={view === 'gamify'} onclick={() => (view = 'gamify')}>Gamify</button>
-    <button class:active={view === 'modsettings'} onclick={() => (view = 'modsettings')}>Mod settings</button>
-    <button class:active={view === 'storage'} onclick={() => (view = 'storage')}>Storage{#if storageBusy}<span class="dot busy" title="A storage task is running"></span>{/if}</button>
-    <button class:active={view === 'settings'} onclick={() => (view = 'settings')}>Settings</button>
+    <!-- The active setup's pages, under its picker; then the pages every setup shares. -->
+    <div class="group">
+      <button class:active={view === 'projects' || view === 'editor'} onclick={() => go('projects')}>Sets</button>
+      <button class:active={view === 'import'} onclick={() => go('import')}>Import{#if importQueue.current}<span class="dot busy" title={importQueue.jobs.length ? `Importing ${importQueue.current} — ${importQueue.jobs.length} more queued` : `Importing ${importQueue.current}`}></span>{/if}</button>
+      <button class:active={view === 'accessories'} onclick={() => go('accessories')}>Accessories</button>
+      <button class:active={view === 'furniture'} onclick={() => go('furniture')}>Furniture</button>
+      <button class:active={view === 'decorations'} onclick={() => go('decorations')}>Decorations</button>
+      <button class:active={view === 'shoplook'} onclick={() => go('shoplook')}>Shop look</button>
+      <button class:active={view === 'gamify'} onclick={() => go('gamify')}>Gamify</button>
+      <button class:active={view === 'modsettings'} onclick={() => go('modsettings')}>Mod settings</button>
+    </div>
+    <div class="group-label">All setups</div>
+    <button class:active={view === 'catalog'} onclick={() => go('catalog')}>Catalog</button>
+    <button class:active={view === 'storage'} onclick={() => go('storage')}>Storage{#if storageBusy}<span class="dot busy" title="A storage task is running"></span>{/if}</button>
+    <button class:active={view === 'setup'} onclick={() => go('setup')}>Game &amp; mod{#if !setupReady}<span class="dot" title="Something needs installing"></span>{/if}</button>
+    <button class:active={view === 'settings'} onclick={() => go('settings')}>Settings</button>
     <div class="grow"></div>
     <button class="discord" title="Opens {DISCORD_URL} in your browser" onclick={() => BrowserOpenURL(DISCORD_URL)}>
       <span class="discord-title">Join our Discord</span>
@@ -177,7 +217,7 @@
         {#if !gameStatus.found}
           <span class="badge err">Game not found</span>
         {:else if !setupReady}
-          <button class="badge warn linkish" onclick={() => (view = 'setup')}>Setup needed</button>
+          <button class="badge warn linkish" onclick={() => go('setup')}>Install needed</button>
         {:else}
           <span class="badge ok">Game + mod ready</span>
         {/if}
@@ -201,6 +241,18 @@
         </div>
         <button class="primary" onclick={installUpdate} disabled={updating}>{updating ? `Updating… ${Math.round(updateProgress * 100)}%` : 'Update now'}</button>
         <button onclick={() => (updateHidden = true)} disabled={updating}>Later</button>
+      </div>
+    {/if}
+    {#if upgradeWaiting}
+      <div class="update-banner">
+        <div class="grow"><b>The game is running.</b> <span class="muted">{upgradeWaiting}</span></div>
+        <button class="primary" onclick={() => startupTasks(false)}>Try again</button>
+      </div>
+    {:else if upgradeChoices > 0 && view !== 'storage'}
+      <div class="update-banner">
+        <div class="grow"><b>Some sets have their own art that differs from the shared art.</b>
+          <span class="muted">The game shows the shared art until you choose which to keep.</span></div>
+        <button class="primary" onclick={() => go('storage')}>Choose on Storage</button>
       </div>
     {/if}
     {#key setupKey}
@@ -275,6 +327,8 @@
   .menu .sep { height: 1px; background: var(--line); margin: 4px 2px; }
   nav button { text-align: left; background: transparent; border-color: transparent; }
   nav button.active { background: var(--panel-2); border-color: var(--line); }
+  .group { display: flex; flex-direction: column; gap: 4px; margin-top: -4px; padding-left: 8px; border-left: 2px solid var(--line); }
+  .group-label { margin: 14px 8px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .status { padding: 8px; }
   nav button.discord {
     display: flex; flex-direction: column; gap: 2px; margin: 4px 0; padding: 8px 10px;

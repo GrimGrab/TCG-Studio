@@ -35,7 +35,7 @@ namespace TCGCustomCards.Debug
                 sb.AppendLine("!! dump aborted: " + e);
             }
 
-            string path = Path.Combine(Path.GetDirectoryName(typeof(Plugin).Assembly.Location), "diagnostics.txt");
+            string path = Path.Combine(Plugin.DumpDir, "diagnostics.txt");
             File.WriteAllText(path, sb.ToString());
             Plugin.Log.LogInfo($"Diagnostics written to {path}");
         }

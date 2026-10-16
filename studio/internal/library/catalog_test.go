@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tcgstudio/internal/assets"
 	"tcgstudio/internal/catalog"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/workspace"
 )
 
 // Art and files only the shared catalog uses (no setup has the item any more) are not "unused".
@@ -32,7 +32,7 @@ func TestCatalogKeepsArtAndAssets(t *testing.T) {
 	if err := ws.Save(p); err != nil {
 		t.Fatal(err)
 	}
-	store := assets.For(h.Root)
+	store := workspace.Dir(h.Root).Store()
 	rel, _ := store.Put([]byte("texture"), ".png")
 	cat, _ := c.Items()
 	cat.PutFurniture(setfmt.Furniture{ID: "bin", Type: "TrashBin", Name: "Bin", Texture: rel})
@@ -50,11 +50,8 @@ func TestCatalogKeepsArtAndAssets(t *testing.T) {
 			t.Fatalf("catalog art/assets reported as plain unused: %+v", rep.Unused)
 		}
 	}
-	if len(rep.Unused) != 2 || rep.Accessories.UnusedFiles != 0 {
-		t.Fatalf("unused %+v %+v", rep.Unused, rep.Accessories)
-	}
-	if _, n, _ := DeleteUnusedAssets(h); n != 0 {
-		t.Fatal("deleted a catalog asset")
+	if len(rep.Unused) != 2 {
+		t.Fatalf("unused %+v", rep.Unused)
 	}
 	if _, err := os.Stat(project.LibraryDir(h.Root)); err != nil {
 		t.Fatal(err)

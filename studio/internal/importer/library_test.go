@@ -40,7 +40,7 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 	if calls.Load() != 2 {
 		t.Fatalf("first import downloaded %d", calls.Load())
 	}
-	if !pa.InLibrary("images/1.png") {
+	if _, err := os.Stat(filepath.Join(lib, "x-set", "images", "1.png")); err != nil {
 		t.Fatal("art not in the library")
 	}
 	if _, err := os.Stat(filepath.Join(pa.Folder, "images", "1.png")); err == nil {
@@ -51,7 +51,7 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 0 || !pb.InLibrary("images/2.png") {
+	if calls.Load() != 0 || pb.ImagePath("images/2.png") != filepath.Join(lib, "x-set", "images", "2.png") {
 		t.Fatalf("second import downloaded %d", calls.Load())
 	}
 	if issues := pb.Set.Validate(pb.Folder, pb.LibFolder); len(issues) > 0 {
@@ -62,7 +62,8 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 		}
 	}
 
-	// JPEG import of the same set: other format → its own files in the project folder, never mixed.
+	// JPEG import of the same set: art made another way → downloaded again into the shared folder (the library now
+	// records JPEG).
 	calls.Store(0)
 	opt.ImageFormat = "jpg"
 	setupC := project.Workspace{Root: filepath.Join(ws, "setups", "c"), Library: lib}
@@ -70,18 +71,18 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 2 || pc.Set.Cards[0].Image != "images/1.jpg" || pc.InLibrary("images/1.jpg") {
+	if m := project.LoadLibMeta(filepath.Join(lib, "x-set")); calls.Load() != 2 || pc.Set.Cards[0].Image != "images/1.jpg" || m == nil || m.Format != "jpg" {
 		t.Fatalf("jpeg import: calls %d image %s", calls.Load(), pc.Set.Cards[0].Image)
 	}
-	// The player chose "use the art on this PC": JPEG picked, but the library's PNG art is used and nothing downloaded.
+	// The player chose "use the art on this PC": PNG picked, but the library's JPEG art is used and nothing downloaded.
 	calls.Store(0)
-	opt.UseLibrary = true
+	opt.UseLibrary, opt.ImageFormat = true, "png"
 	setupD := project.Workspace{Root: filepath.Join(ws, "setups", "d"), Library: lib}
 	pd, err := buildProject(context.Background(), setupD, in, opt, func(Progress) {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 0 || pd.Set.Cards[0].Image != "images/1.png" || !pd.InLibrary("images/1.png") {
+	if calls.Load() != 0 || pd.Set.Cards[0].Image != "images/1.jpg" {
 		t.Fatalf("use library: calls %d image %s", calls.Load(), pd.Set.Cards[0].Image)
 	}
 	opt.UseLibrary = false
@@ -90,20 +91,5 @@ func TestImportUsesSharedLibrary(t *testing.T) {
 	defer f.Close()
 	if _, format, err := image.DecodeConfig(f); err != nil || format != "jpeg" {
 		t.Fatalf("not a jpeg: %v %v", format, err)
-	}
-}
-
-func TestOpaqueFillsCorners(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, 100, 140))
-	for y := 0; y < 140; y++ {
-		for x := 0; x < 100; x++ {
-			img.Set(x, y, color.NRGBA{20, 20, 20, 255}) // dark border colour
-		}
-	}
-	img.Set(0, 0, color.NRGBA{}) // transparent corner
-	out := Opaque(img)
-	r, g, b, a := out.At(0, 0).RGBA()
-	if a != 0xffff || r>>8 > 40 || g>>8 > 40 || b>>8 > 40 {
-		t.Fatalf("corner = %d %d %d %d", r>>8, g>>8, b>>8, a>>8)
 	}
 }

@@ -6,7 +6,7 @@ namespace TCGCustomCards.Hooks
     /// <summary>
     /// Single owner of the patch that stops the shop's day clock (LightManager.Update: time of day, sun, skybox, light timers).
     /// Vanilla never pauses it (menus and the phone let time run). While any reason holds it, LightManager.Update is skipped;
-    /// customers keep moving. See docs/hooks.md.
+    /// customers keep moving.
     /// </summary>
     internal static class ShopClock
     {

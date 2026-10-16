@@ -17,7 +17,7 @@ import (
 // the vanilla sign art (vanilla.png), the default sign font as an SDF atlas (default-font.png) and sign.json (layout).
 const ShopSignDir = "shopsign"
 
-// Sign face of BillboardMesh in mesh units (docs: runtime-facts "Shop sign"; mod ShopSign.cs).
+// Sign face of BillboardMesh in mesh units (the mod's ShopSign.cs).
 const signMeshW, signMeshH = 4.645, 1.2
 
 // The vanilla art's two banner halves in the sign texture (UV, bottom-up; same values as the mod's ShopSign.cs).

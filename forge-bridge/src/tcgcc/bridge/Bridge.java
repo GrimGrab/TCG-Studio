@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * TCG Custom Cards ↔ Forge bridge (GPL-3.0, links against Forge). Runs Forge with no window; the game talks to it over
- * stdin/stdout, one JSON object per line. Protocol: docs/mtg-forge.md "Bridge protocol".
+ * stdin/stdout, one JSON object per line.
  *
  * <p>Usage: {@code java -cp forge-gui-desktop.jar;tcgcc-forge-bridge.jar tcgcc.bridge.Bridge <logFile>} with the Forge program
  * folder as working directory (its forge.profile.properties points Forge at our user dir).

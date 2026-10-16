@@ -88,8 +88,8 @@ namespace TCGCustomCards.Runtime
             }
         }
 
-        /// <summary>Optional card back shared by every custom set that doesn't set its own (written by TCG Studio).</summary>
-        public const string GlobalCardBackFile = "card_back.png";
+        /// <summary>Optional card back shared by every custom set that doesn't set its own (the setup's, written by TCG Studio).</summary>
+        public static string GlobalCardBackPath => Core.StudioPaths.SetupFile(Path.Combine("game", "card_back.png"));
 
         /// <summary>Image file used for this set's back (set's own → global), or null for the frame template's back.</summary>
         public string CardBackPath
@@ -100,8 +100,8 @@ namespace TCGCustomCards.Runtime
                 {
                     _cardBackPathResolved = true;
                     string own = string.IsNullOrEmpty(Def.CardBack) ? null : Def.Resolve(Def.CardBack);
-                    string global = Path.Combine(Plugin.PluginDir, GlobalCardBackFile);
-                    _cardBackPath = own != null && File.Exists(own) ? own : File.Exists(global) ? global : null;
+                    string global = GlobalCardBackPath;
+                    _cardBackPath = own != null && File.Exists(own) ? own : global != null && File.Exists(global) ? global : null;
                 }
                 return _cardBackPath;
             }
@@ -115,10 +115,10 @@ namespace TCGCustomCards.Runtime
             {
                 if (!_cardBackResolved)
                 {
-                    // Priority: the set's own back → the global back (<plugin>\card_back.png) → the frame template's back.
+                    // Priority: the set's own back → the setup's global back → the frame template's back.
                     _cardBackResolved = true;
                     if (!string.IsNullOrEmpty(Def.CardBack)) _cardBack = ImageCache.GetCardBack(Def.Resolve(Def.CardBack));
-                    if (_cardBack == null) _cardBack = ImageCache.GetCardBack(Path.Combine(Plugin.PluginDir, GlobalCardBackFile));
+                    if (_cardBack == null) _cardBack = ImageCache.GetCardBack(GlobalCardBackPath);
                 }
                 return _cardBack ?? CSingleton<InventoryBase>.Instance.m_MonsterData_SO.m_CardBackImageList[(int)Def.FrameTemplate];
             }

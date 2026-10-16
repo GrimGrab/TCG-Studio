@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
+using System.Text;
 using Newtonsoft.Json;
 using TCGCustomCards.Runtime;
 using UnityEngine;
@@ -11,6 +13,8 @@ namespace TCGCustomCards.Save
     /// The mod's own per-slot save: persistentDataPath\TCGCustomCards\slot{n}.json.
     /// Keyed by stable ids (set → card → variant), never by runtime ints or list positions,
     /// so editing/reordering a set never scrambles what the player owns. Unknown entries are kept.
+    /// Written as gzip-compressed compact JSON (about 20× smaller than indented JSON) under the same file names, so copies,
+    /// backups (.bak) and TCG Studio's setup switches handle it unchanged; plain JSON from older versions is still read.
     /// </summary>
     internal static class SideCar
     {
@@ -103,6 +107,8 @@ namespace TCGCustomCards.Save
                 string src = PathFor(from), dst = PathFor(to);
                 if (!File.Exists(src)) return;
                 File.Copy(src, dst, overwrite: true);
+                // The target's backup belongs to whatever was saved in that slot before; LoadBackup must not pick it up.
+                if (File.Exists(dst + ".bak")) File.Delete(dst + ".bak");
                 Plugin.Log.LogInfo($"Side-car: copied slot {from} to slot {to} (autosave moved to an empty slot)");
             }
             catch (Exception e)
@@ -117,16 +123,30 @@ namespace TCGCustomCards.Save
             if (!File.Exists(path)) { _pending = new SaveFile(); return; }
             try
             {
-                _pending = JsonConvert.DeserializeObject<SaveFile>(File.ReadAllText(path)) ?? new SaveFile();
+                _pending = JsonConvert.DeserializeObject<SaveFile>(ReadText(path)) ?? new SaveFile();
                 Plugin.Log.LogInfo($"Side-car: read slot {slot} ({System.IO.Path.GetFileName(path)}), {(_pending.mtgDecks?.Count ?? 0)} MTG deck(s)");
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"Could not read {path}: {e.Message}. Custom card data for this slot starts empty; the file is left untouched.");
-                File.Copy(path, path + ".corrupt", overwrite: true);
+                Plugin.Log.LogError($"Could not read {path}: {e.Message}. Custom card data for this slot starts empty; a copy is kept as {Path.GetFileName(path)}.corrupt.");
                 _pending = new SaveFile();
+                try { File.Copy(path, path + ".corrupt", overwrite: true); }
+                catch (Exception ce) { Plugin.Log.LogError($"Could not keep a copy of {path}: {ce.Message}"); }
             }
         }
+
+        /// <summary>A side-car file's JSON: gzip-compressed (current) or plain text (written by older versions).</summary>
+        private static string ReadText(string path)
+        {
+            byte[] b = File.ReadAllBytes(path);
+            Stream s = new MemoryStream(b);
+            if (b.Length >= 2 && b[0] == 0x1f && b[1] == 0x8b) s = new GZipStream(s, CompressionMode.Decompress);
+            using (var r = new StreamReader(s, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+                return r.ReadToEnd();
+        }
+
+        /// <summary>Saved card prices and price changes keep the 2 decimals the game shows (full floats don't compress).</summary>
+        private static float Round(float v) => (float)Math.Round(v, 2);
 
         /// <summary>Pushes the pending side-car into the card stores (after vanilla data has been propagated).</summary>
         public static void ApplyPending()
@@ -184,6 +204,7 @@ namespace TCGCustomCards.Save
         {
             Registry.ResetAllPlayerState();
             _orphans = new SaveFile();
+            SaveStripper.ForgetCarried();
             ApplyLicenses(new Dictionary<string, bool>());
             ApplyItems(new Dictionary<string, ItemSave>(), keepCountsWhenMissing: false);
             Runtime.Mtg.MtgDeckStore.Load(null, -1);
@@ -298,7 +319,13 @@ namespace TCGCustomCards.Save
             var file = new SaveFile { stash = PendingStash, mtgDecks = Runtime.Mtg.MtgDeckStore.Export(), activeMtgDeck = Runtime.Mtg.MtgDeckStore.Active,
                                      shopEvent = Hooks.ShopEvents.Export(), shopEventStock = Hooks.ShopEvents.ExportStock(),
                                      draftEvent = Runtime.Mtg.MtgDraftEvent.Export(), binder = Binder.BinderStore.Export() };
-            foreach (var kv in _orphans.sets) file.sets[kv.Key] = new Dictionary<string, Dictionary<string, VariantSave>>(kv.Value);
+            // Copies down to the per-card maps: the live cards below must never end up in _orphans.
+            foreach (var kv in _orphans.sets)
+            {
+                var cards = new Dictionary<string, Dictionary<string, VariantSave>>();
+                foreach (var c in kv.Value) cards[c.Key] = new Dictionary<string, VariantSave>(c.Value);
+                file.sets[kv.Key] = cards;
+            }
             foreach (var kv in _orphans.licenses) file.licenses[kv.Key] = kv.Value;
             foreach (var kv in _orphans.items) file.items[kv.Key] = kv.Value;
             foreach (var (key, item, def) in CustomItems())
@@ -328,13 +355,14 @@ namespace TCGCustomCards.Save
                 var st = set.Store;
                 for (int slotIdx = 0; slotIdx < st.SlotCount; slotIdx++)
                 {
+                    var past = st.Market[slotIdx].pastPricePercentChangeList;
                     var v = new VariantSave
                     {
                         count = st.Counts[slotIdx],
-                        price = st.PriceSet[slotIdx],
-                        graded = st.GradedPriceSet[slotIdx].floatDataList.ToArray(),
-                        pct = st.Market[slotIdx].pricePercentChangeList,
-                        past = st.Market[slotIdx].pastPricePercentChangeList
+                        price = Round(st.PriceSet[slotIdx]),
+                        graded = st.GradedPriceSet[slotIdx].floatDataList.ConvertAll(Round).ToArray(),
+                        pct = Round(st.Market[slotIdx].pricePercentChangeList),
+                        past = past?.ConvertAll(Round)
                     };
                     if (v.IsEmpty) continue;
                     if (Array.TrueForAll(v.graded, g => g == 0f)) v.graded = null;
@@ -348,10 +376,13 @@ namespace TCGCustomCards.Save
             {
                 Directory.CreateDirectory(Dir);
                 string path = PathFor(slot), tmp = path + ".tmp";
-                File.WriteAllText(tmp, JsonConvert.SerializeObject(file, Formatting.Indented));
+                using (var fs = File.Create(tmp))
+                using (var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Optimal))
+                using (var w = new StreamWriter(gz, new UTF8Encoding(false)))
+                    JsonSerializer.CreateDefault().Serialize(w, file);
                 if (File.Exists(path)) File.Replace(tmp, path, path + ".bak");
                 else File.Move(tmp, path);
-                Plugin.Log.LogInfo($"Side-car: wrote slot {slot}, {file.mtgDecks?.Count ?? 0} MTG deck(s)");
+                Plugin.Log.LogInfo($"Side-car: wrote slot {slot} ({new FileInfo(path).Length / 1024} KB), {file.mtgDecks?.Count ?? 0} MTG deck(s)");
             }
             catch (Exception e)
             {

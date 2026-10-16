@@ -3,7 +3,7 @@
 The editor and installer for the TCG Custom Cards mod (Go + Wails v2, Svelte 5 frontend).
 
 - Full build (mod + installer payload + exe): `tools\package.ps1` from the repository root. See `BUILDING.md`.
-- Live development: `wails dev` in this folder. A dev build has no installer payload, so the Setup screen says so.
+- Live development: `wails dev` in this folder. A dev build has no installer payload, so the Game & mod page says so.
 - After changing a Go method on `App`: `wails generate module`.
 - Checks: `go test ./internal/...` here, `npx svelte-check` in `frontend\`.
 

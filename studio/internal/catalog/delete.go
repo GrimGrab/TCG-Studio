@@ -1,11 +1,9 @@
 package catalog
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/assets"
@@ -15,16 +13,16 @@ import (
 )
 
 // Deleting from the catalog deletes everywhere (user decision 2026-10-06): the template, every setup's copy and the shared
-// files nothing uses any more. The game folder is the App's part (it knows the active setup and whether the game runs).
+// files nothing uses any more, and each setup's installed sets lose them (the game reads those from the setup).
 
 // Deleted reports a DeleteEverywhere.
 type Deleted struct {
 	Setups  []string `json:"setups"`  // setup ids that had something removed
-	SetIDs  []string `json:"setIds"`  // set ids no setup has any more (the App removes the game's copies)
+	SetIDs  []string `json:"setIds"`  // set ids no setup has any more
 	Removed int      `json:"removed"` // copies removed (templates + setups)
 }
 
-// DeleteEverywhere removes sets (by Entry.Key) or accessories/furniture (by id) from the catalog and from every setup.
+// DeleteEverywhere removes sets or accessories/furniture (by id) from the catalog and from every setup.
 func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*Deleted, error) {
 	list, err := h.List()
 	if err != nil {
@@ -34,15 +32,13 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 	touched := map[string]bool{}
 	if kind == KindSet {
 		for _, key := range keys {
-			id, folder, _ := strings.Cut(key, "|")
+			id := key
 			if !setfmt.SafeID(id) {
 				return res, fmt.Errorf("bad set id %q", id)
 			}
-			match := func(p *project.Project) bool { return keyOf(p) == key }
 			for _, s := range list {
-				ws := project.Workspace{Root: s.Folder, Library: project.LibraryDir(c.Workspace)}
-				p, err := ws.Load(id)
-				if err != nil || !match(p) {
+				ws := c.ws().Projects(s.Folder)
+				if _, err := ws.Load(id); err != nil {
 					continue
 				}
 				if err := ws.Delete(id); err != nil {
@@ -50,7 +46,7 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 				}
 				res.Removed++
 				touched[s.ID] = true
-				if info, err := setups.LoadInfo(s.Folder); err == nil {
+				_ = setups.EditInfo(s.Folder, func(info *setups.Info) {
 					kept := info.InstalledSets[:0]
 					for _, x := range info.InstalledSets {
 						if x != id {
@@ -58,44 +54,28 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 						}
 					}
 					info.InstalledSets = kept
-					_ = setups.SaveInfo(s.Folder, info)
-				}
+				})
 			}
-			if p, err := c.Sets().Load(id); err == nil && match(p) {
+			if _, err := c.Sets().Load(id); err == nil {
 				if err := c.Sets().Delete(id); err != nil {
 					return res, err
 				}
 				res.Removed++
 			}
-			// Shared files: the named folder of own art, or the whole set folder once nothing has the set any more.
-			lib := project.LibraryDir(c.Workspace)
-			if !c.setInUse(list, id, "") {
-				_ = os.RemoveAll(filepath.Join(lib, id))
+			// The set's shared folder goes once nothing has the set any more.
+			if !c.setInUse(list, id) {
+				_ = os.RemoveAll(filepath.Join(c.ws().Library(), id))
 				res.SetIDs = append(res.SetIDs, id)
-			} else if folder != "" && !c.setInUse(list, id, folder) {
-				_ = os.RemoveAll(filepath.Join(lib, id, folder))
 			}
 		}
 	} else {
 		store := assets.For(c.Workspace)
 		var refs []string
 		drop := func(l *accessories.Library, id string) bool {
-			var entry any
-			if i := l.FurnitureIndex(id); i >= 0 {
-				entry = l.Lib.Furniture[i]
-			} else if i := l.DecorationIndex(id); i >= 0 {
-				entry = l.Lib.Decorations[i]
-			} else if i := l.Index(id); i >= 0 {
-				entry = l.Lib.Accessories[i]
-			} else {
+			if _, _, ok := l.Entry(id); !ok {
 				return false
 			}
-			if b, err := json.Marshal(entry); err == nil {
-				refs = append(refs, assets.Refs(b)...)
-			}
-			if raw, ok := l.Meta.Layouts[id]; ok {
-				refs = append(refs, assets.Refs(raw)...)
-			}
+			refs = append(refs, l.ItemRefs(id)...)
 			l.Delete(id)
 			l.DeleteFurniture(id)
 			l.DeleteDecoration(id)
@@ -134,7 +114,7 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 				res.Removed += n
 			}
 		}
-		still := c.storeRefs(list)
+		still := accessories.StoreRefs(append(setups.Folders(list), c.Root)...)
 		for _, r := range refs {
 			if !still[r] {
 				_ = os.Remove(store.Path(r))
@@ -150,42 +130,18 @@ func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*D
 }
 
 // setInUse reports whether any setup or template still has set id (folder != "": using that own-art folder).
-func (c Catalog) setInUse(list []setups.Summary, id, folder string) bool {
+func (c Catalog) setInUse(list []setups.Summary, id string) bool {
 	roots := []string{c.Root}
 	for _, s := range list {
 		roots = append(roots, s.Folder)
 	}
 	for _, root := range roots {
-		ws := project.Workspace{Root: root, Library: project.LibraryDir(c.Workspace)}
-		p, err := ws.Load(id)
-		if err != nil {
-			if _, serr := os.Stat(filepath.Join(ws.Folder(id), project.SetFile)); serr == nil {
-				return true // there but unreadable: keep its files
-			}
-			continue
-		}
-		if folder == "" || p.ArtFolder() == folder {
-			return true
+		ws := c.ws().Projects(root)
+		if _, err := os.Stat(filepath.Join(ws.Folder(id), project.SetFile)); err == nil {
+			return true // there (readable or not: keep its files)
 		}
 	}
 	return false
 }
 
 // storeRefs is every store file any setup or the catalog refers to.
-func (c Catalog) storeRefs(list []setups.Summary) map[string]bool {
-	refs := map[string]bool{}
-	dirs := []string{accessories.Folder(c.Root)}
-	for _, s := range list {
-		dirs = append(dirs, accessories.Folder(s.Folder))
-	}
-	for _, dir := range dirs {
-		for _, f := range []string{accessories.LibraryFile, accessories.MetaFile} {
-			if b, err := os.ReadFile(filepath.Join(dir, f)); err == nil {
-				for _, r := range assets.Refs(b) {
-					refs[r] = true
-				}
-			}
-		}
-	}
-	return refs
-}

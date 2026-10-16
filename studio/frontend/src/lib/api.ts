@@ -10,11 +10,7 @@ export const BORDERS = ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt
 export const FRAME_TEMPLATES = ['Tetramon', 'Destiny', 'Ghost', 'Megabot', 'FantasyRPG', 'CatJob', 'Ascension'];
 export const LANES = ['Fire', 'Earth', 'Water', 'Wind'];
 
-/** URL for a file inside a project folder (served by the Go asset handler). */
-export function projectFile(projectId: string, rel: string | undefined, bust = 0): string {
-  if (!rel) return '';
-  return `/proj/${encodeURIComponent(projectId)}/${rel.split('/').map(encodeURIComponent).join('/')}${bust ? `?v=${bust}` : ''}`;
-}
+export { projectFile } from './urls';
 
 export function money(v: number | undefined | null): string {
   if (v === undefined || v === null || isNaN(v)) return '–';
@@ -24,6 +20,11 @@ export function money(v: number | undefined | null): string {
 /** Display name of an import source (project meta.source). */
 export function sourceName(source: string | undefined): string {
   return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex', ygoprodeck: 'YGOPRODeck', optcg: 'TCGplayer', swudb: 'SWU-DB', lorcast: 'Lorcast', fab: 'TCGplayer', unionarena: 'TCGplayer', folder: 'Image folder', epl: 'EPL mod' } as Record<string, string>)[source ?? ''] ?? source ?? '';
+}
+
+/** The mod converted content came from (origin.Origin.Name: empty mod = converted before Studio recorded it). */
+export function originName(o: { kind?: string; mod?: string }): string {
+  return o.mod || `an unnamed ${o.kind}`;
 }
 
 let sourcesPromise: Promise<any[]> | null = null;

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"tcgstudio/internal/game"
@@ -11,29 +14,32 @@ import (
 
 // SyncInstalledSets brings the sets already installed in the game up to date with what this Studio version adds to
 // set.json (today: the MTG export data, plus the Scryfall names/layouts older imports lack), so players don't have to
-// reopen and reinstall every set after an update. Only the new fields are written into the game's copy — prices,
-// licenses and anything edited but not installed stay as they were. Runs once per Studio version (the frontend calls it
+// reopen and reinstall every set after an update. Only the new fields are added to each installed set's set.json (which the
+// game reads) — prices and licenses stay as they were. Runs once per Studio version (the frontend calls it
 // on start); returns a short message for the player, or "" when nothing changed.
 func (a *App) SyncInstalledSets() (string, error) {
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
-	if a.settings.SyncedVersion == Version && Version != "dev" {
+	if a.cfg().SyncedVersion == Version && Version != "dev" {
 		return "", nil
 	}
-	if !game.IsGameDir(a.settings.GameDir) {
+	if !game.IsGameDir(a.gameDir()) {
 		return "", nil // try again once the game folder is known
 	}
-	list, err := a.ws().List(a.settings.GameDir)
+	ws := a.ws()
+	list, err := ws.List(a.gameDir())
 	if err != nil {
 		return "", err
 	}
 	var updated, failed []string
 	offline := false
 	for _, s := range list {
-		if !a.isInstalled(s.ID) {
+		if !s.Installed {
 			continue
 		}
-		p, err := a.ws().Load(s.ID) // Load fills the MTG data from studio.json
+		setFile := filepath.Join(ws.Folder(s.ID), project.SetFile)
+		before, _ := os.ReadFile(setFile)
+		p, err := a.loadProject(s.ID) // Load fills the MTG data from studio.json
 		if err != nil {
 			failed = append(failed, s.ID)
 			continue
@@ -44,22 +50,17 @@ func (a *App) SyncInstalledSets() (string, error) {
 			}
 		}
 		a.fillCollection(p) // binder grouping for sets imported before set.json had it
-		if err := a.ws().Save(p); err != nil {
+		if err := ws.Save(p); err != nil {
 			failed = append(failed, p.Set.Name)
 			continue
 		}
-		changed, err := project.PatchInstalledMtg(p, a.settings.GameDir)
-		if err != nil {
-			failed = append(failed, p.Set.Name)
-			continue
-		}
-		if changed {
+		// The game reads set.json from the project: saving is all an update takes.
+		if after, _ := os.ReadFile(setFile); !bytes.Equal(before, after) {
 			updated = append(updated, p.Set.Name)
 		}
 	}
 	if !offline && len(failed) == 0 {
-		a.settings.SyncedVersion = Version
-		_ = saveSettings(a.settings)
+		_, _ = a.updateSettings(func(s *Settings) { s.SyncedVersion = Version })
 	}
 	msg := ""
 	if len(updated) > 0 {

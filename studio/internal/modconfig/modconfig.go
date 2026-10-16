@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const FileName = "tcgcustomcards.cfg"
@@ -137,26 +138,54 @@ func Get(path, section, key string) (Entry, error) {
 	return *e, nil
 }
 
+// writeMu serialises our read-modify-write edits of the file: the frontend's calls run in parallel goroutines, and two edits
+// that both read the file before either wrote it lose one of the changes.
+var writeMu sync.Mutex
+
 // Set replaces one entry's value (validated against its type/range/options) and writes the file back.
 func Set(path, section, key, value string) (Entry, error) {
-	e, err := find(path, section, key)
+	out, err := SetMany(path, [][3]string{{section, key, value}})
 	if err != nil {
 		return Entry{}, err
 	}
-	value = strings.TrimSpace(value)
-	if err := validate(*e, value); err != nil {
-		return Entry{}, err
-	}
+	return out[0], nil
+}
+
+// SetMany replaces several entries ({section, key, value}) in a single write, so the game's live reload never sees half of
+// a change. Nothing is written when any value is invalid.
+func SetMany(path string, kvs [][3]string) ([]Entry, error) {
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	lines, err := readLines(path)
 	if err != nil {
-		return Entry{}, err
+		return nil, err
 	}
-	lines[e.line] = e.Key + " = " + value
+	secs := parse(lines)
+	out := make([]Entry, 0, len(kvs))
+	for _, kv := range kvs {
+		var e *Entry
+		for si := range secs {
+			for ei := range secs[si].Entries {
+				if secs[si].Name == kv[0] && secs[si].Entries[ei].Key == kv[1] {
+					e = &secs[si].Entries[ei]
+				}
+			}
+		}
+		if e == nil {
+			return nil, fmt.Errorf("setting [%s] %s not found", kv[0], kv[1])
+		}
+		value := strings.TrimSpace(kv[2])
+		if err := validate(*e, value); err != nil {
+			return nil, err
+		}
+		lines[e.line] = e.Key + " = " + value
+		e.Value = value
+		out = append(out, *e)
+	}
 	if err := writeLines(path, lines); err != nil {
-		return Entry{}, err
+		return nil, err
 	}
-	e.Value = value
-	return *e, nil
+	return out, nil
 }
 
 // RestoreDefaults sets every entry of a section and its sub-sections ("Foil" also resets "Foil - Base"; all sections when
@@ -164,6 +193,8 @@ func Set(path, section, key, value string) (Entry, error) {
 // e.g. the shop sign) are left alone.
 // Returns the number of values that changed.
 func RestoreDefaults(path, section string) (int, error) {
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	secs, err := Read(path)
 	if err != nil {
 		return 0, err

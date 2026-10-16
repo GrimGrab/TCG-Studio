@@ -3,6 +3,23 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.9.0 - 2026-10-16
+
+Your content now lives in one place, and TCG Studio moves it there for you.
+
+- New: the game reads your sets, accessories, card back and Shop look straight from your TCG Studio setup. The game folder only holds the mod. On its first start TCG Studio moves your content over and updates the mod in the game by itself; close the game first (it waits while the game runs). Nothing is deleted: files that aren't exact copies are kept (Storage → Kept by the upgrade).
+- New: Storage → Remove the game's copies moves the old copies out of the game folder into a backup folder, once the game shows everything.
+- New: Storage → Compress mod save files makes the mod's save files about 20× smaller (the mod reads both kinds).
+- New: rename your shop on the Shop look page (game closed).
+- New: Shop look has a tab per part (sign, phone wallpaper, open/closed sign, card back). The global card back moved there from Settings, and you can now move and resize the part of the picture it uses. A set can still have its own back on its Set tab.
+- New: Furniture has a tab per type instead of the type list.
+- Changed: the sidebar groups your setup's pages under the setup picker, with the pages all setups share below. The Setup page is now called Game & mod.
+- Changed: Shop look saves only when you click Save (with Revert, and a warning when you leave with unsaved changes).
+- Changed: accessories, furniture and decorations reach the game when you save them; there's no separate install step any more.
+- Fixed: the binder no longer crashes on sets the game keeps no collection for (another mod's sets, or custom sets that aren't loaded).
+- Fixed: when content a save uses is missing, the mod keeps that save data until the content is back, and tells you in game.
+After updating: start TCG Studio with the game closed; it updates the mod in the game for you. If Game & mod shows a dot, click Install / Repair there.
+
 ## v1.8.2 - 2026-10-12
 
 Binder: see every version of a card on its own.

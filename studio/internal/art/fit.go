@@ -230,9 +230,20 @@ func GenerateCardBackFrom(resolve func(string) string, iconRel, colorHex, title,
 
 // trimBorders crops away uniform (or transparent) margins, e.g. the black/white padding around a scanned card.
 func trimBorders(src image.Image) image.Image {
+	r := trimRect(src)
+	if r == src.Bounds() {
+		return src
+	}
+	out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	xdraw.Copy(out, image.Point{}, src, r, xdraw.Src, nil)
+	return out
+}
+
+// trimRect is the part of src inside its uniform (or transparent) margins (all of it when there are none).
+func trimRect(src image.Image) image.Rectangle {
 	b := src.Bounds()
 	if b.Dx() < 16 || b.Dy() < 16 {
-		return src
+		return b
 	}
 	at := func(x, y int) color.NRGBA { return color.NRGBAModel.Convert(src.At(x, y)).(color.NRGBA) }
 	// Each side is compared with the colour in the middle of that edge (corners may be rounded/transparent).
@@ -278,11 +289,60 @@ func trimBorders(src image.Image) image.Image {
 	}
 	r := image.Rect(left, top, right, bot)
 	if r.Dx()*r.Dy() < b.Dx()*b.Dy()/2 { // looks like the image itself is mostly plain; leave it alone
-		return src
+		return b
 	}
-	out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
-	xdraw.Copy(out, image.Point{}, src, r, xdraw.Src, nil)
-	return out
+	return r
+}
+
+// CardBackAspect is the card back art's width ÷ height: the shape of the crop box over a card back picture.
+const CardBackAspect = 718.0 / 1006
+
+// CardBackAutoCrop is where ComposeCardBack would cut src: inside its plain borders, the largest card-shaped box in the
+// middle. As [x, y, w, h] fractions of src from its top-left (the crop box's format).
+func CardBackAutoCrop(src image.Image) []float64 {
+	b, r := src.Bounds(), trimRect(src)
+	w, h := float64(r.Dx()), float64(r.Dy())
+	if w/h > CardBackAspect {
+		w = h * CardBackAspect
+	} else {
+		h = w / CardBackAspect
+	}
+	x := float64(r.Min.X-b.Min.X) + (float64(r.Dx())-w)/2
+	y := float64(r.Min.Y-b.Min.Y) + (float64(r.Dy())-h)/2
+	return []float64{x / float64(b.Dx()), y / float64(b.Dy()), w / float64(b.Dx()), h / float64(b.Dy())}
+}
+
+// CardBackFromCrop writes the part of an image file a crop box shows ([x, y, w] fractions; the height follows from the
+// card shape; nil = the largest box in the middle) as a card back.
+func CardBackFromCrop(srcPath string, crop []float64, out string) error {
+	src, err := loadImage(srcPath)
+	if err != nil {
+		return fmt.Errorf("card back image: %w", err)
+	}
+	b := src.Bounds()
+	r := b
+	if len(crop) >= 3 && crop[2] > 0 {
+		iw, ih := float64(b.Dx()), float64(b.Dy())
+		w := min(crop[2], 1) * iw
+		h := w / CardBackAspect
+		x := min(max(crop[0]*iw, 0), iw-w)
+		y := min(max(crop[1]*ih, 0), max(ih-h, 0))
+		r = image.Rect(b.Min.X+int(x+0.5), b.Min.Y+int(y+0.5), b.Min.X+int(x+w+0.5), b.Min.Y+int(min(y+h, ih)+0.5))
+	}
+	img := image.NewNRGBA(backArt)
+	sub := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	xdraw.Copy(sub, image.Point{}, src, r, xdraw.Src, nil)
+	drawCover(img, backArt, sub)
+	return savePNG(out, img)
+}
+
+// ImageCardBackAutoCrop is CardBackAutoCrop of an image file.
+func ImageCardBackAutoCrop(path string) ([]float64, error) {
+	src, err := loadImage(path)
+	if err != nil {
+		return nil, fmt.Errorf("card back image: %w", err)
+	}
+	return CardBackAutoCrop(src), nil
 }
 
 func absInt(v int) int {

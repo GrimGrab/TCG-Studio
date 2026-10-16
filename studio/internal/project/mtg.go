@@ -1,11 +1,8 @@
 package project
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
-	"tcgstudio/internal/game"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -35,58 +32,6 @@ func FillMtg(p *Project) bool {
 		}
 	}
 	return changed
-}
-
-// PatchInstalledMtg copies the project's MTG export data (set + per card, matched by card id) and the binder grouping
-// (collection, release date) into the copy of the set installed in the game, and nothing else — prices, licenses or
-// unsaved-to-game edits stay as the player installed them.
-// Returns true when the installed set.json changed.
-func PatchInstalledMtg(p *Project, gameDir string) (bool, error) {
-	if p == nil || p.Set == nil || !setfmt.SafeID(p.ID) || !game.IsGameDir(gameDir) {
-		return false, nil
-	}
-	path := filepath.Join(game.SetsDir(gameDir), p.ID, SetFile)
-	if _, err := os.Stat(path); err != nil {
-		return false, nil // not installed
-	}
-	inst, err := setfmt.Load(path)
-	if err != nil {
-		return false, err
-	}
-	changed := false
-	// Binder grouping (collection, release date): filled in by Studio for sets installed before these fields existed.
-	if p.Set.Collection != "" && inst.Collection != p.Set.Collection {
-		inst.Collection = p.Set.Collection
-		changed = true
-	}
-	if p.Set.Released != "" && inst.Released != p.Set.Released {
-		inst.Released = p.Set.Released
-		changed = true
-	}
-	if p.Set.Mtg != nil && (inst.Mtg == nil || *inst.Mtg != *p.Set.Mtg) {
-		m := *p.Set.Mtg
-		inst.Mtg = &m
-		changed = true
-	}
-	byID := map[string]*setfmt.CardMtg{}
-	for i := range p.Set.Cards {
-		if p.Set.Cards[i].Mtg != nil {
-			byID[p.Set.Cards[i].ID] = p.Set.Cards[i].Mtg
-		}
-	}
-	for i := range inst.Cards {
-		want, ok := byID[inst.Cards[i].ID]
-		if !ok || (inst.Cards[i].Mtg != nil && sameMtg(*inst.Cards[i].Mtg, *want)) {
-			continue
-		}
-		m := *want
-		inst.Cards[i].Mtg = &m
-		changed = true
-	}
-	if !changed {
-		return false, nil
-	}
-	return true, inst.Save(path)
 }
 
 // onlyVariantTags reports whether s is a list of importer.VariantTags names, e.g. "Borderless, Showcase".

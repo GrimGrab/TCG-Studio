@@ -19,6 +19,7 @@
   // Figurine editor: import a model (.glb/.gltf/.obj), turn and scale it, and check it against its base toy on a real shelf
   // (the mod's shelf export). Saving bakes it in Go (BakeFigurine) — the same placement maths as placement() below.
   import { maximizable } from '../lib/maximize';
+  import { accFile, templateFile } from '../lib/urls';
   import { onMount, untrack } from 'svelte';
   import { App, errText } from '../lib/api';
   import { loadImage } from '../lib/accessoryArt';
@@ -40,8 +41,8 @@
     onimported?: (name: string) => void;
   } = $props();
 
-  const accUrl = (rel: string) => `/acc/${rel.split('/').map(encodeURIComponent).join('/')}`;
-  const tplUrl = (file: string) => `/acctemplates/${encodeURIComponent(file)}`;
+  const accUrl = (rel: string) => accFile(rel);
+  const tplUrl = (file: string) => templateFile('acc', file);
 
   let canvas = $state<HTMLCanvasElement>();
   let view: FigurineView | null = null;

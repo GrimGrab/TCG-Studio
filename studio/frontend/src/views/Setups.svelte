@@ -2,6 +2,7 @@
   // Setups: complete studio workspaces (sets, accessory library, mod settings, card back) that can be swapped in and out of
   // the game. Each setup keeps its own game saves; exports (.tcgsetup) never contain saves.
   import { onMount } from 'svelte';
+  import { Ev } from '../lib/events';
   import { App, EventsOn, errText, ask } from '../lib/api';
 
   let { notify, onswitched, action = null, ondone = () => {} }: {
@@ -122,7 +123,9 @@
     busy = 'Importing…';
     let id = '';
     try {
-      id = await App.ImportSetup(file);
+      const r = await App.ImportSetup(file);
+      id = r.id;
+      if (r.note) notify(r.note, 'ok');
       pick = null;
     } catch (e) { notify(errText(e), 'error'); }
     busy = '';
@@ -161,8 +164,8 @@
   onMount(() => {
     load();
     const offs = [
-      EventsOn('setups:progress', (t: string) => (busy = t)),
-      EventsOn('setups:export', (p: any) => (exportProgress = `${p.done} / ${p.total} files`)),
+      EventsOn(Ev.SetupsProgress, (t: string) => (busy = t)),
+      EventsOn(Ev.SetupsExport, (p: any) => (exportProgress = `${p.done} / ${p.total} files`)),
     ];
     return () => offs.forEach((off) => off());
   });

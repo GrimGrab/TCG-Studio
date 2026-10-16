@@ -92,7 +92,7 @@ namespace TCGCustomCards.Runtime
             });
             Sprite baseIcon = basePurchase?.icon;
             Sprite icon = string.IsNullOrEmpty(def.Icon) ? null
-                : ImageCache.GetPadded(Path.Combine(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
+                : ImageCache.GetPadded(Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
             // No own icon but a tint: the base icon in the same colour, so the shop shows what you get.
             if (icon == null && baseIcon != null && !string.IsNullOrEmpty(def.Tint) && ColorUtility.TryParseHtmlString(def.Tint, out var iconTint))
                 icon = TintedIcon(baseIcon, iconTint, def.Id);
@@ -193,10 +193,10 @@ namespace TCGCustomCards.Runtime
             }
             var body = tpl.GetComponentsInChildren<Renderer>(true).Where(r => !InSpot(r.transform) && r.GetType().Name != "ParticleSystemRenderer").ToList();
 
-            Texture2D tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Path.Combine(def.FolderPath, def.Texture))?.texture;
+            Texture2D tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
             Color? tint = null;
             if (!string.IsNullOrEmpty(def.Tint) && ColorUtility.TryParseHtmlString(def.Tint, out var c)) tint = c;
-            Mesh mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Path.Combine(def.FolderPath, def.Mesh));
+            Mesh mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
 
             // Working parts (cash drawer, card machine, signs, the prize shelf's TV) keep their own look: an own model doesn't hide them.
             var parts = FurnitureKinds.PointRoles(def.Type).Where(r => r.Kind == FurnitureKinds.PointKind.Part)

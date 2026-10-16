@@ -43,7 +43,7 @@ export function fillOutlined(g: CanvasRenderingContext2D, text: string, x: numbe
   g.strokeText(text, x, y);
 }
 
-/** A door sign side designed in the page (stored next to its picture by App.SaveShopPictureText); color '' = white. */
+/** A door sign side designed in the page (stored next to its picture by App.SaveShopLook); color '' = white. */
 export type SignTextDesign = TextStyleValue & {
   text: string; boardColor: string;
   font: { file: string; name: string } | null;

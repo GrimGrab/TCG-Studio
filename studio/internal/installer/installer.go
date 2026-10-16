@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	gamepkg "tcgstudio/internal/game"
 )
 
 // Paths inside the game folder.
@@ -26,7 +29,7 @@ const (
 	legacyTemplatesRel = pluginRel + "/templates" // in-game template export of mod versions up to 0.7.x
 )
 
-// Item states shown on the Setup screen.
+// Item states shown on the Game & mod page.
 const (
 	OK       = "ok"
 	Missing  = "missing"
@@ -171,14 +174,7 @@ func Inspect(game string, p Payload, havePayload, running bool) State {
 	if exists(abs(game, legacyTemplatesRel)) {
 		add("templates", "Old art templates", Outdated, "Exported in game by an older mod version and no longer used (TCG Studio reads the game files) — Install / Repair removes them.")
 	}
-	sets, _ := os.ReadDir(abs(game, pluginRel+"/Sets"))
-	n := 0
-	for _, e := range sets {
-		if e.IsDir() {
-			n++
-		}
-	}
-	add("sets", "Card sets", Info, fmt.Sprintf("%d set(s) installed. Import sets from Scryfall in Sets / Import, then Install.", n))
+	add("sets", "Card sets", Info, fmt.Sprintf("%d set(s) installed. Import sets in Import, then Install.", installedSets(game)))
 
 	s.Ready = true
 	for _, it := range s.Items {
@@ -446,4 +442,20 @@ func (s *session) writeLog(err error) {
 		lines = append(lines, "ERROR: "+err.Error())
 	}
 	_ = os.WriteFile(filepath.Join(s.backup, "install.log"), []byte(strings.Join(lines, "\r\n")+"\r\n"), 0o644)
+}
+
+// installedSets counts the active setup's installed sets: the game reads them from the setup named in the mod's
+// studio-paths.json (gamepkg.StudioPathsFile), nothing is installed into the game folder.
+func installedSets(game string) int {
+	setup := gamepkg.ReadStudioPaths(game).Setup
+	var info struct {
+		InstalledSets []string `json:"installedSets"`
+	}
+	if setup == "" {
+		return 0
+	}
+	if b, err := os.ReadFile(filepath.Join(setup, "setup.json")); err != nil || json.Unmarshal(b, &info) != nil {
+		return 0
+	}
+	return len(info.InstalledSets)
 }

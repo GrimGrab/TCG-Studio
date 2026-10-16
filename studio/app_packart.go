@@ -9,12 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -30,22 +28,29 @@ type PackArtFiles struct {
 	Icon    string `json:"icon"`
 }
 
-// packArtPrefix matches the generator's per-pack file names (images/<packId>_pack_texture.png; the first "booster" pack none).
-func packArtPrefix(packID string) (string, error) {
+// packFilePrefix starts a pack's art file names (<packId>_pack_texture.png), so several packs of a set have their own art;
+// the first "booster" pack has none.
+func packFilePrefix(packID string) (string, error) {
 	if packID == "" || packID == "booster" {
-		return "images/", nil
+		return "", nil
 	}
 	if !setfmt.SafeID(packID) {
 		return "", errors.New("bad pack id")
 	}
-	return "images/" + packID + "_", nil
+	return packID + "_", nil
+}
+
+// packArtPrefix is packFilePrefix inside the set's images folder.
+func packArtPrefix(packID string) (string, error) {
+	pre, err := packFilePrefix(packID)
+	return "images/" + pre, err
 }
 
 // SavePackArt writes the editor's composed texture and icon (data URLs) for which = "pack" | "box" of a pack and returns their
 // paths; the caller assigns them to the pack and saves the project.
 func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackArtFiles, error) {
 	if !setfmt.SafeID(id) {
-		return PackArtFiles{}, errors.New("bad project id")
+		return PackArtFiles{}, errBadID
 	}
 	if which != "pack" && which != "box" {
 		return PackArtFiles{}, errors.New("which must be pack or box")
@@ -54,7 +59,7 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 	if err != nil {
 		return PackArtFiles{}, err
 	}
-	p, err := a.ws().Load(id)
+	p, err := a.loadProject(id)
 	if err != nil {
 		return PackArtFiles{}, err
 	}
@@ -87,11 +92,11 @@ func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if !project.IsRelFile(rel) {
 		return "", errors.New("image must be inside the project")
 	}
-	p, err := a.ws().Load(id)
+	p, err := a.loadProject(id)
 	if err != nil {
 		return "", err
 	}
-	b, err := os.ReadFile(p.ImagePath(rel)) // the project's own copy or the shared file
+	b, err := os.ReadFile(p.ImagePath(rel))
 	if err != nil {
 		return "", err
 	}
@@ -114,7 +119,7 @@ type ProductPhotoSets struct {
 // ProductPhotoSets lists TCGplayer's sets for a project's game (category 0 = the game it was imported from, Magic for
 // hand-made sets) and picks the project's set by its code and name.
 func (a *App) ProductPhotoSets(id string, category int) (ProductPhotoSets, error) {
-	p, err := a.ws().Load(id)
+	p, err := a.loadProject(id)
 	if err != nil {
 		return ProductPhotoSets{}, err
 	}
@@ -143,7 +148,7 @@ func (a *App) ProductPhotos(category, group int) ([]importer.SealedProduct, erro
 // for an image layer. A photo downloaded before is reused.
 func (a *App) UseProductPhoto(id string, p importer.SealedProduct) (string, error) {
 	if !setfmt.SafeID(id) {
-		return "", errors.New("bad project id")
+		return "", errBadID
 	}
 	rel := fmt.Sprintf("images/photo_%d.png", p.ID)
 	if _, err := os.Stat(a.ws().ImagePath(id, rel)); err == nil { // downloaded before (here or in the shared library)
@@ -185,8 +190,6 @@ type SmartArtSources struct {
 	Notes     []string          `json:"notes"`
 }
 
-// SmartArtSources finds the photos for a pack (TCGplayer, pack n ↔ n-th booster kind) and ranks the pack's cards for
-// their art. A failed photo lookup is not an error: the notes say why and the card art path is used.
 // SmartChoice is what the Smart generate dialog picked. Manual false = choose automatically (imports): the project's set
 // on TCGplayer, pack n ↔ n-th booster product. Manual true: Pack/Box as given (nil = none: card art instead).
 type SmartChoice struct {
@@ -210,17 +213,22 @@ func (a *App) PickPackAndBox(ps []importer.SealedProduct, index int) PickedProdu
 // DetectBoxFaces finds the front panel and lid in a project's box photo (the dialog shows them to adjust).
 func (a *App) DetectBoxFaces(id, rel string) (art.DisplayFaces, error) {
 	if !setfmt.SafeID(id) {
-		return art.DisplayFaces{}, errors.New("bad project id")
+		return art.DisplayFaces{}, errBadID
 	}
-	img, err := loadImageFile(a.ws().ImagePath(id, rel))
+	if !project.IsRelFile(rel) {
+		return art.DisplayFaces{}, errors.New("image must be inside the project")
+	}
+	img, err := readImage(a.ws().ImagePath(id, rel))
 	if err != nil {
 		return art.DisplayFaces{}, err
 	}
 	return art.DetectDisplay(img), nil
 }
 
+// SmartArtSources finds the photos for a pack (TCGplayer, pack n ↔ n-th booster kind) and ranks the pack's cards for
+// their art. A failed photo lookup is not an error: the notes say why and the card art path is used.
 func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSources, error) {
-	p, err := a.ws().Load(id)
+	p, err := a.loadProject(id)
 	if err != nil {
 		return SmartArtSources{}, err
 	}
@@ -256,7 +264,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 				out.Notes = append(out.Notes, "Box photo: "+err.Error())
 				return
 			}
-			if img, err := loadImageFile(p.ImagePath(rel)); err == nil {
+			if img, err := readImage(p.ImagePath(rel)); err == nil {
 				f := art.DetectDisplay(img)
 				out.BoxPhoto, out.BoxName, out.Box = rel, box.Name, &f
 				if !f.Confident && !choice.Manual {
@@ -321,7 +329,7 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 			break
 		}
 		w, h := 0, 0
-		if cfg, err := imageConfig(p.ImagePath(c.Image)); err == nil {
+		if cfg, err := readImageConfig(p.ImagePath(c.Image)); err == nil {
 			w, h = cfg.Width, cfg.Height
 		}
 		out.Cards = append(out.Cards, SmartArtCard{Name: c.Name, Image: c.Image, Window: art.ArtWindow(p.Meta.Source, w, h)})
@@ -329,30 +337,9 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 	return out, nil
 }
 
-func loadImageFile(path string) (image.Image, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	img, _, err := image.Decode(f)
-	return img, err
-}
-
-func imageConfig(path string) (image.Config, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return image.Config{}, err
-	}
-	defer f.Close()
-	c, _, err := image.DecodeConfig(f)
-	return c, err
-}
-
-// SaveAutoArt stores an image Smart generate made (data URL) as images/auto_<pack>_<part>_<time>.png and removes the
-// earlier versions of that part (a new name each time, so the editor never shows a cached old image). Returns its path.
-// In the set's shared folder earlier versions stay, as another setup's layout may still use them; the Storage page
-// deletes them once nothing does.
+// SaveAutoArt stores an image Smart generate made (data URL) as images/auto_<pack>_<part>_<time>.png (a new name each time,
+// so the editor never shows a cached old image). Returns its path. Earlier versions stay in the set's shared folder, as
+// another setup's layout may still use them; the Storage page deletes them once nothing does.
 func (a *App) SaveAutoArt(id, packID, part, dataURL string) (string, error) {
 	if !setfmt.SafeID(id) || !setfmt.SafeID(part) || (packID != "" && !setfmt.SafeID(packID)) {
 		return "", errors.New("bad arguments")
@@ -361,18 +348,9 @@ func (a *App) SaveAutoArt(id, packID, part, dataURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	p, err := a.ws().Load(id)
+	p, err := a.loadProject(id)
 	if err != nil {
 		return "", err
 	}
-	stem := "auto_" + packID + "_" + part + "_"
-	old, _ := filepath.Glob(filepath.Join(p.Folder, "images", stem+"*.png")) // this setup's own copies only
-	rel, err := p.WriteFile(fmt.Sprintf("images/%s%d.png", stem, time.Now().UnixMilli()), b)
-	if err != nil {
-		return "", err
-	}
-	for _, f := range old {
-		_ = os.Remove(f)
-	}
-	return rel, nil
+	return p.WriteFile(fmt.Sprintf("images/auto_%s_%s_%d.png", packID, part, time.Now().UnixMilli()), b)
 }

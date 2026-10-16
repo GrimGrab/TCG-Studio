@@ -11,12 +11,13 @@ import {updater} from '../models';
 import {project} from '../models';
 import {debuglog} from '../models';
 import {importer} from '../models';
-import {art} from '../models';
 import {library} from '../models';
+import {art} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
 import {modconfig} from '../models';
 import {installer} from '../models';
+import {upgrade} from '../models';
 
 export function Accessories():Promise<main.AccessoryView>;
 
@@ -30,13 +31,15 @@ export function AddFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.A
 
 export function AppVersion():Promise<main.VersionInfo>;
 
-export function BakeDecorationModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.DecorationBake>;
+export function AutoUpgrade():Promise<main.AutoUpgradeResult>;
 
-export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FigurineBake>;
+export function BakeDecorationModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.ModelBake>;
 
-export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.FurnitureBake>;
+export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.ModelBake>;
 
-export function BakePoster(arg1:string,arg2:decoart.Poster):Promise<main.DecorationBake>;
+export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.ModelBake>;
+
+export function BakePoster(arg1:string,arg2:decoart.Poster):Promise<main.ModelBake>;
 
 export function BoxFromPack(arg1:string,arg2:string):Promise<main.BoxArt>;
 
@@ -56,13 +59,11 @@ export function CheckForUpdate():Promise<updater.Release>;
 
 export function CheckModLoaded():Promise<main.ModCheck>;
 
-export function ChooseGlobalCardBack():Promise<string>;
-
 export function ChooseSetCardBack(arg1:string):Promise<string>;
 
-export function ChooseShopPicture(arg1:string):Promise<main.ShopLookView>;
-
 export function Collections():Promise<Array<string>>;
+
+export function CompressSaves():Promise<main.StorageResult>;
 
 export function Confirm(arg1:string):Promise<boolean>;
 
@@ -94,15 +95,15 @@ export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
 
 export function DeleteFurnitureMany(arg1:Array<string>):Promise<main.AccessoryView>;
 
+export function DeleteKept():Promise<main.StorageResult>;
+
 export function DeleteProject(arg1:string):Promise<void>;
 
 export function DeleteSetup(arg1:string):Promise<main.SetupsView>;
 
-export function DeleteUnused(arg1:string,arg2:Array<string>):Promise<number>;
+export function DeleteUnused(arg1:Array<library.Pick>):Promise<library.Deleted>;
 
 export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
-
-export function DifferPreview(arg1:string,arg2:string):Promise<library.DifferPreview>;
 
 export function EPLModPath(arg1:string):Promise<string>;
 
@@ -128,13 +129,13 @@ export function GamifyAccessoryDefaults():Promise<gamify.AccessorySettings>;
 
 export function GamifyAccessoryPreview(arg1:gamify.AccessorySettings):Promise<Array<gamify.AccessoryPreview>>;
 
-export function GamifyApply(arg1:Array<string>,arg2:gamify.Settings,arg3:boolean):Promise<Array<gamify.Preview>>;
+export function GamifyApply(arg1:Array<string>,arg2:gamify.Settings):Promise<Array<gamify.Preview>>;
 
 export function GamifyDefaults():Promise<gamify.Settings>;
 
 export function GamifyPreview(arg1:Array<string>,arg2:gamify.Settings):Promise<Array<gamify.Preview>>;
 
-export function GenerateGlobalCardBack(arg1:string,arg2:string):Promise<string>;
+export function GenerateCardBack(arg1:string,arg2:string):Promise<main.CardBackSource>;
 
 export function GeneratePackArt(arg1:string,arg2:string,arg3:art.Options):Promise<art.Result>;
 
@@ -143,6 +144,8 @@ export function GenerateSetCardBack(arg1:string,arg2:string,arg3:string):Promise
 export function GetSettings():Promise<main.Settings>;
 
 export function GlobalCardBack():Promise<string>;
+
+export function ImportCardBack():Promise<main.CardBackSource>;
 
 export function ImportDoorBackground(arg1:string):Promise<main.ShopFile>;
 
@@ -154,9 +157,11 @@ export function ImportModelWithTextures(arg1:string,arg2:main.ModelTextures):Pro
 
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
 
-export function ImportSetup(arg1:string):Promise<string>;
+export function ImportSetup(arg1:string):Promise<main.SetupImport>;
 
 export function ImportShopFont(arg1:string,arg2:string):Promise<main.ShopFile>;
+
+export function ImportShopPicture(arg1:string):Promise<main.ShopFile>;
 
 export function ImportSources():Promise<Array<importer.SourceInfo>>;
 
@@ -172,6 +177,8 @@ export function LaunchGame():Promise<void>;
 
 export function LibraryArt(arg1:string,arg2:string,arg3:string):Promise<main.LibraryArtInfo>;
 
+export function LibraryFolder():Promise<string>;
+
 export function ListProjects():Promise<Array<project.Summary>>;
 
 export function ListSetups():Promise<main.SetupsView>;
@@ -183,8 +190,6 @@ export function LocateGame():Promise<game.Status>;
 export function ModSettings():Promise<main.ModSettingsView>;
 
 export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryView>;
-
-export function MoveEverything():Promise<main.StorageResult>;
 
 export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
@@ -240,11 +245,7 @@ export function RemoveForge():Promise<void>;
 
 export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
-export function RemoveGlobalCardBack():Promise<void>;
-
-export function RemoveShopPicture(arg1:string):Promise<main.ShopLookView>;
-
-export function ResolveDiffering(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.StorageResult>;
+export function RemoveGameCopies():Promise<main.StorageResult>;
 
 export function RestoreModDefaults(arg1:string):Promise<number>;
 
@@ -272,7 +273,7 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
-export function SaveShopPictureText(arg1:string,arg2:string,arg3:string):Promise<main.ShopLookView>;
+export function SaveShopLook(arg1:main.ShopLookSave):Promise<main.ShopLookView>;
 
 export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
 
@@ -281,14 +282,6 @@ export function SaveToCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
 
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
-
-export function SetShopPictureCrop(arg1:string,arg2:Array<number>):Promise<main.ShopLookView>;
-
-export function SetShopSignFont(arg1:string,arg2:string):Promise<main.ShopLookView>;
-
-export function SetShopSignShowName(arg1:boolean):Promise<main.ShopLookView>;
-
-export function SetShopSignText(arg1:main.ShopSignText):Promise<main.ShopLookView>;
 
 export function SetupRepair():Promise<string>;
 
@@ -300,9 +293,9 @@ export function ShopLook():Promise<main.ShopLookView>;
 
 export function ShopSignFonts():Promise<Array<main.ShopSignFont>>;
 
-export function ShrinkPreview(arg1:string,arg2:string):Promise<library.ShrinkPreview>;
+export function ShrinkPreview(arg1:string):Promise<library.ShrinkPreview>;
 
-export function ShrinkSets(arg1:Record<string, Array<string>>):Promise<main.StorageResult>;
+export function ShrinkSets(arg1:Array<string>):Promise<main.StorageResult>;
 
 export function SmartArtSources(arg1:string,arg2:string,arg3:main.SmartChoice):Promise<main.SmartArtSources>;
 
@@ -310,7 +303,7 @@ export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SourceSets(arg1:string,arg2:string,arg3:boolean):Promise<Array<main.ImportableSet>>;
 
-export function StorageReport():Promise<library.Report>;
+export function StorageReport():Promise<main.StorageView>;
 
 export function StorageTask():Promise<main.StorageTaskInfo>;
 
@@ -324,6 +317,12 @@ export function UninstallProject(arg1:string):Promise<void>;
 
 export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
 
+export function UpgradePreviewDiffer(arg1:string):Promise<upgrade.Preview>;
+
+export function UpgradePreviewNamed(arg1:string,arg2:string,arg3:string):Promise<upgrade.Preview>;
+
+export function UpgradeStorage(arg1:upgrade.Choices):Promise<main.StorageResult>;
+
 export function UseProductPhoto(arg1:string,arg2:importer.SealedProduct):Promise<string>;
 
 export function UseSourceRarities(arg1:project.Project):Promise<project.Project>;
@@ -331,3 +330,5 @@ export function UseSourceRarities(arg1:project.Project):Promise<project.Project>
 export function ValidateProject(arg1:string):Promise<Array<setfmt.Issue>>;
 
 export function WaitReady():Promise<boolean>;
+
+export function WorkspaceHasSetups(arg1:string):Promise<boolean>;

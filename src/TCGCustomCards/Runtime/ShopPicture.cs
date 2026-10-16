@@ -8,20 +8,21 @@ namespace TCGCustomCards.Runtime
 {
     /// <summary>
     /// The shared part of TCG Studio's Shop look pictures (shop sign, phone wallpaper, open/closed sign): an image setting (a file
-    /// in &lt;plugin&gt;\ShopSign or a full path) plus a crop setting "x,y,w,h", painted into a copy of a vanilla texture or shown
+    /// in the active setup's game\ShopSign or a full path) plus a crop setting "x,y,w,h", painted into a copy of a vanilla texture or shown
     /// as a sprite.
     /// </summary>
     internal static class ShopPicture
     {
-        /// <summary>Plugin folder holding the chosen pictures and fonts (TCG Studio copies them there; setups carry it).</summary>
-        internal const string Folder = "ShopSign";
+        /// <summary>The setup's folder holding the chosen pictures and fonts (&lt;setup&gt;\game\ShopSign, written by TCG Studio).</summary>
+        internal static string Folder => Core.StudioPaths.SetupFile(Path.Combine("game", "ShopSign"));
 
-        /// <summary>The setting holds a file name in &lt;plugin&gt;\ShopSign or a full path; null when empty.</summary>
+        /// <summary>The setting holds a file name in the setup's ShopSign folder or a full path; null when empty.</summary>
         internal static string ImagePath(string value)
         {
             value = value?.Trim().Trim('"');
             if (string.IsNullOrEmpty(value)) return null;
-            return Path.IsPathRooted(value) ? value : Path.Combine(Plugin.PluginDir, Folder, value);
+            if (Path.IsPathRooted(value)) return value;
+            return Folder == null ? null : Path.Combine(Folder, value);
         }
 
         /// <summary>A readable RGBA32 copy of a PNG/JPG; null (logged) when missing or unreadable.</summary>

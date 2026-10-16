@@ -10,7 +10,7 @@ import (
 )
 
 // payload/ is filled by tools\package.ps1 (bepinex.zip, TCGCustomCards.dll, tcgcc_foil, version.txt). Only README.txt is
-// committed, so a plain dev build has no payload and the Setup screen says so.
+// committed, so a plain dev build has no payload and the Game & mod page says so.
 //
 //go:embed payload
 var embedded embed.FS

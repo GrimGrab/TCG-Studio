@@ -3,6 +3,7 @@
   // deleting — which removes it everywhere: from the catalog, every setup that has it, the game (active setup) and its
   // shared files. "Add to this setup" copies its game info into the active setup.
   import { onMount } from 'svelte';
+  import { accFile } from '../lib/urls';
   import { App, errText, ask, projectFile } from '../lib/api';
   import { grouped, sourceGames, OWN_GROUP } from '../lib/catalog';
 
@@ -100,7 +101,7 @@
 
   const thumb = (e: any) => kind === 'set'
     ? (e.cover ? projectFile(e.id, e.cover) : '')
-    : (e.icon ? `/acc/${e.icon.split('/').map(encodeURIComponent).join('/')}` : '');
+    : accFile(e.icon);
 </script>
 
 <div class="page" role="listbox" tabindex="-1" onkeydown={onKey}>

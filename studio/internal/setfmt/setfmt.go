@@ -1,5 +1,5 @@
 // Package setfmt mirrors the mod's set.json contract (TCG Custom Cards/src/TCGCustomCards/Core/Defs.cs)
-// and its validation (Core/SetLoader.cs). Keep both sides in step; see docs/set-format.md.
+// and its validation (Core/SetLoader.cs). Keep both sides in step.
 package setfmt
 
 import (
@@ -259,7 +259,10 @@ type Issue struct {
 	Message string `json:"message"`
 }
 
-func SafeID(id string) bool { return id != "" && !strings.ContainsAny(id, " \t:/|") }
+// SafeID reports an id usable in deck text, side-car keys and as a folder name (mirror of SetLoader.IsSafeId).
+func SafeID(id string) bool {
+	return id != "" && id != "." && id != ".." && !strings.ContainsAny(id, " \t:/\\|")
+}
 
 func contains(list []string, v string) bool {
 	for _, x := range list {
@@ -270,8 +273,8 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// Validate mirrors SetLoader.Validate. folders are where image paths are looked up, in order (the project folder, then the
-// shared card-art library); none or only "" skips the file checks.
+// Validate mirrors SetLoader.Validate. folders are where image paths are looked up, in order (Studio passes the set's
+// shared folder); none or only "" skips the file checks.
 func (s *Set) Validate(folders ...string) []Issue {
 	var out []Issue
 	add := func(level, where, format string, args ...any) {

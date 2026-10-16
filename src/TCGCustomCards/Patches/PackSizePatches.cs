@@ -68,7 +68,7 @@ namespace TCGCustomCards.Patches
         /// <summary>Most cards a pack may have (set.json cardsPerPack); the final reveal fits up to 3 rows of 8.</summary>
         internal const int MaxCards = 24;
 
-        // Measured (docs/runtime-facts.md "Pack opening"): each slot is CardOpeningGrp/Card3dUIGroup (i) with the anim root
+        // Measured in game: each slot is CardOpeningGrp/Card3dUIGroup (i) with the anim root
         // AnimGrp as its child; slots stack 0.001 apart in local z; the 7 final-reveal positions are one row under
         // ShowAllCardPosList (x -0.1..0.11 step 0.035, z 0.044, rotated 350° about y). The final-reveal clip moves neither
         // the root's position nor its scale.

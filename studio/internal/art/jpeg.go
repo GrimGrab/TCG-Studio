@@ -1,9 +1,11 @@
-package importer
+package art
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 )
 
 // JPEGQuality is used when card art is saved as JPEG (about 6x smaller than PNG for card scans).
@@ -52,4 +54,13 @@ func borderColour(img image.Image) color.RGBA {
 		return color.RGBA{0, 0, 0, 255}
 	}
 	return color.RGBA{uint8(r / n), uint8(g / n), uint8(bl / n), 255}
+}
+
+// EncodeCardJPEG encodes card art as JPEG at JPEGQuality, transparency blended into the border (Opaque).
+func EncodeCardJPEG(img image.Image) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, Opaque(img), &jpeg.Options{Quality: JPEGQuality}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

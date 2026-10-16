@@ -78,7 +78,7 @@
         {:else}<span class="muted">template's back</span>{/if}
       </div>
       <div class="col">
-        <span class="muted small">{project.set.cardBack ? 'This set has its own back.' : globalBack ? 'Using the global back (Settings).' : `Using the ${project.set.frameTemplate} back.`}</span>
+        <span class="muted small">{project.set.cardBack ? 'This set has its own back.' : globalBack ? 'Using the global back (Shop look → Card back).' : `Using the ${project.set.frameTemplate} back.`}</span>
         <button onclick={pickBack}>Choose image…</button>
         <div class="row"><input type="color" bind:value={backColor} /><button onclick={generateBack}>Generate</button></div>
         {#if project.set.cardBack}<button onclick={() => (project.set.cardBack = undefined)}>Use {globalBack ? 'global' : "template's"} back</button>{/if}

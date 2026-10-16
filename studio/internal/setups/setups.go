@@ -1,7 +1,9 @@
 // Package setups manages named setups inside the studio workspace. A setup is a complete studio root (projects\ + the
-// accessory library) plus a snapshot of the game-side state that isn't rebuilt from those (game\: mod config, global card
-// back, sets without a project) and, while it isn't the active one, its parked game saves (saves\). Switching swaps all of
-// it in and out of the game; a setup can be exported to / imported from one .tcgsetup zip (without saves).
+// accessory library, its installed sets in setup.json) plus game\ (the parked mod config, the global card back and Shop
+// look pictures the mod reads from there) and, while it isn't the active one, its parked game saves (saves\). The game's
+// mod reads the active setup straight from its folder (game.StudioPathsFile), so switching only moves the mod config and
+// the saves and points the game at the other setup; a setup can be exported to / imported from one .tcgsetup zip
+// (without saves).
 //
 //	<workspace>\setups.json         registry: active setup + order
 //	<workspace>\switch.json         journal of an unfinished switch
@@ -19,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -32,7 +35,6 @@ const (
 	SavesDir      = "saves" // inside a setup; never exported
 	DefaultID     = "default"
 	cfgFile       = "tcgcustomcards.cfg"
-	backFile      = "card_back.png"
 )
 
 // Info is a setup's setup.json.
@@ -42,8 +44,10 @@ type Info struct {
 	Created       time.Time `json:"created"`
 	StudioVersion string    `json:"studioVersion,omitempty"`
 	FormatVersion int       `json:"formatVersion"`
-	// InstalledSets = project ids that were in the game when this setup was last active (captured on switch/snapshot).
+	// InstalledSets = the project ids the game's mod loads while this setup is active (Studio's Install / Uninstall).
 	InstalledSets []string `json:"installedSets"`
+	// AdoptedGame is set once the setup has taken over what older Studio versions kept in the game folder (upgrade.AdoptGame).
+	AdoptedGame bool `json:"adoptedGame,omitempty"`
 }
 
 type Registry struct {
@@ -85,7 +89,9 @@ func (h Home) Registry() (*Registry, error) {
 	return r, nil
 }
 
-func (h Home) saveRegistry(r *Registry) error { return writeJSON(filepath.Join(h.Root, RegistryFile), r) }
+func (h Home) saveRegistry(r *Registry) error {
+	return writeJSON(filepath.Join(h.Root, RegistryFile), r)
+}
 
 // Active returns the active setup's id.
 func (h Home) Active() (string, error) {
@@ -108,7 +114,24 @@ func LoadInfo(dir string) (*Info, error) {
 	return in, nil
 }
 
-func SaveInfo(dir string, in *Info) error { return writeJSON(filepath.Join(dir, InfoFile), in) }
+// SaveInfo writes a whole setup.json (a new setup, an export). Changes to an existing one go through EditInfo.
+func SaveInfo(dir string, in *Info) error {
+	path := filepath.Join(dir, InfoFile)
+	return fsutil.WithLock(path, func() error { return writeJSON(path, in) })
+}
+
+// EditInfo changes a setup's setup.json under its file lock (installs edit the same file, see project.setInstalled).
+func EditInfo(dir string, edit func(in *Info)) error {
+	path := filepath.Join(dir, InfoFile)
+	return fsutil.WithLock(path, func() error {
+		in, err := LoadInfo(dir)
+		if err != nil {
+			return err
+		}
+		edit(in)
+		return writeJSON(path, in)
+	})
+}
 
 func writeJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
@@ -125,13 +148,13 @@ func writeJSON(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
-// Ensure prepares the workspace: on the first run it turns the old layout (<workspace>\projects + accessories) into the
-// setup "default" by renaming the two folders (rolled back if a rename fails), and it repairs a registry whose active setup
-// is gone. Returns the active setup's folder.
+// Ensure prepares the workspace: on the first run it creates the setup "default" — from the layout before setups
+// (<workspace>\projects + accessories) by renaming the two folders, rolled back if a rename fails — and it repairs a registry
+// whose active setup is gone. Returns the active setup's folder.
 func (h Home) Ensure(studioVersion string) (string, error) {
 	if r, err := h.Registry(); err == nil {
 		r.Order = h.knownIDs(r.Order)
-		if r.Active == "" || !exists(filepath.Join(h.Dir(r.Active), InfoFile)) {
+		if r.Active == "" || !fsutil.Exists(filepath.Join(h.Dir(r.Active), InfoFile)) {
 			if len(r.Order) == 0 {
 				return "", errors.New("no setups found in the workspace")
 			}
@@ -142,7 +165,7 @@ func (h Home) Ensure(studioVersion string) (string, error) {
 		return "", err
 	}
 	dir := h.Dir(DefaultID)
-	if exists(filepath.Join(dir, InfoFile)) { // registry lost, setups still there
+	if fsutil.Exists(filepath.Join(dir, InfoFile)) { // registry lost, setups still there
 		r := &Registry{Active: DefaultID, Order: h.knownIDs(nil)}
 		return dir, h.saveRegistry(r)
 	}
@@ -152,7 +175,7 @@ func (h Home) Ensure(studioVersion string) (string, error) {
 	var moved []string
 	for _, name := range []string{"projects", "accessories"} {
 		src := filepath.Join(h.Root, name)
-		if !exists(src) {
+		if !fsutil.Exists(src) {
 			continue
 		}
 		if err := os.Rename(src, filepath.Join(dir, name)); err != nil {
@@ -176,14 +199,14 @@ func (h Home) knownIDs(order []string) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, id := range order {
-		if !seen[id] && exists(filepath.Join(h.Dir(id), InfoFile)) {
+		if !seen[id] && fsutil.Exists(filepath.Join(h.Dir(id), InfoFile)) {
 			seen[id] = true
 			out = append(out, id)
 		}
 	}
 	entries, _ := os.ReadDir(filepath.Join(h.Root, SetupsDir))
 	for _, e := range entries {
-		if e.IsDir() && !seen[e.Name()] && !strings.Contains(e.Name(), ".") && exists(filepath.Join(h.Dir(e.Name()), InfoFile)) {
+		if e.IsDir() && !seen[e.Name()] && !strings.Contains(e.Name(), ".") && fsutil.Exists(filepath.Join(h.Dir(e.Name()), InfoFile)) {
 			seen[e.Name()] = true
 			out = append(out, e.Name())
 		}
@@ -207,7 +230,7 @@ func (h Home) List() ([]Summary, error) {
 		s := Summary{ID: id, Name: in.Name, Description: in.Description, Created: in.Created, Folder: dir, Active: id == r.Active}
 		entries, _ := os.ReadDir(filepath.Join(dir, "projects"))
 		for _, e := range entries {
-			if e.IsDir() && exists(filepath.Join(dir, "projects", e.Name(), "set.json")) {
+			if e.IsDir() && fsutil.Exists(filepath.Join(dir, "projects", e.Name(), "set.json")) {
 				s.Sets++
 			}
 		}
@@ -232,7 +255,7 @@ func (h Home) newID(name string) string {
 		base = strings.Trim(base[:40], "-")
 	}
 	id := base
-	for n := 2; exists(h.Dir(id)) || exists(h.Dir(id)+".importing") || exists(h.Dir(id)+".creating"); n++ {
+	for n := 2; fsutil.Exists(h.Dir(id)) || fsutil.Exists(h.Dir(id)+".importing") || fsutil.Exists(h.Dir(id)+".creating"); n++ {
 		id = fmt.Sprintf("%s-%d", base, n)
 	}
 	return id
@@ -274,7 +297,7 @@ func (h Home) Create(name, from string, withSaves bool, studioVersion string) (s
 		if in, err = LoadInfo(src); err != nil {
 			return "", err
 		}
-		err := copyTree(src, tmp, func(rel string, dir bool) bool {
+		err := fsutil.CopyTree(src, tmp, func(rel string, dir bool) bool {
 			return rel == InfoFile || (!withSaves && rel == SavesDir) || strings.HasPrefix(rel, SavesDir+"-")
 		})
 		if err != nil {
@@ -309,8 +332,8 @@ func (h Home) Update(id, name, description string) error {
 	if !strings.EqualFold(name, in.Name) {
 		name = h.uniqueName(name)
 	}
-	in.Name, in.Description = name, strings.TrimSpace(description)
-	return SaveInfo(h.Dir(id), in)
+	description = strings.TrimSpace(description)
+	return EditInfo(h.Dir(id), func(in *Info) { in.Name, in.Description = name, description })
 }
 
 // Delete removes an inactive setup with everything in it, including its parked saves.
@@ -322,7 +345,7 @@ func (h Home) Delete(id string) error {
 	if id == r.Active {
 		return errors.New("switch to another setup before deleting this one")
 	}
-	if id == "" || strings.ContainsAny(id, `/\.:`) || !exists(filepath.Join(h.Dir(id), InfoFile)) {
+	if id == "" || strings.ContainsAny(id, `/\.:`) || !fsutil.Exists(filepath.Join(h.Dir(id), InfoFile)) {
 		return errors.New("unknown setup")
 	}
 	if err := os.RemoveAll(h.Dir(id)); err != nil {
@@ -352,4 +375,13 @@ func (h Home) Move(id string, to int) error {
 	order = append(order[:to], append([]string{id}, order[to:]...)...)
 	r.Order = order
 	return h.saveRegistry(r)
+}
+
+// Folders is the setup folders of a list.
+func Folders(list []Summary) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = s.Folder
+	}
+	return out
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 )
 
@@ -41,7 +42,7 @@ func moveSaves(src, dst string) error {
 	for _, e := range entries {
 		switch {
 		case !e.IsDir() && isSaveFile(e.Name()):
-			if err := moveFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			if err := fsutil.MoveFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
 				return err
 			}
 		case e.IsDir() && e.Name() == sideCarDir:
@@ -65,11 +66,11 @@ func copySaves(src, dst string) error {
 	for _, e := range entries {
 		switch {
 		case !e.IsDir() && isSaveFile(e.Name()):
-			if err := copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			if err := fsutil.CopyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
 				return err
 			}
 		case e.IsDir() && e.Name() == sideCarDir:
-			if err := copyTree(filepath.Join(src, sideCarDir), filepath.Join(dst, sideCarDir), nil); err != nil {
+			if err := fsutil.CopyTree(filepath.Join(src, sideCarDir), filepath.Join(dst, sideCarDir), nil); err != nil {
 				return err
 			}
 		}
@@ -79,4 +80,4 @@ func copySaves(src, dst string) error {
 
 // SteamCloud reports whether Steam Auto-Cloud syncs the save folder (Steam writes steam_autocloud.vdf there). Steam may then
 // download saves that were moved away back into the folder on the next game start.
-func SteamCloud() bool { return exists(filepath.Join(SaveDir(), "steam_autocloud.vdf")) }
+func SteamCloud() bool { return fsutil.Exists(filepath.Join(SaveDir(), "steam_autocloud.vdf")) }

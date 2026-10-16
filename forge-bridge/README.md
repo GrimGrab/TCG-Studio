@@ -3,7 +3,7 @@
 Runs [Forge](https://github.com/Card-Forge/forge) (Magic: The Gathering rules engine and AI) without a window, so TCG Card Shop
 Simulator can host MTG games at its play tables. The game starts this program and talks to it over stdin/stdout, one JSON
 object per line (`Bridge.java` reads the game's messages; `StateWriter.java` and `BridgeGuiGame.java` write the game state,
-prompts and questions). The full protocol is in the workspace doc `docs/mtg-forge.md`, under "Bridge protocol".
+prompts and questions).
 
 This is the source of `tcgcc-forge-bridge.jar`, which ships with TCG Custom Cards / TCG Studio
 (https://github.com/GrimGrab/TCG-Studio/releases).

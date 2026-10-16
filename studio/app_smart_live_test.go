@@ -35,7 +35,7 @@ func TestSmartArtSourcesLive(t *testing.T) {
 				}
 			}
 			a := &App{ctx: context.Background()}
-			a.settings.Workspace = root
+			a.settings = Settings{Workspace: root}
 			p, err := a.ws().Load(id)
 			if err != nil {
 				t.Fatal(err)

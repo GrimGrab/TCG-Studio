@@ -1,5 +1,5 @@
-// Package art generates pack/box textures and shop icons from the vanilla templates the mod exports
-// (<plugin>\templates). Layouts (pixels, 1024² textures, origin top-left) are documented in docs/runtime-facts.md.
+// Package art generates pack/box textures and shop icons from the game templates (internal/gameextract). Layouts are in
+// pixels of 1024² textures, origin top-left.
 package art
 
 import (
@@ -49,7 +49,7 @@ func InFolder(folder string) func(string) string {
 	return func(rel string) string { return filepath.Join(folder, filepath.FromSlash(rel)) }
 }
 
-// Result lists generated files (relative to the project folder).
+// Result lists generated files (relative to the set's folder).
 type Result struct {
 	PackTexture string `json:"packTexture"`
 	PackIcon    string `json:"packIcon"`
@@ -73,7 +73,7 @@ func DefaultColor(id string) string {
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }
 
-// Generate writes images/pack_texture.png, pack_icon.png, box_texture.png, box_icon.png into the project folder.
+// Generate writes images/pack_texture.png, pack_icon.png, box_texture.png, box_icon.png into the set's folder (Options.Target).
 func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Result, error) {
 	if o.Color == "" {
 		o.Color = DefaultColor(setID)

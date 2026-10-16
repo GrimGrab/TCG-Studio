@@ -2,13 +2,12 @@
 // game info in <setup>\accessories\ — accessories.json (the mod's format, see setfmt.AccessoryLibrary) and studio.json
 // (editor layouts, studio-only) — and its files in the workspace's shared asset store (internal/assets), referred to as
 // "assets/<hash>.<ext>". Older libraries keep per-setup files under images\ (paths without the assets/ prefix) until the
-// Storage page moves them. Installed to <plugin>\Accessories\ (store files under Accessories\assets\).
+// Storage page moves them. The game's mod reads the setup's accessories.json and the store straight from the workspace.
 package accessories
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,8 +22,8 @@ import (
 const (
 	LibraryFile = "accessories.json"
 	MetaFile    = "studio.json"
-	ImagesDir   = "images"
-	// InstallDir is the folder next to the mod DLL that the mod's AccessoryLoader reads.
+	// InstallDir is the folder next to the mod DLL older Studio versions copied the library into (the mod now reads the
+	// setup's own accessories folder; the upgrade takes old copies over).
 	InstallDir = "Accessories"
 )
 
@@ -77,6 +76,11 @@ func (l *Library) Save() error {
 	if err := l.Lib.Save(filepath.Join(l.Folder, LibraryFile)); err != nil {
 		return err
 	}
+	return l.SaveMeta()
+}
+
+// SaveMeta writes only the studio-only data (the game never reads it).
+func (l *Library) SaveMeta() error {
 	b, err := json.MarshalIndent(l.Meta, "", "  ")
 	if err != nil {
 		return err
@@ -99,6 +103,29 @@ const ConvertedPrefix = "eplmod-"
 
 // IsConverted reports an accessory or furniture id made by a mod conversion.
 func IsConverted(id string) bool { return strings.HasPrefix(id, ConvertedPrefix) }
+
+// FillConvertedOrigins gives converted entries without an origin (converted before origins were recorded) one with only
+// the kind known. Reports whether it added any.
+func (l *Library) FillConvertedOrigins() bool {
+	var ids []string
+	for _, a := range l.Lib.Accessories {
+		ids = append(ids, a.ID)
+	}
+	for _, f := range l.Lib.Furniture {
+		ids = append(ids, f.ID)
+	}
+	for _, d := range l.Lib.Decorations {
+		ids = append(ids, d.ID)
+	}
+	changed := false
+	for _, id := range ids {
+		if _, ok := l.Meta.Origins[id]; !ok && IsConverted(id) {
+			l.Meta.Origins[id] = origin.Origin{Kind: origin.KindEPL}
+			changed = true
+		}
+	}
+	return changed
+}
 
 var nonID = regexp.MustCompile(`[^a-z0-9_-]+`)
 
@@ -125,18 +152,14 @@ func (l *Library) Put(a setfmt.Accessory) {
 	l.Lib.Accessories = append(l.Lib.Accessories, a)
 }
 
-// Delete removes an accessory, its layout and its images/<id>_* files (texture, icon, figurine model).
+// Delete removes an accessory and its layout. Its files stay in the shared store (other setups may use them; the
+// Storage page deletes unused ones).
 func (l *Library) Delete(id string) {
 	if i := l.Index(id); i >= 0 {
 		l.Lib.Accessories = append(l.Lib.Accessories[:i], l.Lib.Accessories[i+1:]...)
 	}
 	delete(l.Meta.Layouts, id)
 	delete(l.Meta.Origins, id)
-	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
-		for _, m := range matches {
-			_ = os.Remove(m)
-		}
-	}
 }
 
 // FurnitureIndex is the position of a furniture piece in the library (-1 = none).
@@ -158,18 +181,13 @@ func (l *Library) PutFurniture(f setfmt.Furniture) {
 	l.Lib.Furniture = append(l.Lib.Furniture, f)
 }
 
-// DeleteFurniture removes a piece and its images/<id>_* files (icon, texture, model).
+// DeleteFurniture removes a piece and its layout (files: see Delete).
 func (l *Library) DeleteFurniture(id string) {
 	if i := l.FurnitureIndex(id); i >= 0 {
 		l.Lib.Furniture = append(l.Lib.Furniture[:i], l.Lib.Furniture[i+1:]...)
 	}
 	delete(l.Meta.Layouts, id)
 	delete(l.Meta.Origins, id)
-	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
-		for _, m := range matches {
-			_ = os.Remove(m)
-		}
-	}
 }
 
 // HasItem reports an accessory, furniture piece or decoration with this id.
@@ -196,18 +214,13 @@ func (l *Library) PutDecoration(d setfmt.Decoration) {
 	l.Lib.Decorations = append(l.Lib.Decorations, d)
 }
 
-// DeleteDecoration removes a decoration, its layout and its images/<id>_* files.
+// DeleteDecoration removes a decoration and its layout (files: see Delete).
 func (l *Library) DeleteDecoration(id string) {
 	if i := l.DecorationIndex(id); i >= 0 {
 		l.Lib.Decorations = append(l.Lib.Decorations[:i], l.Lib.Decorations[i+1:]...)
 	}
 	delete(l.Meta.Layouts, id)
 	delete(l.Meta.Origins, id)
-	if matches, _ := filepath.Glob(filepath.Join(l.Folder, ImagesDir, id+"_*")); matches != nil {
-		for _, m := range matches {
-			_ = os.Remove(m)
-		}
-	}
 }
 
 // Move reorders an accessory (library order = gamify ladder order).
@@ -222,17 +235,13 @@ func (l *Library) Move(id string, to int) {
 	l.Lib.Accessories = list
 }
 
-// Resolve is the file a library path refers to: the shared store for "assets/…", else the setup's own folder (older
-// files). Paths that would leave the folder resolve to a file that doesn't exist.
+// Resolve is the file a library path ("assets/…") refers to in the shared store. Any other path resolves to a file
+// that doesn't exist.
 func (l *Library) Resolve(rel string) string {
 	if assets.IsAsset(rel) {
 		return l.Assets.Path(rel)
 	}
-	p := filepath.Join(l.Folder, filepath.FromSlash(rel))
-	if r, err := filepath.Rel(l.Folder, p); err != nil || strings.HasPrefix(r, "..") {
-		return filepath.Join(l.Folder, "invalid")
-	}
-	return p
+	return filepath.Join(l.Assets.Dir, "invalid")
 }
 
 // PutBytes stores file bytes in the shared store and returns their path ("assets/<hash>.<ext>"); ext like ".png".
@@ -332,79 +341,79 @@ func layoutFiles(raw json.RawMessage) []string {
 	return out
 }
 
-// Install replaces <plugin>\Accessories with accessories.json and every referenced image/model (accessories and furniture),
-// each at its library path (store files under Accessories\assets\, which the mod reads like any other path). Store files
-// never change, so the ones the previous install already has are moved over instead of copied. An empty library
-// uninstalls.
-func (l *Library) Install(gameDir string) error {
-	if !game.IsGameDir(gameDir) {
-		return fmt.Errorf("game folder not set")
-	}
-	if len(l.Lib.Accessories) == 0 && len(l.Lib.Furniture) == 0 && len(l.Lib.Decorations) == 0 {
-		return Uninstall(gameDir)
-	}
-	dest := InstalledDir(gameDir)
-	tmp := dest + ".installing"
-	_ = os.RemoveAll(tmp)
-	var rels []string
-	for _, a := range l.Lib.Accessories {
-		rels = append(rels, a.Texture, a.Icon, a.Mesh)
-	}
-	for _, f := range l.Lib.Furniture {
-		rels = append(rels, f.Files()...)
-	}
-	for _, d := range l.Lib.Decorations {
-		rels = append(rels, d.Files()...)
-	}
-	done := map[string]bool{}
-	for _, rel := range rels {
-		if rel == "" || done[rel] {
-			continue
-		}
-		done[rel] = true
-		to := filepath.Join(tmp, filepath.FromSlash(rel))
-		if assets.IsAsset(rel) {
-			if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-				return err
-			}
-			if os.Rename(filepath.Join(dest, filepath.FromSlash(rel)), to) == nil {
-				continue
+// StoreRefs is every shared-store file the accessory libraries of the given setup roots (setups, the catalog) refer to,
+// in entries or editor layouts.
+func StoreRefs(roots ...string) map[string]bool {
+	refs := map[string]bool{}
+	for _, root := range roots {
+		dir := Folder(root)
+		for _, f := range []string{LibraryFile, MetaFile} {
+			if b, err := os.ReadFile(filepath.Join(dir, f)); err == nil {
+				for _, r := range assets.Refs(b) {
+					refs[r] = true
+				}
 			}
 		}
-		if err := copyFile(l.Resolve(rel), to); err != nil && !os.IsNotExist(err) {
-			return err
-		}
 	}
-	if err := l.Lib.Save(filepath.Join(tmp, LibraryFile)); err != nil {
-		return err
-	}
-	_ = os.RemoveAll(dest)
-	return os.Rename(tmp, dest)
+	return refs
 }
 
-func Uninstall(gameDir string) error {
-	if !game.IsGameDir(gameDir) {
-		return fmt.Errorf("game folder not set")
+// Kinds of library entries.
+const (
+	KindAccessory  = "accessory"
+	KindFurniture  = "furniture"
+	KindDecoration = "decoration"
+)
+
+// Entry finds id among the library's accessories, furniture and decorations: its kind and a copy of the entry.
+func (l *Library) Entry(id string) (kind string, entry any, ok bool) {
+	if i := l.Index(id); i >= 0 {
+		return KindAccessory, l.Lib.Accessories[i], true
 	}
-	return os.RemoveAll(InstalledDir(gameDir))
+	if i := l.FurnitureIndex(id); i >= 0 {
+		return KindFurniture, l.Lib.Furniture[i], true
+	}
+	if i := l.DecorationIndex(id); i >= 0 {
+		return KindDecoration, l.Lib.Decorations[i], true
+	}
+	return "", nil, false
 }
 
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
+// ItemRefs is the shared-store files entry id refers to (the entry and its editor layout).
+func (l *Library) ItemRefs(id string) []string {
+	_, entry, ok := l.Entry(id)
+	if !ok {
+		return nil
 	}
-	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+	var refs []string
+	if b, err := json.Marshal(entry); err == nil {
+		refs = append(refs, assets.Refs(b)...)
 	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
+	if raw, ok := l.Meta.Layouts[id]; ok {
+		refs = append(refs, assets.Refs(raw)...)
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
+	return refs
+}
+
+// CopyEntry copies entry id with its editor layout and origin from src into l. False when src has no such entry.
+func (l *Library) CopyEntry(src *Library, id string) bool {
+	_, entry, ok := src.Entry(id)
+	if !ok {
+		return false
 	}
-	return out.Close()
+	switch e := entry.(type) {
+	case setfmt.Accessory:
+		l.Put(e)
+	case setfmt.Furniture:
+		l.PutFurniture(e)
+	case setfmt.Decoration:
+		l.PutDecoration(e)
+	}
+	if raw, ok := src.Meta.Layouts[id]; ok {
+		l.Meta.Layouts[id] = raw
+	}
+	if o, ok := src.Meta.Origins[id]; ok {
+		l.Meta.Origins[id] = o
+	}
+	return true
 }

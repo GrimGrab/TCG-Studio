@@ -21,11 +21,13 @@ type ModSettingsView struct {
 	Setup       string                        `json:"setup"`     // name of the active setup: each setup keeps its own copy of these settings
 }
 
-func (a *App) modConfigPath() (string, error) {
-	if !game.IsGameDir(a.settings.GameDir) {
-		return "", errors.New("game folder not set (Settings → Game)")
+// openModConfig returns the mod's config file, first bringing it up to this mod version: settings a mod update added are
+// inserted, and a missing file is written from the defaults.
+func (a *App) openModConfig() (string, error) {
+	if !game.IsGameDir(a.gameDir()) {
+		return "", errNoGame
 	}
-	p := modconfig.Path(a.settings.GameDir)
+	p := modconfig.Path(a.gameDir())
 	if info, err := os.Stat(p); err == nil {
 		// Settings a mod update added show up (at their defaults) without starting the game first.
 		if n, err := modconfig.AddMissing(p); err == nil && n > 0 {
@@ -37,8 +39,8 @@ func (a *App) modConfigPath() (string, error) {
 		}
 		return p, nil
 	}
-	if !game.GetStatus(a.settings.GameDir).ModInstalled {
-		return "", errors.New("the mod isn't installed yet — install it on the Setup screen")
+	if !game.GetStatus(a.gameDir()).ModInstalled {
+		return "", errors.New("the mod isn't installed yet — install it on the Game & mod page")
 	}
 	// No file yet (the game hasn't run with the mod, or a setup without saved settings): write the defaults; the mod reads
 	// it on start and adds any setting the file doesn't have.
@@ -49,16 +51,10 @@ func (a *App) modConfigPath() (string, error) {
 }
 
 // modDefaultsCache is a copy of the installed mod's config with every value at its default.
-func modDefaultsCache() string {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		dir = os.TempDir()
-	}
-	return filepath.Join(dir, "TCG Studio", "mod-defaults.cfg")
-}
+func modDefaultsCache() string { return filepath.Join(cacheDir(), "mod-defaults.cfg") }
 
 func (a *App) ModSettings() (ModSettingsView, error) {
-	p, err := a.modConfigPath()
+	p, err := a.openModConfig()
 	if err != nil {
 		return ModSettingsView{}, err
 	}
@@ -81,7 +77,7 @@ func (a *App) ModSettings() (ModSettingsView, error) {
 
 // SetModSetting changes one value (validated against the setting's type/range). A running game reloads it right away.
 func (a *App) SetModSetting(section, key, value string) (modconfig.Entry, error) {
-	p, err := a.modConfigPath()
+	p, err := a.openModConfig()
 	if err != nil {
 		return modconfig.Entry{}, err
 	}
@@ -90,7 +86,7 @@ func (a *App) SetModSetting(section, key, value string) (modconfig.Entry, error)
 
 // RestoreModDefaults resets one section ("" = every setting) to the mod's defaults; returns how many values changed.
 func (a *App) RestoreModDefaults(section string) (int, error) {
-	p, err := a.modConfigPath()
+	p, err := a.openModConfig()
 	if err != nil {
 		return 0, err
 	}

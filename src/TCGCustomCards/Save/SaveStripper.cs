@@ -36,7 +36,24 @@ namespace TCGCustomCards.Save
         {
             public AllocationSnapshot alloc;
             public List<StashEntry> entries = new List<StashEntry>();
+            /// <summary>
+            /// Entries an earlier load couldn't put back (their set, card, pack or piece wasn't loaded), each group with the allocation
+            /// it was saved under. Written again with every save until the content is back, so a missing set never deletes them.
+            /// </summary>
+            public List<Carried> carried = new List<Carried>();
         }
+
+        public class Carried
+        {
+            public AllocationSnapshot alloc;
+            public List<StashEntry> entries = new List<StashEntry>();
+        }
+
+        /// <summary>What the last load couldn't put back; added to every stash until a load restores it.</summary>
+        private static List<Carried> _carry = new List<Carried>();
+
+        /// <summary>New game: nothing from a previously loaded slot is carried into its saves.</summary>
+        public static void ForgetCarried() => _carry = new List<Carried>();
 
         /// <summary>Unordered collections: custom entries are removed from the save and appended back on load.</summary>
         private static readonly HashSet<string> RemoveLists = new HashSet<string>
@@ -57,6 +74,7 @@ namespace TCGCustomCards.Save
             var originals = new List<(FieldInfo f, object value)>();
             // Newest first: a field swapped twice (pre-pass, then the generic pass) ends with its true original.
             undo = () => { for (int i = originals.Count - 1; i >= 0; i--) originals[i].f.SetValue(g, originals[i].value); };
+            stash.carried.AddRange(_carry);
             if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0 && Registry.Decorations.Count == 0) return stash;
 
             StripSpawnWaiting(g, stash, originals);
@@ -434,9 +452,26 @@ namespace TCGCustomCards.Save
 
         public static void Restore(Stash stash)
         {
-            if (stash == null || stash.entries.Count == 0) return;
-            var alloc = stash.alloc ?? new AllocationSnapshot();
-            int ok = 0, dropped = 0;
+            _carry = new List<Carried>();
+            if (stash == null) return;
+            int ok = 0, kept = 0;
+            var groups = new List<Carried> { new Carried { alloc = stash.alloc, entries = stash.entries } };
+            if (stash.carried != null) groups.AddRange(stash.carried.Where(c => c?.entries != null && c.entries.Count > 0));
+            foreach (var g in groups)
+            {
+                var left = RestoreGroup(g.entries, g.alloc ?? new AllocationSnapshot(), ref ok);
+                if (left.Count == 0) continue;
+                kept += left.Count;
+                _carry.Add(new Carried { alloc = g.alloc, entries = left });
+            }
+            if (ok > 0 || kept > 0)
+                Plugin.Log.LogInfo($"Load: restored {ok} custom entries into the game{(kept > 0 ? $", kept {kept} whose content isn't loaded (they come back when it is)" : "")}");
+        }
+
+        /// <summary>Puts one group of entries back; returns those whose content isn't loaded (kept for later saves).</summary>
+        private static List<StashEntry> RestoreGroup(List<StashEntry> entries, AllocationSnapshot alloc, ref int ok)
+        {
+            var left = new List<StashEntry>();
             // Warehouse shelves taken out at save (saved indices, ascending) and those that couldn't be put back: stored boxes refer to
             // shelves by index (see StripWarehouseBoxes).
             var shelves = new List<int>();
@@ -444,7 +479,7 @@ namespace TCGCustomCards.Save
             bool boxesRemapped = false;
             // Pieces go back to their saved index first (ascending, so the list is as saved), then replace entries (indices refer to
             // the saved list), then removes are appended.
-            foreach (var e in stash.entries.OrderBy(e => e.mode == "removeAt" ? 0 : e.mode == "replace" ? 1 : 2).ThenBy(e => e.index))
+            foreach (var e in entries.OrderBy(e => e.mode == "removeAt" ? 0 : e.mode == "replace" ? 1 : 2).ThenBy(e => e.index))
             {
                 if (!boxesRemapped && e.mode != "removeAt") { RemapStoredBoxes(shelves, lostShelves); boxesRemapped = true; }
                 bool restored = false;
@@ -452,11 +487,14 @@ namespace TCGCustomCards.Save
                 {
                     restored = RestoreOne(e, alloc, shelves, lostShelves);
                     if (restored) ok++;
-                    else { dropped++; Plugin.Log.LogWarning($"Restore: dropped {e.field}[{e.index}] (its custom set/card/pack/furniture is no longer installed)"); }
+                    else
+                    {
+                        left.Add(e);
+                        Plugin.Log.LogWarning($"Restore: kept {e.field}[{e.index}] for later (its custom set/card/pack/furniture isn't loaded)");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    dropped++;
                     Plugin.Log.LogError($"Restore failed for {e.field}[{e.index}]: {ex.Message}");
                 }
                 if (e.mode == "removeAt" && e.field == WarehouseField)
@@ -466,7 +504,7 @@ namespace TCGCustomCards.Save
                 }
             }
             if (!boxesRemapped) RemapStoredBoxes(shelves, lostShelves);
-            Plugin.Log.LogInfo($"Load: restored {ok} custom entries into the game{(dropped > 0 ? $", dropped {dropped}" : "")}");
+            return left;
         }
 
         private static bool RestoreOne(StashEntry e, AllocationSnapshot alloc, List<int> shelves, HashSet<int> lostShelves)

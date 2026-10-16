@@ -65,7 +65,7 @@ namespace TCGCustomCards.Binder
                 exp = set.Expansion;
                 return true;
             }
-            return Enum.TryParse(key, out exp) && !Registry.IsCustom(exp);
+            return Enum.TryParse(key, out exp) && !Registry.IsCustom(exp) && BinderIndex.HasCollection(exp);
         }
 
         public static string Card(ECardExpansionType exp, bool dimension, EMonsterType m)

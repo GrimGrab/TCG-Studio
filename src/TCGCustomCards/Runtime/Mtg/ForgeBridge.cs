@@ -12,7 +12,7 @@ namespace TCGCustomCards.Runtime.Mtg
     /// <summary>
     /// The headless Forge process (forge-bridge\, GPL): started once per session and kept alive between games (Forge takes ~6 s
     /// to load its card database). Messages are one JSON object per line on stdin/stdout; incoming ones are read on a background
-    /// thread and handed to the main thread through <see cref="Poll"/>. Protocol: docs/mtg-forge.md "Bridge protocol".
+    /// thread and handed to the main thread through <see cref="Poll"/>.
     /// </summary>
     internal static class ForgeBridge
     {

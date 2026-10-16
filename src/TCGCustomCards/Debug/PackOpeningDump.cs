@@ -9,7 +9,7 @@ using UnityEngine;
 namespace TCGCustomCards.Debug
 {
     /// <summary>
-    /// Writes &lt;plugin&gt;\pack-opening.txt once per session (with [Debug] DumpDiagnostics): how the pack-opening scene is built
+    /// Writes &lt;game&gt;\BepInEx\TCGCustomCards\pack-opening.txt once per session (with [Debug] DumpDiagnostics): how the pack-opening scene is built
     /// (the 7 card slots, their animation roots, final-reveal positions, clips) and where the 7 cards end up on screen in the
     /// final reveal. Measurements for N-card packs (cloned slots and a final layout that must fit the same screen area).
     /// </summary>
@@ -118,7 +118,7 @@ namespace TCGCustomCards.Debug
             if (st == 10 && _lastState != 10)
             {
                 Final(s);
-                File.WriteAllText(System.IO.Path.Combine(Plugin.PluginDir, "pack-opening.txt"), Sb.ToString());
+                File.WriteAllText(System.IO.Path.Combine(Plugin.DumpDir, "pack-opening.txt"), Sb.ToString());
                 Plugin.Log.LogInfo("pack-opening.txt written (pack opening measurements)");
                 _active = false;
                 _done = true;

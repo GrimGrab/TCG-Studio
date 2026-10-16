@@ -15,7 +15,7 @@ import (
 // Game templates: the vanilla art, meshes and item data the editors build on. Studio reads them from the installed game's
 // files into its own cache (internal/gameextract), so nothing has to be run in game first. Mod versions up to 0.7.x
 // exported them in game (<plugin>\templates); such a leftover export is only used until Studio's own read is done
-// (Setup → Install / Repair deletes it).
+// (Game & mod → Install / Repair deletes it).
 
 // TemplatesStatus is shown in Settings and by the editors.
 type TemplatesStatus struct {
@@ -31,17 +31,13 @@ type templatesState struct {
 	busy    bool
 	message string
 	err     string
-	dir     string // resolved folder ("" = not resolved yet)
-	gameDir string // game folder dir was resolved for
+	// resolveTemplates' answer for resolvedFor, kept until the game folder changes or a read of the game files ends.
+	resolved    bool
+	resolvedFor string
+	dir, source string
 }
 
-func templatesCacheDir() string {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		dir = os.TempDir()
-	}
-	return filepath.Join(dir, "TCG Studio", "game-templates")
-}
+func templatesCacheDir() string { return filepath.Join(cacheDir(), "game-templates") }
 
 // cacheCurrent: Studio's extraction exists, was made by this extractor version and from these game files.
 func cacheCurrent(gameDir string) bool {
@@ -69,44 +65,65 @@ func resolveTemplates(gameDir string) (dir, source string) {
 	return "", ""
 }
 
-// templatesDir is the folder the editors read templates from (see resolveTemplates; cached per game folder).
-func (a *App) templatesDir() string {
+// templates is resolveTemplates for the current game folder, cached (it reads the game files' stamp).
+func (a *App) templates() (dir, source string) {
+	gameDir := a.gameDir()
 	t := &a.tpl
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.dir == "" || t.gameDir != a.settings.GameDir {
-		t.dir, _ = resolveTemplates(a.settings.GameDir)
-		t.gameDir = a.settings.GameDir
+	if !t.resolved || t.resolvedFor != gameDir {
+		t.dir, t.source = resolveTemplates(gameDir)
+		t.resolved, t.resolvedFor = true, gameDir
 	}
-	return t.dir
+	return t.dir, t.source
 }
 
-func (a *App) templatesReady() bool {
-	dir := a.templatesDir()
-	return dir != "" && exists(filepath.Join(dir, "BasicCardPack_texture.png"))
+// templatesDir is the folder the editors read templates from ("" = none yet).
+func (a *App) templatesDir() string {
+	dir, _ := a.templates()
+	return dir
 }
+
+// templateFile is a file of the game templates (parts joined, kept inside the folder), or "" while there are none.
+func (a *App) templateFile(parts ...string) string { return safeJoin(a.templatesDir(), parts...) }
+
+// templateJSON returns a JSON file of the game templates as text, or "" while it isn't available.
+func (a *App) templateJSON(parts ...string) string {
+	b, err := os.ReadFile(a.templateFile(parts...))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// templatesReadyIn: dir holds a complete set of templates (the editors need both).
+func templatesReadyIn(dir string) bool {
+	return dir != "" && exists(filepath.Join(dir, "BasicCardPack_texture.png")) &&
+		exists(filepath.Join(dir, "accessories", "accessories.json"))
+}
+
+func (a *App) templatesReady() bool { return templatesReadyIn(a.templatesDir()) }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 // TemplatesStatus reports where the templates come from and whether Studio is reading them.
 func (a *App) TemplatesStatus() TemplatesStatus {
-	dir := a.templatesDir()
-	_, source := resolveTemplates(a.settings.GameDir)
+	dir, source := a.templates()
+	s := TemplatesStatus{Ready: templatesReadyIn(dir)}
+	if s.Ready {
+		s.Source = source
+	}
 	t := &a.tpl
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	s := TemplatesStatus{Busy: t.busy, Message: t.message, Error: t.err, Source: source}
-	s.Ready = dir != "" && exists(filepath.Join(dir, "BasicCardPack_texture.png")) && exists(filepath.Join(dir, "accessories", "accessories.json"))
-	if !s.Ready {
-		s.Source = ""
-	}
+	s.Busy, s.Message, s.Error = t.busy, t.message, t.err
+	t.mu.Unlock()
 	return s
 }
 
 // RefreshTemplates reads the templates from the game files unless Studio's copy is current (force: always). Runs in the
 // background; the frontend gets "templates:progress" and "templates:ready".
 func (a *App) RefreshTemplates(force bool) TemplatesStatus {
-	gameDir := a.settings.GameDir
+	gameDir := a.gameDir()
 	t := &a.tpl
 	t.mu.Lock()
 	if t.busy || gameDir == "" || !game.IsGameDir(gameDir) || (!force && cacheCurrent(gameDir)) {
@@ -121,31 +138,23 @@ func (a *App) RefreshTemplates(force bool) TemplatesStatus {
 			t.message = msg
 			t.mu.Unlock()
 			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "templates:progress", msg)
+				runtime.EventsEmit(a.ctx, evTemplatesProgress, msg)
 			}
 		})
 		t.mu.Lock()
-		t.busy, t.message, t.dir = false, "", ""
+		t.busy, t.message, t.resolved = false, "", false
 		if err != nil {
 			t.err = "Couldn't read the game files: " + err.Error()
 		}
 		t.mu.Unlock()
 		// The game folder changed while this one was being read: read the new one.
-		if a.settings.GameDir != gameDir {
+		if a.gameDir() != gameDir {
 			a.RefreshTemplates(false)
 			return
 		}
 		if a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "templates:ready", a.TemplatesStatus())
+			runtime.EventsEmit(a.ctx, evTemplatesReady, a.TemplatesStatus())
 		}
 	}()
 	return a.TemplatesStatus()
-}
-
-// invalidateTemplates forgets the resolved folder (game folder changed) and reads the new game's files if needed.
-func (a *App) invalidateTemplates() {
-	a.tpl.mu.Lock()
-	a.tpl.dir = ""
-	a.tpl.mu.Unlock()
-	a.RefreshTemplates(false)
 }

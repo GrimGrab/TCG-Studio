@@ -6,7 +6,7 @@ import "tcgstudio/internal/setfmt"
 // Epic < Legendary (see each source's Default…RarityMap), so "uncommon" slots are Rare, "rare" Epic, the top tier
 // Legendary. Card counts are the playable cards: ads, tokens-only cards, code cards and Pokémon's basic Energy are left
 // out. The game rolls foil per card, so the pack-wide FoilChance stands in for foil/reverse-holo slots. The Packs tab
-// lists the same table (App.PackPresets). Sources and estimates: docs/import-sources.md "Real boosters".
+// lists the same table (App.PackPresets).
 //
 // Slot order is reveal order (PackRoller fills cards slot by slot; the opening shows them first to last), so every
 // booster goes from least to most exciting like a real pack opened front to back: commons (and land), uncommons, the

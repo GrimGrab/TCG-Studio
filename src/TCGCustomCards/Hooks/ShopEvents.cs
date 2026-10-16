@@ -80,7 +80,7 @@ namespace TCGCustomCards.Hooks
     /// Single owner of the vanilla tournament pipeline patches (Customer.DetermineShopAction for entrants,
     /// InteractablePlayTable.Update / StopTableGame, CustomerManager.SpawnGameStartCustomer / OnCustomerFinishTournamentRound /
     /// OnDayStarted). With no <see cref="Config"/> or no format registered for it, every patch is a pass-through. One active format
-    /// at a time. See docs/hooks.md for the vanilla lines owned here.
+    /// at a time.
     /// </summary>
     internal static class ShopEvents
     {

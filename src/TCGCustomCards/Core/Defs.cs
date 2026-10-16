@@ -36,7 +36,7 @@ namespace TCGCustomCards.Core
         [JsonProperty("frameTemplate"), JsonConverter(typeof(StringEnumConverter))]
         public ECardExpansionType FrameTemplate = ECardExpansionType.Tetramon;
 
-        /// <summary>Optional card back image (relative to the set folder).</summary>
+        /// <summary>Optional card back image (path in the set's shared folder, see Resolve).</summary>
         [JsonProperty("cardBack")] public string CardBack;
 
         /// <summary>Set of real MTG cards (imported from Scryfall): enables Forge deck export (MTG mode).</summary>
@@ -63,7 +63,7 @@ namespace TCGCustomCards.Core
         [JsonProperty("packs")] public List<PackDef> Packs = new List<PackDef>();
         [JsonProperty("cards")] public List<CardDef> Cards = new List<CardDef>();
 
-        /// <summary>Absolute folder the set was loaded from (not serialized).</summary>
+        /// <summary>Absolute folder the set was loaded from: its set.json (not serialized). Its files are in the library (Resolve).</summary>
         [JsonIgnore] public string FolderPath;
 
         /// <summary>Rarities by id, case-insensitive (filled by SetLoader).</summary>
@@ -72,24 +72,22 @@ namespace TCGCustomCards.Core
         public RarityDef RarityOf(CardDef card) => RarityById.TryGetValue(card.Rarity ?? "", out var r) ? r : null;
 
         /// <summary>
-        /// Absolute path of a file the set refers to: the set's own folder first, then the shared card-art library
-        /// &lt;plugin&gt;\Library\&lt;set folder name&gt;\ that TCG Studio fills (card art shared by every setup with this set).
-        /// Returns the set-folder path when neither exists (callers report it as missing).
+        /// Marker TCG Studio looks for in this DLL (as text) to know the mod reads set files from TCG Studio's shared library
+        /// (StudioPaths); Studio refuses to install sets into an older mod. Logged at load so the literal stays
+        /// in the build.
         /// </summary>
-        /// <summary>
-        /// Marker TCG Studio looks for in this DLL (as text) to know the mod reads the shared card-art library; until it finds
-        /// it, Studio keeps copying card art into each set folder. Logged at load so the literal stays in the build.
-        /// </summary>
-        public const string LibraryCapability = "tcgcc-capability:shared-card-art-library";
+        public const string LibraryCapability = "tcgcc-capability:studio-setup";
 
+        /// <summary>The set's files folder (card art, card back, pack and box art): &lt;TCG Studio library&gt;\&lt;set id&gt;.
+        /// Null without TCG Studio's library (StudioPaths). Set by SetLoader (not serialized).</summary>
+        [JsonIgnore] public string LibraryPath;
+
+        /// <summary>Absolute path of a file the set refers to (relative path from set.json), in its files folder
+        /// (LibraryPath). Null for an empty path or a set without one.</summary>
         public string Resolve(string relative)
         {
-            if (string.IsNullOrEmpty(relative)) return null;
-            string own = Path.Combine(FolderPath, relative);
-            if (File.Exists(own)) return own;
-            string plugin = Path.GetDirectoryName(Path.GetDirectoryName(FolderPath));
-            string shared = plugin == null ? null : Path.Combine(Path.Combine(plugin, "Library"), Path.Combine(Path.GetFileName(FolderPath), relative));
-            return shared != null && File.Exists(shared) ? shared : own;
+            if (string.IsNullOrEmpty(relative) || string.IsNullOrEmpty(LibraryPath)) return null;
+            return Path.Combine(LibraryPath, relative);
         }
     }
 
@@ -264,9 +262,9 @@ namespace TCGCustomCards.Core
         [JsonProperty("weights")] public Dictionary<string, float> Weights = new Dictionary<string, float>();
     }
 
-    // ---- Accessory library (<plugin>\Accessories\accessories.json, written by TCG Studio) ----
+    // ---- Accessory library (<setup>\accessories\accessories.json, written by TCG Studio) ----
 
-    /// <summary>Custom accessories (deck boxes, playmats, sleeves, dice, comics, collection books, battle decks). Global (not part of a set); see docs\set-format.md "Accessory library".</summary>
+    /// <summary>Custom accessories (deck boxes, playmats, sleeves, dice, comics, collection books, battle decks). Global (not part of a set).</summary>
     public class AccessoryLibraryDef
     {
         public const int CurrentSchemaVersion = 1;

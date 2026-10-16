@@ -15,8 +15,9 @@ import (
 
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/assets"
-	"tcgstudio/internal/project"
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/workspace"
 )
 
 // Ext is the file extension of an exported setup (a zip).
@@ -25,6 +26,10 @@ const Ext = ".tcgsetup"
 const (
 	manifestFile  = "manifest.json"
 	archiveFormat = "tcgsetup"
+	// ArchiveVersion is the export format: 2 = set files under library/<setId>/ (1 = inside projects/<setId>/, still read).
+	ArchiveVersion = 2
+	// libraryEntry is the zip folder of the exported sets' files.
+	libraryEntry  = "library"
 	maxImportSize = 8 << 30 // uncompressed bytes
 	maxImportN    = 200_000 // files
 )
@@ -43,14 +48,24 @@ type Manifest struct {
 	Decorations   int       `json:"decorations,omitempty"`
 }
 
-// exportable reports whether a path inside a setup goes into an export: setup.json, projects\, accessories\ and game\ —
-// never saves\ (or a saves-conflict-* folder) or leftovers of an interrupted write.
+// exportable reports whether a path inside a setup goes into an export: setup.json, projects\, accessories\ and game\ (minus
+// parked game-folder content) —
+// never saves\ (or a saves-conflict-* folder) or leftovers of an interrupted write. An export also carries library/ (the
+// sets' shared files).
 func exportable(rel string) bool {
 	top, _, _ := strings.Cut(rel, "/")
 	switch top {
-	case InfoFile, "projects", "accessories", GameStateDir:
+	case InfoFile, "projects", "accessories", GameStateDir, libraryEntry:
 	default:
 		return false
+	}
+	if top == GameStateDir {
+		// Older Studio versions parked hand-installed sets and accessories (often converted mods) there; they stay on this PC.
+		_, sub, _ := strings.Cut(rel, "/")
+		first, _, _ := strings.Cut(sub, "/")
+		if first == "Sets" || first == "Accessories" || first == "Library" {
+			return false
+		}
 	}
 	return !strings.HasSuffix(rel, ".tmp") && !strings.HasSuffix(rel, ".installing")
 }
@@ -87,14 +102,11 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	if err != nil {
 		return err
 	}
-	// Card art in the shared library goes into the file at the project path it is used under, so the format is unchanged
-	// and the receiver needs no library.
+	// Every file a set uses comes from its shared folder: it goes into library/<setId>/ and the receiver's import puts it
+	// into its own shared folder.
 	src := map[string]string{} // zip name → file outside the setup folder
 	have := map[string]bool{}
-	for _, f := range files {
-		have[f] = true
-	}
-	ws := project.Workspace{Root: dir, Library: project.LibraryDir(h.Root)}
+	ws := workspace.Dir(h.Root).Projects(dir)
 	projects, _ := os.ReadDir(filepath.Join(dir, "projects"))
 	converted := map[string]bool{} // sets converted from another mod (EPL) carry its authors' art: they stay on this PC
 	for _, e := range projects {
@@ -106,22 +118,18 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 			converted[e.Name()] = true
 			continue
 		}
-		for _, rel := range p.Files() { // card art and every other file the set uses from the shared library
-			name := "projects/" + e.Name() + "/" + rel
-			if have[name] || !p.InLibrary(rel) {
-				continue
+		for _, rel := range p.Files() {
+			name := libraryEntry + "/" + e.Name() + "/" + rel
+			if !have[name] && fsutil.Exists(p.ImagePath(rel)) {
+				have[name] = true
+				files = append(files, name)
+				src[name] = p.ImagePath(rel)
 			}
-			have[name] = true
-			files = append(files, name)
-			src[name] = p.ImagePath(rel)
 		}
 	}
-	{ // converted sets and accessories stay on this PC
+	{ // converted sets stay on this PC
 		kept := files[:0]
 		for _, f := range files {
-			if strings.HasPrefix(f, "accessories/"+accessories.ImagesDir+"/"+accessories.ConvertedPrefix) {
-				continue
-			}
 			if top, rest, ok := strings.Cut(f, "/"); ok && top == "projects" {
 				if id, _, _ := strings.Cut(rest, "/"); converted[id] {
 					continue
@@ -133,8 +141,7 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 	}
 	// Accessory and furniture files in the shared store go into the zip under accessories/assets/, where the receiver's
 	// import puts them back into its own store (converted mod content stays out, like its entries).
-	store := assets.For(h.Root)
-	if lib, err := accessories.Open(dir, store); err == nil {
+	if lib, err := workspace.Dir(h.Root).Items(dir); err == nil {
 		for _, rel := range lib.FilesWhere(func(id string) bool { return !accessories.IsConverted(id) }) {
 			name := "accessories/" + rel
 			if !assets.IsAsset(rel) || have[name] {
@@ -142,10 +149,10 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 			}
 			have[name] = true
 			files = append(files, name)
-			src[name] = store.Path(rel)
+			src[name] = lib.Assets.Path(rel)
 		}
 	}
-	m := Manifest{Format: archiveFormat, FormatVersion: FormatVersion, Name: in.Name, Description: in.Description,
+	m := Manifest{Format: archiveFormat, FormatVersion: ArchiveVersion, Name: in.Name, Description: in.Description,
 		StudioVersion: studioVersion, Exported: time.Now().UTC()}
 	if list, err := h.List(); err == nil {
 		for _, s := range list {
@@ -188,6 +195,8 @@ func (h Home) Export(id, dest, studioVersion string, progress func(done, total i
 			b = scrubJSON(b)
 		case rel == "accessories/"+accessories.LibraryFile:
 			b = withoutConverted(b)
+		case rel == InfoFile && len(converted) > 0:
+			b = withoutInstalled(b, converted)
 		}
 		if err := writeEntry(zw, rel, b); err != nil {
 			return err
@@ -249,26 +258,13 @@ func scrubJSON(b []byte) []byte {
 		return b
 	}
 	changed := false
-	var walk func(any) any
-	walk = func(x any) any {
-		switch t := x.(type) {
-		case map[string]any:
-			for k, e := range t {
-				t[k] = walk(e)
-			}
-		case []any:
-			for i, e := range t {
-				t[i] = walk(e)
-			}
-		case string:
-			if isAbsPath(t) {
-				changed = true
-				return ""
-			}
+	v = fsutil.MapStrings(v, func(s string) string {
+		if isAbsPath(s) {
+			changed = true
+			return ""
 		}
-		return x
-	}
-	v = walk(v)
+		return s
+	})
 	if !changed {
 		return b
 	}
@@ -309,7 +305,7 @@ func manifestOf(zr *zip.Reader) (*Manifest, error) {
 		if m.Format != archiveFormat {
 			return nil, errors.New("not a TCG Studio setup file")
 		}
-		if m.FormatVersion > FormatVersion {
+		if m.FormatVersion > ArchiveVersion {
 			return nil, fmt.Errorf("this setup was made with a newer TCG Studio (%s) — update TCG Studio first", m.StudioVersion)
 		}
 		return m, nil
@@ -335,37 +331,39 @@ func cleanEntry(name string) (string, error) {
 	return n, nil
 }
 
-// Import unpacks an exported setup as a new, inactive setup (with no saves) and returns its id.
-func (h Home) Import(src, studioVersion string) (string, error) {
+// Import unpacks an exported setup as a new, inactive setup (with no saves) and returns its id. The sets' files go into
+// the workspace's shared folders; where this PC already has a different file for a set, its own file is kept (returned
+// in kept as "<setId>/<path>").
+func (h Home) Import(src, studioVersion string) (id string, kept []string, err error) {
 	r, err := h.Registry()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	zr, err := zip.OpenReader(src)
 	if err != nil {
-		return "", fmt.Errorf("not a setup file: %w", err)
+		return "", nil, fmt.Errorf("not a setup file: %w", err)
 	}
 	defer zr.Close()
 	m, err := manifestOf(&zr.Reader)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if len(zr.File) > maxImportN {
-		return "", errors.New("setup file has too many files")
+		return "", nil, errors.New("setup file has too many files")
 	}
 	var total uint64
 	for _, f := range zr.File {
 		total += f.UncompressedSize64
 	}
 	if total > maxImportSize {
-		return "", errors.New("setup file is too large")
+		return "", nil, errors.New("setup file is too large")
 	}
 
 	name := h.uniqueName(m.Name)
-	id := h.newID(name)
+	id = h.newID(name)
 	tmp := h.Dir(id) + ".importing"
 	_ = os.RemoveAll(tmp)
-	fail := func(err error) (string, error) { _ = os.RemoveAll(tmp); return "", err }
+	fail := func(err error) (string, []string, error) { _ = os.RemoveAll(tmp); return "", nil, err }
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -396,11 +394,84 @@ func (h Home) Import(src, studioVersion string) (string, error) {
 	if err := absorbAssets(filepath.Join(tmp, "accessories", assets.DirName), assets.For(h.Root)); err != nil {
 		return fail(err)
 	}
+	if kept, err = absorbSetFiles(tmp, workspace.Dir(h.Root).Library()); err != nil {
+		return fail(err)
+	}
 	if err := os.Rename(tmp, h.Dir(id)); err != nil {
 		return fail(err)
 	}
 	r.Order = h.knownIDs(append(r.Order, id))
-	return id, h.saveRegistry(r)
+	return id, kept, h.saveRegistry(r)
+}
+
+// absorbSetFiles moves the set files of an imported setup (tmp = its folder) into the workspace's shared folders
+// (library = <workspace>\library): library/<setId>/…, and files an older export kept in projects/<setId>/ next to
+// set.json. A file the shared folder already has with other bytes stays as it is (returned). Removes tmp's library/.
+func absorbSetFiles(tmp, library string) (kept []string, err error) {
+	type file struct{ src, set, rel string }
+	var files []file
+	walk := func(root string, skip func(rel string) bool) error {
+		sets, _ := os.ReadDir(root)
+		for _, s := range sets {
+			if !s.IsDir() || !setfmt.SafeID(s.Name()) {
+				continue
+			}
+			base := filepath.Join(root, s.Name())
+			err := filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return err
+				}
+				rel, _ := filepath.Rel(base, p)
+				if rel = filepath.ToSlash(rel); !skip(rel) {
+					files = append(files, file{p, s.Name(), rel})
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(filepath.Join(tmp, libraryEntry), func(string) bool { return false }); err != nil {
+		return nil, err
+	}
+	if err := walk(filepath.Join(tmp, "projects"), func(rel string) bool { return rel == "set.json" || rel == "studio.json" }); err != nil {
+		return nil, err
+	}
+	for _, f := range files {
+		dst := filepath.Join(library, f.set, filepath.FromSlash(f.rel))
+		switch {
+		case !fsutil.Exists(dst):
+			if err := fsutil.MoveFile(f.src, dst); err != nil {
+				return kept, err
+			}
+		case fsutil.SameContent(f.src, dst):
+			_ = os.Remove(f.src)
+		default:
+			kept = append(kept, f.set+"/"+f.rel)
+			_ = os.Remove(f.src)
+		}
+	}
+	projects, _ := os.ReadDir(filepath.Join(tmp, "projects"))
+	for _, d := range projects {
+		if d.IsDir() {
+			removeEmptySubdirs(filepath.Join(tmp, "projects", d.Name()))
+		}
+	}
+	return kept, os.RemoveAll(filepath.Join(tmp, libraryEntry))
+}
+
+// removeEmptySubdirs deletes the empty folders under dir (not dir itself).
+func removeEmptySubdirs(dir string) {
+	des, _ := os.ReadDir(dir)
+	for _, d := range des {
+		if d.IsDir() {
+			sub := filepath.Join(dir, d.Name())
+			removeEmptySubdirs(sub)
+			_ = os.Remove(sub) // only succeeds when empty
+		}
+	}
 }
 
 func extract(f *zip.File, dst string) error {
@@ -483,4 +554,25 @@ func absorbAssets(dir string, store assets.Store) error {
 		}
 	}
 	return os.RemoveAll(dir)
+}
+
+// withoutInstalled drops sets that stay on this PC from an exported setup.json's installed sets (else the importing game
+// looks for projects that aren't there).
+func withoutInstalled(b []byte, drop map[string]bool) []byte {
+	in := &Info{}
+	if json.Unmarshal(b, in) != nil {
+		return b
+	}
+	kept := []string{}
+	for _, id := range in.InstalledSets {
+		if !drop[id] {
+			kept = append(kept, id)
+		}
+	}
+	in.InstalledSets = kept
+	out, err := json.MarshalIndent(in, "", "  ")
+	if err != nil {
+		return b
+	}
+	return out
 }

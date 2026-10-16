@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, EventsOn, errText, ask } from '../lib/api';
+  import { leaveGuard } from '../lib/leaveGuard';
+  import { Ev } from '../lib/events';
+  import { accFile, templateFile } from '../lib/urls';
+  import { App, EventsOn, errText, ask, originName } from '../lib/api';
   import { newLayout, type Layout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
   import CatalogPicker from './CatalogPicker.svelte';
@@ -22,7 +25,7 @@
   // (where it came from: converted mods grouped by mod, then things made in Studio).
   const SORT_LABELS: Record<string, string> = { order: 'List order', name: 'Name', source: 'Source' };
   const originOf = (x: any) => view?.origins?.[x.id];
-  const sourceKey = (x: any) => (originOf(x) ? '0 ' + (originOf(x).mod || '').toLowerCase() : '1');
+  const sourceKey = (x: any) => (originOf(x) ? '0 ' + originName(originOf(x)).toLowerCase() : '1');
   function sortShown(list: any[], by: string): any[] {
     if (by === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name));
     if (by === 'source') return [...list].sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)) || a.name.localeCompare(b.name));
@@ -34,14 +37,15 @@
   let layout = $state<Layout>(newLayout());
   let figLayout = $state<FigLayout>(newFigLayout()); // figurines: own model instead of a texture design
   let dirty = $state(false);
+  $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this accessory will be lost.'));
   let saving = $state(false);
   let bust = $state(Date.now());
   let editor = $state<any>(null);
   let figEditor = $state<any>(null);
   let editorKey = $state(0);
 
-  const accUrl = (rel?: string) => (rel ? `/acc/${rel.split('/').map(encodeURIComponent).join('/')}?v=${bust}` : '');
-  const tplUrl = (file?: string) => (file ? `/acctemplates/${encodeURIComponent(file)}` : '');
+  const accUrl = (rel?: string) => accFile(rel, bust);
+  const tplUrl = (file?: string) => templateFile('acc', file);
   const baseOf = (a: any) => a?.base || kindInfo(a?.kind)?.bases?.[0] || '';
   const tplItem = (a: any) => templates?.items?.find((i: any) => i.type === baseOf(a));
 
@@ -175,7 +179,7 @@
       dirty = false;
       const id = acc.id;
       acc = JSON.parse(JSON.stringify(view.accessories.find((x: any) => x.id === id)));
-      notify(view.installed ? 'Saved and installed — restart the game to see it.' : 'Saved. Set the game folder in Settings to install it.', 'ok');
+      notify(view.installed ? 'Saved — restart the game to see it.' : 'Saved. Set the game folder in Settings so the game reads it.', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     saving = false;
   }
@@ -194,8 +198,8 @@
 
   onMount(() => {
     const offs = [
-      EventsOn('templates:progress', (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
-      EventsOn('templates:ready', () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
+      EventsOn(Ev.TemplatesProgress, (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
+      EventsOn(Ev.TemplatesReady, () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
     ];
     (async () => {
       try {
@@ -214,7 +218,6 @@
 <div class="page">
   <header class="row">
     <h2 class="grow">Accessories</h2>
-    <button onclick={() => (fromCatalog = true)} title="Accessories from your other setups and earlier imports — no re-import">Add from catalog…</button>
     <button onclick={() => App.OpenAccessoriesFolder()}>Open folder</button>
   </header>
   <p class="muted small">
@@ -222,7 +225,7 @@
     (your own 3D models), sold in the shop next to the vanilla ones. They are
     global (not part of a set) and installed into the game on every save — restart the game to see changes. To sell only yours, turn
     off <b>Mod settings → Content → {kindInfo(kind)?.toggle ?? 'ShowVanilla…'}</b> (one switch per type).
-    {#if view && !view.installed && view.accessories.length}<span class="warn">Not installed yet — set the game folder in Settings.</span>{/if}
+    {#if view && !view.installed && view.accessories.length}<span class="warn">The game doesn't read this setup yet — set the game folder in Settings.</span>{/if}
   </p>
   {#if !templates}
     {#if tplStatus?.busy}
@@ -250,10 +253,11 @@
       {#each shown as a (a.id)}
         <button class:active={a.id === selectedId} class:picked={picked.includes(a.id) && a.id !== selectedId} onclick={(e) => clickItem(e, a.id)}>
           <span class="ico">{#if a.icon}<img src={accUrl(a.icon)} alt="" />{:else if tplItem(a)?.icon}<img src={tplUrl(tplItem(a).icon)} alt="" />{/if}</span>
-          <span class="grow">{a.name}<br /><span class="muted small">Level {a.license.level}{originOf(a) ? ` · from ${originOf(a).mod}${originOf(a).author ? ` (${originOf(a).author})` : ''}` : ''}</span></span>
+          <span class="grow">{a.name}<br /><span class="muted small">Level {a.license.level}{originOf(a) ? ` · from ${originName(originOf(a))}${originOf(a).author ? ` (${originOf(a).author})` : ''}` : ''}</span></span>
         </button>
       {/each}
       <button onclick={() => add(kind)}>+ New {TABS.find((tb) => tb.kind === kind)?.one}</button>
+      <button onclick={() => (fromCatalog = true)} title="Accessories from your other setups and earlier imports — no re-import">Add from catalog…</button>
     </div>
 
     {#if acc}

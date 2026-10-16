@@ -46,9 +46,9 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Card art in the shared library, pack art in the project folder.
+	// Every set file in the shared folder.
 	write(t, filepath.Join(p.LibFolder, "images", "c1.png"), "card art")
-	write(t, filepath.Join(p.Folder, "images", "pack.png"), "pack art")
+	write(t, filepath.Join(p.LibFolder, "images", "pack.png"), "pack art")
 	p.Set.Cards = []setfmt.Card{{ID: "c1", Name: "One", Image: "images/c1.png"}}
 	p.Meta.Origin = &origin.Origin{Kind: "EPL mod", Mod: "Marvel", Author: "Someone"}
 	if err := wsA.Save(p); err != nil {
@@ -82,7 +82,7 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 		t.Fatalf("card art not found from B: %q", got)
 	}
 	if got, _ := os.ReadFile(pb.ImagePath("images/pack.png")); string(got) != "pack art" {
-		t.Fatalf("pack art not copied: %q", got)
+		t.Fatalf("pack art not found from B: %q", got)
 	}
 	if pb.Meta.Origin == nil || pb.Meta.Origin.Mod != "Marvel" {
 		t.Fatalf("origin lost: %+v", pb.Meta.Origin)
@@ -110,12 +110,12 @@ func TestOtherSetupsItemsAreOfferedAndTemplated(t *testing.T) {
 	h, a, b := twoSetups(t)
 	c := For(h.Root)
 	store := assets.For(h.Root)
-	// A has an older-style accessory (own file in the setup) and a furniture piece; the catalog has nothing yet.
-	write(t, filepath.Join(accessories.Folder(a), "images", "mat_texture.png"), "texture")
+	// A has an accessory and a furniture piece; the catalog has nothing yet.
 	la, _ := accessories.Open(a, store)
-	la.Put(setfmt.Accessory{ID: "mat", Kind: "Playmat", Name: "Mat", Texture: "images/mat_texture.png"})
+	tex, _ := la.WriteImage("mat", "texture", []byte("texture"))
+	la.Put(setfmt.Accessory{ID: "mat", Kind: "Playmat", Name: "Mat", Texture: tex})
 	la.PutFurniture(setfmt.Furniture{ID: "bin", Type: "TrashBin", Name: "Bin"})
-	la.Meta.Layouts["mat"] = json.RawMessage(`{"layers":[{"src":"images/mat_texture.png"}]}`)
+	la.Meta.Layouts["mat"] = json.RawMessage(`{"layers":[{"src":"` + tex + `"}]}`)
 	la.Meta.Origins["mat"] = origin.Origin{Mod: "Mats Mod"}
 	if err := la.Save(); err != nil {
 		t.Fatal(err)
@@ -144,11 +144,11 @@ func TestOtherSetupsItemsAreOfferedAndTemplated(t *testing.T) {
 	if lb.Meta.Origins["mat"].Mod != "Mats Mod" || len(lb.Meta.Layouts["mat"]) == 0 {
 		t.Fatal("layout/origin not copied")
 	}
-	// Templated on the way; A keeps its own file.
+	// Templated on the way; A is unchanged.
 	if l, _ := c.List(h, b, KindAccessory); !l[0].Saved {
 		t.Fatalf("not templated: %+v", l)
 	}
-	if la2, _ := accessories.Open(a, store); la2.Lib.Accessories[0].Texture != "images/mat_texture.png" {
+	if la2, _ := accessories.Open(a, store); la2.Lib.Accessories[0].Texture != tex {
 		t.Fatal("A was changed")
 	}
 }

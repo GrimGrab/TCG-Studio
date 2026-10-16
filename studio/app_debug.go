@@ -16,7 +16,7 @@ func (a *App) DebugReport() debuglog.Report {
 	p, _ := installer.Embedded()
 	st := a.SetupState()
 	in := debuglog.Input{
-		GameDir:       a.settings.GameDir,
+		GameDir:       a.gameDir(),
 		StudioVersion: Version,
 		ModVersion:    p.Version,
 		SetupReady:    st.Ready,
@@ -34,11 +34,8 @@ func (a *App) DebugReport() debuglog.Report {
 // SaveDebugReport writes the summary + log to a text file the player picks (to attach in Discord). Returns the path, "" if cancelled.
 func (a *App) SaveDebugReport() (string, error) {
 	r := a.DebugReport()
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save debug log",
-		DefaultFilename: "TCG Studio debug log " + time.Now().Format("2006-01-02 1504") + ".txt",
-		Filters:         []runtime.FileFilter{{DisplayName: "Text file (*.txt)", Pattern: "*.txt"}},
-	})
+	path, err := a.saveFileAs("Save debug log", "TCG Studio debug log "+time.Now().Format("2006-01-02 1504")+".txt", ".txt",
+		[]runtime.FileFilter{{DisplayName: "Text file (*.txt)", Pattern: "*.txt"}})
 	if err != nil || path == "" {
 		return "", err
 	}

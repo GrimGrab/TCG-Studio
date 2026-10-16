@@ -160,7 +160,7 @@
       </select>
     </label>
   </div>
-  <label class="field">Effect (raw PlayEffectData JSON — see docs/set-format.md; empty = no effect)
+  <label class="field">Effect (raw PlayEffectData JSON, the game's own format; empty = no effect)
     <textarea rows="6" spellcheck="false" class="mono" bind:value={effectText} onblur={setEffect}
       placeholder={'{ "playEffectQueueDataList": [ { "playEffectType": "DrawCard", "playEffectTypeSecondary": "None", "countList": [1] } ] }'}></textarea>
   </label>

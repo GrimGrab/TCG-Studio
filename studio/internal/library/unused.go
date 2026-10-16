@@ -1,8 +1,9 @@
 package library
 
 import (
-	"encoding/json"
+	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/setups"
+	"tcgstudio/internal/workspace"
 )
 
 // "Not used by any setup", whatever the kind: everything stored that no setup refers to.
@@ -21,8 +23,7 @@ import (
 const (
 	UnusedSetArt      = "set-art"      // library\<setId> of a set nothing has (no setup, no catalog template)
 	UnusedSetFiles    = "set-files"    // files in a used set's library folder that nothing refers to
-	UnusedGameArt     = "game-art"     // the game's <plugin>\Library\<setId> of a set no setup has
-	UnusedSharedFiles = "shared-files" // accessory/furniture store files nothing refers to
+	UnusedSharedFiles = "shared-files" // one accessory/furniture/decoration store file nothing refers to (ID = "assets/…")
 	UnusedCatalogSet  = "catalog-set"  // a set only the catalog keeps (no setup has it)
 	UnusedCatalogItem = "catalog-item" // an accessory or furniture piece only the catalog keeps
 )
@@ -36,6 +37,8 @@ type UnusedEntry struct {
 	Files     int    `json:"files"`
 	InCatalog bool   `json:"inCatalog"` // kept by the catalog: deleting removes it from the catalog too
 	Note      string `json:"note,omitempty"`
+	// Paths: for UnusedSetFiles, the files (relative to the set's shared folder, slash-separated) the entry deletes.
+	Paths []string `json:"paths,omitempty"`
 }
 
 // brokenSets are set ids with a project folder whose set.json can't be read (in any setup or the catalog). Their shared
@@ -51,7 +54,7 @@ func brokenSets(h setups.Home) map[string]bool {
 		return d
 	}()...)
 	for _, dir := range dirs {
-		ws := project.Workspace{Root: dir, Library: project.LibraryDir(h.Root)}
+		ws := workspace.Dir(h.Root).Projects(dir)
 		entries, _ := os.ReadDir(ws.ProjectsDir())
 		for _, e := range entries {
 			if !e.IsDir() || strings.Contains(e.Name(), ".") {
@@ -88,7 +91,7 @@ func unusedLibraryFiles(libFolder string, locs []loc) []string {
 }
 
 // unusedEntries lists everything no setup uses. bySet includes the catalog's templates (setup catalogSetup).
-func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list []setups.Summary) []UnusedEntry {
+func unusedEntries(h setups.Home, bySet map[string][]loc, list []setups.Summary) []UnusedEntry {
 	out := []UnusedEntry{}
 	broken := brokenSets(h)
 	libRoot := project.LibraryDir(h.Root)
@@ -116,11 +119,15 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 		}
 		if files := unusedLibraryFiles(dir, bySet[id]); len(files) > 0 {
 			var n int64
+			paths := make([]string, 0, len(files))
 			for _, f := range files {
 				n += size(f)
+				rel, _ := filepath.Rel(dir, f)
+				paths = append(paths, filepath.ToSlash(rel))
 			}
+			sort.Strings(paths)
 			out = append(out, UnusedEntry{Kind: UnusedSetFiles, ID: id, Name: bySet[id][0].p.Set.Name, Size: n, Files: len(files),
-				Note: "older or replaced files in its shared folder"})
+				Note: "files no setup uses (earlier pack & box art versions, replaced card art, unused photos)", Paths: paths})
 		}
 	}
 
@@ -143,22 +150,8 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 		out = append(out, UnusedEntry{Kind: UnusedCatalogSet, ID: id, Name: name, Size: n, Files: files, InCatalog: true})
 	}
 
-	// The game's copies of sets no setup has.
-	if gameDir != "" {
-		gameRoot := project.GameLibraryDir(gameDir)
-		ge, _ := os.ReadDir(gameRoot)
-		for _, e := range ge {
-			if !e.IsDir() || inSetup(e.Name()) || broken[e.Name()] {
-				continue
-			}
-			n, files := dirSize(filepath.Join(gameRoot, e.Name()))
-			out = append(out, UnusedEntry{Kind: UnusedGameArt, ID: e.Name(), Name: e.Name(), Size: n, Files: files,
-				Note: "copy in the game folder"})
-		}
-	}
-
 	// Accessories and furniture only the catalog keeps, then store files nothing refers to.
-	store := assets.For(h.Root)
+	store := workspace.Dir(h.Root).Store()
 	setupItems := map[string]bool{}
 	for _, s := range list {
 		if l, err := accessories.Open(s.Folder, store); err == nil {
@@ -173,15 +166,15 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 			}
 		}
 	}
-	setupRefs := referencedBySetups(list)
+	setupRefs := accessories.StoreRefs(setups.Folders(list)...)
 	if cat, err := catalog.For(h.Root).Items(); err == nil {
-		add := func(id, name string, entry any) {
+		add := func(id, name string) {
 			if setupItems[id] {
 				return
 			}
 			var n int64
 			files := 0
-			for _, ref := range itemRefs(cat, id, entry) {
+			for _, ref := range cat.ItemRefs(id) {
 				if !setupRefs[ref] {
 					n += size(store.Path(ref))
 					files++
@@ -190,142 +183,169 @@ func unusedEntries(h setups.Home, gameDir string, bySet map[string][]loc, list [
 			out = append(out, UnusedEntry{Kind: UnusedCatalogItem, ID: id, Name: name, Size: n, Files: files, InCatalog: true})
 		}
 		for _, a := range cat.Lib.Accessories {
-			add(a.ID, a.Name, a)
+			add(a.ID, a.Name)
 		}
 		for _, f := range cat.Lib.Furniture {
-			add(f.ID, f.Name, f)
+			add(f.ID, f.Name)
 		}
 		for _, d := range cat.Lib.Decorations {
-			add(d.ID, d.Name, d)
+			add(d.ID, d.Name)
 		}
 	}
+	// Each store file nothing refers to (earlier versions of edited textures, deleted items' files), by file.
 	if store, err := store.List(); err == nil {
-		refs := referenced(h, list)
-		var n int64
-		files := 0
+		refs := accessories.StoreRefs(append(setups.Folders(list), catalog.For(h.Root).Root)...)
 		for _, e := range store {
 			if !refs[e.Rel] {
-				n += e.Size
-				files++
+				out = append(out, UnusedEntry{Kind: UnusedSharedFiles, ID: e.Rel, Name: path.Base(e.Rel), Size: e.Size, Files: 1,
+					Note: storeFileType(e.Rel)})
 			}
-		}
-		if files > 0 {
-			out = append(out, UnusedEntry{Kind: UnusedSharedFiles, ID: "assets", Name: "Accessory & furniture files", Size: n,
-				Files: files, Note: "earlier versions of edited textures, deleted items"})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Size > out[j].Size })
 	return out
 }
 
-// referencedBySetups is like referenced, without the catalog.
-func referencedBySetups(list []setups.Summary) map[string]bool {
-	refs := map[string]bool{}
-	for _, s := range list {
-		dir := accessories.Folder(s.Folder)
-		for _, f := range []string{accessories.LibraryFile, accessories.MetaFile} {
-			if b, err := os.ReadFile(filepath.Join(dir, f)); err == nil {
-				for _, r := range assets.Refs(b) {
-					refs[r] = true
-				}
-			}
-		}
-	}
-	return refs
+// Pick names one entry of the unused list (UnusedEntry.Kind and ID).
+type Pick struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	// Paths: for UnusedSetFiles, the files the player was shown (UnusedEntry.Paths); only those are deleted, so a file
+	// written since (an import or edit not saved yet) is never taken along. Empty = all of them.
+	Paths []string `json:"paths,omitempty"`
 }
 
-// itemRefs is the store files a catalog item refers to (its entry and editor layout).
-func itemRefs(cat *accessories.Library, id string, entry any) []string {
-	var refs []string
-	if b, err := json.Marshal(entry); err == nil {
-		refs = append(refs, assets.Refs(b)...)
-	}
-	if raw, ok := cat.Meta.Layouts[id]; ok {
-		refs = append(refs, assets.Refs(raw)...)
-	}
-	return refs
+type pickKey struct{ kind, id string }
+
+// Deleted is what DeleteUnused did.
+type Deleted struct {
+	Freed   int64  `json:"freed"`
+	Deleted []Pick `json:"deleted"` // the entries gone (the page drops them from its list)
 }
 
-// DeleteUnused deletes unused things of one kind (ids empty = all of that kind; for UnusedSharedFiles ids are ignored).
-// Catalog-only sets and items are removed from the catalog too. gameDir "" leaves the game folder alone. Returns bytes freed.
-func DeleteUnused(h setups.Home, gameDir, kind string, ids []string) (int64, error) {
+// DeleteUnused deletes the picked unused entries (worked out once, then deleted one by one with progress; cancelling keeps
+// what's done). Catalog-only sets and items are removed from the catalog too.
+func DeleteUnused(ctx context.Context, h setups.Home, picks []Pick, progress func(Progress)) (*Deleted, error) {
+	if progress == nil {
+		progress = func(Progress) {}
+	}
+	res := &Deleted{Deleted: []Pick{}}
+	progress(Progress{Message: "Checking what's unused…"})
 	bySet, list, err := sets(h)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
-	want := map[string]bool{}
-	for _, id := range ids {
-		want[id] = true
+	want := map[pickKey]Pick{}
+	for _, p := range picks {
+		want[pickKey{p.Kind, p.ID}] = p
 	}
-	pick := func(e UnusedEntry) bool { return e.Kind == kind && (len(ids) == 0 || want[e.ID]) }
-	var freed int64
-	libRoot := project.LibraryDir(h.Root)
-	for _, e := range unusedEntries(h, gameDir, bySet, list) {
-		if !pick(e) || !setfmt.SafeID(e.ID) && kind != UnusedSharedFiles && kind != UnusedCatalogItem {
+	var todo []UnusedEntry
+	for _, e := range unusedEntries(h, bySet, list) {
+		p, ok := want[pickKey{e.Kind, e.ID}]
+		if !ok || !(setfmt.SafeID(e.ID) || e.Kind == UnusedSharedFiles || e.Kind == UnusedCatalogItem) {
 			continue
 		}
-		switch kind {
-		case UnusedSetArt:
-			if err := os.RemoveAll(filepath.Join(libRoot, e.ID)); err != nil {
-				return freed, err
+		if e.Kind == UnusedSetFiles && len(p.Paths) > 0 {
+			shown := map[string]bool{}
+			for _, f := range p.Paths {
+				shown[f] = true
 			}
-			freed += e.Size
-		case UnusedSetFiles:
-			dir := filepath.Join(libRoot, e.ID)
-			for _, f := range unusedLibraryFiles(dir, bySet[e.ID]) {
-				n := size(f)
-				if os.Remove(f) == nil {
+			kept := e.Paths[:0]
+			for _, f := range e.Paths {
+				if shown[f] {
+					kept = append(kept, f)
+				}
+			}
+			e.Paths = kept
+		}
+		todo = append(todo, e)
+	}
+	libRoot := project.LibraryDir(h.Root)
+	for i, e := range todo {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		progress(Progress{Message: "Deleting " + e.Name + "…", Done: i, Total: len(todo)})
+		freed, err := deleteEntry(h, libRoot, e, bySet, list)
+		res.Freed += freed
+		if err != nil {
+			return res, err
+		}
+		res.Deleted = append(res.Deleted, Pick{Kind: e.Kind, ID: e.ID})
+	}
+	progress(Progress{Message: "Done", Done: len(todo), Total: len(todo)})
+	return res, nil
+}
+
+// deleteEntry deletes one unused entry; returns bytes freed.
+func deleteEntry(h setups.Home, libRoot string, e UnusedEntry, bySet map[string][]loc, list []setups.Summary) (int64, error) {
+	var freed int64
+	switch e.Kind {
+	case UnusedSetArt:
+		if err := os.RemoveAll(filepath.Join(libRoot, e.ID)); err != nil {
+			return freed, err
+		}
+		freed += e.Size
+	case UnusedSetFiles:
+		dir := filepath.Join(libRoot, e.ID)
+		for _, rel := range e.Paths { // still unused (listed again just now) and shown to the player
+			f := filepath.Join(dir, filepath.FromSlash(rel))
+			n := size(f)
+			if os.Remove(f) == nil {
+				freed += n
+			}
+		}
+		removeEmptyDirs(dir)
+	case UnusedCatalogSet:
+		if err := catalog.For(h.Root).Remove(catalog.KindSet, e.ID); err != nil {
+			return freed, err
+		}
+		_ = os.RemoveAll(filepath.Join(libRoot, e.ID)) // no setup has the set (else it wouldn't be listed)
+		freed += e.Size
+	case UnusedCatalogItem:
+		c := catalog.For(h.Root)
+		cat, err := c.Items()
+		if err != nil {
+			return freed, err
+		}
+		k, _, ok := cat.Entry(e.ID)
+		if !ok {
+			k = catalog.KindAccessory
+		}
+		refs := cat.ItemRefs(e.ID)
+		if err := c.Remove(k, e.ID); err != nil {
+			return freed, err
+		}
+		still := accessories.StoreRefs(append(setups.Folders(list), catalog.For(h.Root).Root)...) // its files go unless something else still refers to them
+		store := workspace.Dir(h.Root).Store()
+		for _, r := range refs {
+			if !still[r] {
+				n := size(store.Path(r))
+				if os.Remove(store.Path(r)) == nil {
 					freed += n
 				}
 			}
-			removeEmptyDirs(dir)
-		case UnusedGameArt:
-			if err := os.RemoveAll(filepath.Join(project.GameLibraryDir(gameDir), e.ID)); err != nil {
+		}
+	case UnusedSharedFiles:
+		if assets.IsAsset(e.ID) { // listed just now as referred to by nothing
+			if err := os.Remove(workspace.Dir(h.Root).Store().Path(e.ID)); err != nil && !os.IsNotExist(err) {
 				return freed, err
 			}
 			freed += e.Size
-		case UnusedCatalogSet:
-			if err := catalog.For(h.Root).Remove(catalog.KindSet, e.ID); err != nil {
-				return freed, err
-			}
-			_ = os.RemoveAll(filepath.Join(libRoot, e.ID)) // no setup has the set (else it wouldn't be listed)
-			freed += e.Size
-		case UnusedCatalogItem:
-			c := catalog.For(h.Root)
-			cat, err := c.Items()
-			if err != nil {
-				return freed, err
-			}
-			k := catalog.KindAccessory
-			var entry any
-			if i := cat.FurnitureIndex(e.ID); i >= 0 {
-				k, entry = catalog.KindFurniture, cat.Lib.Furniture[i]
-			} else if i := cat.DecorationIndex(e.ID); i >= 0 {
-				k, entry = catalog.KindDecoration, cat.Lib.Decorations[i]
-			} else if i := cat.Index(e.ID); i >= 0 {
-				entry = cat.Lib.Accessories[i]
-			}
-			refs := itemRefs(cat, e.ID, entry)
-			if err := c.Remove(k, e.ID); err != nil {
-				return freed, err
-			}
-			still := referenced(h, list) // its files go unless something else still refers to them
-			store := assets.For(h.Root)
-			for _, r := range refs {
-				if !still[r] {
-					n := size(store.Path(r))
-					if os.Remove(store.Path(r)) == nil {
-						freed += n
-					}
-				}
-			}
-		case UnusedSharedFiles:
-			n, _, err := DeleteUnusedAssets(h)
-			if err != nil {
-				return freed, err
-			}
-			freed += n
 		}
 	}
 	return freed, nil
+}
+
+// storeFileType names a store file's kind for the list ("Image", "3D model", …).
+func storeFileType(rel string) string {
+	switch strings.ToLower(path.Ext(rel)) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp":
+		return "Image"
+	case ".obj", ".glb", ".gltf", ".fbx":
+		return "3D model"
+	case ".mtl":
+		return "Model material"
+	}
+	return "File"
 }

@@ -22,7 +22,7 @@ You only need to download it once.
 - When TCG Studio starts, it asks GitHub whether a newer version exists and shows a banner if there is one.
 - **Nothing is ever downloaded or installed without you clicking "Update now".** "Later" hides the banner.
 - Updates are only accepted from this repository, and their SHA-256 checksum must match the one in the release notes.
-- The mod in your game only changes when you click **Install / Repair** on the Setup screen.
+- The mod in your game only changes when you click **Install / Repair** on the Game & mod page.
 - **Don't want update checks at all?** Build it yourself with update checks turned off
   (`tools\package.ps1 -UpdateRepo ""`, see [BUILDING.md](BUILDING.md#updates-in-your-own-build)). That build never contacts GitHub for updates.
 
@@ -53,7 +53,7 @@ Make custom **deck boxes, playmats, sleeves, dice, comics, collection books and 
 - Play **real MTG games at the shop's play tables** against the AI, powered by the Forge rules engine. Cards are shown in 3D on the table.
 - Build decks with the built-in **MTG deck builder** from the cards you've collected.
 - Wins and losses are reported through the normal table game.
-- TCG Studio installs Forge and Java for you from the Setup screen.
+- TCG Studio installs Forge and Java for you from the Game & mod page.
 
 ### Custom-only mode
 Want a shop that sells only your own sets? In the in-game config menu (**F1**), you can hide vanilla cards, packs and each accessory type separately. Turn them back on at any time.

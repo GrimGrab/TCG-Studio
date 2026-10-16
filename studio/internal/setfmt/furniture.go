@@ -1,7 +1,7 @@
 package setfmt
 
 // Furniture: mirrors FurnitureDef/FurnitureSpotDef in the mod's Core/Defs.cs and AccessoryLoader.LoadFurniture (same file as the
-// accessories). See docs/set-format.md "Furniture".
+// accessories).
 
 import (
 	"fmt"

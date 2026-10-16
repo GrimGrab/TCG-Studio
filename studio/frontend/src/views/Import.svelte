@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
+  import { accFile } from '../lib/urls';
   import { App, OnFileDrop, OnFileDropOff, errText, ask } from '../lib/api';
   import { boxesFromPacks } from '../lib/smartArt';
   import { queue, enqueue, unqueue, cancel, listen, jobKey, isQueued, type ImportJob } from '../lib/importQueue.svelte';
@@ -209,7 +210,7 @@
           try {
             models[job.kind] ??= await App.AccessoryModel(job.kind);
             const size = tpl?.items?.find((i: any) => i.type === job.base)?.iconRect ?? [512, 512];
-            const url = `/acc/${job.texture.split('/').map(encodeURIComponent).join('/')}`;
+            const url = accFile(job.texture);
             icons[job.id] = await renderAccessoryIcon(models[job.kind], url, size[0], size[1]);
             made++;
           } catch (e) { notify(`Icon for ${job.id}: ${errText(e)}`, 'error'); }
@@ -634,7 +635,7 @@
         ({widthName(options.imageWidth)}).</p>
       <div class="col">
         <button class="primary" onclick={() => answer('use')}>Use the {fmtName(choice.art.format)} art on this PC <span class="muted">— nothing to download, no extra space</span></button>
-        <button onclick={() => answer('download')}>Download {fmtName(options.imageFormat || 'png')} <span class="muted">— a separate copy for this setup only</span></button>
+        <button onclick={() => answer('download')}>Download {fmtName(options.imageFormat || 'png')} <span class="muted">— replaces the shared art for every setup with this set</span></button>
         <button onclick={() => answer('')}>Cancel</button>
       </div>
     </div>

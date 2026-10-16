@@ -9,8 +9,9 @@ import (
 	"unicode/utf16"
 )
 
-// libraryCapability is the text the mod carries (SetDef.LibraryCapability) when it reads card art from <plugin>\Library.
-const libraryCapability = "tcgcc-capability:shared-card-art-library"
+// libraryCapability is the text the mod carries (SetDef.LibraryCapability) when it reads every set file (card art, card
+// back, pack and box art) from the Studio workspace folders named in StudioPathsFile.
+const libraryCapability = "tcgcc-capability:studio-setup"
 
 var capCache struct {
 	sync.Mutex
@@ -20,9 +21,9 @@ var capCache struct {
 	ok   bool
 }
 
-// ModHasLibrary reports whether the installed mod reads the shared card-art library (<plugin>\Library). An older mod only
-// looks in each set's folder, so Studio then copies card art there as before. The answer is cached per DLL file version.
-func ModHasLibrary(gameDir string) bool {
+// ModReadsLibrary reports whether the installed mod reads set files from Studio's workspace folders (StudioPathsFile). An
+// older mod looks elsewhere: Game & mod → Install / Repair updates it. The answer is cached per DLL file version.
+func ModReadsLibrary(gameDir string) bool {
 	dll := filepath.Join(PluginDir(gameDir), "TCGCustomCards.dll")
 	info, err := os.Stat(dll)
 	if err != nil {

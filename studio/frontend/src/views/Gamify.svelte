@@ -10,7 +10,6 @@
   let settings = $state<any>(null);
   let preview = $state<any[] | null>(null);
   let busy = $state(false);
-  let reinstall = $state(true);
   let tab = $state<'sets' | 'accessories'>('sets');
 
   const order = $derived(sets.filter((s) => included[s.id]).map((s) => s.id));
@@ -47,13 +46,13 @@
 
   async function apply() {
     const inst = sets.filter((s) => included[s.id] && s.installed).length;
-    const tail = !inst ? '' : reinstall ? ` ${inst} installed set(s) will be reinstalled in the game.` : ` ${inst} installed set(s) will NOT be updated in the game until you reinstall them.`;
+    const tail = !inst ? '' : ` ${inst} installed set(s) change in the game at its next start.`;
     if (!(await ask(`Re-price ${order.length} set(s)? Locked cards are skipped.${tail}`))) return;
     busy = true;
     try {
-      preview = await App.GamifyApply(order, settings, reinstall);
+      preview = await App.GamifyApply(order, settings);
       const re = (preview ?? []).filter((p: any) => p.installed).length;
-      notify(`Gamified ${order.length} set(s)${re && reinstall ? ` and reinstalled ${re} in the game (restart the game to see it)` : re ? ` — ${re} installed set(s) still need reinstalling` : ' (install them to use them in game)'}.`, 'ok');
+      notify(`Gamified ${order.length} set(s)${re ? ` — restart the game to see ${re} installed set(s) change` : ' (install them to use them in game)'}.`, 'ok');
       await load();
     } catch (e) { notify(errText(e), 'error'); }
     busy = false;
@@ -79,7 +78,7 @@
     later tiers copy the vanilla progression exactly (Rare → Epic → Legendary → Destiny Basic…Legendary → Ascension, then beyond):
     the same four license levels and prices, the same pack costs, and cards worth more each tier. With more than 9 sets they are spread
     evenly along that same curve (values in between are interpolated), so even 100 sets stay reachable and sensibly priced.
-    Sets already installed in the game are reinstalled when you apply (untick the option next to Apply to skip that).
+    Sets already installed in the game change there at the game's next start.
   </p>
 
   {#if settings}
@@ -127,7 +126,6 @@
   <div class="row">
     <button onclick={doPreview} disabled={busy || !order.length}>Preview</button>
     <button class="primary" onclick={apply} disabled={busy || !order.length}>Apply to {order.length} set(s)</button>
-    <label class="check"><input type="checkbox" bind:checked={reinstall} /> Reinstall sets that are already installed in the game</label>
   </div>
 
   {#if preview}

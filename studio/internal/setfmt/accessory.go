@@ -1,7 +1,7 @@
 package setfmt
 
 // Accessory library: mirrors AccessoryLibraryDef/AccessoryDef in the mod's Core/Defs.cs and Core/AccessoryLoader.cs.
-// Written to <plugin>\Accessories\accessories.json; see docs/set-format.md "Accessory library".
+// Written to <setup>\accessories\accessories.json.
 
 import (
 	"encoding/json"

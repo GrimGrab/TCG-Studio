@@ -1,4 +1,4 @@
-# Builds a shareable TCG Studio: Release mod + shader bundle + BepInEx package embedded into studio.exe, whose Setup screen
+# Builds a shareable TCG Studio: Release mod + shader bundle + BepInEx package embedded into studio.exe, whose Game & mod page
 # installs everything into a friend's game with one button. Version = TCG Custom Cards\VERSION (also used by the mod);
 # the exe checks tools\release.json's repo for newer GitHub releases.
 # Output: TCG Custom Cards\dist\TCG Studio.exe
@@ -57,4 +57,4 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 $out = Join-Path $dist "TCG Studio.exe"
 try { Copy-Item (Join-Path $studio "build\bin\studio.exe") $out -Force -ErrorAction Stop }
 catch { throw "Couldn't write $out - close TCG Studio if it's running from the dist folder, then run this again. ($($_.Exception.Message))" }
-Write-Host "Done: $out (v$version) - send this one file; its Setup screen installs everything."
+Write-Host "Done: $out (v$version) - send this one file; its Game & mod page installs everything."

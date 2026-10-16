@@ -1,32 +1,34 @@
 <script lang="ts">
-  // One picture of the Shop look page: choose an image, drag its crop box, centre it or go back to vanilla. Every change is
-  // saved as mod settings right away and returns the page's new state through `onlook`.
+  // One picture of the Shop look page: choose an image, drag its crop box, centre it or go back to vanilla. Every change only edits
+  // `value` (the page's draft); the page's Save stores it.
   import { App, errText } from '../lib/api';
   import CropBox from './CropBox.svelte';
 
-  let { slot, picture, label = '', notify, onlook }: {
-    slot: string; // sign | wallpaper | open | closed (app_shoplook.go shopPictures)
-    picture: { image: string; crop: number[] | null; aspect: number };
+  let { slot, value = $bindable(), aspect, label = '', notify }: {
+    slot: string; // sign | wallpaper (app_shoplook.go shopPictures)
+    value: { file: string; url: string; crop: number[] | null }; // file '' = vanilla
+    aspect: number;
     label?: string; // drawn in the crop box (what the game puts on top)
     notify: (t: string, k?: string) => void;
-    onlook: (look: any) => void;
   } = $props();
 
-  async function run(f: () => Promise<any>) {
-    try { onlook(await f()); } catch (e) { notify(errText(e), 'error'); }
+  async function choose() {
+    try {
+      const f = await App.ImportShopPicture(slot);
+      if (f.file) value = { file: f.file, url: f.url, crop: null };
+    } catch (e) { notify(errText(e), 'error'); }
   }
 </script>
 
 <div class="slot">
-  {#if picture.image}
-    <CropBox src={picture.image} aspect={picture.aspect} crop={picture.crop} {label}
-      onchange={(c) => run(() => App.SetShopPictureCrop(slot, c))} />
+  {#if value.file}
+    <CropBox src={value.url} {aspect} crop={value.crop} {label} onchange={(c) => (value = { ...value, crop: c })} />
   {/if}
   <div class="row">
-    <button onclick={() => run(() => App.ChooseShopPicture(slot))}>Choose image…</button>
-    {#if picture.image}
-      <button onclick={() => run(() => App.SetShopPictureCrop(slot, []))} disabled={!picture.crop}>Centre</button>
-      <button class="danger" onclick={() => run(() => App.RemoveShopPicture(slot))}>Remove</button>
+    <button onclick={choose}>Choose image…</button>
+    {#if value.file}
+      <button onclick={() => (value = { ...value, crop: null })} disabled={!value.crop}>Centre</button>
+      <button class="danger" onclick={() => (value = { file: '', url: '', crop: null })}>Remove</button>
     {/if}
   </div>
 </div>

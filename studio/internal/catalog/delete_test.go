@@ -89,30 +89,6 @@ func TestDeleteEverywhereSet(t *testing.T) {
 	}
 }
 
-// Deleting a set's own-art version leaves the ordinary one (and its shared files) alone.
-func TestDeleteEverywhereOwnArt(t *testing.T) {
-	h, a, b := twoSetups(t)
-	c := For(h.Root)
-	addSet(t, h, a, "dom", "images/1.png")
-	addSet(t, h, b, "dom", "Dom (B)/images/1.png")
-	if _, err := c.DeleteEverywhere(h, KindSet, []string{"dom|Dom (B)"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(b, "projects", "dom")); !os.IsNotExist(err) {
-		t.Fatal("B's own-art copy kept")
-	}
-	if _, err := os.Stat(filepath.Join(a, "projects", "dom", project.SetFile)); err != nil {
-		t.Fatal("A's set deleted")
-	}
-	lib := filepath.Join(project.LibraryDir(h.Root), "dom")
-	if _, err := os.Stat(filepath.Join(lib, "Dom (B)")); !os.IsNotExist(err) {
-		t.Fatal("own-art folder kept")
-	}
-	if _, err := os.Stat(filepath.Join(lib, "images", "1.png")); err != nil {
-		t.Fatal("A's shared art deleted")
-	}
-}
-
 func TestDeleteEverywhereItem(t *testing.T) {
 	h, a, b := twoSetups(t)
 	c := For(h.Root)

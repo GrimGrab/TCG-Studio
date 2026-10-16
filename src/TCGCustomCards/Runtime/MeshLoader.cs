@@ -21,6 +21,7 @@ namespace TCGCustomCards.Runtime
 
         public static Mesh Get(string path)
         {
+            if (string.IsNullOrEmpty(path)) return null;
             if (Cache.TryGetValue(path, out var cached) && cached != null) return cached;
             Mesh mesh = null;
             try { mesh = LoadObj(path); }

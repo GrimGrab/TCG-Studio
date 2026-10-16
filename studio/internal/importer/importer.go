@@ -104,7 +104,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	if err := os.MkdirAll(filepath.Join(folder, "images"), 0o755); err != nil {
 		return nil, err
 	}
-	art, err := cardArtTarget(ws, id, folder, "scryfall", sfSet.Code, "", opt)
+	art, err := cardArtTarget(ws, id, "scryfall", sfSet.Code, "", opt)
 	if err != nil {
 		return nil, err
 	}
@@ -492,11 +492,9 @@ func saveImage(ctx context.Context, get func(context.Context, string) ([]byte, e
 	}
 	switch {
 	case job.format == "jpg":
-		var buf bytes.Buffer
-		if err := jpeg.Encode(&buf, Opaque(img), &jpeg.Options{Quality: JPEGQuality}); err != nil {
+		if b, err = art.EncodeCardJPEG(img); err != nil {
 			return err
 		}
-		b = buf.Bytes()
 	case changed:
 		var buf bytes.Buffer
 		if err := png.Encode(&buf, img); err != nil {
@@ -561,7 +559,7 @@ func FitCardImages(p *project.Project, aspect float64) (int, error) {
 		}
 		var buf bytes.Buffer
 		if strings.EqualFold(filepath.Ext(path), ".jpg") {
-			err = jpeg.Encode(&buf, Opaque(fitted), &jpeg.Options{Quality: JPEGQuality})
+			err = jpeg.Encode(&buf, art.Opaque(fitted), &jpeg.Options{Quality: art.JPEGQuality})
 		} else {
 			err = png.Encode(&buf, fitted)
 		}

@@ -15,7 +15,7 @@ namespace TCGCustomCards.Runtime
     {
         public static void Apply(InteractableObject tpl, FurnitureDef def)
         {
-            var tex = ImageCache.Get(Path.Combine(def.FolderPath, def.Paint.Texture))?.texture;
+            var tex = ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Paint.Texture))?.texture;
             if (tex == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': painted texture failed to load — base look kept"); return; }
             var copies = new Dictionary<Material, Material>();
             int done = 0;
@@ -29,7 +29,7 @@ namespace TCGCustomCards.Runtime
                     Plugin.Log.LogWarning($"Furniture '{def.Id}': paint part '{part.Renderer}' not found on {def.BaseObject} (game update?) — left as it is");
                     continue;
                 }
-                var mesh = MeshLoader.Get(Path.Combine(def.FolderPath, part.Mesh));
+                var mesh = MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, part.Mesh));
                 if (mesh == null) continue;
                 if (mesh.subMeshCount != mr.sharedMaterials.Length)
                     Plugin.Log.LogWarning($"Furniture '{def.Id}': paint part '{part.Renderer}' has {mesh.subMeshCount} submeshes for {mr.sharedMaterials.Length} materials");

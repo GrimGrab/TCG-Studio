@@ -134,7 +134,7 @@ namespace TCGCustomCards.Runtime
                 acc.Item = (EItemType)nextItem++;
                 var data = Clone(vData);
                 data.name = def.Name;
-                data.icon = Icon(string.IsNullOrEmpty(def.Icon) ? null : Path.Combine(def.FolderPath, def.Icon), vData.icon) ?? vData.icon;
+                data.icon = Icon(string.IsNullOrEmpty(def.Icon) ? null : Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), vData.icon) ?? vData.icon;
                 if (def.Cost.HasValue) data.baseCost = def.Cost.Value;
                 if (def.MarketMin.HasValue) data.marketPriceMinPercent = def.MarketMin.Value;
                 if (def.MarketMax.HasValue) data.marketPriceMaxPercent = def.MarketMax.Value;
@@ -172,10 +172,10 @@ namespace TCGCustomCards.Runtime
         {
             var md = Clone(vanilla);
             md.materialList = vanilla.materialList != null ? new List<Material>(vanilla.materialList) : null;
-            var tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Path.Combine(def.FolderPath, def.Texture))?.texture;
+            var tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
 
             // Figurines with their own model: one mesh, one material (the base toy's material with our texture); no secondary parts.
-            var mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Path.Combine(def.FolderPath, def.Mesh));
+            var mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
             if (mesh != null)
             {
                 var baseMat = vanilla.material ?? vanilla.materialList?.Find(m => m != null);

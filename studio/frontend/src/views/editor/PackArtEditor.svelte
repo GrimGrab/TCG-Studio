@@ -4,6 +4,7 @@
   // points the pack at them and saves the set (which updates an installed set in the game). Unapplied edits are applied
   // automatically before any save, and before closing the editor or switching pack/box/tab (flush), so nothing is lost.
   import { App, projectFile, errText, ask } from '../../lib/api';
+  import { templateFile } from '../../lib/urls';
   import { applySmartArt, boxFromPackArt, hasOwnLayers, packIconFromTexture, type SmartSources } from '../../lib/smartArt';
   import SmartGenerate from './SmartGenerate.svelte';
   import { newLayout, edgeColors, loadImage, type Layout, type Model } from '../../lib/accessoryArt';
@@ -78,7 +79,7 @@
     if (!layout || !model) return '';
     if (layout.baseItem === 'file') return layout.baseFile ? projectFile(project.id, layout.baseFile, bust) : '';
     const b = model.bases?.find((b) => b.id === layout.baseItem) ?? model.bases?.[0];
-    return b ? `/templates/${encodeURIComponent(b.texture)}` : '';
+    return b ? templateFile('game', b.texture) : '';
   });
 
   async function setBase(v: string) {

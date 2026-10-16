@@ -85,7 +85,7 @@ func eplOrigin(mod *epl.Mod, b *epl.Bundle, item string, opt Options) *origin.Or
 	if name == "" {
 		name = mod.Name
 	}
-	return &origin.Origin{Kind: "EPL mod", Mod: name, Author: strings.TrimSpace(opt.OriginAuthor),
+	return &origin.Origin{Kind: origin.KindEPL, Mod: name, Author: strings.TrimSpace(opt.OriginAuthor),
 		Link: strings.TrimSpace(opt.OriginLink), Package: mod.Name, Path: mod.Source, Bundle: b.Rel,
 		Item: strings.TrimSpace(item), Imported: time.Now()}
 }

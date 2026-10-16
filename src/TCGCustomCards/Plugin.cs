@@ -74,6 +74,20 @@ namespace TCGCustomCards
         internal static ConfigEntry<UI.BinderPadButton> BinderPadFavourite;
         internal static string PluginDir;
 
+        /// <summary>
+        /// Folder for the mod's diagnostic dumps: &lt;game&gt;\BepInEx\TCGCustomCards (next to LogOutput.log), never the plugin folder,
+        /// which holds only the mod's own files.
+        /// </summary>
+        internal static string DumpDir
+        {
+            get
+            {
+                string dir = Path.Combine(BepInEx.Paths.BepInExRootPath, "TCGCustomCards");
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+        }
+
         private Harmony _harmony;
 
         private void Awake()
@@ -151,7 +165,7 @@ namespace TCGCustomCards
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
             ShopSignImage = Config.Bind("Visuals", "ShopSignImage", "",
-                "Your own picture for the sign above the shop entrance: a file name in the plugin's ShopSign folder (TCG Studio's " +
+                "Your own picture for the sign above the shop entrance: a file name in the active setup's Shop look folder (TCG Studio's " +
                 "Shop look page copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
                 "other shapes are cropped (see ShopSignCrop). Empty = the vanilla sign. Applies live.");
             ShopSignCrop = Config.Bind("Visuals", "ShopSignCrop", "",
@@ -161,7 +175,7 @@ namespace TCGCustomCards
                 "Show your shop's name on the sign above the entrance. Turn it off when your ShopSignImage already has a name or logo. Applies live.");
             const string signText = "Visuals - Shop sign text";
             ShopSignFont = Config.Bind(signText, "ShopSignFont", "",
-                "Font of the shop name on the sign: a .ttf/.otf file name in the plugin's ShopSign folder (TCG Studio's Shop look page " +
+                "Font of the shop name on the sign: a .ttf/.otf file name in the active setup's Shop look folder (TCG Studio's Shop look page " +
                 "copies the font you choose there) or a full path. Empty = the game's own font. Applies live.");
             ShopSignTextColor = Config.Bind(signText, "ShopSignTextColor", "",
                 "Colour of the shop name on the sign as #RRGGBB. Empty = the game's gold. It still dims at night. Applies live.");
@@ -176,7 +190,7 @@ namespace TCGCustomCards
             ShopSign.Init();
             const string look = "Visuals - Shop look";
             PhoneWallpaperImage = Config.Bind(look, "PhoneWallpaperImage", "",
-                "Your own wallpaper for the phone's home screen: a file name in the plugin's ShopSign folder (TCG Studio's Shop look page " +
+                "Your own wallpaper for the phone's home screen: a file name in the active setup's Shop look folder (TCG Studio's Shop look page " +
                 "copies the image you choose there) or a full path to a PNG/JPG. Best upright at about 10:17; other shapes are cropped " +
                 "(see PhoneWallpaperCrop). Empty = the vanilla wallpaper. Applies live.");
             PhoneWallpaperCrop = Config.Bind(look, "PhoneWallpaperCrop", "",
@@ -184,7 +198,7 @@ namespace TCGCustomCards
                 "corner), set with the crop box in TCG Studio's Shop look page. Empty = the largest phone-shaped area from the middle. Applies live.");
             OpenSignImage = Config.Bind(look, "OpenSignImage", "",
                 "Your own picture for the OPEN side of the open/closed sign at the door, drawn inside the sign's black frame: a file name " +
-                "in the plugin's ShopSign folder (TCG Studio's Shop look page copies it there) or a full path to a PNG/JPG. Best at about " +
+                "in the active setup's Shop look folder (TCG Studio's Shop look page copies it there) or a full path to a PNG/JPG. Best at about " +
                 "8:5; other shapes are cropped (see OpenSignCrop). Empty = the vanilla side. Applies live.");
             OpenSignCrop = Config.Bind(look, "OpenSignCrop", "",
                 "The part of OpenSignImage shown on the sign: x,y,width,height as fractions of the image (0-1, from its top-left corner). " +
@@ -334,10 +348,12 @@ namespace TCGCustomCards
             ConfigMoves.CarryMoved(Config, cfgBefore); // after every Bind
             ConfigMoves.DropRemoved(Config, ("Binder", "Layout"));
 
-            Registry.Build(SetLoader.LoadAll(Path.Combine(PluginDir, "Sets")));
-            Registry.BuildAccessories(AccessoryLoader.Load(PluginDir));
-            Registry.BuildFurniture(AccessoryLoader.LoadFurniture(PluginDir));
-            Registry.BuildDecorations(AccessoryLoader.LoadDecorations(PluginDir));
+            StudioPaths.Load(PluginDir);
+            if (StudioPaths.Problem != null) StartCoroutine(UI.ContentMissingNotice.ShowWhenInShop());
+            Registry.Build(SetLoader.LoadAll());
+            Registry.BuildAccessories(AccessoryLoader.Load(StudioPaths.Setup));
+            Registry.BuildFurniture(AccessoryLoader.LoadFurniture(StudioPaths.Setup));
+            Registry.BuildDecorations(AccessoryLoader.LoadDecorations(StudioPaths.Setup));
 
             _harmony = new Harmony(Guid);
             _harmony.PatchAll(typeof(Plugin).Assembly);
@@ -346,7 +362,7 @@ namespace TCGCustomCards
             Runtime.Mtg.MtgDraftEvent.Register();
 
             Log.LogInfo($"{Name} {Version} loaded with {Registry.Sets.Count} custom set(s), {Registry.Accessories.Count} accessor(ies) and {Registry.Furniture.Count} furniture piece(s), {Registry.Decorations.Count} decoration(s)");
-            Log.LogInfo("Supports " + Core.SetDef.LibraryCapability + " (shared card art in the plugin's Library folder)");
+            Log.LogInfo("Supports " + Core.SetDef.LibraryCapability + " (content files from the TCG Studio workspace)");
             WatchConfig();
         }
 

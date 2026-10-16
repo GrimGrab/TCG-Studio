@@ -3,7 +3,7 @@
   import { App, errText } from '../lib/api';
   import { ClipboardSetText } from '../../wailsjs/runtime/runtime';
 
-  // Setup page section: the game's log of its last session + a summary, to copy and send for help.
+  // Game & mod page section: the game's log of its last session + a summary, to copy and send for help.
   let { notify }: { notify: (text: string, kind?: string) => void } = $props();
   let r = $state<any>(null);
   let loading = $state(false);

@@ -83,14 +83,14 @@
     try {
       const r = await App.InstallProject(p.id);
       const warns = r.issues.filter((i: any) => i.level === 'warning').length;
-      notify(`${p.installed ? 'Updated' : 'Installed'} "${p.name}" in the game${warns ? ` (${warns} warnings)` : ''} — ${restartHint(r.gameRunning)}.`, 'ok');
+      notify(`${p.installed ? 'The game reads' : 'Installed'} "${p.name}"${p.installed ? ' from here again' : ' in the game'}${warns ? ` (${warns} warnings)` : ''} — ${restartHint(r.gameRunning)}.`, 'ok');
       load();
     } catch (e) {
       notify(`${p.name}: ${errText(e)}`, 'error');
     }
   }
 
-  /** Installs every set whose game copy is older than the project. */
+  /** Points the game at this setup again for every set it doesn't read from here (another setup / workspace, older mod). */
   async function updateAll() {
     updating = true;
     const failed: string[] = [];
@@ -101,8 +101,8 @@
     }
     updating = false;
     await load();
-    if (failed.length) notify(`Updated ${done} set(s); not updated: ${failed.join(', ')}`, 'error');
-    else notify(`Updated ${done} set(s) in the game — ${restartHint(running)}.`, 'ok');
+    if (failed.length) notify(`Fixed ${done} set(s); not fixed: ${failed.join(', ')}`, 'error');
+    else notify(`The game reads ${done} set(s) from here again — ${restartHint(running)}.`, 'ok');
   }
 
   async function uninstall(p: any) {
@@ -161,7 +161,7 @@
       </div>
       {#if outdated.length}
         <button class="primary" disabled={updating} onclick={updateAll} title={outdated.map((p) => p.name).join(', ')}>
-          {updating ? 'Updating…' : `Update all outdated (${outdated.length})`}</button>
+          {updating ? 'Fixing…' : `Fix all not read by the game (${outdated.length})`}</button>
       {/if}
       <label class="sortby">Sort
         <select bind:value={sort}>{#each Object.entries(SORTS) as [k, [label]]}<option value={k}>{label}</option>{/each}</select>
@@ -182,15 +182,15 @@
               {:else if p.code} · {sourceName(p.source)} {p.code.toUpperCase()}{p.releasedAt ? ` (${p.releasedAt})` : ''}{/if}
             </div>
             <div class="row" style="margin-top:6px">
-              {#if p.installState === 'stale'}<span class="badge warn" title="Edited since it was installed — the game has an older version">Outdated in game</span>
+              {#if p.installState === 'stale'}<span class="badge warn" title="The game reads another setup or workspace, or its mod is older than this TCG Studio">Not read by the game</span>
               {:else if p.installed}<span class="badge ok">In game ✓</span>{:else}<span class="badge">Not installed</span>{/if}
               {#if p.tier}<span class="badge">Tier {p.tier}</span>{/if}
             </div>
           </div>
           <div class="actions">
             <button class="primary" onclick={() => open(p.id)}>Edit</button>
-            {#if p.installState === 'stale'}<button class="primary" onclick={() => install(p)}>Update game</button>
-            {:else}<button onclick={() => install(p)}>{p.installed ? 'Reinstall' : 'Install'}</button>{/if}
+            {#if p.installState === 'stale'}<button class="primary" onclick={() => install(p)}>Fix</button>
+            {:else if !p.installed}<button onclick={() => install(p)}>Install</button>{/if}
             {#if p.installed}<button onclick={() => uninstall(p)}>Uninstall</button>{/if}
             <button class="danger" onclick={() => remove(p)}>Delete</button>
           </div>

@@ -1,6 +1,7 @@
 // Import queue: sets imported one after another (Go runs one import at a time). Lives outside the Import page so the
 // queue keeps going while the player looks at other pages; the page shows it and adds to it.
 import { App, EventsOn, errText } from './api';
+import { Ev } from './events';
 import { smartArtForProject } from './smartArt';
 
 export type ImportJob = {
@@ -28,7 +29,7 @@ let listening = false;
 export function listen() {
   if (listening) return;
   listening = true;
-  EventsOn('import:progress', (p: any) => (queue.progress = p));
+  EventsOn(Ev.ImportProgress, (p: any) => (queue.progress = p));
 }
 
 export const jobKey = (source: string, code: string, lang: string) => `${source}|${code}|${lang}`;

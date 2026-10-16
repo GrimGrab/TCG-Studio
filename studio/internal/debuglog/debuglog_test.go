@@ -59,7 +59,7 @@ func TestVersionMismatch(t *testing.T) {
 	if strings.Contains(strings.ToLower(r.Log), "alice") || !strings.Contains(r.Log, "%USERPROFILE%/AppData") {
 		t.Errorf("user name not masked:\n%s", r.Log)
 	}
-	if !strings.Contains(r.Header, "mod loaded by the game: 0.13.3") || !strings.Contains(r.Header, "Setup: all green") {
+	if !strings.Contains(r.Header, "mod loaded by the game: 0.13.3") || !strings.Contains(r.Header, "Game & mod: all green") {
 		t.Errorf("header:\n%s", r.Header)
 	}
 }

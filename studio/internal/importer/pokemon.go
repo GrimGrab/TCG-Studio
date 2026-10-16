@@ -237,7 +237,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 	if err := os.MkdirAll(filepath.Join(folder, "images"), 0o755); err != nil {
 		return nil, err
 	}
-	art, err := cardArtTarget(ws, id, folder, "tcgdex", tset.ID, lang, opt)
+	art, err := cardArtTarget(ws, id, "tcgdex", tset.ID, lang, opt)
 	if err != nil {
 		return nil, err
 	}

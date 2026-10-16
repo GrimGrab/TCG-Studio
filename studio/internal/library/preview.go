@@ -17,41 +17,40 @@ type ShrinkPreview struct {
 	JPEGSize int64  `json:"jpegSize"`
 }
 
-// Preview converts one PNG card of set id in setup setupID to JPEG in memory (the rarest card, often the most detailed).
-func Preview(h setups.Home, setupID, id string) (*ShrinkPreview, error) {
+// Preview converts one PNG card of set id to JPEG in memory (the rarest card, often the most detailed).
+func Preview(h setups.Home, id string) (*ShrinkPreview, error) {
 	bySet, _, err := sets(h)
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range bySet[id] {
-		if l.setup != setupID {
-			continue
-		}
-		best, rank := "", -1
-		name := ""
-		for _, c := range l.p.Set.Cards {
-			if !isPNG(c.Image) || !fileExists(l.p.ImagePath(c.Image)) {
-				continue
-			}
-			if r := l.p.Set.RankOf(c.Rarity); r > rank { // the rarest card: often the most detailed
-				best, rank, name = c.Image, r, c.Name
-			}
-		}
-		if best == "" {
-			return nil, errors.New("this set has no PNG card art")
-		}
-		b, err := os.ReadFile(l.p.ImagePath(best))
-		if err != nil {
-			return nil, err
-		}
-		j, err := toJPEG(b)
-		if err != nil {
-			return nil, err
-		}
-		return &ShrinkPreview{Card: name,
-			PNG:     "data:image/png;base64," + base64.StdEncoding.EncodeToString(b),
-			JPEG:    "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(j),
-			PNGSize: int64(len(b)), JPEGSize: int64(len(j))}, nil
+	locs := bySet[id]
+	if len(locs) == 0 {
+		return nil, errors.New("set not found")
 	}
-	return nil, errors.New("set not found")
+	png := map[string]bool{}
+	for _, rel := range pngCards(locs) {
+		png[rel] = true
+	}
+	p := locs[0].p
+	best, rank, name := "", -1, ""
+	for _, c := range p.Set.Cards {
+		if r := p.Set.RankOf(c.Rarity); png[c.Image] && r > rank {
+			best, rank, name = c.Image, r, c.Name
+		}
+	}
+	if best == "" {
+		return nil, errors.New("this set has no PNG card art")
+	}
+	b, err := os.ReadFile(p.ImagePath(best))
+	if err != nil {
+		return nil, err
+	}
+	j, err := toJPEG(b)
+	if err != nil {
+		return nil, err
+	}
+	return &ShrinkPreview{Card: name,
+		PNG:     "data:image/png;base64," + base64.StdEncoding.EncodeToString(b),
+		JPEG:    "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(j),
+		PNGSize: int64(len(b)), JPEGSize: int64(len(j))}, nil
 }

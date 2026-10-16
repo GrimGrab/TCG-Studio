@@ -8,6 +8,8 @@
   // mapped into the game texture through the model's targets. Views: net, the raw texture (UV map) and a 3D preview of the
   // real game mesh.
   import { maximizable } from '../lib/maximize';
+  import { createHistory } from '../lib/history.svelte';
+  import { accFile, templateFile } from '../lib/urls';
   import { onMount, untrack } from 'svelte';
   import { App, errText, ask } from '../lib/api';
   import {
@@ -54,7 +56,7 @@
   let texView = $state<HTMLCanvasElement>();
   let textureCanvas: HTMLCanvasElement | null = null;
 
-  const accUrl = (rel: string) => imageUrl ? imageUrl(rel) : `/acc/${rel.split('/').map(encodeURIComponent).join('/')}`;
+  const accUrl = (rel: string) => imageUrl ? imageUrl(rel) : accFile(rel);
   let sel = $derived(layout?.layers.find((l) => l.id === selected));
 
   // ---------------------------------------------------------------- rendering
@@ -201,55 +203,28 @@
   }
 
   /** After a layer action (add, paste, duplicate, delete, copy to face, reorder): always its own undo step. */
-  function commit() { lastEdit = 0; changed(); lastEdit = 0; }
+  function commit() { hist.split(); changed(); hist.split(); }
 
   /** After any edit; edits close together (typing, sliders) are one undo step. */
   function changed() {
-    const now = Date.now();
-    if (now - lastEdit > 600) pushUndo(histBase);
-    lastEdit = now;
-    histBase = snapshot();
+    hist.edited();
+    hist.base = snapshot();
     onchange();
     redraw();
   }
 
   // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
-  // Same pattern as the furniture editor: `histBase` is the layout after the last edit; an edit pushes it (the state before the
-  // edit) unless it continues a burst. A whole drag on the net is one step, pushed when it starts.
+  // A whole drag on the net is one step, pushed when it starts.
 
-  let undoStack = $state<string[]>([]);
-  let redoStack = $state<string[]>([]);
-  let histBase = '';
-  let lastEdit = 0;
   const snapshot = () => JSON.stringify(layout);
-  function resetHistory() { undoStack = []; redoStack = []; histBase = snapshot(); lastEdit = 0; }
-  function pushUndo(state: string) {
-    if (!state || undoStack.at(-1) === state) return;
-    undoStack = [...undoStack.slice(-99), state];
-    redoStack = [];
-  }
-  function restore(state: string) {
+  const hist = createHistory(snapshot, (state) => {
     layout = JSON.parse(state);
-    histBase = state;
-    lastEdit = 0;
     if (!layout.layers.some((l) => l.id === selected)) selected = '';
     onchange();
     redraw();
-  }
-  function undo() {
-    if (!undoStack.length || drag) return;
-    redoStack = [...redoStack, snapshot()];
-    const prev = undoStack[undoStack.length - 1];
-    undoStack = undoStack.slice(0, -1);
-    restore(prev);
-  }
-  function redo() {
-    if (!redoStack.length || drag) return;
-    undoStack = [...undoStack, snapshot()];
-    const next = redoStack[redoStack.length - 1];
-    redoStack = redoStack.slice(0, -1);
-    restore(next);
-  }
+  }, () => !!drag);
+  const undo = () => hist.undo();
+  const redo = () => hist.redo();
 
   // ---------------------------------------------------------------- layers
 
@@ -660,7 +635,7 @@
     if (hi >= 0 && sel) {
       const [hx, hy, corner] = HANDLES[hi];
       drag = { mode: corner ? 'scale' : 'edge', hx, hy, sx: p.x, sy: p.y, x: sel.x, y: sel.y, w: sel.w, h: sel.h };
-      pushUndo(snapshot());
+      hist.push(snapshot());
       netView!.setPointerCapture(e.pointerId);
       return;
     }
@@ -668,7 +643,7 @@
     selected = l?.id ?? (sel?.kind === 'fill' ? selected : '');
     if (l) {
       drag = { mode: 'move', hx: 0, hy: 0, sx: p.x, sy: p.y, x: l.x, y: l.y, w: l.w, h: l.h };
-      pushUndo(snapshot());
+      hist.push(snapshot());
       netView!.setPointerCapture(e.pointerId);
     }
     drawNetView();
@@ -726,11 +701,7 @@
   }
 
   function onUp() {
-    if (drag) {
-      histBase = snapshot();
-      lastEdit = 0;
-      if (undoStack.at(-1) === histBase) undoStack = undoStack.slice(0, -1); // a click without moving: no step
-    }
+    if (drag) hist.settle(); // a click without moving: no step
     drag = null;
   }
 
@@ -747,7 +718,7 @@
   let canvas3d = $state<HTMLCanvasElement>();
   let mesh: MeshView | null = null;
   let meshError = $state('');
-  const tpl = (file: string) => `/acctemplates/${encodeURIComponent(file)}`;
+  const tpl = (file: string) => templateFile('acc', file);
 
   $effect(() => {
     const c = canvas3d;
@@ -797,14 +768,14 @@
     if (painter3d && !e.altKey) {
       const p = painter3d.pick(e.clientX, e.clientY);
       if (p && e.shiftKey && sel && sel.kind !== 'fill') {
-        pushUndo(snapshot()); sel.x = p.x; sel.y = p.y; changed();
+        hist.push(snapshot()); sel.x = p.x; sel.y = p.y; changed();
         drag3d = { id: sel.id, dx: 0, dy: 0 };
         return;
       }
       const l = p ? hit(p) : undefined;
       if (p && l) {
         selected = l.id;
-        pushUndo(snapshot());
+        hist.push(snapshot());
         drag3d = { id: l.id, dx: l.x - p.x, dy: l.y - p.y };
         return;
       }
@@ -843,7 +814,7 @@
       S = netScale(model);
       if (model.palette || model.projected) view = '3d';
       if (!layout || layout.version !== 2) layout = newLayout();
-      resetHistory();
+      hist.reset();
       await loadVanilla();
     } catch (e) { notify(errText(e), 'error'); }
     markLoaded();
@@ -942,8 +913,8 @@
         <button class="small" onclick={addFill}>+ Colour</button>
         <button class="small" onclick={addText}>+ Text</button>
         <div class="grow"></div>
-        <button class="small" onclick={undo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">↶</button>
-        <button class="small" onclick={redo} disabled={!redoStack.length} title="Redo (Ctrl+Y)">↷</button>
+        <button class="small" onclick={undo} disabled={!hist.canUndo} title="Undo (Ctrl+Z)">↶</button>
+        <button class="small" onclick={redo} disabled={!hist.canRedo} title="Redo (Ctrl+Y)">↷</button>
       </div>
       <div class="layers">
         {#each [...layout.layers].reverse() as l (l.id)}

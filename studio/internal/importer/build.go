@@ -65,7 +65,7 @@ type setIn struct {
 	RarityOrder []string // meta.rarityOrder: this set's own rarities, lowest first (sources without a fixed list)
 	// Packs replaces the default booster (EPL mods bring their own packs and art); slots are fitted to the cards.
 	Packs []setfmt.Pack
-	// Extra images written into the project folder through Get (pack/box art, the card back).
+	// Extra images written into the set's shared folder through Get (pack/box art, the card back).
 	Extra      []extraImage
 	RenderMode string // "" = FullImage
 }
@@ -82,7 +82,7 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 		return nil, fmt.Errorf("%s is already imported — open it and use Refresh prices, or delete it first", in.ID)
 	}
 	folder := ws.Folder(in.ID)
-	art, err := cardArtTarget(ws, in.ID, folder, in.Source, in.Code, in.Lang, opt)
+	art, err := cardArtTarget(ws, in.ID, in.Source, in.Code, in.Lang, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +195,8 @@ func buildProject(ctx context.Context, ws project.Workspace, in setIn, opt Optio
 			set.Packs[i].Slots = fitSlots(packs[i].Slots, set)
 		}
 	}
-	// Pack/box art and the card back go next to the card art too (the set's shared folder when it has one), like every set file
-	// Studio writes (Project.WriteTarget) — else Storage's "Move everything to shared" would offer them right after the import.
-	failed = append(failed, writeExtras(ctx, in, filepath.Dir(art.dir), set)...)
+	// Pack/box art and the card back go into the set's shared folder, like every set file.
+	failed = append(failed, writeExtras(ctx, in, ws.LibFolder(in.ID), set)...)
 	p := &project.Project{ID: in.ID, Folder: folder, LibFolder: ws.LibFolder(in.ID), Set: set, Meta: meta}
 	if err := ws.Save(p); err != nil {
 		return nil, err
@@ -331,9 +330,8 @@ func slug(s string) string {
 	return strings.TrimSuffix(b.String(), "-")
 }
 
-// writeExtras saves an import's pack/box art and card back into the project folder. An image that fails leaves its
-// field empty (generated art is used instead) and is reported with the failed images.
-// writeExtras saves the import's extra images under base (the folder their set.json paths are relative to).
+// writeExtras saves an import's pack/box art and card back under base (the set's shared folder). An image that fails
+// leaves its field empty (generated art is used instead) and is reported with the failed images.
 func writeExtras(ctx context.Context, in setIn, base string, set *setfmt.Set) []string {
 	var failed []string
 	for _, e := range in.Extra {

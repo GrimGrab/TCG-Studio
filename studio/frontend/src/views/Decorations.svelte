@@ -30,7 +30,10 @@
   // phone's "Buy Decoration" app. Stored in the accessory library (decorations list); the mod builds them on vanilla decorations
   // (Runtime/DecorationInjector). Vanilla names, prices and icons come from the game files (game-templates\decorations).
   import { onMount, untrack } from 'svelte';
-  import { App, EventsOn, errText, ask } from '../lib/api';
+  import { leaveGuard } from '../lib/leaveGuard';
+  import { Ev } from '../lib/events';
+  import { accFile, templateFile } from '../lib/urls';
+  import { App, EventsOn, errText, ask, originName } from '../lib/api';
   import { loadImage } from '../lib/accessoryArt';
   import CatalogPicker from './CatalogPicker.svelte';
   import { FigurineView, loadGeom, quadGeom, type Geom, type Mat, type Box, type SceneObj, mul, translate, scale, rotX, rotY, rotZ } from '../lib/figurineView';
@@ -49,6 +52,7 @@
   let isNew = $state(false);              // a draft from NewDecoration, not stored yet
   let layout = $state<DecoLayout>(newDecoLayout());
   let dirty = $state(false);
+  $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this decoration will be lost.'));
   let saving = $state(false);
   let busy = $state('');
   let fromCatalog = $state(false);
@@ -58,8 +62,8 @@
   const surface = (k: string) => !!kindInfo(k)?.surface;
   const list = $derived<any[]>(view?.decorations ?? []);
   const shown = $derived(list.filter((x) => x.kind === tab).slice().sort((a, b) => a.name.localeCompare(b.name)));
-  const accUrl = (rel?: string) => (rel ? `/acc/${rel.split('/').map(encodeURIComponent).join('/')}?v=${bust}` : '');
-  const tplUrl = (f?: string) => (f ? `/decotemplates/${encodeURIComponent(f)}` : '');
+  const accUrl = (rel?: string) => accFile(rel, bust);
+  const tplUrl = (f?: string) => templateFile('deco', f);
   const originOf = (x: any) => view?.origins?.[x.id];
   const vanilla = $derived<any[]>(
     !tpl ? [] : surface(tab) ? tpl.surfaces?.[tab] ?? [] : (tpl.objects ?? []).filter((o: any) => (tab === 'Poster' ? o.tab === 'Poster' : o.tab === 'Other')));
@@ -445,7 +449,7 @@
       dirty = false;
       bust = Date.now();
       await load();
-      notify(`Saved "${d.name}"${view.installed ? ' and installed it in the game' : ''}.`, 'ok');
+      notify(`Saved "${d.name}"${view.installed ? ' — restart the game to see it' : ''}.`, 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     busy = '';
     saving = false;
@@ -464,8 +468,8 @@
 
   onMount(() => {
     const offs = [
-      EventsOn('templates:progress', (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
-      EventsOn('templates:ready', () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
+      EventsOn(Ev.TemplatesProgress, (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
+      EventsOn(Ev.TemplatesReady, () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
     ];
     (async () => {
       try {
@@ -505,7 +509,7 @@
       {#each shown as x (x.id)}
         <button class:active={x.id === selectedId && !isNew} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
           <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{/if}</span>
-          <span class="grow">{x.name}<br /><span class="muted small">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · from ${originOf(x).mod}` : ''}</span></span>
+          <span class="grow">{x.name}<br /><span class="muted small">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · from ${originName(originOf(x))}` : ''}</span></span>
         </button>
       {/each}
       {#if isNew && d}<button class="active"><span class="ico"></span><span class="grow">{d.name}<br /><span class="muted small">new — not saved</span></span></button>{/if}

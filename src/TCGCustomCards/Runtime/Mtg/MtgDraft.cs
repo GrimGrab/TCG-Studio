@@ -27,7 +27,7 @@ namespace TCGCustomCards.Runtime.Mtg
 
     /// <summary>
     /// Booster draft over real in-game packs: rolls each pack item with <see cref="PackRoller"/> (the same roll as opening it),
-    /// sends the pod to the Forge bridge (<c>draft</c>, docs/mtg-forge.md "Booster draft engine"), relays the human's picks
+    /// sends the pod to the Forge bridge (<c>draft</c>), relays the human's picks
     /// (<c>ask kind=draftpick</c>) and turns <c>draftdone</c> into decks. Forge's draft AI picks and builds for every other
     /// seat. One draft at a time.
     /// </summary>

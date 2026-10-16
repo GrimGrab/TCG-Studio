@@ -2,18 +2,16 @@ package project
 
 import (
 	"encoding/json"
-	"path"
 	"sort"
 	"strings"
+
+	"tcgstudio/internal/fsutil"
 )
 
-// fileExts are the extensions of files a set refers to (images and icons).
-var fileExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".svg": true, ".gif": true, ".bmp": true}
+// ImplicitFiles are used by name without being referenced (the art generator's default set icon).
+var ImplicitFiles = []string{"images/set_icon.svg", "images/set_icon.png"}
 
-// implicitFiles are used by name without being referenced (the art generator's default set icon).
-var implicitFiles = []string{"images/set_icon.svg", "images/set_icon.png"}
-
-// IsRelFile reports whether s looks like a relative path to a set file ("images/1.jpg", "MTG Alpha (Test)/images/1.jpg").
+// IsRelFile reports whether s looks like a relative path to a set file ("images/1.jpg").
 func IsRelFile(s string) bool {
 	if s == "" || strings.ContainsAny(s, ":\\") || strings.HasPrefix(s, "/") || !strings.Contains(s, "/") {
 		return false
@@ -23,13 +21,13 @@ func IsRelFile(s string) bool {
 			return false
 		}
 	}
-	return fileExts[strings.ToLower(path.Ext(s))]
+	return fsutil.IsImage(s)
 }
 
 // Files lists every file the set refers to, as relative paths (each once, sorted): set.json's card images, card back and
 // pack/box art; every file path in studio.json (pack art editor layers and bases, product photos, Smart-art parts); and
-// the set icon the art generator picks up by name when it exists. Storage moves, leftover detection and setup export use
-// it, so a file the set needs is never left behind or deleted.
+// the set icon the art generator picks up by name when it exists. Storage's unused files and setup export use it, so a
+// file the set needs is never left behind or deleted.
 func (p *Project) Files() []string {
 	seen := map[string]bool{}
 	add := func(rel string) {
@@ -52,12 +50,12 @@ func (p *Project) Files() []string {
 		if b, err := json.Marshal(p.Meta); err == nil {
 			var v any
 			if json.Unmarshal(b, &v) == nil {
-				walkStrings(v, add)
+				fsutil.WalkStrings(v, add)
 			}
 		}
 	}
-	for _, rel := range implicitFiles {
-		if fileExists(p.ImagePath(rel)) {
+	for _, rel := range ImplicitFiles {
+		if fsutil.Exists(p.ImagePath(rel)) {
 			seen[rel] = true
 		}
 	}
@@ -67,21 +65,6 @@ func (p *Project) Files() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func walkStrings(v any, f func(string)) {
-	switch t := v.(type) {
-	case string:
-		f(t)
-	case []any:
-		for _, x := range t {
-			walkStrings(x, f)
-		}
-	case map[string]any:
-		for _, x := range t {
-			walkStrings(x, f)
-		}
-	}
 }
 
 // RepointFiles rewrites every reference to a file in set.json and studio.json through to (rel → new rel; unchanged when
@@ -115,7 +98,7 @@ func (p *Project) RepointFiles(to func(rel string) string) {
 	if json.Unmarshal(b, &v) != nil {
 		return
 	}
-	v = mapStrings(v, func(s string) string {
+	v = fsutil.MapStrings(v, func(s string) string {
 		if IsRelFile(s) {
 			return to(s)
 		}
@@ -127,31 +110,4 @@ func (p *Project) RepointFiles(to func(rel string) string) {
 			*p.Meta = m
 		}
 	}
-}
-
-func mapStrings(v any, f func(string) string) any {
-	switch t := v.(type) {
-	case string:
-		return f(t)
-	case []any:
-		for i := range t {
-			t[i] = mapStrings(t[i], f)
-		}
-	case map[string]any:
-		for k := range t {
-			t[k] = mapStrings(t[k], f)
-		}
-	}
-	return v
-}
-
-// ArtFolder is the named shared folder the set's card art is kept in as its own (card images "<Name>/images/…", made by
-// the Storage page's "Different art — keep as its own"), or "" for the set's ordinary shared art.
-func (p *Project) ArtFolder() string {
-	for _, c := range p.Set.Cards {
-		if first, rest, ok := strings.Cut(c.Image, "/"); ok && first != "images" && strings.Contains(rest, "/") {
-			return first
-		}
-	}
-	return ""
 }

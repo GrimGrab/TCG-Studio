@@ -243,7 +243,7 @@ namespace TCGCustomCards.UI
                 for (int i = 0; i < _ui.m_ExpansionBtnList.Count; i++)
                 {
                     var b = _ui.m_ExpansionBtnList[i];
-                    if (b == null || b.name.StartsWith("TCGCC_")) continue;
+                    if (b == null || b.name.StartsWith("TCGCC_") || !BinderIndex.HasCollection((ECardExpansionType)i)) continue;
                     var label = b.GetComponentInChildren<TextMeshProUGUI>(true);
                     _names[(ECardExpansionType)i] = label != null ? label.text : null;
                 }

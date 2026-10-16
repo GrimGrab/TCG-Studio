@@ -10,7 +10,7 @@ namespace TCGCustomCards.Hooks
     /// Single owner of the patches on what the player carries (InteractionPlayerController.RaycastHoldItemState /
     /// EvaluateTakeItemFromShelf / EvaluateOpenCardPack): count and use up held items, and a right-click action on whatever
     /// the player looks at while holding card packs (vanilla: right-click takes an item from that shelf; the open-pack key
-    /// opens the front pack). See docs/hooks.md.
+    /// opens the front pack).
     /// </summary>
     internal static class PlayerItems
     {

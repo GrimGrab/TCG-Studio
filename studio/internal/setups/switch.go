@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"tcgstudio/internal/assets"
 	"time"
 
-	"tcgstudio/internal/accessories"
+	"tcgstudio/internal/fsutil"
+	"tcgstudio/internal/workspace"
+
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/modconfig"
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/setfmt"
 )
 
 // Journal records an unfinished switch so the next start can finish or undo it.
@@ -42,140 +42,55 @@ func (h Home) PendingSwitch() (*Journal, bool) {
 	return j, true
 }
 
-// Snapshot copies the game-side state of the active setup into its game\ folder and records which of its projects are
-// installed. Nothing in the game changes. Accessories installed in the game while the setup's library is empty (put there
-// by hand) are kept as a copy too, so a switch never loses them.
+// Snapshot copies the game's mod config into the active setup's game\ folder. Everything else the game uses already lives
+// in the setup (installed sets, accessory library, card back, Shop look pictures; game.StudioPathsFile). Nothing in the
+// game changes.
 func Snapshot(dir, gameDir string) error {
 	if !game.IsGameDir(gameDir) {
 		return errors.New("game folder not set")
 	}
-	in, err := LoadInfo(dir)
-	if err != nil {
+	if _, err := LoadInfo(dir); err != nil {
 		return err
 	}
-	g := filepath.Join(dir, GameStateDir)
-	tmp := g + ".new"
-	_ = os.RemoveAll(tmp)
-	if err := os.MkdirAll(tmp, 0o755); err != nil {
+	dst := filepath.Join(dir, GameStateDir, cfgFile)
+	if cfg := modconfig.Path(gameDir); fsutil.Exists(cfg) {
+		return fsutil.CopyFile(cfg, dst)
+	}
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
 		return err
-	}
-	if cfg := modconfig.Path(gameDir); exists(cfg) {
-		if err := copyFile(cfg, filepath.Join(tmp, cfgFile)); err != nil {
-			return err
-		}
-	}
-	if back := filepath.Join(game.PluginDir(gameDir), backFile); exists(back) {
-		if err := copyFile(back, filepath.Join(tmp, backFile)); err != nil {
-			return err
-		}
-	}
-	if sign := filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder); exists(sign) {
-		if err := copyTree(sign, filepath.Join(tmp, modconfig.ShopSignFolder), nil); err != nil {
-			return err
-		}
-	}
-	installed := []string{}
-	entries, _ := os.ReadDir(game.SetsDir(gameDir))
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasSuffix(e.Name(), ".installing") {
-			continue
-		}
-		if exists(filepath.Join(dir, "projects", e.Name(), project.SetFile)) {
-			installed = append(installed, e.Name())
-			continue
-		}
-		if err := copyTree(filepath.Join(game.SetsDir(gameDir), e.Name()), filepath.Join(tmp, "Sets", e.Name()), nil); err != nil {
-			return err
-		}
-	}
-	if acc := accessories.InstalledDir(gameDir); exists(acc) && libraryEmpty(dir) {
-		if err := copyTree(acc, filepath.Join(tmp, accessories.InstallDir), nil); err != nil {
-			return err
-		}
-	}
-	_ = os.RemoveAll(g)
-	if err := os.Rename(tmp, g); err != nil {
-		return err
-	}
-	in.InstalledSets = installed
-	return SaveInfo(dir, in)
-}
-
-func libraryEmpty(dir string) bool {
-	lib, err := setfmt.LoadAccessories(filepath.Join(accessories.Folder(dir), accessories.LibraryFile))
-	return err != nil || (len(lib.Accessories) == 0 && len(lib.Furniture) == 0 && len(lib.Decorations) == 0)
-}
-
-// clearGame removes everything a setup puts into the game: installed sets, accessories, global card back, mod config and
-// shop sign image.
-// Saves are handled separately.
-func clearGame(gameDir string) error {
-	entries, _ := os.ReadDir(game.SetsDir(gameDir))
-	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(game.SetsDir(gameDir), e.Name())); err != nil {
-			return err
-		}
-	}
-	for _, p := range []string{accessories.InstalledDir(gameDir), filepath.Join(game.PluginDir(gameDir), backFile), modconfig.Path(gameDir),
-		filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder)} {
-		if err := os.RemoveAll(p); err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
-// applyGame installs a setup into a cleared game. A setup without a mod config leaves none, so the mod writes its defaults.
-// Returns warnings for projects that couldn't be installed.
-func applyGame(dir, gameDir string, store assets.Store) ([]string, error) {
+// clearGame removes the active setup's mod config from the game (saves are handled separately).
+func clearGame(gameDir string) error {
+	if err := os.Remove(modconfig.Path(gameDir)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// applyGame makes setup dir the game's: its mod config goes into the game (a setup without one leaves none, so the mod
+// writes its defaults) and the mod is pointed at the setup and the workspace's shared folders (game.StudioPathsFile).
+// Nothing else is copied. Returns warnings for the player.
+func applyGame(dir, gameDir string, ws workspace.Dir) ([]string, error) {
 	in, err := LoadInfo(dir)
 	if err != nil {
 		return nil, err
 	}
 	var warnings []string
-	ws := project.Workspace{Root: dir, Library: project.LibraryDir(filepath.Dir(filepath.Dir(dir)))} // dir = <workspace>\setups\<id>
-	for _, id := range in.InstalledSets {
-		p, err := ws.Load(id)
-		if err == nil {
-			err = ws.Install(p, gameDir)
-		}
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("set %s: %v", id, err))
-		}
+	if len(in.InstalledSets) > 0 && !game.ModReadsLibrary(gameDir) {
+		warnings = append(warnings, fmt.Sprintf("%d set(s) won't load: %s", len(in.InstalledSets), project.ModTooOld.Error()))
 	}
-	g := filepath.Join(dir, GameStateDir)
-	if lib, err := accessories.Open(dir, store); err != nil {
-		warnings = append(warnings, "accessories: "+err.Error())
-	} else if len(lib.Lib.Accessories) > 0 || len(lib.Lib.Furniture) > 0 || len(lib.Lib.Decorations) > 0 {
-		if err := lib.Install(gameDir); err != nil {
-			warnings = append(warnings, "accessories: "+err.Error())
-		}
-	} else if src := filepath.Join(g, accessories.InstallDir); exists(src) {
-		if err := copyTree(src, accessories.InstalledDir(gameDir), nil); err != nil {
+	if src := filepath.Join(dir, GameStateDir, cfgFile); fsutil.Exists(src) {
+		if err := fsutil.CopyFile(src, modconfig.Path(gameDir)); err != nil {
 			return warnings, err
 		}
 	}
-	if src := filepath.Join(g, "Sets"); exists(src) {
-		if err := copyTree(src, game.SetsDir(gameDir), nil); err != nil {
-			return warnings, err
-		}
-	}
-	if src := filepath.Join(g, backFile); exists(src) {
-		if err := copyFile(src, filepath.Join(game.PluginDir(gameDir), backFile)); err != nil {
-			return warnings, err
-		}
-	}
-	if src := filepath.Join(g, cfgFile); exists(src) {
-		if err := copyFile(src, modconfig.Path(gameDir)); err != nil {
-			return warnings, err
-		}
-	}
-	if src := filepath.Join(g, modconfig.ShopSignFolder); exists(src) {
-		if err := copyTree(src, filepath.Join(game.PluginDir(gameDir), modconfig.ShopSignFolder), nil); err != nil {
-			return warnings, err
-		}
-	}
-	return warnings, nil
+	err = game.UpdateStudioPaths(gameDir, func(sp *game.StudioPaths) {
+		sp.Setup, sp.Library, sp.Assets = dir, ws.Library(), ws.Store().Dir
+	})
+	return warnings, err
 }
 
 // Switch makes setup to the active one: the active setup's game state is snapshotted and its saves parked in its saves\
@@ -198,7 +113,7 @@ func (h Home) Switch(to, gameDir string, progress func(string)) ([]string, error
 	if to == from {
 		return nil, nil
 	}
-	if !exists(filepath.Join(h.Dir(to), InfoFile)) {
+	if !fsutil.Exists(filepath.Join(h.Dir(to), InfoFile)) {
 		return nil, errors.New("unknown setup")
 	}
 	if !r.SavesBackedUp && HasSaves(SaveDir()) {
@@ -265,15 +180,15 @@ func (h Home) finish(j *Journal, gameDir string, progress func(string)) ([]strin
 	if progress == nil {
 		progress = func(string) {}
 	}
-	progress("Removing the old setup from the game…")
+	progress("Taking the old setup's settings out of the game…")
 	if err := clearGame(gameDir); err != nil {
 		return nil, err
 	}
 	if failAt == PhaseApply {
 		return nil, errors.New("test: stopped during apply")
 	}
-	progress("Installing the new setup…")
-	warnings, err := applyGame(h.Dir(j.To), gameDir, assets.For(h.Root))
+	progress("Pointing the game at the new setup…")
+	warnings, err := applyGame(h.Dir(j.To), gameDir, workspace.Dir(h.Root))
 	if err != nil {
 		return warnings, err
 	}

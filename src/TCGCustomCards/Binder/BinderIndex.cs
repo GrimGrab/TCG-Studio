@@ -26,7 +26,12 @@ namespace TCGCustomCards.Binder
 
         public CardInfo Info => CardInfo.Of(Monster);
         public int SaveIndex(int v) => Pos * Per + v;
-        public int Count(int v) => CPlayerData.GetCardAmountByIndex(SaveIndex(v), Expansion, Dimension);
+        public int Count(int v)
+        {
+            var list = CPlayerData.GetCardCollectedList(Expansion, Dimension);
+            int i = SaveIndex(v);
+            return list != null && i >= 0 && i < list.Count ? list[i] : 0;
+        }
 
         public int Total()
         {
@@ -236,8 +241,16 @@ namespace TCGCustomCards.Binder
             CPlayerData.m_GradedCardInventoryList.Where(c => c != null)
                 .Select(c => (c.expansionType, CardInfo.Of(CPlayerData.GetGradedCardData(c).monsterType)));
 
+        /// <summary>
+        /// The game keeps a collection for this expansion (vanilla ones, our custom sets). Others — another mod's expansions, a
+        /// custom set that isn't loaded, FoodieGO — have none: the game would list Tetramon's cards for them and crash on counts.
+        /// </summary>
+        public static bool HasCollection(ECardExpansionType exp, bool dimension = false) =>
+            CPlayerData.GetCardCollectedList(exp, dimension) != null;
+
         private static void AddHalf(List<BinderEntry> into, ECardExpansionType exp, bool dimension)
         {
+            if (!HasCollection(exp, dimension)) return;
             var shown = InventoryBase.GetShownMonsterList(exp);
             int per = CPlayerData.GetCardAmountPerMonsterType(exp);
             var limited = VariantPatches.Limited(exp);

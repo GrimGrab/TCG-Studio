@@ -3,6 +3,8 @@
 
 import { renderMeshIcon } from './meshView';
 
+import { templateFile } from './urls';
+
 export interface Target { rect: number[]; src: number[]; flipX?: boolean; flipY?: boolean; transpose?: boolean; bleed?: boolean }
 export interface Face { id: string; label: string; net: number[]; hidden?: boolean; targets: Target[] }
 /** A labelled frame of the net (furniture: Front, Left, Top… — each holds many faces). */
@@ -15,7 +17,7 @@ export interface Model { kind: string; mesh: string; textureSize: number; size: 
   projected?: boolean; views?: View[]; turn?: number; density?: number }
 
 /** URL of a preview mesh: its own, else the accessory templates. */
-export const previewUrl = (p: PreviewPart) => p.url ?? `/acctemplates/${encodeURIComponent(p.mesh + '.obj')}`;
+export const previewUrl = (p: PreviewPart) => p.url ?? templateFile('acc', p.mesh + '.obj');
 
 /** Faces the user picks from (fit, wrap, copy to, fill): the model's faces, or a projected model's views as faces. */
 export function pickableFaces(m: Model): Face[] {

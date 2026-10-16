@@ -33,7 +33,7 @@ type Input struct {
 	GameDir       string
 	StudioVersion string
 	ModVersion    string   // mod version this Studio installs ("" = dev build without payload)
-	SetupReady    bool     // Setup screen is all green
+	SetupReady    bool     // Game & mod page is all green
 	SetupProblems []string // Setup items that aren't green, "Title: message"
 	GameRunning   bool
 	Home          string // user profile folder, masked in the report ("" = no masking)
@@ -110,9 +110,9 @@ func analyse(r *Report, text string, in Input, logTime time.Time, note func(leve
 	case len(loads) == 0:
 		note("err", "BepInEx ran, but the TCG Custom Cards mod wasn't loaded in that session.")
 	case len(loads) > 1:
-		note("err", "The mod was loaded %d times (duplicate copies in BepInEx\\plugins). Open Setup → Install / Repair.", len(loads))
+		note("err", "The mod was loaded %d times (duplicate copies in BepInEx\\plugins). Open Game & mod → Install / Repair.", len(loads))
 	case in.ModVersion != "" && r.LoadedVersion != in.ModVersion && !stale:
-		note("err", "The game loaded mod v%s, but this TCG Studio installs v%s. Open Setup → Install / Repair, then restart the game. If Setup is already green, Studio is set to a different game folder than the one Steam starts.", r.LoadedVersion, in.ModVersion)
+		note("err", "The game loaded mod v%s, but this TCG Studio installs v%s. Open Game & mod → Install / Repair, then restart the game. If Game & mod is already green, Studio is set to a different game folder than the one Steam starts.", r.LoadedVersion, in.ModVersion)
 	case in.ModVersion != "" && r.LoadedVersion == in.ModVersion:
 		note("ok", "The game loaded mod v%s, the version this TCG Studio installs.", r.LoadedVersion)
 	}
@@ -131,9 +131,9 @@ func header(r Report, in Input) string {
 	line("TCG Studio %s (installs mod %s)", in.StudioVersion, mod)
 	line("Game folder: %s", in.GameDir)
 	if in.SetupReady {
-		line("Setup: all green")
+		line("Game & mod: all green")
 	} else {
-		line("Setup: needs work")
+		line("Game & mod: needs work")
 		for _, p := range in.SetupProblems {
 			line("  - %s", p)
 		}

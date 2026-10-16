@@ -1,5 +1,9 @@
 <script lang="ts" module>
   import type { Layout } from '../lib/accessoryArt';
+  import { leaveGuard } from '../lib/leaveGuard';
+  import { Ev } from '../lib/events';
+  import { createHistory } from '../lib/history.svelte';
+  import { accFile, templateFile } from '../lib/urls';
   /** Editor state of a furniture piece (kept in the library's studio.json layouts). */
   export interface FurLayout {
     version: 'fur1';
@@ -25,7 +29,7 @@
   // the mod's Runtime/FurnitureSpots (piece-local Unity space, rotation = Quaternion.Euler(x, y, z)).
   import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
-  import { App, EventsOn, errText, ask } from '../lib/api';
+  import { App, EventsOn, errText, ask, originName } from '../lib/api';
   import { loadImage, newLayout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
   import { tick } from 'svelte';
@@ -48,6 +52,7 @@
   let f = $state<any>(null);             // working copy
   let layout = $state<FurLayout>(newFurLayout());
   let dirty = $state(false);
+  $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this piece will be lost.'));
   let saving = $state(false);
   let busy = $state(false);
 
@@ -115,7 +120,7 @@
     return '';
   }
   let bust = $state(Date.now());
-  let newType = $state('Shelf');
+  let tab = $state('Shelf');             // current type tab
   let sel = $state(0);                   // selected spot
   let part = $state<'spot' | 'customer' | 'tag' | 'area' | 'point' | 'model'>('spot');
   let selPt = $state(0);                 // selected position point (seats, stand points…) when part === 'point' // what the 3D handles act on (a part of the selected spot, or the placement area)
@@ -328,8 +333,8 @@
   let lastFill = 'BasicCardPack';        // what F switches the fill preview back on with
   let itemPrefab: any = null;
 
-  const accUrl = (rel?: string) => (rel ? `/acc/${rel.split('/').map(encodeURIComponent).join('/')}?v=${bust}` : '');
-  const furnUrl = (file?: string) => (file ? `/furntemplates/${encodeURIComponent(file)}` : '');
+  const accUrl = (rel?: string) => accFile(rel, bust);
+  const furnUrl = (file?: string) => templateFile('furn', file);
   const typeInfo = (t: string) => types.find((x) => x.type === t);
   const baseOf = (x: any) => x?.base || typeInfo(x?.type)?.defaultBase || '';
   const tplOf = (x: any) => pieces.find((p) => p.base === baseOf(x));
@@ -338,14 +343,15 @@
   // (where it came from: converted mods grouped by mod, then things made in Studio).
   const SORT_LABELS: Record<string, string> = { order: 'List order', name: 'Name', source: 'Source' };
   const originOf = (x: any) => view?.origins?.[x.id];
-  const sourceKey = (x: any) => (originOf(x) ? '0 ' + (originOf(x).mod || '').toLowerCase() : '1');
+  const sourceKey = (x: any) => (originOf(x) ? '0 ' + originName(originOf(x)).toLowerCase() : '1');
   function sortShown(list: any[], by: string): any[] {
     if (by === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name));
     if (by === 'source') return [...list].sort((a, b) => sourceKey(a).localeCompare(sourceKey(b)) || a.name.localeCompare(b.name));
     return list;
   }
   let sortBy = $state((() => { try { return localStorage.getItem('furniture.sort') || 'order'; } catch { return 'order'; } })());
-  let shown = $derived(sortShown(list, sortBy));
+  let shown = $derived(sortShown(list.filter((x) => x.type === tab), sortBy));
+  const countOf = (tp: string) => list.filter((x) => x.type === tp).length;
   let t = $derived(tplOf(f));
   let info = $derived(typeInfo(f?.type));
   /** Spot kinds the type can have ('items', 'card'; prize shelves both). spotKind = the selected spot's kind (else the first). */
@@ -366,21 +372,21 @@
 
   /** Items for the fill preview: packs and boxes (packs.json) and the accessories/figurines (accessories.json) of the game files. */
   async function loadFillItems() {
-    const get = async (f: string) => { const r = await fetch(`/acctemplates/${f}`); return r.ok ? r.json() : null; };
+    const get = async (f: string) => { const r = await fetch(templateFile('acc', f)); return r.ok ? r.json() : null; };
     const [packs, acc] = await Promise.all([get('packs.json'), get('accessories.json')]);
     itemPrefab = acc?.itemPrefab ?? null;
     const out: FillItem[] = [];
     const words = (t: string) => t.replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/_/g, ' ');
     for (const it of packs?.items ?? []) {
       if (!it.mesh || !it.itemDimension) continue;
-      out.push({ key: it.type, label: words(it.type), group: it.kind === 'box' ? 'Card boxes' : 'Card packs', mesh: `/acctemplates/${encodeURIComponent(it.mesh)}`,
-        texture: it.texture ? `/templates/${encodeURIComponent(it.texture)}` : '', tpl: { type: it.type, itemDimension: it.itemDimension, isTallItem: it.isTallItem,
+      out.push({ key: it.type, label: words(it.type), group: it.kind === 'box' ? 'Card boxes' : 'Card packs', mesh: templateFile('acc', it.mesh),
+        texture: templateFile('game', it.texture), tpl: { type: it.type, itemDimension: it.itemDimension, isTallItem: it.isTallItem,
           posYOffsetInBox: it.posYOffsetInBox, scaleOffsetInBox: it.scaleOffsetInBox, bounds: it.bounds, mesh: it.mesh, texture: it.texture } });
     }
     for (const it of acc?.items ?? []) {
       if (!it.mesh || !it.itemDimension) continue;
       out.push({ key: it.type, label: it.name || words(it.type), group: it.category === 'Figurine' || it.type.startsWith('Toy_') ? 'Figurines' : 'Accessories',
-        mesh: `/acctemplates/${encodeURIComponent(it.mesh)}`, texture: it.texture ? `/acctemplates/${encodeURIComponent(it.texture)}` : '', tpl: it });
+        mesh: templateFile('acc', it.mesh), texture: templateFile('acc', it.texture), tpl: it });
     }
     fillItems = out;
   }
@@ -433,8 +439,16 @@
 
   async function load(keep = true) {
     view = await App.Accessories();
-    if (!keep || !list.some((x) => x.id === selectedId)) selectedId = list[0]?.id ?? '';
+    const inTab = list.filter((x) => x.type === tab);
+    if (!keep || !inTab.some((x) => x.id === selectedId)) selectedId = inTab[0]?.id ?? '';
     select(selectedId);
+  }
+
+  async function switchTab(tp: string) {
+    if (tp === tab) return;
+    if (dirty && !(await ask('Discard unsaved changes to this piece?'))) return;
+    tab = tp;
+    select(list.find((x) => x.type === tp)?.id ?? '');
   }
 
   function select(id: string) {
@@ -453,7 +467,7 @@
     sel = 0;
     dirty = false;
     framedFor = '';
-    resetHistory();
+    hist.reset();
   }
 
   async function trySelect(id: string) {
@@ -464,7 +478,7 @@
   async function add() {
     if (dirty && !(await ask('Discard unsaved changes to this piece?'))) return;
     try {
-      const x = await App.NewFurniture(newType, '', '');
+      const x = await App.NewFurniture(tab, '', '');
       await load();
       select(x.id);
       notify(`Added ${x.name}.`, 'ok');
@@ -508,51 +522,24 @@
   }
 
   // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
-  // Snapshots of the piece and its editor state. `base` is the state after the last edit; an edit pushes it (the state before the
-  // edit) unless it continues a burst (typing, <600 ms apart). A whole drag is one step: pushed when it starts.
+  // Snapshots of the piece and its editor state. A whole drag is one step: pushed when it starts.
 
-  let undoStack = $state<string[]>([]);
-  let redoStack = $state<string[]>([]);
-  let base = '';
-  let lastEdit = 0;
   const snapshot = () => JSON.stringify({ f, layout });
-  function resetHistory() { undoStack = []; redoStack = []; base = snapshot(); lastEdit = 0; }
-  function pushUndo(state: string) {
-    if (!state || undoStack.at(-1) === state) return;
-    undoStack = [...undoStack.slice(-99), state];
-    redoStack = [];
-  }
-  function restore(state: string) {
+  const hist = createHistory(snapshot, (state) => {
     const o = JSON.parse(state);
     f = o.f;
     layout = o.layout;
-    base = state;
-    lastEdit = 0;
     if (!f?.spots?.[sel]) sel = 0;
     dirty = true;
     redraw++;
-  }
-  function undo() {
-    if (!undoStack.length || dragging) return;
-    redoStack = [...redoStack, snapshot()];
-    const prev = undoStack[undoStack.length - 1];
-    undoStack = undoStack.slice(0, -1);
-    restore(prev);
-  }
-  function redo() {
-    if (!redoStack.length || dragging) return;
-    undoStack = [...undoStack, snapshot()];
-    const next = redoStack[redoStack.length - 1];
-    redoStack = redoStack.slice(0, -1);
-    restore(next);
-  }
+  }, () => !!dragging);
+  const undo = () => hist.undo();
+  const redo = () => hist.redo();
 
   function changed() {
     dirty = true;
-    const now = Date.now();
-    if (!dragging && now - lastEdit > 600) pushUndo(base);
-    if (!dragging) lastEdit = now;
-    queueMicrotask(() => { if (!dragging) base = snapshot(); });
+    if (!dragging) hist.edited();
+    queueMicrotask(() => { if (!dragging) hist.base = snapshot(); });
   }
   const opt = (v: string): number | undefined => (v === '' || isNaN(+v) ? undefined : +v);
 
@@ -608,7 +595,7 @@
 
   // ---------------------------------------------------------------- spots
 
-  const cardSize = [0.065, 0.09]; // Card3d collider (runtime-facts)
+  const cardSize = [0.065, 0.09]; // Card3d collider (measured in game)
 
   function spotsFromBase() {
     f.spots = JSON.parse(JSON.stringify((t?.spots ?? []).filter((s: any) => spotKinds.includes(s.kind))));
@@ -1350,7 +1337,7 @@
         h.apply(s, (Math.atan2(dot3(h.n!, cross3(v0, v1)), dot3(v0, v1)) * 180) / Math.PI, fine);
       }
     }
-    if (!dragging.pushed) { pushUndo(base); dragging.pushed = true; } // the whole drag is one undo step
+    if (!dragging.pushed) { hist.push(); dragging.pushed = true; } // the whole drag is one undo step
     setDragTarget(s);
     // A shared customer point moves for every spot using it (Alt = only the selected spot's).
     if (part === 'customer' && !e.altKey) for (const j of dragging.linked ?? []) if (f.spots[j]) f.spots[j].customer = [...s.customer];
@@ -1398,7 +1385,8 @@
       dirty = false;
       const id = f.id;
       f = JSON.parse(JSON.stringify(list.find((x) => x.id === id)));
-      base = snapshot();
+      if (f.type !== tab) tab = f.type;
+      hist.base = snapshot();
       notify(view.installed ? 'Saved and installed — restart the game to see it.' : 'Saved. Set the game folder in Settings to install it.', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     saving = false;
@@ -1459,13 +1447,15 @@
   onMount(() => {
     window.addEventListener('keydown', onKey);
     const offs = [
-      EventsOn('templates:progress', (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
-      EventsOn('templates:ready', () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
+      EventsOn(Ev.TemplatesProgress, (m: string) => (tplStatus = { ...tplStatus, busy: true, message: m })),
+      EventsOn(Ev.TemplatesReady, () => loadTemplates().catch((e) => notify(errText(e), 'error'))),
     ];
     (async () => {
       try {
         types = await App.FurnitureTypes();
         await loadTemplates();
+        view = await App.Accessories();
+        if (!countOf(tab) && list.length) tab = list[0].type;
         await load(false);
       } catch (e) { notify(errText(e), 'error'); }
     })();
@@ -1479,7 +1469,7 @@
     try { v3 = new FigurineView(c); } catch (e) { notify(errText(e), 'error'); return; }
     v3.onpointerdown = onDown;
     v3.onpointerdrag = onDrag;
-    v3.onpointerup = () => { dragging = null; base = snapshot(); lastEdit = 0; };
+    v3.onpointerup = () => { dragging = null; hist.base = snapshot(); hist.split(); };
     v3.onhover = onHover;
     v3.onchange = () => rebuild(); // handles keep their on-screen size while zooming
     const ro = new ResizeObserver(() => v3?.draw());
@@ -1503,6 +1493,14 @@
   {:else}<p class="warn small">The game's furniture isn't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</p>{/if}
 {/if}
 
+<div class="row tabs">
+  {#each types as tp}
+    <button class:on={tab === tp.type} onclick={() => switchTab(tp.type)}>
+      {tp.title} <span class="muted small">({countOf(tp.type)})</span>
+    </button>
+  {/each}
+</div>
+
 <div class="fwrap">
   <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
     <label class="sortby small">Sort
@@ -1512,13 +1510,10 @@
     {#each shown as x (x.id)}
       <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
         <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{:else if tplOf(x)?.icon}<img src={furnUrl(tplOf(x).icon)} alt="" />{/if}</span>
-        <span class="grow">{x.name}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originOf(x).mod}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
+        <span class="grow">{x.name}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originName(originOf(x))}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
       </button>
     {/each}
-    <div class="row newrow">
-      <select bind:value={newType}>{#each types as tp}<option value={tp.type}>{tp.one}</option>{/each}</select>
-      <button onclick={add}>+ New</button>
-    </div>
+    <button onclick={add}>+ New {typeInfo(tab)?.one ?? ''}</button>
     <button onclick={() => (fromCatalog = true)} title="Furniture from your other setups and earlier imports — no re-import">Add from catalog…</button>
   </div>
 
@@ -1868,18 +1863,18 @@
       <div class="row savebar">
         <div class="grow"></div>
         {#if dirty}<span class="muted small">Unsaved changes</span>{/if}
-        <button onclick={undo} disabled={!undoStack.length || saving} title="Undo (Ctrl+Z)">↶ Undo</button>
-        <button onclick={redo} disabled={!redoStack.length || saving} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
+        <button onclick={undo} disabled={!hist.canUndo || saving} title="Undo (Ctrl+Z)">↶ Undo</button>
+        <button onclick={redo} disabled={!hist.canRedo || saving} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
         <button onclick={() => select(f.id)} disabled={!dirty || saving} title="Throw away every change since the last save.">Revert</button>
         <button class="primary" onclick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save & install'}</button>
       </div>
     </div>
   {:else if view}
-    <p class="muted" style="padding:20px">No custom furniture yet — pick a type and click “+ New”.</p>
+    <p class="muted" style="padding:20px">No {typeInfo(tab)?.title.toLowerCase() ?? 'furniture'} yet — click “+ New {typeInfo(tab)?.one ?? ''}”.</p>
   {/if}
 </div>
 
-{#if fromCatalog}<CatalogPicker kind="furniture" onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
+{#if fromCatalog}<CatalogPicker kind="furniture" sub={tab} onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
 
 <style>
   .fwrap { display: flex; flex: 1; min-height: 0; }
@@ -1889,7 +1884,8 @@
   .list button.picked { border-color: var(--accent); background: #1c2740; }
   .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .sortby select { flex: 1; }
-  .newrow select { flex: 1; min-width: 0; }
+  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
+  .tabs button.on { border-color: var(--accent); background: #22304d; }
   .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .ico img { max-width: 100%; max-height: 100%; }
   .form { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }

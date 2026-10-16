@@ -45,7 +45,7 @@
   }
 
   async function apply() {
-    if (!(await ask(`Set the license level and price of all ${list.length} accessories from their ladders? They are reinstalled in the game.`))) return;
+    if (!(await ask(`Set the license level and price of all ${list.length} accessories from their ladders? The game shows them after a restart.`))) return;
     busy = true;
     try {
       preview = await App.GamifyAccessoryApply(settings);

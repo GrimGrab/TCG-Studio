@@ -2,6 +2,7 @@
 // the set's own card art when there are none. Everything ends up as ordinary layers (named "Auto: …") that can be moved,
 // hidden or recoloured; box faces cut from the display photo keep their corners (layer.straighten) for Adjust straighten….
 import { App, projectFile } from './api';
+import { templateFile } from './urls';
 import { composeIcon, composeTexture, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, type Layer, type Layout, type Model } from './accessoryArt';
 import { rectify, type Pt } from './perspective';
 
@@ -301,7 +302,7 @@ export const hasOwnLayers = (l?: Layout) => !!l?.textureFile || !!l?.layers.some
 export async function renderLayout(projectId: string, m: Model, layout: Layout): Promise<{ texture: string; icon: string }> {
   const b = m.bases?.find((x) => x.id === layout.baseItem) ?? m.bases?.[0];
   if (!b) throw new Error("the game templates aren't available yet (Settings → Game)");
-  const vanilla = await loadImage(`/templates/${encodeURIComponent(b.texture)}`);
+  const vanilla = await loadImage(templateFile('game', b.texture));
   const S = netScale(m), net = document.createElement('canvas');
   await renderNet(net, m, layout, vanilla, (rel) => projectFile(projectId, rel), S);
   const tex = composeTexture(m, net, vanilla, S);

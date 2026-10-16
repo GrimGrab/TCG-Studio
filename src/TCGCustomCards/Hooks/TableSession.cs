@@ -24,7 +24,7 @@ namespace TCGCustomCards.Hooks
     /// Single owner of the play-table session patches (InteractablePlayTable.OnRightMouseButtonUp, PlayTableGame.DelayStart /
     /// FinishLeaveGame / ConfirmQuitGame). <see cref="OnSit"/> decides what a right-click on a table does; <see cref="Sit"/> runs
     /// the vanilla sit (customer, seat, deck and tournament checks, camera) and plays an <see cref="ITableGame"/> in place of the
-    /// Tetramon board. Tournament rounds are recorded by vanilla StopTableGame from the ReportWinner result. See docs/hooks.md.
+    /// Tetramon board. Tournament rounds are recorded by vanilla StopTableGame from the ReportWinner result.
     /// </summary>
     internal static class TableSession
     {

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -64,17 +63,18 @@ func (a *App) EPLModPath(dropped string) (string, error) { return epl.ModPath(dr
 func (a *App) PreviewEPL(path string, strip bool) (importer.EPLPreview, error) {
 	a.useEPLCache()
 	pv, err := importer.ScanEPL(path, strip, func(done, total int64) {
-		runtime.EventsEmit(a.ctx, "import:progress", importer.Progress{Stage: "unpack", Done: int(done >> 20),
+		runtime.EventsEmit(a.ctx, evImportProgress, importer.Progress{Stage: "unpack", Done: int(done >> 20),
 			Total: int(total >> 20), Message: "Unpacking the mod…"})
 	})
 	if err != nil {
 		return pv, err
 	}
+	ws := a.ws()
 	for i := range pv.Sets {
-		_, err := os.Stat(a.ws().Folder(pv.Sets[i].ProjectID))
+		_, err := os.Stat(ws.Folder(pv.Sets[i].ProjectID))
 		pv.Sets[i].Imported = err == nil
 	}
-	if l, err := a.accLib(); err == nil {
+	if l, err := a.items(); err == nil {
 		for i := range pv.Items {
 			pv.Items[i].Exists = l.HasItem(pv.Items[i].ID)
 		}
@@ -119,12 +119,12 @@ func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
 	if len(sel.Items) > 0 {
 		started := time.Now().Add(-time.Second)
 		defer a.catalogItemsSince(started) // template what the import made (after saving below)
-		l, err := a.accLib()
+		l, err := a.items()
 		if err != nil {
 			return res, err
 		}
 		n, icons, failed, err := importer.ImportEPLItems(path, sel.Items, sel.Options, l, func(pr importer.Progress) {
-			runtime.EventsEmit(a.ctx, "import:progress", pr)
+			runtime.EventsEmit(a.ctx, evImportProgress, pr)
 		})
 		res.Items = n
 		res.Icons = append(res.Icons, icons...)
@@ -133,7 +133,7 @@ func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
 			res.Problems = append(res.Problems, err.Error())
 		}
 		if n > 0 {
-			if _, err := a.saveAndInstall(l); err != nil {
+			if _, err := a.saveLibrary(l); err != nil {
 				res.Problems = append(res.Problems, err.Error())
 			}
 		}
@@ -141,9 +141,9 @@ func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
 	return res, nil
 }
 
-// SetAccessoryIcons stores shop icons rendered by the page (accessory id → PNG data URL) and reinstalls the library once.
+// SetAccessoryIcons stores shop icons rendered by the page (accessory id → PNG data URL) and saves the library once.
 func (a *App) SetAccessoryIcons(icons map[string]string) error {
-	l, err := a.accLib()
+	l, err := a.items()
 	if err != nil {
 		return err
 	}
@@ -152,17 +152,11 @@ func (a *App) SetAccessoryIcons(icons map[string]string) error {
 		if i < 0 {
 			return errors.New("accessory " + id + " not found")
 		}
-		b, err := decodeDataURL(png)
-		if err != nil {
+		if err := putEditorImage(l, id, "icon", png, &l.Lib.Accessories[i].Icon); err != nil {
 			return err
 		}
-		rel, err := l.WriteImage(id, "icon", b)
-		if err != nil {
-			return err
-		}
-		l.Lib.Accessories[i].Icon = rel
 	}
-	_, err = a.saveAndInstall(l)
+	_, err = a.saveLibrary(l)
 	ids := make([]string, 0, len(icons))
 	for id := range icons {
 		ids = append(ids, id)
@@ -172,5 +166,5 @@ func (a *App) SetAccessoryIcons(icons map[string]string) error {
 }
 
 func (a *App) useEPLCache() {
-	importer.EPLCacheDir = filepath.Join(a.home().CacheDir())
+	importer.EPLCacheDir = a.home().CacheDir()
 }

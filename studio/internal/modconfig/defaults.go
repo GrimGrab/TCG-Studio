@@ -48,6 +48,8 @@ func WriteDefaults(path, cached string) error {
 // defaults) keeps the file's value and its old entry is removed — the mod's ConfigMoves does the same. Returns how many
 // were added. Settings the mod no longer has (removedSettings) are dropped from the file.
 func AddMissing(path string) (int, error) {
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	return addMissing(path, defaultsCfg)
 }
 

@@ -1,11 +1,8 @@
 package project
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
-	"tcgstudio/internal/game"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -33,47 +30,6 @@ func TestForgeName(t *testing.T) {
 		if got := ForgeName(c.display, c.meta); got != c.want {
 			t.Errorf("ForgeName(%q) = %q, want %q", c.display, got, c.want)
 		}
-	}
-}
-
-// The game's copy gets only the MTG fields: an installed price that differs from the project stays.
-func TestPatchInstalledMtg(t *testing.T) {
-	gameDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(gameDir, "Card Shop Simulator_Data"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(game.SetsDir(gameDir), "dom")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	inst := &setfmt.Set{ID: "dom", Name: "Dominaria", Cards: []setfmt.Card{{ID: "1", Name: "Grizzly Bears", Price: setfmt.CardPrice{Base: 5}}}}
-	if err := inst.Save(filepath.Join(dir, SetFile)); err != nil {
-		t.Fatal(err)
-	}
-	p := &Project{ID: "dom",
-		Set: &setfmt.Set{ID: "dom", Name: "Dominaria", Cards: []setfmt.Card{{ID: "1", Name: "Grizzly Bears", Price: setfmt.CardPrice{Base: 9}}}},
-		Meta: &Meta{Source: "scryfall", ScryfallCode: "dom", Cards: map[string]CardMeta{"1": {Name: "Grizzly Bears", TypeLine: "Creature — Bear"}}},
-	}
-	FillMtg(p)
-	changed, err := PatchInstalledMtg(p, gameDir)
-	if err != nil || !changed {
-		t.Fatalf("changed=%v err=%v", changed, err)
-	}
-	got, err := setfmt.Load(filepath.Join(dir, SetFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Mtg == nil || got.Mtg.SetCode != "DOM" || got.Cards[0].Mtg == nil || got.Cards[0].Mtg.Name != "Grizzly Bears" {
-		t.Fatalf("MTG data not patched in: %+v / %+v", got.Mtg, got.Cards[0].Mtg)
-	}
-	if got.Cards[0].Price.Base != 5 {
-		t.Fatalf("installed price changed to %v", got.Cards[0].Price.Base)
-	}
-	if again, _ := PatchInstalledMtg(p, gameDir); again {
-		t.Fatal("second patch should be a no-op")
-	}
-	if changed, err := PatchInstalledMtg(&Project{ID: "other", Set: p.Set}, gameDir); changed || err != nil {
-		t.Fatalf("not-installed set: changed=%v err=%v", changed, err)
 	}
 }
 

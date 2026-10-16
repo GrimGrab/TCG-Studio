@@ -72,16 +72,16 @@ namespace TCGCustomCards.Runtime
             int index = list.Count;
             // CPlayerData's unlock lists are 1001 long on a new game; EnsurePlayerLists pads them, keep a sane cap anyway.
             if (index >= 1000) { Plugin.Log.LogError($"Decoration '{def.Id}': too many {def.Kind} looks"); return false; }
-            var tex = ImageCache.GetTiling(Path.Combine(def.FolderPath, def.Texture), linear: false);
+            var tex = ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture), linear: false);
             if (tex == null) { Plugin.Log.LogError($"Decoration '{def.Id}': texture '{def.Texture}' could not be loaded — skipped"); return false; }
-            var normal = string.IsNullOrEmpty(def.NormalMap) ? null : ImageCache.GetTiling(Path.Combine(def.FolderPath, def.NormalMap), linear: true);
-            var metal = string.IsNullOrEmpty(def.RoughnessMap) ? null : ImageCache.GetTiling(Path.Combine(def.FolderPath, def.RoughnessMap), linear: true);
+            var normal = string.IsNullOrEmpty(def.NormalMap) ? null : ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.NormalMap), linear: true);
+            var metal = string.IsNullOrEmpty(def.RoughnessMap) ? null : ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.RoughnessMap), linear: true);
             var color = Color.white;
             if (!string.IsNullOrEmpty(def.Color) && ColorUtility.TryParseHtmlString(def.Color, out var c)) color = c;
 
             var baseIcon = list.Count > 0 ? list[0].icon : null;
             Sprite icon = string.IsNullOrEmpty(def.Icon) ? null
-                : ImageCache.GetPadded(Path.Combine(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
+                : ImageCache.GetPadded(Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
             if (icon == null) icon = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
             var data = new ShopDecoData
@@ -132,7 +132,7 @@ namespace TCGCustomCards.Runtime
                 Plugin.Log.LogError($"Decoration '{def.Id}': base decoration {baseIdx} not found — skipped");
                 return false;
             }
-            var mesh = MeshLoader.Get(Path.Combine(def.FolderPath, def.Mesh));
+            var mesh = MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
             if (mesh == null) { Plugin.Log.LogError($"Decoration '{def.Id}': model '{def.Mesh}' could not be loaded — skipped"); return false; }
             var basePurchase = so.m_DecoPurchaseDataList[baseIdx];
 
@@ -144,7 +144,7 @@ namespace TCGCustomCards.Runtime
             tpl.m_DecoObjectType = d.Object;
             d.Prefab = tpl;
 
-            Texture tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Path.Combine(def.FolderPath, def.Texture))?.texture;
+            Texture tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
             var body = tpl.GetComponentsInChildren<Renderer>(true).Where(r => r.GetType().Name != "ParticleSystemRenderer");
             ModelSwap.Apply(tpl, body, mesh, tex, null, def.Id);
             SetArea(tpl, mesh.bounds, wall);
@@ -157,7 +157,7 @@ namespace TCGCustomCards.Runtime
             };
             Sprite baseIcon = basePurchase?.icon;
             Sprite icon = string.IsNullOrEmpty(def.Icon) ? null
-                : ImageCache.GetPadded(Path.Combine(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
+                : ImageCache.GetPadded(Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
             var purchase = new DecoPurchaseData
             {
                 name = def.Name, mainNameText = "", replaceNameXXXText = "", replaceNameYYYText = "",

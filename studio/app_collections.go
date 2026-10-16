@@ -49,7 +49,7 @@ func (a *App) Collections() []string {
 			add(s.Info().Game)
 		}
 	}
-	if list, err := a.ws().List(a.settings.GameDir); err == nil {
+	if list, err := a.ws().List(a.gameDir()); err == nil {
 		for _, s := range list {
 			add(s.Collection)
 		}

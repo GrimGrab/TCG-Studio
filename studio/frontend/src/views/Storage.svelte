@@ -121,6 +121,25 @@
     if (alive) await measure('Updating sizes…');
   }
 
+  // ---------------------------------------------------------------- backup folders in the game folder
+
+  const backupWhat = (b: any) => b.kind === 'install' ? 'Mod files replaced by Install / Repair' : "The game's old copies of your content";
+  const backupWhen = (b: any) => new Date(b.time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+  async function deleteBackups(list: any[]) {
+    const total = list.reduce((n, b) => n + b.bytes, 0);
+    if (!(await ask((list.length === 1 ? `Delete the backup folder ${list[0].name} (${size(total)})?`
+      : `Delete ${plural(list.length, 'backup folder')} (${size(total)})?`) +
+      `\n\nThe game and TCG Studio don't use them. They can't be brought back afterwards.`))) return;
+    done(await run('Deleting backup folders…', () => App.DeleteBackups(list.map((b) => b.name))), 'Backup folders deleted.');
+    // Backups are outside the workspace: no other size on the page changes, so only the list is read again.
+    const backups = await App.GameBackups();
+    if (view?.report) {
+      view.report.backups = backups;
+      lastView = view;
+    }
+  }
+
   async function deleteKept() {
     if (!(await ask(`Delete the files the upgrade kept (${size(report.kept)})?
 
@@ -395,9 +414,38 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
           pictures. So each file was stored twice: once here and once in the game. The game now reads everything straight from
           your TCG Studio workspace (see Settings → Workspace) and the game folder only holds the mod itself, so those copies
           are no longer used: {size(report.gameLibrary)} you can free.</p>
-        <p class="muted small">They're moved to a backup folder in the game folder (delete it yourself later), not deleted. Your
-          sets, items, saves and TCG Studio's files are not touched. Close the game first.</p>
+        <p class="muted small">They're moved to a backup folder in the game folder, not deleted: it shows up under "Backup folders"
+          below, where you can delete it once the game shows everything. Your sets, items, saves and TCG Studio's files are not
+          touched. Close the game first.</p>
         <div class="row"><button class="primary" onclick={removeGameCopies} disabled={!!running}>Move the game's copies out…</button></div>
+      </section>
+    {/if}
+
+    {#if report.backups?.length}
+      <section>
+        <h3>Backup folders in the game folder</h3>
+        <p class="small">TCG Studio never deletes files from the game folder: what Install / Repair replaces and what "Move the game's
+          copies out" moves goes into a <code>TCGStudio_backup_…</code> folder there instead. The game and TCG Studio don't use them;
+          delete them once everything works. Close the game first.</p>
+        <table class="backups">
+          <tbody>
+            {#each report.backups as b (b.name)}
+              <tr>
+                <td>{backupWhen(b)}</td>
+                <td>{backupWhat(b)}<div class="muted small"><code>{b.name}</code></div></td>
+                <td class="num">{size(b.bytes)}</td>
+                <td class="num">
+                  <button onclick={() => App.OpenFolder(b.path)}>Open</button>
+                  <button class="danger" onclick={() => deleteBackups([b])} disabled={!!running}>Delete…</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if report.backups.length > 1}
+          <div class="row"><button class="danger" onclick={() => deleteBackups(report.backups)} disabled={!!running}>
+            Delete all {report.backups.length} ({size(report.backups.reduce((n: number, b: any) => n + b.bytes, 0))})…</button></div>
+        {/if}
       </section>
     {/if}
 

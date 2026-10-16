@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.9.1 - 2026-10-16
+
+Storage: clean up TCG Studio's backup folders.
+
+- New: Storage → Backup folders in the game folder lists every TCGStudio_backup folder (from Game & mod → Install / Repair and from "Move the game's copies out"), with its date, what made it and its size. Open it, delete one, or delete them all. Close the game first.
+- Changed: "Move the game's copies out" now points you to that list to delete the backup once the game shows everything.
+After updating: start TCG Studio with the game closed; it updates the mod in the game for you. If Game & mod shows a dot, click Install / Repair there.
+
 ## v1.9.0 - 2026-10-16
 
 Your content now lives in one place, and TCG Studio moves it there for you.

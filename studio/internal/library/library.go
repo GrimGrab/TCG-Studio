@@ -90,6 +90,7 @@ type Report struct {
 	PlainSaves      PlainSaves    `json:"plainSaves"`
 	Kept            int64         `json:"kept"`    // files the storage upgrade kept instead of deleting (workspace.Dir.Kept)
 	KeptDir         string        `json:"keptDir"` // mod save files not compressed yet (CompressSaves)
+	Backups         []BackupInfo  `json:"backups"` // TCGStudio_backup_* folders in the game folder
 }
 
 // loc is one setup's copy of a set.
@@ -179,7 +180,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Sets: []SetInfo{}, Setups: []SetupInfo{}, Unused: []UnusedEntry{}}
+	r := &Report{Sets: []SetInfo{}, Setups: []SetupInfo{}, Unused: []UnusedEntry{}, Backups: []BackupInfo{}}
 	r.Workspace, _ = dirSize(h.Root)
 	r.Library, _ = dirSize(project.LibraryDir(h.Root))
 	r.Assets, _ = dirSize(filepath.Join(h.Root, assets.DirName))
@@ -195,6 +196,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 			r.GameLibrary += n
 		}
 		r.LibraryLinked = game.SameDir(game.LibraryPath(gameDir), project.LibraryDir(h.Root))
+		r.Backups = Backups(gameDir)
 	}
 	names := map[string]string{catalogSetup: "Catalog"}
 	for _, sm := range list {

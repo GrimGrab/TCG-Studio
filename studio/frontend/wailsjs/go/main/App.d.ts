@@ -85,6 +85,8 @@ export function DeleteAccessories(arg1:Array<string>):Promise<main.AccessoryView
 
 export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
 
+export function DeleteBackups(arg1:Array<string>):Promise<main.StorageResult>;
+
 export function DeleteDecoration(arg1:string):Promise<main.AccessoryView>;
 
 export function DeleteDecorationMany(arg1:Array<string>):Promise<main.AccessoryView>;
@@ -120,6 +122,8 @@ export function FurniturePaintTemplateOwn(arg1:string,arg2:string,arg3:figurine.
 export function FurnitureTemplates():Promise<string>;
 
 export function FurnitureTypes():Promise<Array<setfmt.FurnitureType>>;
+
+export function GameBackups():Promise<Array<library.BackupInfo>>;
 
 export function GameStatus():Promise<game.Status>;
 

@@ -181,6 +181,25 @@ func (a *App) RemoveGameCopies() (*StorageResult, error) {
 	return r, err
 }
 
+// DeleteBackups deletes the picked TCGStudio_backup_* folders of the game folder (Storage page). Game closed, since an
+// Install / Repair or "Move the game's copies out" may be writing a new one.
+func (a *App) DeleteBackups(names []string) (*StorageResult, error) {
+	gameDir, err := a.requireGameClosed()
+	if err != nil {
+		return nil, err
+	}
+	return a.storageAction("Deleting backup folders", func(ctx context.Context) (int, int64, error) {
+		a.storageProgress(library.Progress{Message: "Deleting backup folders…"})
+		freed, err := library.DeleteBackups(gameDir, names)
+		return 0, freed, err
+	})
+}
+
+// GameBackups lists the game folder's backup folders (cheap; the Storage page refreshes only this list after a delete).
+func (a *App) GameBackups() []library.BackupInfo {
+	return library.Backups(a.gameDir())
+}
+
 // DeleteKept deletes the files the storage upgrade kept instead of deleting (workspace.Dir.Kept), after the player has
 // looked through them.
 func (a *App) DeleteKept() (*StorageResult, error) {

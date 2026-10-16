@@ -134,6 +134,10 @@ export function DeleteAccessory(arg1) {
   return window['go']['main']['App']['DeleteAccessory'](arg1);
 }
 
+export function DeleteBackups(arg1) {
+  return window['go']['main']['App']['DeleteBackups'](arg1);
+}
+
 export function DeleteDecoration(arg1) {
   return window['go']['main']['App']['DeleteDecoration'](arg1);
 }
@@ -204,6 +208,10 @@ export function FurnitureTemplates() {
 
 export function FurnitureTypes() {
   return window['go']['main']['App']['FurnitureTypes']();
+}
+
+export function GameBackups() {
+  return window['go']['main']['App']['GameBackups']();
 }
 
 export function GameStatus() {

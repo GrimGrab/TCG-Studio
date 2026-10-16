@@ -16,7 +16,7 @@ namespace TCGCustomCards.Runtime
         public static void Apply(InteractableObject tpl, FurnitureDef def)
         {
             var tex = ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Paint.Texture))?.texture;
-            if (tex == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': painted texture failed to load — base look kept"); return; }
+            if (tex == null) { Plugin.Log.LogWarning($"Furniture {def.Label}: painted texture failed to load — base look kept"); return; }
             var copies = new Dictionary<Material, Material>();
             int done = 0;
             foreach (var part in def.Paint.Parts)
@@ -26,20 +26,20 @@ namespace TCGCustomCards.Runtime
                 var mr = t != null ? t.GetComponent<MeshRenderer>() : null;
                 if (mf == null || mr == null)
                 {
-                    Plugin.Log.LogWarning($"Furniture '{def.Id}': paint part '{part.Renderer}' not found on {def.BaseObject} (game update?) — left as it is");
+                    Plugin.Log.LogWarning($"Furniture {def.Label}: paint part '{part.Renderer}' not found on {def.BaseObject} (game update?) — left as it is");
                     continue;
                 }
                 var mesh = MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, part.Mesh));
                 if (mesh == null) continue;
                 if (mesh.subMeshCount != mr.sharedMaterials.Length)
-                    Plugin.Log.LogWarning($"Furniture '{def.Id}': paint part '{part.Renderer}' has {mesh.subMeshCount} submeshes for {mr.sharedMaterials.Length} materials");
+                    Plugin.Log.LogWarning($"Furniture {def.Label}: paint part '{part.Renderer}' has {mesh.subMeshCount} submeshes for {mr.sharedMaterials.Length} materials");
                 mf.sharedMesh = mesh;
                 var mats = mr.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++) mats[i] = Painted(mats[i], tex, def.Id, copies);
                 mr.sharedMaterials = mats;
                 done++;
             }
-            Plugin.Log.LogInfo($"Furniture '{def.Id}': painted {done} of {def.Paint.Parts.Count} part(s)");
+            Plugin.Log.LogInfo($"Furniture {def.Label}: painted {done} of {def.Paint.Parts.Count} part(s)");
         }
 
         private static Material Painted(Material m, Texture2D tex, string id, Dictionary<Material, Material> copies)

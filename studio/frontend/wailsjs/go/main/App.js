@@ -98,8 +98,12 @@ export function Confirm(arg1) {
   return window['go']['main']['App']['Confirm'](arg1);
 }
 
-export function CreateProject(arg1, arg2) {
-  return window['go']['main']['App']['CreateProject'](arg1, arg2);
+export function ContentKinds() {
+  return window['go']['main']['App']['ContentKinds']();
+}
+
+export function CreateProject(arg1) {
+  return window['go']['main']['App']['CreateProject'](arg1);
 }
 
 export function CreateSetup(arg1, arg2, arg3) {
@@ -180,6 +184,10 @@ export function DetectBoxFaces(arg1, arg2) {
 
 export function EPLModPath(arg1) {
   return window['go']['main']['App']['EPLModPath'](arg1);
+}
+
+export function ExportItems(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportItems'](arg1, arg2, arg3);
 }
 
 export function ExportSetup(arg1) {
@@ -288,6 +296,10 @@ export function ImportSet(arg1, arg2, arg3) {
 
 export function ImportSetup(arg1) {
   return window['go']['main']['App']['ImportSetup'](arg1);
+}
+
+export function ImportShare(arg1, arg2) {
+  return window['go']['main']['App']['ImportShare'](arg1, arg2);
 }
 
 export function ImportShopFont(arg1, arg2) {
@@ -426,12 +438,20 @@ export function PickSetupFile() {
   return window['go']['main']['App']['PickSetupFile']();
 }
 
+export function PickShareFile() {
+  return window['go']['main']['App']['PickShareFile']();
+}
+
 export function PreviewEPL(arg1, arg2) {
   return window['go']['main']['App']['PreviewEPL'](arg1, arg2);
 }
 
 export function PreviewImportFolder(arg1, arg2) {
   return window['go']['main']['App']['PreviewImportFolder'](arg1, arg2);
+}
+
+export function PreviewShare(arg1) {
+  return window['go']['main']['App']['PreviewShare'](arg1);
 }
 
 export function ProductPhotoSets(arg1, arg2) {
@@ -548,6 +568,10 @@ export function SetupState() {
 
 export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
+}
+
+export function SharePath(arg1) {
+  return window['go']['main']['App']['SharePath'](arg1);
 }
 
 export function ShopLook() {

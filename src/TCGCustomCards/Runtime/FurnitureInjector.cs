@@ -43,7 +43,7 @@ namespace TCGCustomCards.Runtime
                 }
                 catch (System.Exception e)
                 {
-                    Plugin.Log.LogError($"Furniture '{f.Def.Id}' failed to build: {e}");
+                    Plugin.Log.LogError($"Furniture {f.Def.Label} failed to build: {e}");
                     if (f.Prefab != null) Object.Destroy(f.Prefab.gameObject);
                     f.Prefab = null;
                 }
@@ -59,12 +59,12 @@ namespace TCGCustomCards.Runtime
             var basePrefab = baseData?.spawnPrefab;
             if (basePrefab == null)
             {
-                Plugin.Log.LogError($"Furniture '{def.Id}': base {def.BaseObject} has no prefab — skipped");
+                Plugin.Log.LogError($"Furniture {def.Label}: base {def.BaseObject} has no prefab — skipped");
                 return false;
             }
             if (!FurnitureKinds.Matches(def.Type, basePrefab))
             {
-                Plugin.Log.LogError($"Furniture '{def.Id}': base {def.BaseObject} is a {basePrefab.GetType().Name}, not a {def.Type} — skipped");
+                Plugin.Log.LogError($"Furniture {def.Label}: base {def.BaseObject} is a {basePrefab.GetType().Name}, not a {def.Type} — skipped");
                 return false;
             }
             var basePurchase = so.m_FurniturePurchaseDataList.Find(p => p != null && p.objectType == def.BaseObject);
@@ -116,7 +116,7 @@ namespace TCGCustomCards.Runtime
         private static void SetArea(InteractableObject tpl, Core.FurnitureDef def)
         {
             var area = tpl.m_MoveStateValidArea;
-            if (area == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': base {def.BaseObject} has no placement area; 'area' ignored"); return; }
+            if (area == null) { Plugin.Log.LogWarning($"Furniture {def.Label}: base {def.BaseObject} has no placement area; 'area' ignored"); return; }
             var grp = area.parent != null && area.parent != tpl.transform ? area.parent : area;
             var piece = tpl.transform;
             var cur = piece.InverseTransformPoint(area.position);
@@ -140,10 +140,10 @@ namespace TCGCustomCards.Runtime
                 var pts = def.Points.Where(p => p.Role == role.Role).ToList();
                 if (pts.Count == 0) continue;
                 var field = tpl.GetType().GetField(role.Field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                if (field == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': {tpl.GetType().Name} has no {role.Field}; '{role.Role}' points ignored"); continue; }
+                if (field == null) { Plugin.Log.LogWarning($"Furniture {def.Label}: {tpl.GetType().Name} has no {role.Field}; '{role.Role}' points ignored"); continue; }
                 var list = field.GetValue(tpl) as List<Transform>;
                 var single = list == null ? Core.FurnitureKinds.RoleTransform(tpl, role) : null;
-                if (list == null && single == null) { Plugin.Log.LogWarning($"Furniture '{def.Id}': base has no '{role.Role}' point"); continue; }
+                if (list == null && single == null) { Plugin.Log.LogWarning($"Furniture {def.Label}: base has no '{role.Role}' point"); continue; }
                 if (list == null) list = new List<Transform> { single };
                 if (role.Resizable && list.Count > 0)
                 {
@@ -161,7 +161,7 @@ namespace TCGCustomCards.Runtime
                     }
                 }
                 else if (pts.Count != list.Count)
-                    Plugin.Log.LogWarning($"Furniture '{def.Id}': '{role.Role}' has {list.Count} point(s) in the game, the def {pts.Count}; the first {Mathf.Min(list.Count, pts.Count)} are used");
+                    Plugin.Log.LogWarning($"Furniture {def.Label}: '{role.Role}' has {list.Count} point(s) in the game, the def {pts.Count}; the first {Mathf.Min(list.Count, pts.Count)} are used");
                 for (int i = 0; i < list.Count && i < pts.Count; i++)
                 {
                     var t = list[i];

@@ -7,14 +7,13 @@ package accessories
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"tcgstudio/internal/assets"
 	"tcgstudio/internal/game"
+	"tcgstudio/internal/ids"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setfmt"
 )
@@ -127,20 +126,10 @@ func (l *Library) FillConvertedOrigins() bool {
 	return changed
 }
 
-var nonID = regexp.MustCompile(`[^a-z0-9_-]+`)
-
-// NewID makes a unique safe id from a name ("Dragon Mat" → "dragon-mat", "dragon-mat-2", …).
-func (l *Library) NewID(name string) string {
-	base := strings.Trim(nonID.ReplaceAllString(strings.ToLower(name), "-"), "-")
-	if base == "" {
-		base = "accessory"
-	}
-	id := base
-	// Accessories, furniture and decorations share images/<id>_*, so an id is unique across all lists.
-	for n := 2; l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0; n++ {
-		id = fmt.Sprintf("%s-%d", base, n)
-	}
-	return id
+// NewID makes a random id for a new accessory, furniture piece or decoration (internal/ids: unique across players and
+// setups, never derived from the name), free in every list of this library.
+func (l *Library) NewID() string {
+	return ids.Free(l.HasItem)
 }
 
 // Put inserts or replaces an accessory (matched by id).

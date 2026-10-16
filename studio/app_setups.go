@@ -2,14 +2,13 @@ package main
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/setups"
+	"tcgstudio/internal/share"
 )
 
 // setupsState is the active setup's folder (what ws() and the accessory library use) plus what startup found.
@@ -282,29 +281,19 @@ func (a *App) ExportSetup(id string) (string, error) {
 	if err := a.snapshotActive(id); err != nil {
 		return "", err
 	}
-	err = h.Export(id, dest, Version, func(done, total int) {
+	err = share.ExportSetup(h, id, dest, Version, func(done, total int) {
 		runtime.EventsEmit(a.ctx, evSetupsExport, map[string]int{"done": done, "total": total})
 	})
 	return dest, err
 }
 
-// SetupFileInfo previews a setup file before importing it.
-type SetupFileInfo struct {
-	File     string           `json:"file"`
-	Manifest *setups.Manifest `json:"manifest"`
-}
-
 // PickSetupFile asks for a .tcgsetup file and reads its manifest (nil result when cancelled).
-func (a *App) PickSetupFile() (*SetupFileInfo, error) {
+func (a *App) PickSetupFile() (*share.SetupInfo, error) {
 	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Import setup", Filters: setupFilters})
 	if err != nil || file == "" {
 		return nil, err
 	}
-	m, err := setups.ReadManifest(file)
-	if err != nil {
-		return nil, err
-	}
-	return &SetupFileInfo{File: file, Manifest: m}, nil
+	return share.ReadSetup(file)
 }
 
 // ImportSetup adds the setup in file as a new, inactive setup with no saves and returns its id.
@@ -314,25 +303,16 @@ func (a *App) ImportSetup(file string) (SetupImport, error) {
 	if err := a.setupsErr(); err != nil {
 		return SetupImport{}, err
 	}
-	id, kept, err := a.home().Import(file, Version)
-	r := SetupImport{ID: id}
-	if len(kept) > 0 {
-		r.Note = fmt.Sprintf("%d file(s) of its sets differ from the ones on this PC: this PC's were kept (%s).", len(kept), strings.Join(firstN(kept, 3), ", "))
-	}
-	return r, err
+	a.catalogMu.Lock()
+	defer a.catalogMu.Unlock()
+	id, note, err := share.ImportSetup(a.home(), file, Version)
+	return SetupImport{ID: id, Note: note}, err
 }
 
 // SetupImport is an imported setup: its id and a note for the player ("" = nothing to say).
 type SetupImport struct {
 	ID   string `json:"id"`
 	Note string `json:"note"`
-}
-
-func firstN(list []string, n int) []string {
-	if len(list) > n {
-		return append(list[:n:n], "…")
-	}
-	return list
 }
 
 func (a *App) OpenSetupFolder(id string) {

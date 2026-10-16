@@ -52,7 +52,7 @@ namespace TCGCustomCards.Runtime
                 }
                 catch (System.Exception e)
                 {
-                    Plugin.Log.LogError($"Decoration '{d.Def.Id}' failed to build: {e}");
+                    Plugin.Log.LogError($"Decoration {d.Def.Label} failed to build: {e}");
                     if (d.Prefab != null) Object.Destroy(d.Prefab.gameObject);
                     d.Prefab = null;
                 }
@@ -71,9 +71,9 @@ namespace TCGCustomCards.Runtime
             var list = SurfaceList(so, def.Kind);
             int index = list.Count;
             // CPlayerData's unlock lists are 1001 long on a new game; EnsurePlayerLists pads them, keep a sane cap anyway.
-            if (index >= 1000) { Plugin.Log.LogError($"Decoration '{def.Id}': too many {def.Kind} looks"); return false; }
+            if (index >= 1000) { Plugin.Log.LogError($"Decoration {def.Label}: too many {def.Kind} looks"); return false; }
             var tex = ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture), linear: false);
-            if (tex == null) { Plugin.Log.LogError($"Decoration '{def.Id}': texture '{def.Texture}' could not be loaded — skipped"); return false; }
+            if (tex == null) { Plugin.Log.LogError($"Decoration {def.Label}: texture '{def.Texture}' could not be loaded — skipped"); return false; }
             var normal = string.IsNullOrEmpty(def.NormalMap) ? null : ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.NormalMap), linear: true);
             var metal = string.IsNullOrEmpty(def.RoughnessMap) ? null : ImageCache.GetTiling(Core.StudioPaths.ItemFile(def.FolderPath, def.RoughnessMap), linear: true);
             var color = Color.white;
@@ -129,11 +129,11 @@ namespace TCGCustomCards.Runtime
             int baseIdx = (int)(wall ? WallBase : FloorBase);
             if (baseIdx >= so.m_DecoDataList.Count || baseIdx >= so.m_DecoPurchaseDataList.Count || so.m_DecoDataList[baseIdx]?.spawnPrefab == null)
             {
-                Plugin.Log.LogError($"Decoration '{def.Id}': base decoration {baseIdx} not found — skipped");
+                Plugin.Log.LogError($"Decoration {def.Label}: base decoration {baseIdx} not found — skipped");
                 return false;
             }
             var mesh = MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
-            if (mesh == null) { Plugin.Log.LogError($"Decoration '{def.Id}': model '{def.Mesh}' could not be loaded — skipped"); return false; }
+            if (mesh == null) { Plugin.Log.LogError($"Decoration {def.Label}: model '{def.Mesh}' could not be loaded — skipped"); return false; }
             var basePurchase = so.m_DecoPurchaseDataList[baseIdx];
 
             var tpl = Object.Instantiate(so.m_DecoDataList[baseIdx].spawnPrefab, _root.transform);

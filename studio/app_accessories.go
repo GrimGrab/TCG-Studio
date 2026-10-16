@@ -111,7 +111,7 @@ func (a *App) NewAccessory(kind, name, base string) (setfmt.Accessory, error) {
 	if strings.TrimSpace(name) == "" {
 		name = "Custom " + strings.Title(k.One) //nolint:staticcheck // ASCII names
 	}
-	acc := setfmt.NewAccessory(kind, l.NewID(name), name, base)
+	acc := setfmt.NewAccessory(kind, l.NewID(), name, base)
 	l.Put(acc)
 	_, err = a.saveLibrary(l)
 	return acc, err

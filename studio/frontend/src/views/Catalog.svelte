@@ -1,15 +1,16 @@
 <script lang="ts">
   // Catalog: every set, accessory, furniture piece and decoration in this workspace (whatever setup it's in), which setups use it, and
   // deleting — which removes it everywhere: from the catalog, every setup that has it, the game (active setup) and its
-  // shared files. "Add to this setup" copies its game info into the active setup.
+  // shared files. "Add to this setup" copies its game info into the active setup; Export… writes the selection to an item
+  // file (Import → "TCG Studio file" reads it). The tabs are the content registry (App.ContentKinds).
   import { onMount } from 'svelte';
   import { accFile } from '../lib/urls';
   import { App, errText, ask, projectFile } from '../lib/api';
-  import { grouped, sourceGames, OWN_GROUP } from '../lib/catalog';
+  import { grouped, sourceGames, contentKinds, OWN_GROUP } from '../lib/catalog';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
-  const TABS = [{ kind: 'set', title: 'Sets' }, { kind: 'accessory', title: 'Accessories' }, { kind: 'furniture', title: 'Furniture' }, { kind: 'decoration', title: 'Decorations' }];
+  let kinds = $state<any[]>([]);
   let kind = $state('set');
   let lists = $state<Record<string, any[]>>({});
   let loading = $state(true);
@@ -22,8 +23,9 @@
   async function load() {
     loading = true;
     try {
-      const [s, a, f, d] = await Promise.all(TABS.map((t) => App.CatalogAll(t.kind)));
-      lists = { set: s, accessory: a, furniture: f, decoration: d };
+      if (!kinds.length) kinds = await contentKinds();
+      const all = await Promise.all(kinds.map((k) => App.CatalogAll(k.id)));
+      lists = Object.fromEntries(kinds.map((k, i) => [k.id, all[i]]));
     } catch (e) { notify(errText(e), 'error'); }
     loading = false;
     picked = picked.filter((k) => (lists[kind] ?? []).some((e) => e.key === k));
@@ -64,8 +66,26 @@
     if (ev.key === 'Escape') picked = [];
   }
 
-  const noun = (k: string, n: number) => k === 'set' ? (n === 1 ? 'set' : 'sets') : k === 'accessory' ? (n === 1 ? 'accessory' : 'accessories')
-    : k === 'decoration' ? (n === 1 ? 'decoration' : 'decorations') : (n === 1 ? 'furniture piece' : 'furniture pieces');
+  const noun = (k: string, n: number) => { const x = kinds.find((y) => y.id === k); return x ? (n === 1 ? x.one : x.many) : k; };
+
+  /** Writes the selection to an item file (content converted from another mod is left out). */
+  async function exportPicked() {
+    const items = (lists[kind] ?? []).filter((e) => picked.includes(e.key));
+    if (!items.length) return;
+    const converted = items.filter((e) => e.converted);
+    if (converted.length === items.length) {
+      notify(`Content converted from another mod can't be shared: its art belongs to the mod's authors.`, 'error');
+      return;
+    }
+    busy = 'Exporting…';
+    try {
+      const name = items.length === 1 ? items[0].name : `${items.length} ${noun(kind, items.length)}`;
+      const r: any = await App.ExportItems(kind, items.map((e) => e.key), name);
+      if (r.file) notify(`Exported ${items.length - (r.skipped?.length ?? 0)} ${noun(kind, items.length)} to ${r.file}` +
+        (r.skipped?.length ? ` (left out, converted from another mod: ${r.skipped.join(', ')})` : '') + '.', 'ok');
+    } catch (e) { notify(errText(e), 'error'); }
+    busy = '';
+  }
 
   async function remove() {
     const items = (lists[kind] ?? []).filter((e) => picked.includes(e.key));
@@ -110,25 +130,18 @@
     <button onclick={load} disabled={loading || !!busy}>Refresh</button>
   </header>
   <p class="muted intro">Everything in this workspace — every set, accessory and furniture piece in any of your setups — and which
-    setups use it. Add one to the setup you're in, or delete it: deleting removes it <b>everywhere</b>. Click to select;
-    Ctrl/Shift+click for several; <b>Delete</b> removes the selection.</p>
+    setups use it. Add one to the setup you're in, export a selection to share it, or delete it: deleting removes it
+    <b>everywhere</b>. Click to select; Ctrl/Shift+click for several; <b>Delete</b> removes the selection.</p>
 
   <div class="row tabs">
-    {#each TABS as t}
-      <button class:on={kind === t.kind} onclick={() => switchTab(t.kind)}>{t.title} <span class="muted small">({(lists[t.kind] ?? []).length})</span></button>
+    {#each kinds as t (t.id)}
+      <button class:on={kind === t.id} onclick={() => switchTab(t.id)}>{t.title} <span class="muted small">({(lists[t.id] ?? []).length})</span></button>
     {/each}
     <div class="grow"></div>
     <input class="search" placeholder="Search name, mod, author, setup" bind:value={filter} />
   </div>
 
-  {#if picked.length}
-    <div class="row selbar">
-      <span class="grow">{picked.length} selected</span>
-      <button class="small" onclick={() => (picked = [])}>Clear</button>
-      <button class="small danger" onclick={remove} disabled={!!busy}>Delete everywhere…</button>
-    </div>
-  {/if}
-  {#if busy}<p class="muted small">{busy}</p>{/if}
+  {#if busy && !picked.length}<p class="muted small">{busy}</p>{/if}
 
   <div class="list">
     {#if loading && !(lists[kind] ?? []).length}<p class="muted">Loading…</p>
@@ -156,6 +169,16 @@
       </div>
     {/each}
   </div>
+
+  <!-- Stays at the bottom of the window while you scroll and select. -->
+  {#if picked.length}
+    <div class="row selbar">
+      <span class="grow">{picked.length} selected{#if busy} · <span class="muted">{busy}</span>{/if}</span>
+      <button class="small" onclick={() => (picked = [])}>Clear</button>
+      <button class="small" onclick={exportPicked} disabled={!!busy} title="Save the selection as a file to share; others add it with Import → TCG Studio file">Export…</button>
+      <button class="small danger" onclick={remove} disabled={!!busy}>Delete everywhere…</button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -164,7 +187,8 @@
   .tabs { gap: 6px; align-items: center; }
   .tabs button.on { border-color: var(--accent); }
   .search { width: 280px; }
-  .selbar { gap: 8px; align-items: center; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--panel); max-width: 980px; }
+  .selbar { position: sticky; bottom: 0; z-index: 2; margin-top: auto; gap: 8px; align-items: center; padding: 8px 12px;
+    border: 1px solid var(--accent); border-radius: var(--radius); background: var(--panel); box-shadow: 0 -4px 12px #0006; max-width: 980px; }
   .list { display: flex; flex-direction: column; gap: 12px; max-width: 980px; }
   .group { display: flex; flex-direction: column; gap: 4px; }
   .ghead { font-weight: 600; font-size: 13px; padding: 4px 2px; border-bottom: 1px solid var(--line); }

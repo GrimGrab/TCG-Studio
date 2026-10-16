@@ -40,7 +40,7 @@ namespace TCGCustomCards.Runtime
         {
             if (groups == null || groups.Count == 0)
             {
-                Plugin.Log.LogWarning($"Furniture '{def.Id}': base {def.BaseObject} has no {typeof(T).Name} groups; its own spots are kept");
+                Plugin.Log.LogWarning($"Furniture {def.Label}: base {def.BaseObject} has no {typeof(T).Name} groups; its own spots are kept");
                 return;
             }
             var originals = new List<GameObject>();
@@ -59,7 +59,7 @@ namespace TCGCustomCards.Runtime
             }
             if (sample == null)
             {
-                Plugin.Log.LogWarning($"Furniture '{def.Id}': base {def.BaseObject} has no {typeof(T).Name}; its own spots are kept");
+                Plugin.Log.LogWarning($"Furniture {def.Label}: base {def.BaseObject} has no {typeof(T).Name}; its own spots are kept");
                 return;
             }
             // Clones first (from the untouched sample), then the base's compartments go. Detach before destroying so child order is clean.

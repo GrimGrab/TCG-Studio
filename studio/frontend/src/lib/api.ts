@@ -27,6 +27,12 @@ export function originName(o: { kind?: string; mod?: string }): string {
   return o.mod || `an unnamed ${o.kind}`;
 }
 
+/** "from EPL mod “X”" / "shared: “X”" (+ " by Y") for a set's or item's origin. */
+export function originLabel(kind: string | undefined, name: string, author?: string): string {
+  const by = author ? ` by ${author}` : '';
+  return kind === 'Shared file' ? `shared: “${name}”${by}` : `from EPL mod “${name}”${by}`;
+}
+
 let sourcesPromise: Promise<any[]> | null = null;
 
 /** The import source's info (colour filter, rarity order…) for a project's meta.source; null for hand-made sets. */

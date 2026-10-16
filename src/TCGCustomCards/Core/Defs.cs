@@ -23,6 +23,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("schemaVersion")] public int SchemaVersion = CurrentSchemaVersion;
         [JsonProperty("id")] public string Id;
         [JsonProperty("name")] public string Name;
+        /// <summary>How log messages name it: "Name" (id) — ids are random, the name is what people know.</summary>
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
 
         /// <summary>Game or series the set belongs to ("Magic: The Gathering", "Gundam"…): groups sets in the binder. Optional.</summary>
         [JsonProperty("collection")] public string Collection;
@@ -293,6 +295,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("id")] public string Id;
         [JsonProperty("kind"), JsonConverter(typeof(StringEnumConverter))] public DecorationKind Kind;
         [JsonProperty("name")] public string Name;
+        /// <summary>How log messages name it: "Name" (id) — ids are random, the name is what people know.</summary>
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
         [JsonProperty("price")] public float Price = 500f;
         [JsonProperty("icon")] public string Icon;
 
@@ -341,6 +345,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("id")] public string Id;
         [JsonProperty("type"), JsonConverter(typeof(StringEnumConverter))] public FurnitureType Type;
         [JsonProperty("name")] public string Name;
+        /// <summary>How log messages name it: "Name" (id) — ids are random, the name is what people know.</summary>
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
         [JsonProperty("description")] public string Description;
         /// <summary>Vanilla EObjectType of the same type used as the starting point (e.g. "ShelfSmall"). Empty = the type's default.</summary>
         [JsonProperty("base")] public string Base;
@@ -443,6 +449,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("id")] public string Id;
         [JsonProperty("kind"), JsonConverter(typeof(StringEnumConverter))] public AccessoryKind Kind;
         [JsonProperty("name")] public string Name;
+        /// <summary>How log messages name it: "Name" (id) — ids are random, the name is what people know.</summary>
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
         /// <summary>Vanilla item of the same kind whose model, box size, shop tab and restock rows are copied (e.g. "DeckBox1", "Manga3"). Empty = the kind's default (<see cref="AccessoryKinds.DefaultBase"/>).</summary>
         [JsonProperty("base")] public string Base;
         /// <summary>Full replacement texture in the base item's texture layout (as in TCG Studio's accessory editor). Null = base item's art.</summary>

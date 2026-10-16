@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { App, projectFile, errText, ask, sourceName } from '../lib/api';
+  import { App, projectFile, errText, ask, sourceName, originLabel } from '../lib/api';
   import CatalogPicker from './CatalogPicker.svelte';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
@@ -8,7 +8,6 @@
   let projects = $state<any[]>([]);
   let loading = $state(true);
   let creating = $state(false);
-  let newId = $state('');
   let newName = $state('');
 
   // List controls, remembered between launches.
@@ -69,7 +68,7 @@
 
   async function create() {
     try {
-      const p = await App.CreateProject(newId.trim(), newName.trim() || newId.trim());
+      const p = await App.CreateProject(newName.trim());
       creating = false;
       open(p.id);
     } catch (e) {
@@ -138,9 +137,8 @@
 
   {#if creating}
     <div class="create row">
-      <label class="field">Set id (stable, no spaces)<input bind:value={newId} placeholder="my-set" /></label>
       <label class="field grow">Name<input bind:value={newName} placeholder="My Set" /></label>
-      <button class="primary" disabled={!newId.trim()} onclick={create}>Create</button>
+      <button class="primary" onclick={create}>Create</button>
     </div>
   {/if}
 
@@ -178,7 +176,7 @@
             <button class="name" onclick={() => open(p.id)}>{p.name}</button>
             <div class="muted small">
               {p.id} · {p.cards} cards · {p.packs} pack{p.packs === 1 ? '' : 's'}
-              {#if p.origin} · from EPL mod “{p.origin}”
+              {#if p.origin} · {originLabel(p.originKind, p.origin)}
               {:else if p.code} · {sourceName(p.source)} {p.code.toUpperCase()}{p.releasedAt ? ` (${p.releasedAt})` : ''}{/if}
             </div>
             <div class="row" style="margin-top:6px">

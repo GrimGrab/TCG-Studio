@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"tcgstudio/internal/fsutil"
 )
@@ -44,13 +43,4 @@ func moveTree(src, dst string) error {
 func dirEmpty(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	return err != nil || len(entries) == 0
-}
-
-// isAbsPath reports whether s looks like an absolute Windows path (C:\…, C:/…, \\server\…).
-func isAbsPath(s string) bool {
-	if len(s) >= 3 && s[1] == ':' && (s[2] == '\\' || s[2] == '/') {
-		c := s[0] | 0x20
-		return c >= 'a' && c <= 'z'
-	}
-	return strings.HasPrefix(s, `\\`)
 }

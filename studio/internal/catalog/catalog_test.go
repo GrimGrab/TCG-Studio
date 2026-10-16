@@ -69,7 +69,7 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 		t.Fatalf("list from A: %+v", l)
 	}
 
-	res, err := c.AddSets(h, b, []string{"dom"})
+	res, err := c.Add(h, b, KindSet, []string{"dom"})
 	if err != nil || len(res.Added) != 1 {
 		t.Fatalf("add: %+v %v", res, err)
 	}
@@ -101,7 +101,7 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 	}
 
 	// Adding again is skipped.
-	if res, _ := c.AddSets(h, b, []string{"dom"}); len(res.Skipped) != 1 || len(res.Added) != 0 {
+	if res, _ := c.Add(h, b, KindSet, []string{"dom"}); len(res.Skipped) != 1 || len(res.Added) != 0 {
 		t.Fatalf("second add: %+v", res)
 	}
 }
@@ -129,11 +129,11 @@ func TestOtherSetupsItemsAreOfferedAndTemplated(t *testing.T) {
 		t.Fatalf("furniture offered to B: %+v", f)
 	}
 
-	lb, _ := accessories.Open(b, store)
-	res, err := c.AddItems(h, b, KindAccessory, []string{"mat"}, lb)
+	res, err := c.Add(h, b, KindAccessory, []string{"mat"})
 	if err != nil || len(res.Added) != 1 {
 		t.Fatalf("add: %+v %v", res, err)
 	}
+	lb, _ := accessories.Open(b, store)
 	acc := lb.Lib.Accessories[0]
 	if !assets.IsAsset(acc.Texture) {
 		t.Fatalf("B's copy should use the shared store: %+v", acc)

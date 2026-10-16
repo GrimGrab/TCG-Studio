@@ -2,8 +2,8 @@
 // accessory library, its installed sets in setup.json) plus game\ (the parked mod config, the global card back and Shop
 // look pictures the mod reads from there) and, while it isn't the active one, its parked game saves (saves\). The game's
 // mod reads the active setup straight from its folder (game.StudioPathsFile), so switching only moves the mod config and
-// the saves and points the game at the other setup; a setup can be exported to / imported from one .tcgsetup zip
-// (without saves).
+// the saves and points the game at the other setup. Setup files (.tcgsetup, without saves) are written and read by
+// internal/share; archive.go here reads the older format versions.
 //
 //	<workspace>\setups.json         registry: active setup + order
 //	<workspace>\switch.json         journal of an unfinished switch

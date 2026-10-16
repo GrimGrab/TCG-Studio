@@ -125,7 +125,8 @@ type Summary struct {
 	// InstallState: "none" (not in the game), "current" (the game has this version) or "stale" (edited since the last install).
 	InstallState string `json:"installState"`
 	Cover        string `json:"cover"`                // relative image for the list thumbnail
-	Origin       string `json:"origin,omitempty"`     // converted content: the mod it came from (for display and sorting)
+	Origin       string `json:"origin,omitempty"`     // where it came from: the mod or shared file's source (display, sorting)
+	OriginKind   string `json:"originKind,omitempty"` // origin.KindEPL / origin.KindShared
 	Collection   string `json:"collection,omitempty"` // set.json collection (game/series), for the Set tab's suggestions
 }
 
@@ -203,6 +204,12 @@ func (w Workspace) List(gameDir string) ([]Summary, error) {
 		s := Summary{ID: p.ID, Name: p.Set.Name, Cards: len(p.Set.Cards), Packs: len(p.Set.Packs),
 			Source: p.Meta.Source, Code: p.Meta.SourceCode(), ReleasedAt: p.Meta.ReleasedAt, Tier: p.Meta.Tier,
 			Origin: p.Meta.OriginName(), Collection: p.Set.Collection}
+		if s.Origin != "" {
+			s.OriginKind = origin.KindEPL
+			if p.Meta.Origin != nil {
+				s.OriginKind = p.Meta.Origin.Kind
+			}
+		}
 		if info != nil {
 			s.Modified = info.ModTime()
 		}

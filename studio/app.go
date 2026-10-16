@@ -25,6 +25,7 @@ import (
 	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gamify"
+	"tcgstudio/internal/ids"
 	"tcgstudio/internal/importer"
 	"tcgstudio/internal/installer"
 	"tcgstudio/internal/project"
@@ -555,8 +556,15 @@ func (a *App) UseSourceRarities(p project.Project) (*project.Project, error) {
 	return &p, nil
 }
 
-func (a *App) CreateProject(id, name string) (*project.Project, error) {
-	return a.ws().Create(id, name)
+// CreateProject makes an empty set with a random id (internal/ids), free in this setup and the shared library.
+func (a *App) CreateProject(name string) (*project.Project, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "My Set"
+	}
+	ws := a.ws()
+	id := ids.Free(func(id string) bool { return fsutil.Exists(ws.Folder(id)) || fsutil.Exists(ws.LibFolder(id)) })
+	return ws.Create(id, name)
 }
 
 // DeleteProject removes the project (taken out of the setup's installed sets first, so the game doesn't look for it).

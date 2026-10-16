@@ -6,7 +6,9 @@ import (
 
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/catalog"
+	"tcgstudio/internal/content"
 	"tcgstudio/internal/game"
+	"tcgstudio/internal/setfmt"
 )
 
 // The shared catalog: a template of every set, accessory and furniture piece that entered Studio, so any setup can add
@@ -38,54 +40,37 @@ func (a *App) inCatalog(id string) bool {
 	return false
 }
 
-// AddFromCatalog copies catalog items into the active setup. Sets are added (Install them on the Sets page as usual);
-// accessories and furniture are added at the end of the library, which is installed like any edit.
+// AddFromCatalog copies catalog items of a kind into the active setup. Sets are added (Install them on the Sets page as
+// usual); library entries are added at the end of the library, which the game reads like any edit.
 func (a *App) AddFromCatalog(kind string, ids []string) (*catalog.AddResult, error) {
 	a.catalogMu.Lock()
 	defer a.catalogMu.Unlock()
-	c := a.catalog()
-	if kind == catalog.KindSet {
-		return c.AddSets(a.home(), a.root(), ids)
+	res, err := a.catalog().Add(a.home(), a.root(), kind, ids)
+	if err != nil || len(res.Added) == 0 || kind == catalog.KindSet {
+		return res, err
 	}
 	l, err := a.items()
 	if err != nil {
-		return nil, err
-	}
-	res, err := c.AddItems(a.home(), a.root(), kind, ids, l)
-	if err != nil {
 		return res, err
 	}
-	if len(res.Added) > 0 {
-		if _, err := a.saveLibrary(l); err != nil {
-			return res, err
-		}
-	}
-	return res, nil
+	_, err = a.saveLibrary(l)
+	return res, err
 }
+
+// ContentKinds is the content registry (sets, accessories, furniture, decorations…) for pages that list every kind.
+func (a *App) ContentKinds() []content.Kind { return content.Kinds }
 
 // SaveToCatalog replaces the catalog's templates of these items with this setup's current version (what other setups
 // get when they add them from now on; setups that already have them keep their own).
 func (a *App) SaveToCatalog(kind string, ids []string) error {
 	a.catalogMu.Lock()
 	defer a.catalogMu.Unlock()
-	c := a.catalog()
-	if kind == catalog.KindSet {
-		for _, id := range ids {
-			p, err := a.loadProject(id)
-			if err != nil {
-				return err
-			}
-			if err := c.SaveSet(p); err != nil {
-				return err
-			}
+	for _, id := range ids {
+		if !setfmt.SafeID(id) {
+			return errors.New("bad id " + id)
 		}
-		return nil
 	}
-	l, err := a.items()
-	if err != nil {
-		return err
-	}
-	return c.SaveItems(l, ids)
+	return a.catalog().Save(kind, a.root(), ids)
 }
 
 // RemoveFromCatalog deletes templates. Setups that have the items keep them (and the picker still offers them from there).

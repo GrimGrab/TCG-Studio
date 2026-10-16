@@ -11,9 +11,10 @@ export function sourceGames(): Promise<Record<string, string>> {
   return games;
 }
 
-/** The group an entry is listed under: the mod it came from, else (sets) the game of its import source; '' = your own. */
+/** The group an entry is listed under: the mod or shared file it came from, else (sets) the game of its import source;
+ *  '' = your own. */
 export function groupOf(e: any, g: Record<string, string>): string {
-  if (e.origin) return `From ${e.origin}`;
+  if (e.origin) return e.originKind === SHARED ? `Shared: ${e.origin}` : `From ${e.origin}`;
   if (e.source && e.source !== 'folder') return g[e.source] ?? '';
   return '';
 }
@@ -30,3 +31,14 @@ export function grouped(list: any[], g: Record<string, string>): [string, any[]]
 }
 
 export const OWN_GROUP = 'Your own (image folders, made in Studio)';
+
+/** origin.KindShared: imported from a TCG Studio item file. */
+export const SHARED = 'Shared file';
+
+let kinds: Promise<any[]> | null = null;
+
+/** The content registry (sets, accessories, furniture, decorations…): id, one, many, title. */
+export function contentKinds(): Promise<any[]> {
+  kinds ??= App.ContentKinds().catch(() => { kinds = null; return []; });
+  return kinds;
+}

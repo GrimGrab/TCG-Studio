@@ -8,6 +8,7 @@ import {figurine} from '../models';
 import {decoart} from '../models';
 import {game} from '../models';
 import {updater} from '../models';
+import {content} from '../models';
 import {project} from '../models';
 import {debuglog} from '../models';
 import {importer} from '../models';
@@ -15,6 +16,7 @@ import {library} from '../models';
 import {art} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
+import {share} from '../models';
 import {modconfig} from '../models';
 import {installer} from '../models';
 import {upgrade} from '../models';
@@ -67,7 +69,9 @@ export function CompressSaves():Promise<main.StorageResult>;
 
 export function Confirm(arg1:string):Promise<boolean>;
 
-export function CreateProject(arg1:string,arg2:string):Promise<project.Project>;
+export function ContentKinds():Promise<Array<content.Kind>>;
+
+export function CreateProject(arg1:string):Promise<project.Project>;
 
 export function CreateSetup(arg1:string,arg2:string,arg3:boolean):Promise<main.SetupsView>;
 
@@ -108,6 +112,8 @@ export function DeleteUnused(arg1:Array<library.Pick>):Promise<library.Deleted>;
 export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
 
 export function EPLModPath(arg1:string):Promise<string>;
+
+export function ExportItems(arg1:string,arg2:Array<string>,arg3:string):Promise<main.ExportResult>;
 
 export function ExportSetup(arg1:string):Promise<string>;
 
@@ -162,6 +168,8 @@ export function ImportModelWithTextures(arg1:string,arg2:main.ModelTextures):Pro
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
 
 export function ImportSetup(arg1:string):Promise<main.SetupImport>;
+
+export function ImportShare(arg1:string,arg2:share.Selection):Promise<share.Result>;
 
 export function ImportShopFont(arg1:string,arg2:string):Promise<main.ShopFile>;
 
@@ -229,11 +237,15 @@ export function PickImportFolder():Promise<string>;
 
 export function PickPackAndBox(arg1:Array<importer.SealedProduct>,arg2:number):Promise<main.PickedProducts>;
 
-export function PickSetupFile():Promise<main.SetupFileInfo>;
+export function PickSetupFile():Promise<share.SetupInfo>;
+
+export function PickShareFile():Promise<string>;
 
 export function PreviewEPL(arg1:string,arg2:boolean):Promise<importer.EPLPreview>;
 
 export function PreviewImportFolder(arg1:string,arg2:importer.Options):Promise<importer.FolderPreview>;
+
+export function PreviewShare(arg1:string):Promise<share.Preview>;
 
 export function ProductPhotoSets(arg1:string,arg2:number):Promise<main.ProductPhotoSets>;
 
@@ -292,6 +304,8 @@ export function SetupRepair():Promise<string>;
 export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
+
+export function SharePath(arg1:string):Promise<string>;
 
 export function ShopLook():Promise<main.ShopLookView>;
 

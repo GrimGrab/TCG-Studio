@@ -72,7 +72,7 @@ func (a *App) NewFurniture(typ, name, base string) (setfmt.Furniture, error) {
 	if base == k.DefaultBase {
 		base = ""
 	}
-	f := setfmt.Furniture{ID: l.NewID(name), Type: typ, Name: name, Base: base}
+	f := setfmt.Furniture{ID: l.NewID(), Type: typ, Name: name, Base: base}
 	l.PutFurniture(f)
 	_, err = a.saveLibrary(l)
 	return f, err

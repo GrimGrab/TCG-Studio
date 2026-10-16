@@ -1,24 +1,22 @@
-// Package catalog is the workspace's shared catalog: a starting template of every set, accessory and furniture piece that
-// entered Studio, so any setup can add it without importing again. The files themselves are already shared (card art in
-// <workspace>\library, accessory/furniture files in <workspace>\assets); a template is only the game info (set.json +
-// studio.json, accessory/furniture entries + editor layouts + origins) and a set's own small files (pack/box art, card
-// back). Adding copies that game info into a setup, which owns it from then on: names, rarities, tiers, prices, costs,
-// license levels and ladder order are per setup and editing never touches the catalog or other setups.
+// Package catalog is the workspace's shared catalog: a starting template of every set, accessory, furniture piece and
+// decoration that entered Studio, so any setup can add it without importing again. The files themselves are already
+// shared (card art in <workspace>\library, item files in <workspace>\assets); a template is only the game info (set.json +
+// studio.json, library entries + editor layouts + origins). Adding copies that game info into a setup, which owns it
+// from then on: names, rarities, tiers, prices, costs, license levels and ladder order are per setup and editing never
+// touches the catalog or other setups.
 //
 // On disk the catalog is laid out like a setup — <workspace>\catalog\projects\<setId>\ and <workspace>\catalog\accessories\ —
-// so project.Workspace and accessories.Library work on it unchanged.
+// and every function works on any kind of the content registry (internal/content), never through a switch on the kind.
 package catalog
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"tcgstudio/internal/accessories"
-	"tcgstudio/internal/fsutil"
-	"tcgstudio/internal/origin"
+	"tcgstudio/internal/content"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/setups"
@@ -28,7 +26,7 @@ import (
 // DirName is the catalog folder in the workspace.
 const DirName = "catalog"
 
-// Kinds of catalog entries.
+// Kinds of catalog entries, as named in the content registry.
 const (
 	KindSet        = "set"
 	KindAccessory  = accessories.KindAccessory
@@ -46,61 +44,75 @@ func For(workspace string) Catalog {
 }
 
 // Sets is the catalog's set templates as a project workspace (card art in the shared library).
-func (c Catalog) Sets() project.Workspace {
-	return c.ws().Projects(c.Root)
-}
+func (c Catalog) Sets() project.Workspace { return c.ws().Projects(c.Root) }
 
-// Items opens the catalog's accessory and furniture templates.
-func (c Catalog) Items() (*accessories.Library, error) {
-	return c.ws().Items(c.Root)
-}
+// Items opens the catalog's accessory-library templates.
+func (c Catalog) Items() (*accessories.Library, error) { return c.ws().Items(c.Root) }
 
-// SaveSet stores (or replaces) a set's template: a copy of its project folder (set.json, studio.json; the set's files
-// stay in its shared folder).
-func (c Catalog) SaveSet(p *project.Project) error {
-	dst := c.Sets().Folder(p.ID)
-	tmp := dst + ".saving"
-	_ = os.RemoveAll(tmp)
-	if err := fsutil.CopyTree(p.Folder, tmp, nil); err != nil {
-		_ = os.RemoveAll(tmp)
-		return err
+func (c Catalog) ws() workspace.Dir { return workspace.Dir(c.Workspace) }
+
+func kind(id string) (content.Kind, error) {
+	k, ok := content.Get(id)
+	if !ok {
+		return k, fmt.Errorf("unknown kind %q", id)
 	}
-	_ = os.RemoveAll(dst)
-	return os.Rename(tmp, dst)
+	return k, nil
 }
 
-// SaveItems stores (or replaces) the templates of accessories and furniture of a library (by id): entries, editor layouts
-// and origins (their files are shared store files already).
-func (c Catalog) SaveItems(src *accessories.Library, ids []string) error {
-	cat, err := c.Items()
+// Save stores (or replaces) the templates of items of root (a setup folder): their game info (their files are shared
+// already).
+func (c Catalog) Save(kindID, root string, ids []string) error {
+	k, err := kind(kindID)
 	if err != nil {
 		return err
 	}
-	for _, id := range ids {
-		cat.CopyEntry(src, id)
-	}
-	return cat.Save()
+	_, err = k.Store.Copy(c.ws(), root, c.Root, ids)
+	return err
 }
 
-// Entry is one catalog item as the "Add from catalog" picker lists it.
-type Entry struct {
-	Kind     string     `json:"kind"` // set | accessory | furniture
-	Key      string     `json:"key"`  // what "Add" and "Delete" take (the id)
-	ID       string     `json:"id"`
-	Name     string     `json:"name"`
-	Sub      string     `json:"sub"`    // accessory kind (Playmat…), furniture type, or "" for sets
-	Detail   string     `json:"detail"` // "983 cards · 1 pack", …
-	Origin   string     `json:"origin"` // converted content: the mod it came from
-	Author   string     `json:"author"`
-	Source   string     `json:"source"` // sets: the import source (scryfall, tcgdex…; "" = made in Studio)
-	Saved    bool       `json:"saved"`  // the catalog holds a template (else it's only in another setup)
-	From     string     `json:"from"`   // where adding copies it from: "catalog" or the setup's name
-	fromRoot string     // that setup's folder (unsaved entries)
-	Here     bool       `json:"here"`   // the active setup already has this id
-	UsedBy   []SetupRef `json:"usedBy"` // the setups that have it
-	Cover    string     `json:"cover"`  // sets: a card image path (relative to the set) for the thumbnail
-	Icon     string     `json:"icon"`   // accessories/furniture: shop icon path (accessories.Library relative)
+// SaveSet stores (or replaces) a set's template.
+func (c Catalog) SaveSet(p *project.Project) error {
+	return c.Save(KindSet, filepath.Dir(filepath.Dir(p.Folder)), []string{p.ID})
 }
+
+// SaveItems stores (or replaces) the templates of accessory-library entries of any kind (by id) of src's setup.
+func (c Catalog) SaveItems(src *accessories.Library, ids []string) error {
+	root := filepath.Dir(src.Folder)
+	for _, k := range content.Kinds {
+		if k.ID == KindSet {
+			continue
+		}
+		if _, err := k.Store.Copy(c.ws(), root, c.Root, ids); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Entry is one item as the catalog lists it.
+type Entry struct {
+	Kind       string     `json:"kind"` // a content kind (set | accessory | furniture | decoration)
+	Key        string     `json:"key"`  // what "Add" and "Delete" take (the id)
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Sub        string     `json:"sub"`        // accessory kind (Playmat…), furniture type, or "" for sets
+	Detail     string     `json:"detail"`     // "983 cards · 1 pack", …
+	Origin     string     `json:"origin"`     // where it came from: the mod it was converted from, or a shared file's source
+	OriginKind string     `json:"originKind"` // origin.KindEPL / origin.KindShared ("" = your own)
+	Author     string     `json:"author"`
+	Source     string     `json:"source"`    // sets: the import source (scryfall, tcgdex…; "manual" = made in Studio)
+	Converted  bool       `json:"converted"` // converted from another mod: never exported
+	Saved      bool       `json:"saved"`     // the catalog holds a template (else it's only in another setup)
+	From       string     `json:"from"`      // where adding copies it from: "catalog" or the setup's name
+	fromRoot   string     // that folder
+	Here       bool       `json:"here"`   // the active setup already has this id
+	UsedBy     []SetupRef `json:"usedBy"` // the setups that have it
+	Cover      string     `json:"cover"`  // sets: a card image path (relative to the set) for the thumbnail
+	Icon       string     `json:"icon"`   // library entries: shop icon path (accessories.Library relative)
+}
+
+// FromRoot is the folder the entry is read from (the catalog, or the setup that has it).
+func (e Entry) FromRoot() string { return e.fromRoot }
 
 // SetupRef names a setup.
 type SetupRef struct {
@@ -120,120 +132,61 @@ func (c Catalog) All(h setups.Home, activeRoot, kind string) ([]Entry, error) {
 	return c.collect(h, activeRoot, kind, true)
 }
 
-func (c Catalog) collect(h setups.Home, activeRoot, kind string, withActive bool) ([]Entry, error) {
+func (c Catalog) collect(h setups.Home, activeRoot, kindID string, withActive bool) ([]Entry, error) {
+	k, err := kind(kindID)
+	if err != nil {
+		return nil, err
+	}
 	list, err := h.List()
 	if err != nil {
 		return nil, err
 	}
 	have := map[string]bool{} // ids in the active setup
-	switch kind {
-	case KindSet:
-		for _, id := range projectIDs(project.Workspace{Root: activeRoot}) {
-			have[id] = true
-		}
-	default:
-		if l, err := c.ws().Items(activeRoot); err == nil {
-			for _, id := range itemIDs(l, kind) {
-				have[id] = true
-			}
+	if items, err := k.Store.List(c.ws(), activeRoot); err == nil {
+		for _, it := range items {
+			have[it.ID] = true
 		}
 	}
-	usedBy := map[string][]SetupRef{} // key → setups having it
+	usedBy := map[string][]SetupRef{} // id → setups having it
 	for _, s := range list {
-		ref := SetupRef{ID: s.ID, Name: s.Name}
-		if kind == KindSet {
-			ws := c.ws().Projects(s.Folder)
-			for _, id := range projectIDs(ws) {
-				if p, err := ws.Load(id); err == nil {
-					usedBy[p.ID] = append(usedBy[p.ID], ref)
-				}
-			}
-		} else if l, err := c.ws().Items(s.Folder); err == nil {
-			for _, id := range itemIDs(l, kind) {
-				usedBy[id] = append(usedBy[id], ref)
-			}
+		items, _ := k.Store.List(c.ws(), s.Folder)
+		for _, it := range items {
+			usedBy[it.ID] = append(usedBy[it.ID], SetupRef{ID: s.ID, Name: s.Name})
+		}
+	}
+	// Templates first, then the setups (the active one only with withActive: its items are "here" already).
+	type source struct {
+		root, name string
+		saved      bool
+	}
+	sources := []source{{c.Root, "catalog", true}}
+	for _, s := range list {
+		if withActive || filepath.Clean(s.Folder) != filepath.Clean(activeRoot) {
+			sources = append(sources, source{s.Folder, s.Name, false})
 		}
 	}
 	seen := map[string]bool{}
 	var out []Entry
-	add := func(e Entry) {
-		if e.Key == "" {
-			e.Key = e.ID
-		}
-		if seen[e.Key] {
-			return
-		}
-		seen[e.Key] = true
-		e.Here = have[e.ID]
-		e.UsedBy = usedBy[e.Key]
-		if e.UsedBy == nil {
-			e.UsedBy = []SetupRef{}
-		}
-		out = append(out, e)
-	}
-	// Templates first, then other setups (active setup excluded: its items are "here" already).
-	sources := []struct {
-		root, name string
-		saved      bool
-	}{{c.Root, "catalog", true}}
-	for _, s := range list {
-		if withActive || filepath.Clean(s.Folder) != filepath.Clean(activeRoot) {
-			sources = append(sources, struct {
-				root, name string
-				saved      bool
-			}{s.Folder, s.Name, false})
-		}
-	}
 	for _, src := range sources {
-		switch kind {
-		case KindSet:
-			ws := c.ws().Projects(src.root)
-			for _, id := range projectIDs(ws) {
-				p, err := ws.Load(id)
-				if err != nil {
-					continue
-				}
-				e := Entry{Kind: kind, ID: id, Name: p.Set.Name, Source: p.Meta.Source, Saved: src.saved, From: src.name, fromRoot: src.root,
-					Detail: fmt.Sprintf("%d cards · %d pack%s", len(p.Set.Cards), len(p.Set.Packs), plural(len(p.Set.Packs)))}
-				if o := p.Meta.Origin; o != nil {
-					e.Origin, e.Author = o.Mod, o.Author
-				} else if n := p.Meta.OriginName(); n != "" {
-					e.Origin = n
-				}
-				for _, c := range p.Set.Cards {
-					if c.Image != "" {
-						e.Cover = c.Image
-						break
-					}
-				}
-				add(e)
-			}
-		default:
-			l, err := c.ws().Items(src.root)
-			if err != nil {
+		items, err := k.Store.List(c.ws(), src.root)
+		if err != nil {
+			continue
+		}
+		for _, it := range items {
+			if seen[it.ID] {
 				continue
 			}
-			for _, a := range l.Lib.Accessories {
-				if kind == KindAccessory {
-					e := itemEntry(kind, a.ID, a.Name, a.Kind, l.Meta.Origins, src.saved, src.name, src.root)
-					e.Icon = a.Icon
-					add(e)
-				}
+			seen[it.ID] = true
+			e := Entry{Kind: kindID, Key: it.ID, ID: it.ID, Name: it.Name, Sub: it.Sub, Detail: it.Detail, Source: it.Source,
+				Converted: it.Converted, Saved: src.saved, From: src.name, fromRoot: src.root, Cover: it.Cover, Icon: it.Icon,
+				Here: have[it.ID], UsedBy: usedBy[it.ID]}
+			if o := it.Origin; o != nil {
+				e.Origin, e.OriginKind, e.Author = o.Name(), o.Kind, o.Author
 			}
-			for _, f := range l.Lib.Furniture {
-				if kind == KindFurniture {
-					e := itemEntry(kind, f.ID, f.Name, f.Type, l.Meta.Origins, src.saved, src.name, src.root)
-					e.Icon = f.Icon
-					add(e)
-				}
+			if e.UsedBy == nil {
+				e.UsedBy = []SetupRef{}
 			}
-			for _, d := range l.Lib.Decorations {
-				if kind == KindDecoration {
-					e := itemEntry(kind, d.ID, d.Name, d.Kind, l.Meta.Origins, src.saved, src.name, src.root)
-					e.Icon = d.Icon
-					add(e)
-				}
-			}
+			out = append(out, e)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -245,128 +198,76 @@ func (c Catalog) collect(h setups.Home, activeRoot, kind string, withActive bool
 	return out, nil
 }
 
-func itemEntry(kind, id, name, sub string, origins map[string]origin.Origin, saved bool, from, root string) Entry {
-	e := Entry{Kind: kind, ID: id, Name: name, Sub: sub, Detail: sub, Saved: saved, From: from, fromRoot: root}
-	if o, ok := origins[id]; ok {
-		e.Origin, e.Author = o.Name(), o.Author
-	}
-	return e
-}
-
 // AddResult reports an add: what was added and what the setup already had.
 type AddResult struct {
 	Added   []string `json:"added"`
 	Skipped []string `json:"skipped"` // already in this setup
 }
 
-// AddSets copies set templates (or another setup's copy, which is templated on the way) into the active setup (by id).
-func (c Catalog) AddSets(h setups.Home, activeRoot string, ids []string) (*AddResult, error) {
-	entries, err := c.List(h, activeRoot, KindSet)
+// Add copies templates (or another setup's copy, which is templated on the way) of a kind into the active setup by id,
+// on disk. Sets are added, not installed; library entries are appended (last on the Gamify ladder).
+func (c Catalog) Add(h setups.Home, activeRoot, kindID string, ids []string) (*AddResult, error) {
+	k, err := kind(kindID)
 	if err != nil {
 		return nil, err
 	}
-	dst := c.ws().Projects(activeRoot)
+	entries, err := c.List(h, activeRoot, kindID)
+	if err != nil {
+		return nil, err
+	}
 	res := &AddResult{Added: []string{}, Skipped: []string{}}
 	for _, key := range ids {
 		e, ok := find(entries, key)
-		id := e.ID
 		switch {
 		case !ok:
 			return res, fmt.Errorf("%s is not in the catalog", key)
 		case e.Here:
-			res.Skipped = append(res.Skipped, id)
+			res.Skipped = append(res.Skipped, e.ID)
 			continue
 		}
-		srcWS := c.ws().Projects(e.fromRoot)
-		p, err := srcWS.Load(id)
+		if !e.Saved { // only in another setup: template it so it stays available
+			if _, err := k.Store.Copy(c.ws(), e.fromRoot, c.Root, []string{e.ID}); err != nil {
+				return res, err
+			}
+		}
+		done, err := k.Store.Copy(c.ws(), c.Root, activeRoot, []string{e.ID})
 		if err != nil {
 			return res, err
 		}
-		if !e.Saved { // only in another setup: template it so it stays available
-			if err := c.SaveSet(p); err != nil {
-				return res, err
-			}
-		}
-		to := dst.Folder(id)
-		if err := fsutil.CopyTree(p.Folder, to+".adding", nil); err != nil {
-			_ = os.RemoveAll(to + ".adding")
-			return res, err
-		}
-		if err := os.Rename(to+".adding", to); err != nil {
-			_ = os.RemoveAll(to + ".adding")
-			return res, err
-		}
-		res.Added = append(res.Added, id)
-	}
-	return res, nil
-}
-
-// AddItems copies accessory or furniture templates (or another setup's, templated on the way) into a setup's library
-// (appended, so they come last on the Gamify ladder). The caller saves and installs the library.
-func (c Catalog) AddItems(h setups.Home, activeRoot, kind string, ids []string, dst *accessories.Library) (*AddResult, error) {
-	entries, err := c.List(h, activeRoot, kind)
-	if err != nil {
-		return nil, err
-	}
-	res := &AddResult{Added: []string{}, Skipped: []string{}}
-	libs := map[string]*accessories.Library{}
-	for _, id := range ids {
-		e, ok := find(entries, id)
-		switch {
-		case !ok:
-			return res, fmt.Errorf("%s is not in the catalog", id)
-		case e.Here:
-			res.Skipped = append(res.Skipped, id)
-			continue
-		}
-		src := libs[e.fromRoot]
-		if src == nil {
-			if src, err = c.ws().Items(e.fromRoot); err != nil {
-				return res, err
-			}
-			libs[e.fromRoot] = src
-		}
-		if !e.Saved {
-			if err := c.SaveItems(src, []string{id}); err != nil {
-				return res, err
-			}
-			if src, err = c.Items(); err != nil { // take the templated copy (its files are in the store)
-				return res, err
-			}
-			libs[e.fromRoot] = nil
-		}
-		if !dst.CopyEntry(src, id) {
-			continue
-		}
-		res.Added = append(res.Added, id)
+		res.Added = append(res.Added, done...)
 	}
 	return res, nil
 }
 
 // Remove deletes a template (setups that have the item keep their copy).
-func (c Catalog) Remove(kind, id string) error {
+func (c Catalog) Remove(kindID, id string) error {
 	if !setfmt.SafeID(id) {
 		return fmt.Errorf("bad id %q", id)
 	}
-	if kind == KindSet {
-		return c.Sets().Delete(id)
-	}
-	cat, err := c.Items()
+	k, err := kind(kindID)
 	if err != nil {
 		return err
 	}
-	if kind == KindFurniture {
-		cat.DeleteFurniture(id)
-	} else if kind == KindDecoration {
-		cat.DeleteDecoration(id)
-	} else {
-		cat.Delete(id)
-	}
-	return cat.Save()
+	_, _, err = k.Store.Remove(c.ws(), c.Root, []string{id})
+	return err
 }
 
 // SetIDs lists the catalog's set templates (the Storage page keeps their card art).
-func (c Catalog) SetIDs() []string { return projectIDs(c.Sets()) }
+func (c Catalog) SetIDs() []string { return c.IDs(KindSet, c.Root) }
+
+// IDs lists the ids of a kind in a root.
+func (c Catalog) IDs(kindID, root string) []string {
+	k, err := kind(kindID)
+	if err != nil {
+		return nil
+	}
+	items, _ := k.Store.List(c.ws(), root)
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.ID)
+	}
+	return out
+}
 
 func find(list []Entry, key string) (Entry, bool) {
 	for _, e := range list {
@@ -377,100 +278,49 @@ func find(list []Entry, key string) (Entry, bool) {
 	return Entry{}, false
 }
 
-func projectIDs(ws project.Workspace) []string {
-	des, err := os.ReadDir(ws.ProjectsDir())
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, d := range des {
-		if d.IsDir() && !strings.Contains(d.Name(), ".") {
-			if _, err := os.Stat(filepath.Join(ws.ProjectsDir(), d.Name(), project.SetFile)); err == nil {
-				out = append(out, d.Name())
-			}
-		}
-	}
-	return out
-}
-
-func itemIDs(l *accessories.Library, kind string) []string {
-	var out []string
-	if kind == KindFurniture {
-		for _, f := range l.Lib.Furniture {
-			out = append(out, f.ID)
-		}
-		return out
-	}
-	if kind == KindDecoration {
-		for _, d := range l.Lib.Decorations {
-			out = append(out, d.ID)
-		}
-		return out
-	}
-	for _, a := range l.Lib.Accessories {
-		out = append(out, a.ID)
-	}
-	return out
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
 // KeepSetup templates everything a setup has that the catalog doesn't hold yet (before the setup is deleted, so its
-// sets and items stay available to the other setups). Existing templates are left as they are.
+// content stays available to the other setups). Existing templates are left as they are.
 func (c Catalog) KeepSetup(dir string) error {
-	ws := c.ws().Projects(dir)
-	if err := c.KeepSets(ws, projectIDs(ws)); err != nil {
-		return err
-	}
-	src, err := c.ws().Items(dir)
-	if err != nil {
-		return nil // no library
-	}
-	return c.KeepItems(src, append(append(itemIDs(src, KindAccessory), itemIDs(src, KindFurniture)...), itemIDs(src, KindDecoration)...))
-}
-
-// KeepSets templates the sets (of a setup's workspace) the catalog doesn't hold yet; existing templates stay as they are.
-func (c Catalog) KeepSets(ws project.Workspace, ids []string) error {
-	saved := map[string]bool{}
-	for _, id := range c.SetIDs() {
-		saved[id] = true
-	}
-	for _, id := range ids {
-		if saved[id] {
-			continue
-		}
-		p, err := ws.Load(id)
-		if err != nil {
-			continue
-		}
-		if err := c.SaveSet(p); err != nil {
+	for _, k := range content.Kinds {
+		if err := c.Keep(k.ID, dir, c.IDs(k.ID, dir)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// KeepItems templates the accessories/furniture (of a setup's library) the catalog doesn't hold yet.
-func (c Catalog) KeepItems(src *accessories.Library, ids []string) error {
-	cat, err := c.Items()
-	if err != nil {
-		return err
+// Keep templates items of root the catalog doesn't hold yet; existing templates stay as they are.
+func (c Catalog) Keep(kindID, root string, ids []string) error {
+	saved := map[string]bool{}
+	for _, id := range c.IDs(kindID, c.Root) {
+		saved[id] = true
 	}
 	var missing []string
 	for _, id := range ids {
-		if !cat.HasItem(id) && src.HasItem(id) {
+		if !saved[id] {
 			missing = append(missing, id)
 		}
 	}
 	if len(missing) == 0 {
 		return nil
 	}
-	return c.SaveItems(src, missing)
+	return c.Save(kindID, root, missing)
 }
 
-func (c Catalog) ws() workspace.Dir { return workspace.Dir(c.Workspace) }
+// KeepSets templates the sets (of a setup's workspace) the catalog doesn't hold yet.
+func (c Catalog) KeepSets(ws project.Workspace, ids []string) error {
+	return c.Keep(KindSet, ws.Root, ids)
+}
+
+// KeepItems templates the accessory-library entries (any kind) of src's setup the catalog doesn't hold yet.
+func (c Catalog) KeepItems(src *accessories.Library, ids []string) error {
+	root := filepath.Dir(src.Folder)
+	for _, k := range content.Kinds {
+		if k.ID != KindSet {
+			if err := c.Keep(k.ID, root, ids); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

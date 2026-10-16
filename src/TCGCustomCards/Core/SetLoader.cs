@@ -24,7 +24,7 @@ namespace TCGCustomCards.Core
                     set.FolderPath = dir;
                     // TCG Studio keeps a set's files under its project folder's name (normally the same as the set id).
                     string folderId = Path.GetFileName(dir);
-                    if (IsSafeId(set.Id) && set.Id != folderId) Plugin.Log.LogWarning($"Set '{set.Id}' is in project folder '{folderId}': its files are read from library\\{folderId}");
+                    if (IsSafeId(set.Id) && set.Id != folderId) Plugin.Log.LogWarning($"Set {set.Label} is in project folder '{folderId}': its files are read from library\\{folderId}");
                     if (studioLibrary != null && IsSafeId(folderId)) set.LibraryPath = Path.Combine(studioLibrary, folderId);
                     var errors = Validate(set);
                     if (errors.Count > 0)
@@ -34,11 +34,11 @@ namespace TCGCustomCards.Core
                     }
                     if (result.Any(s => s.Id == set.Id))
                     {
-                        Plugin.Log.LogError($"Set '{file}' rejected: duplicate set id '{set.Id}'");
+                        Plugin.Log.LogError($"Set '{file}' rejected: duplicate set id {set.Label}");
                         continue;
                     }
                     result.Add(set);
-                    Plugin.Log.LogInfo($"Loaded set '{set.Id}' ({set.Cards.Count} cards, {set.RenderMode})");
+                    Plugin.Log.LogInfo($"Loaded set {set.Label} ({set.Cards.Count} cards, {set.RenderMode})");
                 }
                 catch (Exception e)
                 {
@@ -59,7 +59,7 @@ namespace TCGCustomCards.Core
             if (set.SchemaVersion > SetDef.CurrentSchemaVersion)
                 errors.Add($"schemaVersion {set.SchemaVersion} is newer than supported ({SetDef.CurrentSchemaVersion})");
             if (string.IsNullOrWhiteSpace(set.Id)) errors.Add("missing id");
-            else if (!IsSafeId(set.Id)) errors.Add($"set id '{set.Id}' may not contain spaces or ':'");
+            else if (!IsSafeId(set.Id)) errors.Add($"set id {set.Label} may not contain spaces or ':'");
             if (string.IsNullOrWhiteSpace(set.Name)) set.Name = set.Id;
             if ((int)set.FrameTemplate < 0 || set.FrameTemplate >= ECardExpansionType.MAX || set.FrameTemplate == ECardExpansionType.FoodieGO)
                 errors.Add($"frameTemplate '{set.FrameTemplate}' is not a usable vanilla expansion");
@@ -86,13 +86,13 @@ namespace TCGCustomCards.Core
                 if (c.Price.BorderMultipliers != null && c.Price.BorderMultipliers.Length != 6) errors.Add($"{where}: price.borderMultipliers must have 6 entries");
                 if (c.Play == null) c.Play = new PlayDef();
                 if (c.Play.LaneAttack == null || c.Play.LaneAttack.Length != 4) errors.Add($"{where}: play.laneAttack must have 4 entries");
-                if (string.IsNullOrEmpty(c.Image)) Plugin.Log.LogWarning($"Set '{set.Id}' {where}: no image");
+                if (string.IsNullOrEmpty(c.Image)) Plugin.Log.LogWarning($"Set {set.Label} {where}: no image");
                 else if (!File.Exists(set.Resolve(c.Image))) MissingImage(set, $"{where}: image not found '{c.Image}'", ref missing);
                 if (!string.IsNullOrEmpty(c.BackImage) && !File.Exists(set.Resolve(c.BackImage)))
                     MissingImage(set, $"{where}: back image not found '{c.BackImage}'", ref missing);
             }
             if (missing > MissingShown)
-                Plugin.Log.LogWarning($"Set '{set.Id}': {missing - MissingShown} more card images not found (files are read from {set.LibraryPath ?? "nowhere: no set library"})");
+                Plugin.Log.LogWarning($"Set {set.Label}: {missing - MissingShown} more card images not found (files are read from {set.LibraryPath ?? "nowhere: no set library"})");
             foreach (var c in set.Cards ?? new List<CardDef>())
                 if (!string.IsNullOrEmpty(c.Play?.EvolvesFrom) && !ids.Contains(c.Play.EvolvesFrom))
                     errors.Add($"card '{c.Id}': evolvesFrom '{c.Play.EvolvesFrom}' not found in set");
@@ -119,7 +119,7 @@ namespace TCGCustomCards.Core
                     if (!ids.Contains(id)) errors.Add($"{where}: card '{id}' not in set");
                 foreach (var img in new[] { p.PackTexture, p.PackIcon, p.BoxTexture, p.BoxIcon })
                     if (!string.IsNullOrEmpty(img) && !File.Exists(set.Resolve(img)))
-                        Plugin.Log.LogWarning($"Set '{set.Id}' {where}: image not found '{img}' (vanilla art used)");
+                        Plugin.Log.LogWarning($"Set {set.Label} {where}: image not found '{img}' (vanilla art used)");
             }
             return errors;
         }
@@ -129,7 +129,7 @@ namespace TCGCustomCards.Core
 
         private static void MissingImage(SetDef set, string what, ref int missing)
         {
-            if (++missing <= MissingShown) Plugin.Log.LogWarning($"Set '{set.Id}' {what}");
+            if (++missing <= MissingShown) Plugin.Log.LogWarning($"Set {set.Label} {what}");
         }
 
         private static readonly string[] DefaultRarities = { "Common", "Rare", "Epic", "Legendary" };

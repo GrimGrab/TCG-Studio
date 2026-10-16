@@ -3,6 +3,19 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.10.0 - 2026-10-16
+
+Share single sets and items with other players, without sending a whole setup.
+
+- New: Catalog → select sets, accessories, furniture or decorations → Export… saves them as one .tcgitems file (card art and all their files included).
+- New: Import → "TCG Studio file": open or drop a .tcgitems file, pick which items to take, say where they came from (name, made by, link), and import. They go into your catalog and, if ticked, into the setup you're in. Nothing you already have is ever replaced: anything with an id you already use gets a new one.
+- Changed: setup files (.tcgsetup) use the same format now; older setup files still import.
+- Changed: new sets, accessories, furniture and decorations get random ids, so items from different players never clash. "New empty set" only asks for a name.
+- Changed: the Catalog's selection bar (Export…, Delete) stays at the bottom of the window while you scroll.
+- Changed: content converted from EPL mods stays on your PC and is left out of exports (its art belongs to the mod's authors).
+- Fixed: the Import page could show a stuck progress bar after exporting or fetching back faces.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.9.2 - 2026-10-16
 
 Storage clean-up: several GB back for anyone who imported zipped EPL mods.

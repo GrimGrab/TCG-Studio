@@ -183,7 +183,7 @@ namespace TCGCustomCards.Runtime
             int next = FurnitureBase;
             foreach (var def in defs.OrderBy(d => d.Id, System.StringComparer.Ordinal))
             {
-                if (next >= FurnitureEnd) { Plugin.Log.LogError($"Too many custom furniture pieces; '{def.Id}' and later skipped"); break; }
+                if (next >= FurnitureEnd) { Plugin.Log.LogError($"Too many custom furniture pieces; {def.Label} and later skipped"); break; }
                 var f = new CustomFurniture { Def = def, Object = (EObjectType)next++ };
                 Furniture.Add(f);
                 ByObject[(int)f.Object] = f;
@@ -214,7 +214,7 @@ namespace TCGCustomCards.Runtime
                 var d = new CustomDecoration { Def = def };
                 if (!def.IsSurface)
                 {
-                    if (next >= DecoEnd) { Plugin.Log.LogError($"Too many custom decorations; '{def.Id}' skipped"); continue; }
+                    if (next >= DecoEnd) { Plugin.Log.LogError($"Too many custom decorations; {def.Label} skipped"); continue; }
                     d.Object = (EDecoObject)next++;
                     ByDeco[(int)d.Object] = d;
                 }
@@ -334,7 +334,7 @@ namespace TCGCustomCards.Runtime
                 ByExpansion[(int)set.Expansion] = set;
                 ById[def.Id] = set;
                 int own = def.Rarities.Count(r => IsCustomRarity(r.Value));
-                Plugin.Log.LogInfo($"Registered set '{def.Id}' as expansion {(int)set.Expansion}, monsters {(int)set.Shown.First()}..{(int)set.Shown.Last()}" +
+                Plugin.Log.LogInfo($"Registered set {def.Label} as expansion {(int)set.Expansion}, monsters {(int)set.Shown.First()}..{(int)set.Shown.Last()}" +
                                    (own > 0 ? $", {own} own rarities" : ""));
             }
         }

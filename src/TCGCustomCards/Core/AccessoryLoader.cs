@@ -39,7 +39,7 @@ namespace TCGCustomCards.Core
             var ids = new HashSet<string>();
             foreach (var a in lib.Accessories ?? new List<AccessoryDef>())
             {
-                string where = $"accessory '{a?.Id}'";
+                string where = $"accessory {a?.Label}";
                 var errors = new List<string>();
                 if (a == null) continue;
                 if (string.IsNullOrWhiteSpace(a.Id)) errors.Add("missing id");
@@ -108,7 +108,7 @@ namespace TCGCustomCards.Core
             foreach (var f in lib.Furniture)
             {
                 if (f == null) continue;
-                string where = $"furniture '{f.Id}'";
+                string where = $"furniture {f.Label}";
                 var errors = new List<string>();
                 if (string.IsNullOrWhiteSpace(f.Id)) errors.Add("missing id");
                 else if (f.Id.IndexOfAny(new[] { ' ', '\t', ':', '/', '|' }) >= 0) errors.Add("id may not contain spaces, ':', '/' or '|'");
@@ -214,7 +214,7 @@ namespace TCGCustomCards.Core
             foreach (var d in lib.Decorations)
             {
                 if (d == null) continue;
-                string where = $"decoration '{d.Id}'";
+                string where = $"decoration {d.Label}";
                 var errors = new List<string>();
                 if (string.IsNullOrWhiteSpace(d.Id)) errors.Add("missing id");
                 else if (d.Id.IndexOfAny(new[] { ' ', '\t', ':', '/', '|' }) >= 0) errors.Add("id may not contain spaces, ':', '/' or '|'");

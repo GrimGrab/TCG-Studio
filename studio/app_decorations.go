@@ -39,7 +39,7 @@ func (a *App) NewDecoration(kind, name string) (setfmt.Decoration, error) {
 	if strings.TrimSpace(name) == "" {
 		name = "Custom " + k.One
 	}
-	return setfmt.NewDecoration(kind, l.NewID(name), name), nil
+	return setfmt.NewDecoration(kind, l.NewID(), name), nil
 }
 
 // SaveDecoration stores a decoration and its editor state (layout JSON, "" keeps it). iconPNG is a data URL (or raw base64) of an

@@ -115,8 +115,10 @@ export namespace catalog {
 	    sub: string;
 	    detail: string;
 	    origin: string;
+	    originKind: string;
 	    author: string;
 	    source: string;
+	    converted: boolean;
 	    saved: boolean;
 	    from: string;
 	    here: boolean;
@@ -137,8 +139,10 @@ export namespace catalog {
 	        this.sub = source["sub"];
 	        this.detail = source["detail"];
 	        this.origin = source["origin"];
+	        this.originKind = source["originKind"];
 	        this.author = source["author"];
 	        this.source = source["source"];
+	        this.converted = source["converted"];
 	        this.saved = source["saved"];
 	        this.from = source["from"];
 	        this.here = source["here"];
@@ -164,6 +168,29 @@ export namespace catalog {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace content {
+	
+	export class Kind {
+	    id: string;
+	    one: string;
+	    many: string;
+	    title: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Kind(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.one = source["one"];
+	        this.many = source["many"];
+	        this.title = source["title"];
+	    }
 	}
 
 }
@@ -1558,6 +1585,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ExportResult {
+	    file: string;
+	    skipped: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.skipped = source["skipped"];
+	    }
+	}
 	export class FigurineSource {
 	    model: string;
 	    texture: string;
@@ -1897,38 +1938,6 @@ export namespace main {
 	        this.syncedVersion = source["syncedVersion"];
 	        this.imageFormat = source["imageFormat"];
 	    }
-	}
-	export class SetupFileInfo {
-	    file: string;
-	    manifest?: setups.Manifest;
-	
-	    static createFrom(source: any = {}) {
-	        return new SetupFileInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.file = source["file"];
-	        this.manifest = this.convertValues(source["manifest"], setups.Manifest);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class SetupImport {
 	    id: string;
@@ -2521,6 +2530,7 @@ export namespace origin {
 	    path?: string;
 	    bundle?: string;
 	    item?: string;
+	    origId?: string;
 	    // Go type: time
 	    imported: any;
 	
@@ -2538,6 +2548,7 @@ export namespace origin {
 	        this.path = source["path"];
 	        this.bundle = source["bundle"];
 	        this.item = source["item"];
+	        this.origId = source["origId"];
 	        this.imported = this.convertValues(source["imported"], null);
 	    }
 	
@@ -2740,6 +2751,7 @@ export namespace project {
 	    installState: string;
 	    cover: string;
 	    origin?: string;
+	    originKind?: string;
 	    collection?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -2761,6 +2773,7 @@ export namespace project {
 	        this.installState = source["installState"];
 	        this.cover = source["cover"];
 	        this.origin = source["origin"];
+	        this.originKind = source["originKind"];
 	        this.collection = source["collection"];
 	    }
 	
@@ -3515,55 +3528,6 @@ export namespace setfmt {
 
 export namespace setups {
 	
-	export class Manifest {
-	    format: string;
-	    formatVersion: number;
-	    name: string;
-	    description?: string;
-	    studioVersion?: string;
-	    // Go type: time
-	    exported: any;
-	    sets: number;
-	    accessories: number;
-	    furniture: number;
-	    decorations?: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new Manifest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.format = source["format"];
-	        this.formatVersion = source["formatVersion"];
-	        this.name = source["name"];
-	        this.description = source["description"];
-	        this.studioVersion = source["studioVersion"];
-	        this.exported = this.convertValues(source["exported"], null);
-	        this.sets = source["sets"];
-	        this.accessories = source["accessories"];
-	        this.furniture = source["furniture"];
-	        this.decorations = source["decorations"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class Summary {
 	    id: string;
 	    name: string;
@@ -3595,6 +3559,323 @@ export namespace setups {
 	        this.furniture = source["furniture"];
 	        this.decorations = source["decorations"];
 	        this.hasSaves = source["hasSaves"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace share {
+	
+	export class Imported {
+	    kind: string;
+	    id: string;
+	    name: string;
+	    origId?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Imported(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.origId = source["origId"];
+	    }
+	}
+	export class Item {
+	    kind: string;
+	    id: string;
+	    name: string;
+	    sub?: string;
+	    origin?: origin.Origin;
+	
+	    static createFrom(source: any = {}) {
+	        return new Item(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sub = source["sub"];
+	        this.origin = this.convertValues(source["origin"], origin.Origin);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Manifest {
+	    format: string;
+	    formatVersion: number;
+	    studioVersion?: string;
+	    // Go type: time
+	    exported: any;
+	    items: Item[];
+	    name?: string;
+	    description?: string;
+	    sets: number;
+	    accessories?: number;
+	    furniture?: number;
+	    decorations?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Manifest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.format = source["format"];
+	        this.formatVersion = source["formatVersion"];
+	        this.studioVersion = source["studioVersion"];
+	        this.exported = this.convertValues(source["exported"], null);
+	        this.items = this.convertValues(source["items"], Item);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.sets = source["sets"];
+	        this.accessories = source["accessories"];
+	        this.furniture = source["furniture"];
+	        this.decorations = source["decorations"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Pick {
+	    kind: string;
+	    id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Pick(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	    }
+	}
+	export class Source {
+	    name: string;
+	    author: string;
+	    link: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Source(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.author = source["author"];
+	        this.link = source["link"];
+	    }
+	}
+	export class PreviewItem {
+	    kind: string;
+	    id: string;
+	    name: string;
+	    sub?: string;
+	    origin?: origin.Origin;
+	    newId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sub = source["sub"];
+	        this.origin = this.convertValues(source["origin"], origin.Origin);
+	        this.newId = source["newId"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Preview {
+	    file: string;
+	    items: PreviewItem[];
+	    source: Source;
+	    studio: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Preview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.items = this.convertValues(source["items"], PreviewItem);
+	        this.source = this.convertValues(source["source"], Source);
+	        this.studio = source["studio"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Result {
+	    items: Imported[];
+	    added: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], Imported);
+	        this.added = source["added"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Selection {
+	    picks: Pick[];
+	    source: Source;
+	    addHere: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Selection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.picks = this.convertValues(source["picks"], Pick);
+	        this.source = this.convertValues(source["source"], Source);
+	        this.addHere = source["addHere"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SetupInfo {
+	    file: string;
+	    manifest?: Manifest;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetupInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.manifest = this.convertValues(source["manifest"], Manifest);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -212,40 +212,41 @@ func TestRecoverFinishesApply(t *testing.T) {
 	}
 }
 
-func TestExportImport(t *testing.T) {
-	e := newEnv(t)
-	a, _ := e.h.Ensure("1.0")
-	e.addInstalledSet(t, a, "dom")
-	write(t, modconfig.Path(e.gameDir), "[MTG]\r\nForgeFolder = D:\\Games\\Forge\r\nOther = x\r\n")
-	write(t, filepath.Join(a, "projects", "dom", "studio.json"), `{"source":"manual","pick":"C:\\Users\\Someone\\art.png","cards":{}}`)
-	write(t, filepath.Join(e.saveDir, "savedGames_Release1.json"), "save")
-	b, _ := e.h.Create("Other", "", false, "1.0")
-	if _, err := e.h.Switch(b, e.gameDir, nil); err != nil { // parks A's saves in A\saves
-		t.Fatal(err)
-	}
-
-	out := filepath.Join(t.TempDir(), "My Setup"+Ext)
-	if err := e.h.Export(DefaultID, out, "1.0", nil); err != nil {
-		t.Fatal(err)
-	}
-	zr, err := zip.OpenReader(out)
+// zipFile writes a setup file by hand (the format versions Import reads; Studio writes version 3 through internal/share).
+func zipFile(t *testing.T, entries map[string]string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "s"+Ext)
+	f, err := os.Create(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	names := map[string]bool{}
-	for _, f := range zr.File {
-		names[f.Name] = true
-		if strings.HasPrefix(f.Name, SavesDir) {
-			t.Fatalf("saves exported: %s", f.Name)
-		}
+	zw := zip.NewWriter(f)
+	for name, body := range entries {
+		w, _ := zw.Create(name)
+		_, _ = w.Write([]byte(body))
 	}
-	zr.Close()
-	for _, want := range []string{manifestFile, InfoFile, "projects/dom/set.json", "game/" + cfgFile} {
-		if !names[want] {
-			t.Fatalf("missing %s in export", want)
-		}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
 	}
+	_ = f.Close()
+	return p
+}
 
+const manifestV2 = `{"format":"tcgsetup","formatVersion":2,"name":"My Setup"}`
+
+func TestImportV2(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.h.Ensure("1.0"); err != nil {
+		t.Fatal(err)
+	}
+	out := zipFile(t, map[string]string{
+		manifestFile:             manifestV2,
+		InfoFile:                 `{"name":"My Setup","installedSets":["dom"]}`,
+		"projects/dom/set.json":  `{"id":"dom","name":"Dominaria"}`,
+		"game/" + cfgFile:        "[MTG]\r\nOther = x\r\n",
+		SavesDir + "/save.json":  "save",
+		"game/Sets/old/set.json": "parked",
+	})
 	id, _, err := e.h.Import(out, "1.0")
 	if err != nil {
 		t.Fatal(err)
@@ -254,15 +255,11 @@ func TestExportImport(t *testing.T) {
 	if in.Name != "My Setup (2)" || len(in.InstalledSets) != 1 || in.InstalledSets[0] != "dom" {
 		t.Fatalf("imported info = %+v", in)
 	}
-	cfg := read(t, filepath.Join(e.h.Dir(id), GameStateDir, cfgFile))
-	if strings.Contains(cfg, `D:\Games`) || !strings.Contains(cfg, "ForgeFolder = \r\n") || !strings.Contains(cfg, "Other = x") {
-		t.Fatalf("cfg not scrubbed: %q", cfg)
+	if !strings.Contains(read(t, filepath.Join(e.h.Dir(id), GameStateDir, cfgFile)), "Other = x") {
+		t.Fatal("cfg not imported")
 	}
-	if meta := read(t, filepath.Join(e.h.Dir(id), "projects", "dom", "studio.json")); strings.Contains(meta, "Someone") {
-		t.Fatalf("studio.json not scrubbed: %s", meta)
-	}
-	if fsutil.Exists(filepath.Join(e.h.Dir(id), SavesDir)) {
-		t.Fatal("imported setup has saves")
+	if fsutil.Exists(filepath.Join(e.h.Dir(id), SavesDir)) || fsutil.Exists(filepath.Join(e.h.Dir(id), GameStateDir, "Sets")) {
+		t.Fatal("imported saves or parked game content")
 	}
 }
 
@@ -323,40 +320,20 @@ func TestDuplicateAndDelete(t *testing.T) {
 	}
 }
 
-// Shared accessory files go into an export under accessories/assets/ and come back into the importing workspace's store;
-// converted mod content (eplmod-) stays out.
-func TestExportImportSharedAssets(t *testing.T) {
+// Shared accessory files travel under accessories/assets/ and come back into the importing workspace's store.
+func TestImportV2SharedAssets(t *testing.T) {
 	e := newEnv(t)
-	a, _ := e.h.Ensure("1.0")
+	if _, err := e.h.Ensure("1.0"); err != nil {
+		t.Fatal(err)
+	}
 	store := assets.For(e.h.Root)
-	l, err := accessories.Open(a, store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	own, _ := l.WriteImage("mat", "texture", []byte("own playmat"))
-	conv, _ := l.WriteImage(accessories.ConvertedPrefix+"x", "texture", []byte("mod art"))
-	l.Put(setfmt.Accessory{ID: "mat", Kind: "Playmat", Name: "Mat", Texture: own})
-	l.Put(setfmt.Accessory{ID: accessories.ConvertedPrefix + "x", Kind: "Playmat", Name: "Mod", Texture: conv})
-	if err := l.Save(); err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(t.TempDir(), "s"+Ext)
-	if err := e.h.Export(DefaultID, out, "1.0", nil); err != nil {
-		t.Fatal(err)
-	}
-	zr, err := zip.OpenReader(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, f := range zr.File {
-		names[f.Name] = true
-	}
-	zr.Close()
-	if !names["accessories/"+own] || names["accessories/"+conv] {
-		t.Fatalf("export: own %v, converted %v", names["accessories/"+own], names["accessories/"+conv])
-	}
-	_ = os.Remove(store.Path(own)) // as on another PC: the store doesn't have it yet
+	own, _ := assets.For(t.TempDir()).Put([]byte("own playmat"), ".png") // its name as on the sender's PC
+	out := zipFile(t, map[string]string{
+		manifestFile:                             manifestV2,
+		InfoFile:                                 `{"name":"My Setup","installedSets":[]}`,
+		"accessories/" + accessories.LibraryFile: `{"schemaVersion":1,"accessories":[{"id":"mat","kind":"Playmat","name":"Mat","texture":"` + own + `","license":{"level":1,"price":1}}]}`,
+		"accessories/" + own:                     "own playmat",
+	})
 	id, _, err := e.h.Import(out, "1.0")
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +352,7 @@ func TestExportImportSharedAssets(t *testing.T) {
 
 // A set's files travel under library/<setId>/ and land in the importing workspace's shared folder; a file this PC
 // already has with other bytes is kept and reported. Files an older export kept in projects/<setId>/ are taken too.
-func TestExportImportSetFiles(t *testing.T) {
+func TestImportV2SetFiles(t *testing.T) {
 	e := newEnv(t)
 	a, _ := e.h.Ensure("1.0")
 	ws := project.Workspace{Root: a, Library: project.LibraryDir(e.h.Root)}
@@ -387,27 +364,15 @@ func TestExportImportSetFiles(t *testing.T) {
 	if err := ws.Save(p); err != nil {
 		t.Fatal(err)
 	}
-	write(t, p.ImagePath("images/1.png"), "one")
-	write(t, p.ImagePath("images/2.png"), "two")
-	out := filepath.Join(t.TempDir(), "s"+Ext)
-	if err := e.h.Export(DefaultID, out, "1.0", nil); err != nil {
-		t.Fatal(err)
-	}
-	zr, err := zip.OpenReader(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, f := range zr.File {
-		names[f.Name] = true
-	}
-	zr.Close()
-	if !names["library/dom/images/1.png"] || names["projects/dom/images/1.png"] {
-		t.Fatalf("export entries %v", names)
-	}
+	out := zipFile(t, map[string]string{
+		manifestFile:               manifestV2,
+		InfoFile:                   `{"name":"My Setup","installedSets":[]}`,
+		"projects/dom/set.json":    `{"id":"dom","name":"Dominaria"}`,
+		"library/dom/images/1.png": "one",
+		"library/dom/images/2.png": "two",
+	})
 
-	// As on another PC: card 1 missing, card 2 different.
-	_ = os.Remove(p.ImagePath("images/1.png"))
+	// This PC: card 1 missing, card 2 different.
 	write(t, p.ImagePath("images/2.png"), "two, this PC")
 	_, kept, err := e.h.Import(out, "1.0")
 	if err != nil {

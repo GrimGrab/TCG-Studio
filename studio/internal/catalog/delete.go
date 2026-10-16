@@ -2,12 +2,7 @@ package catalog
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
-	"tcgstudio/internal/accessories"
-	"tcgstudio/internal/assets"
-	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/setups"
 )
@@ -18,130 +13,48 @@ import (
 // Deleted reports a DeleteEverywhere.
 type Deleted struct {
 	Setups  []string `json:"setups"`  // setup ids that had something removed
-	SetIDs  []string `json:"setIds"`  // set ids no setup has any more
+	SetIDs  []string `json:"setIds"`  // ids whose shared folder went (sets no setup has any more)
 	Removed int      `json:"removed"` // copies removed (templates + setups)
 }
 
-// DeleteEverywhere removes sets or accessories/furniture (by id) from the catalog and from every setup.
-func (c Catalog) DeleteEverywhere(h setups.Home, kind string, keys []string) (*Deleted, error) {
+// DeleteEverywhere removes items of a kind (by id) from the catalog and from every setup, then their shared files that
+// nothing uses any more.
+func (c Catalog) DeleteEverywhere(h setups.Home, kindID string, keys []string) (*Deleted, error) {
+	k, err := kind(kindID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range keys {
+		if !setfmt.SafeID(id) {
+			return nil, fmt.Errorf("bad id %q", id)
+		}
+	}
 	list, err := h.List()
 	if err != nil {
 		return nil, err
 	}
 	res := &Deleted{Setups: []string{}, SetIDs: []string{}}
-	touched := map[string]bool{}
-	if kind == KindSet {
-		for _, key := range keys {
-			id := key
-			if !setfmt.SafeID(id) {
-				return res, fmt.Errorf("bad set id %q", id)
-			}
-			for _, s := range list {
-				ws := c.ws().Projects(s.Folder)
-				if _, err := ws.Load(id); err != nil {
-					continue
-				}
-				if err := ws.Delete(id); err != nil {
-					return res, err
-				}
-				res.Removed++
-				touched[s.ID] = true
-				_ = setups.EditInfo(s.Folder, func(info *setups.Info) {
-					kept := info.InstalledSets[:0]
-					for _, x := range info.InstalledSets {
-						if x != id {
-							kept = append(kept, x)
-						}
-					}
-					info.InstalledSets = kept
-				})
-			}
-			if _, err := c.Sets().Load(id); err == nil {
-				if err := c.Sets().Delete(id); err != nil {
-					return res, err
-				}
-				res.Removed++
-			}
-			// The set's shared folder goes once nothing has the set any more.
-			if !c.setInUse(list, id) {
-				_ = os.RemoveAll(filepath.Join(c.ws().Library(), id))
-				res.SetIDs = append(res.SetIDs, id)
-			}
+	var refs []string
+	roots := append(setups.Folders(list), c.Root)
+	for _, s := range list {
+		n, r, err := k.Store.Remove(c.ws(), s.Folder, keys)
+		if err != nil {
+			return res, err
 		}
-	} else {
-		store := assets.For(c.Workspace)
-		var refs []string
-		drop := func(l *accessories.Library, id string) bool {
-			if _, _, ok := l.Entry(id); !ok {
-				return false
-			}
-			refs = append(refs, l.ItemRefs(id)...)
-			l.Delete(id)
-			l.DeleteFurniture(id)
-			l.DeleteDecoration(id)
-			return true
-		}
-		for _, s := range list {
-			l, err := accessories.Open(s.Folder, store)
-			if err != nil {
-				continue
-			}
-			n := 0
-			for _, id := range keys {
-				if drop(l, id) {
-					n++
-				}
-			}
-			if n > 0 {
-				if err := l.Save(); err != nil {
-					return res, err
-				}
-				res.Removed += n
-				touched[s.ID] = true
-			}
-		}
-		if cat, err := c.Items(); err == nil {
-			n := 0
-			for _, id := range keys {
-				if drop(cat, id) {
-					n++
-				}
-			}
-			if n > 0 {
-				if err := cat.Save(); err != nil {
-					return res, err
-				}
-				res.Removed += n
-			}
-		}
-		still := accessories.StoreRefs(append(setups.Folders(list), c.Root)...)
-		for _, r := range refs {
-			if !still[r] {
-				_ = os.Remove(store.Path(r))
-			}
+		if n > 0 {
+			res.Removed += n
+			res.Setups = append(res.Setups, s.ID)
+			refs = append(refs, r...)
 		}
 	}
-	for _, s := range list {
-		if touched[s.ID] {
-			res.Setups = append(res.Setups, s.ID)
-		}
+	n, r, err := k.Store.Remove(c.ws(), c.Root, keys)
+	if err != nil {
+		return res, err
+	}
+	res.Removed += n
+	refs = append(refs, r...)
+	if gone := k.Store.Cleanup(c.ws(), roots, keys, refs); gone != nil {
+		res.SetIDs = gone
 	}
 	return res, nil
 }
-
-// setInUse reports whether any setup or template still has set id (folder != "": using that own-art folder).
-func (c Catalog) setInUse(list []setups.Summary, id string) bool {
-	roots := []string{c.Root}
-	for _, s := range list {
-		roots = append(roots, s.Folder)
-	}
-	for _, root := range roots {
-		ws := c.ws().Projects(root)
-		if _, err := os.Stat(filepath.Join(ws.Folder(id), project.SetFile)); err == nil {
-			return true // there (readable or not: keep its files)
-		}
-	}
-	return false
-}
-
-// storeRefs is every store file any setup or the catalog refers to.

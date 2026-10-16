@@ -71,7 +71,7 @@ namespace TCGCustomCards.Patches
                 int before = list.Count;
                 list.RemoveAll(i => !Listed(set, exp, i));
                 if (Logged.Add(set.Def.Id)) // once per set and session
-                    Plugin.Log.LogInfo($"Card versions: binder '{set.Def.Id}' ({__originalMethod.Name}) lists {list.Count} of {before} slots " +
+                    Plugin.Log.LogInfo($"Card versions: binder {set.Def.Label} ({__originalMethod.Name}) lists {list.Count} of {before} slots " +
                                        $"({set.Def.VariantMask.Count(v => v)} versions per card)");
             }
         }

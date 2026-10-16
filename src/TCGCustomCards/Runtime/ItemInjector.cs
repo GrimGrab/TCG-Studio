@@ -127,7 +127,7 @@ namespace TCGCustomCards.Runtime
                 var vRows = so.m_RestockDataList.Where(r => r.itemType == def.BaseItem).OrderBy(r => r.isBigBox).ToList();
                 if (vRows.Count == 0)
                 {
-                    Plugin.Log.LogError($"Accessory '{def.Id}': base {def.BaseItem} has no restock rows — skipped");
+                    Plugin.Log.LogError($"Accessory {def.Label}: base {def.BaseItem} has no restock rows — skipped");
                     continue;
                 }
 

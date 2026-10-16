@@ -39,14 +39,14 @@ namespace TCGCustomCards.Runtime
                     var errors = Validate(data);
                     if (errors.Count > 0)
                     {
-                        Plugin.Log.LogError($"Set '{set.Def.Id}' card '{card.Id}': effect ignored — " + string.Join("; ", errors));
+                        Plugin.Log.LogError($"Set {set.Def.Label} card '{card.Id}': effect ignored — " + string.Join("; ", errors));
                         continue;
                     }
                     ByMonster[(int)data.monsterType] = data;
                 }
                 catch (Exception e)
                 {
-                    Plugin.Log.LogError($"Set '{set.Def.Id}' card '{card.Id}': effect could not be read — {e.Message}");
+                    Plugin.Log.LogError($"Set {set.Def.Label} card '{card.Id}': effect could not be read — {e.Message}");
                 }
             }
         }

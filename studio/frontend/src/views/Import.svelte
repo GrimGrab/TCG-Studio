@@ -58,7 +58,7 @@
     if (!source) return;
     if (source.local) {
       sets = []; loading = false;
-      if (source.id === 'epl') { if (eplPath) previewEPL(); } else if (folderPath) previewFolder();
+      if (source.id === 'epl') { if (eplPath) previewEPL(); } else if (source.id === SHARED) { if (sharePath) previewShare(); } else if (folderPath) previewFolder();
       return;
     }
     loading = true;
@@ -155,10 +155,14 @@
     try { await useEPL(await (folder ? App.PickEPLFolder() : App.PickEPLMod())); } catch (e) { notify(errText(e), 'error'); }
   }
 
-  // Dropping the mod's folder or .zip (or a file inside the folder) anywhere on the page while EPL mod is chosen.
+  // Dropping the mod's folder or .zip (or a file inside the folder) anywhere on the page while EPL mod is chosen; an item
+  // file while TCG Studio file is chosen.
   async function dropped(paths: string[]) {
-    if (source?.id !== 'epl' || importing || eplBusy || !paths?.length) return;
-    try { await useEPL(await App.EPLModPath(paths[0])); } catch (e) { notify(errText(e), 'error'); }
+    if (importing || eplBusy || shareBusy || !paths?.length) return;
+    try {
+      if (source?.id === 'epl') await useEPL(await App.EPLModPath(paths[0]));
+      else if (source?.id === SHARED) await useShare(await App.SharePath(paths[0]));
+    } catch (e) { notify(errText(e), 'error'); }
   }
 
   async function previewEPL() {
@@ -232,6 +236,76 @@
     queue.current = null; eplImporting = false;
     queue.progress = null;
     await previewEPL();
+  }
+
+  // TCG Studio file (.tcgitems): sets and items another player exported from their Catalog page. Imported into the catalog
+  // and (ticked) this setup; ids this PC already uses get new ones. The person importing names the source.
+  const SHARED = 'tcgitems';
+  let sharePath = $state(remembered('share', ''));
+  let share = $state<any>(null);
+  let shareErr = $state('');
+  let shareBusy = $state(false);
+  let sharePick = $state<Record<string, boolean>>({}); // "kind/id" → import it
+  let shareAddHere = $state(true);
+  let shareSource = $state({ name: '', author: '', link: '' });
+  let kinds = $state<any[]>([]);
+  const shareKey = (it: any) => `${it.kind}/${it.id}`;
+  const shareCount = $derived(Object.values(sharePick).filter(Boolean).length);
+  const shareGroups = $derived(kinds.map((k) => [k, (share?.items ?? []).filter((it: any) => it.kind === k.id)] as [any, any[]]).filter(([, l]) => l.length));
+
+  async function useShare(path: string) {
+    if (!path) return;
+    sharePath = path;
+    remember('share', path);
+    await previewShare();
+  }
+
+  async function chooseShare() {
+    try { await useShare(await App.PickShareFile()); } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  async function previewShare() {
+    const path = sharePath;
+    shareBusy = true;
+    try {
+      if (!kinds.length) kinds = await App.ContentKinds();
+      const p = await App.PreviewShare(path);
+      if (path !== sharePath) return;
+      share = p;
+      shareErr = '';
+      sharePick = Object.fromEntries((p.items ?? []).map((it: any) => [shareKey(it), true]));
+      shareSource = { name: p.source?.name ?? '', author: p.source?.author ?? '', link: p.source?.link ?? '' };
+    } catch (e) {
+      share = null;
+      shareErr = errText(e);
+    }
+    shareBusy = false;
+  }
+
+  function pickShareGroup(kind: string, on: boolean) {
+    for (const it of share?.items ?? []) if (it.kind === kind) sharePick[shareKey(it)] = on;
+  }
+
+  async function importShare() {
+    const picks = (share?.items ?? []).filter((it: any) => sharePick[shareKey(it)]).map((it: any) => ({ kind: it.kind, id: it.id }));
+    if (!picks.length) return;
+    shareBusy = true; eplImporting = true;
+    queue.current = sharePath.split(/[\\/]/).pop() ?? 'file';
+    queue.progress = { stage: 'share', done: 0, total: 0, message: 'Starting…' };
+    try {
+      const r: any = await App.ImportShare(sharePath, { picks, source: { name: shareSource.name.trim(), author: shareSource.author.trim(), link: shareSource.link.trim() }, addHere: shareAddHere } as any);
+      const sets = r.items.filter((x: any) => x.kind === 'set').length;
+      const renamed = r.items.filter((x: any) => x.origId).length;
+      notify(`Imported ${r.items.length} item${r.items.length === 1 ? '' : 's'} into the catalog` +
+        (shareAddHere ? ` and this setup${sets ? ' — install the sets on the Sets page to play' : ''}` : ' — add them to a setup with Add from catalog') +
+        (renamed ? ` (${renamed} got a new id: this PC already had one with theirs)` : '') + '.', 'ok');
+      if (r.items.length === 1 && sets === 1 && shareAddHere) open(r.items[0].id);
+    } catch (e) {
+      notify(errText(e), 'error');
+    }
+    queue.current = null; queue.progress = null;
+    shareBusy = false; eplImporting = false;
+    await previewShare();
   }
 
   const pct = (v: number) => (v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4));
@@ -345,7 +419,7 @@
         {#each langs as l}<option value={l}>{LANG_NAMES[l] ?? l}</option>{/each}
       </select>
     {/if}
-    {#if options}
+    {#if options && source?.id !== SHARED}
       {#if source?.variants}
         <label class="check"><input type="checkbox" bind:checked={options.includeVariants} /> Include variant printings</label>
       {/if}
@@ -365,13 +439,14 @@
     {/if}
   </div>
 
-  {#if progress}
+  <!-- Only while an import runs: other tasks (back faces in the set editor) send progress on the same event. -->
+  {#if progress && importing}
     <div class="progress">
       <div class="row"><b class="grow">Importing {importing}{queue.jobs.length ? ` — ${queue.jobs.length} more queued` : ''}</b>
         <button class="small" onclick={() => cancel(false)} title={queue.jobs.length ? 'Stop this set; the queue goes on with the next one' : ''}>Cancel</button>
         {#if queue.jobs.length}<button class="small" onclick={() => cancel(true)}>Cancel all</button>{/if}</div>
       <div class="bar"><div style="width:{progress.total ? (100 * progress.done) / progress.total : 5}%"></div></div>
-      <div class="muted">{progress.stage === 'cards' ? 'Card list' : progress.stage === 'items' ? 'Accessories' : progress.stage === 'art' ? 'Pack art' : 'Images'} — {progress.message}</div>
+      <div class="muted">{progress.stage === 'cards' ? 'Card list' : progress.stage === 'items' ? 'Accessories' : progress.stage === 'share' ? 'Shared items' : progress.stage === 'art' ? 'Pack art' : 'Images'} — {progress.message}</div>
       {#if queue.jobs.length}
         <details>
           <summary class="muted">Queue</summary>
@@ -385,7 +460,49 @@
     </div>
   {/if}
 
-  {#if source?.id === 'epl'}
+  {#if source?.id === SHARED}
+    <div class="folder">
+      <p class="note">Sets, accessories, furniture and decorations another player exported from their <b>Catalog</b> page (Export…).
+        They go into your catalog and, ticked below, into this setup. Nothing you have is replaced: anything whose id you already
+        use gets a new one.</p>
+      <div class="row">
+        <button class="primary" disabled={!!importing || shareBusy} onclick={chooseShare} title="Pick a .tcgitems file — or drop it on this page">Choose file…</button>
+        <span class="grow path" title={sharePath}>{sharePath || 'No file chosen'}</span>
+        {#if sharePath}<button class="small" disabled={!!importing || shareBusy} onclick={previewShare}>Re-read</button>{/if}
+      </div>
+      {#if shareBusy && !share}<p class="muted">Reading the file…</p>{/if}
+      {#if shareErr}<p class="err">{shareErr}</p>{/if}
+      {#if share}
+        <div class="eplset">
+          <b>Source</b>
+          <p class="muted small">Where these came from: saved with everything this import adds (shown as “shared: …”, used by the
+            Source sort and the catalog's groups). Leave the name empty to list them as your own.</p>
+          <div class="row origin">
+            <label class="field grow">Name<input bind:value={shareSource.name} placeholder="e.g. Bob's playmats" disabled={!!importing} /></label>
+            <label class="field">Made by<input bind:value={shareSource.author} placeholder="optional" disabled={!!importing} /></label>
+          </div>
+          <label class="field">Link<input bind:value={shareSource.link} placeholder="optional, e.g. where it was posted" disabled={!!importing} /></label>
+        </div>
+        {#each shareGroups as [k, list] (k.id)}
+          <div class="eplset">
+            <div class="row"><b class="grow">{k.title} ({list.length})</b>
+              <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, true)}>Select all</button>
+              <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, false)}>Deselect all</button></div>
+            {#each list as it (shareKey(it))}
+              <label class="check"><input type="checkbox" bind:checked={sharePick[shareKey(it)]} disabled={!!importing} />
+                {it.name || it.id} <span class="muted small">{it.sub ? `— ${it.sub}` : ''}{it.newId !== it.id ? ` · gets a new id (you already have one with id “${it.id}”)` : ''}</span></label>
+            {/each}
+          </div>
+        {/each}
+        <label class="check"><input type="checkbox" bind:checked={shareAddHere} disabled={!!importing} /> Add to this setup
+          <span class="muted small">(sets are added, not installed; untick to only put them in the catalog)</span></label>
+        <div class="row">
+          <span class="grow muted">{shareCount} selected{share.studio ? ` · made with TCG Studio ${share.studio}` : ''}</span>
+          <button class="primary" disabled={!!importing || shareBusy || !shareCount} onclick={importShare}>Import selected</button>
+        </div>
+      {/if}
+    </div>
+  {:else if source?.id === 'epl'}
     <div class="folder">
       <p class="note"><b>Experimental.</b> Converts the card sets of a mod made for Enhanced Prefab Loader into Studio sets, once:
         cards, the mod's pack &amp; box art and card back with its pack odds turned into ours, plus its accessories, figurines and

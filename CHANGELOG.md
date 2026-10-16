@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.9.2 - 2026-10-16
+
+Storage clean-up: several GB back for anyone who imported zipped EPL mods.
+
+- Fixed: Importing an EPL mod from a .zip/.rar/.7z left a full unpacked copy of the download in TCG Studio's cache folder (often several GB per mod). Studio now removes it once the import is done, and clears any leftovers when it starts.
+- Changed: Switching setups no longer makes an extra copy of all your game saves before the first switch. The switch already undoes or finishes itself if it gets interrupted. Old copies (the "saves-backup-…" folder in your TCG Studio folder) are deleted when Studio starts.
+- Changed: Storage → Workspace now shows shared storage as one number, with setups & saves, download cache and other files listed separately.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.9.1 - 2026-10-16
 
 Storage: clean up TCG Studio's backup folders.

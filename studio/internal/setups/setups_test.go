@@ -107,8 +107,8 @@ func TestSwitchRoundTrip(t *testing.T) {
 	if fsutil.Exists(modconfig.Path(e.gameDir)) || !game.SameDir(game.ReadStudioPaths(e.gameDir).Setup, e.h.Dir(b)) {
 		t.Fatal("the game doesn't point at the empty setup")
 	}
-	if len(e.h.backups(t)) != 1 {
-		t.Fatal("expected one saves backup")
+	if len(e.h.backups(t)) != 0 {
+		t.Fatal("a switch must not copy the saves into the workspace")
 	}
 	write(t, filepath.Join(e.saveDir, "savedGames_Release2.json"), "save B")
 
@@ -140,8 +140,10 @@ func TestSwitchRoundTrip(t *testing.T) {
 	if act, _ := e.h.Active(); act != DefaultID {
 		t.Fatalf("active = %s", act)
 	}
-	if len(e.h.backups(t)) != 1 {
-		t.Fatal("backup must only be made once")
+	write(t, filepath.Join(e.h.Root, "saves-backup-20261002-101208", "savedGames_Release1.json"), "old")
+	e.h.RemoveSaveBackups()
+	if len(e.h.backups(t)) != 0 {
+		t.Fatal("RemoveSaveBackups left an old saves backup")
 	}
 }
 

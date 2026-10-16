@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Bundle is one descriptor + asset bundle pair of a mod (EPL loads X.json with the bundle file X beside it).
@@ -49,8 +50,7 @@ func Open(path, cacheDir string, progress func(done, total int64)) (*Mod, error)
 		default:
 			return nil, fmt.Errorf("pick an EPL mod's folder or its .zip, .rar or .7z")
 		}
-		h := sha1.Sum([]byte(fmt.Sprintf("%s|%d|%d", path, st.Size(), st.ModTime().Unix())))
-		m.temp = filepath.Join(cacheDir, "epl", hex.EncodeToString(h[:8]))
+		m.temp = extractDir(path, st, cacheDir)
 		if err := extract(path, m.temp, progress); err != nil {
 			os.RemoveAll(m.temp)
 			return nil, err
@@ -91,6 +91,41 @@ func (m *Mod) Close() {
 	if m.temp != "" {
 		os.RemoveAll(m.temp)
 	}
+}
+
+// extractDir is where Open unpacks an archive: named by its path, size and time, so a changed download unpacks again.
+func extractDir(path string, st fs.FileInfo, cacheDir string) string {
+	h := sha1.Sum([]byte(fmt.Sprintf("%s|%d|%d", path, st.Size(), st.ModTime().Unix())))
+	return filepath.Join(cacheDir, "epl", hex.EncodeToString(h[:8]))
+}
+
+// Forget removes the unpacked files of an archive opened with Open (the preview and imports reuse them; once the
+// import is done they are only a copy of the download). Nothing to do for a mod folder.
+func Forget(path, cacheDir string) {
+	if st, err := os.Stat(path); err == nil && !st.IsDir() {
+		os.RemoveAll(extractDir(path, st, cacheDir))
+	}
+}
+
+// ClearCache removes every unpacked archive, e.g. ones a preview left behind without an import. The folder is renamed
+// first, so the next Open starts clean at once while the old files are deleted in the background.
+func ClearCache(cacheDir string) {
+	old, _ := filepath.Glob(filepath.Join(cacheDir, "epl-old-*"))
+	dir := filepath.Join(cacheDir, "epl")
+	if _, err := os.Stat(dir); err == nil {
+		gone := fmt.Sprintf("%s-old-%d", dir, time.Now().UnixNano())
+		if os.Rename(dir, gone) == nil {
+			old = append(old, gone)
+		}
+	}
+	if len(old) == 0 {
+		return
+	}
+	go func() {
+		for _, d := range old {
+			os.RemoveAll(d)
+		}
+	}()
 }
 
 // extractDescriptors extracts every *.json that has a bundle entry beside it, plus that bundle (other files are skipped,

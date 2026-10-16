@@ -53,8 +53,17 @@ type Info struct {
 type Registry struct {
 	Active string   `json:"active"`
 	Order  []string `json:"order"`
-	// SavesBackedUp is set after the one-time copy of the save folder made before the first switch.
-	SavesBackedUp bool `json:"savesBackedUp,omitempty"`
+}
+
+// RemoveSaveBackups deletes the saves-backup-<time> folders older versions copied the game's saves into before the first
+// switch (the switch journal covers an interrupted switch; nothing reads these copies).
+func (h Home) RemoveSaveBackups() {
+	old, _ := filepath.Glob(filepath.Join(h.Root, "saves-backup-*"))
+	for _, d := range old {
+		if st, err := os.Stat(d); err == nil && st.IsDir() {
+			os.RemoveAll(d)
+		}
+	}
 }
 
 type Summary struct {

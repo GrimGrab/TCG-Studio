@@ -1268,6 +1268,8 @@ export namespace library {
 	    library: number;
 	    assets: number;
 	    catalog: number;
+	    setupsSize: number;
+	    cache: number;
 	    gameLibrary: number;
 	    libraryLinked: boolean;
 	    gameFound: boolean;
@@ -1292,6 +1294,8 @@ export namespace library {
 	        this.library = source["library"];
 	        this.assets = source["assets"];
 	        this.catalog = source["catalog"];
+	        this.setupsSize = source["setupsSize"];
+	        this.cache = source["cache"];
 	        this.gameLibrary = source["gameLibrary"];
 	        this.libraryLinked = source["libraryLinked"];
 	        this.gameFound = source["gameFound"];

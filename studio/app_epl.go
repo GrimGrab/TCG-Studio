@@ -101,6 +101,7 @@ type EPLResult struct {
 // accessories (into the accessory library, installed to the game when it is set up). A failed set doesn't stop the rest.
 func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
 	a.useEPLCache()
+	defer epl.Forget(path, importer.EPLCacheDir) // the converted content is in the workspace now
 	res := EPLResult{Sets: []string{}, Icons: []importer.IconJob{}, Problems: []string{}}
 	for _, code := range sel.Sets {
 		opt := sel.Options

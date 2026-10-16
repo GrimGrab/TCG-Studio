@@ -78,6 +78,8 @@ type Report struct {
 	Library         int64         `json:"library"`       // <workspace>\library
 	Assets          int64         `json:"assets"`        // <workspace>\assets
 	Catalog         int64         `json:"catalog"`       // <workspace>\catalog
+	SetupsSize      int64         `json:"setupsSize"`    // <workspace>\setups (game info and parked saves)
+	Cache           int64         `json:"cache"`         // <workspace>\cache (import lists, unpacked EPL downloads)
 	GameLibrary     int64         `json:"gameLibrary"`   // copies of set and item files older Studio versions put in the game folder
 	LibraryLinked   bool          `json:"libraryLinked"` // the game's mod reads set files from this workspace's library
 	GameFound       bool          `json:"gameFound"`
@@ -185,6 +187,8 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	r.Library, _ = dirSize(project.LibraryDir(h.Root))
 	r.Assets, _ = dirSize(filepath.Join(h.Root, assets.DirName))
 	r.Catalog, _ = dirSize(catalog.For(h.Root).Root)
+	r.SetupsSize, _ = dirSize(filepath.Join(h.Root, setups.SetupsDir))
+	r.Cache, _ = dirSize(h.CacheDir())
 	if game.IsGameDir(gameDir) {
 		r.GameFound = true
 		r.ModReadsLibrary = game.ModReadsLibrary(gameDir)

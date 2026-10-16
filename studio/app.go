@@ -21,6 +21,7 @@ import (
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/art"
 	"tcgstudio/internal/catalog"
+	"tcgstudio/internal/epl"
 	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gamify"
@@ -102,6 +103,8 @@ func (a *App) startup(ctx context.Context) {
 		}
 	})
 	a.initSetups()
+	epl.ClearCache(a.home().CacheDir()) // unpacked EPL downloads from earlier sessions
+	a.home().RemoveSaveBackups()        // copies of the saves older versions made before the first setup switch
 	close(a.started)
 	a.RefreshTemplates(false)
 }
@@ -472,7 +475,6 @@ func (a *App) GlobalCardBack() string {
 	}
 	return "/globalback/" + globalBackFile + "?v=" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
 }
-
 
 // BoxArt is a generated box for a pack: its texture and icon, and the 3D editor layout starting from that texture.
 type BoxArt struct {

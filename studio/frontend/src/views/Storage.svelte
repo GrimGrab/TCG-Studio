@@ -213,6 +213,10 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     'catalog-set': 'set',
     'catalog-item': 'item',
   };
+  /** Shared storage as one number (on disk it is the library, assets and catalog folders). */
+  const sharedBytes = $derived(report ? report.library + report.assets + report.catalog : 0);
+  /** Workspace files outside shared storage, setups and the cache (e.g. old save backups). */
+  const otherBytes = $derived(report ? Math.max(0, report.workspace - sharedBytes - report.setupsSize - report.cache) : 0);
   const unusedTotal = $derived((report?.unused ?? []).reduce((n: number, u: any) => n + u.size, 0));
 
   // The list in the same two tabs as Shared storage: sets (and unused files in a set's folder), items (and their files).
@@ -338,7 +342,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   {#if report}
     <div class="tiles">
       <div class="tile"><div class="k">Workspace</div><div class="v">{size(report.workspace)}</div>
-        <div class="muted small">shared: sets {size(report.library)} · accessory files {size(report.assets)} · catalog {size(report.catalog)}</div></div>
+        <div class="muted small">shared storage {size(sharedBytes)} · setups &amp; saves {size(report.setupsSize)}
+          {#if report.cache >= 1 << 20} · download cache {size(report.cache)}{/if}
+          {#if otherBytes >= 1 << 20} · other {size(otherBytes)}{/if}</div></div>
       {#if report.gameFound}
         <div class="tile"><div class="k">Game folder</div><div class="v">{size(report.gameLibrary)}</div>
           <div class="muted small">old copies of your content (the game no longer reads them)</div></div>

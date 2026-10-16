@@ -116,18 +116,7 @@ func (h Home) Switch(to, gameDir string, progress func(string)) ([]string, error
 	if !fsutil.Exists(filepath.Join(h.Dir(to), InfoFile)) {
 		return nil, errors.New("unknown setup")
 	}
-	if !r.SavesBackedUp && HasSaves(SaveDir()) {
-		progress("Backing up your game saves (first switch only)…")
-		backup := filepath.Join(h.Root, "saves-backup-"+time.Now().Format("20060102-150405"))
-		if err := copySaves(SaveDir(), backup); err != nil {
-			return nil, fmt.Errorf("couldn't back up the saves: %w", err)
-		}
-		r.SavesBackedUp = true
-		if err := h.saveRegistry(r); err != nil {
-			return nil, err
-		}
-	}
-
+	// No copy of the saves first: the journal lets an interrupted switch be undone or finished, and nothing is overwritten.
 	j := &Journal{From: from, To: to, Phase: PhaseCapture, Started: time.Now()}
 	if err := writeJSON(h.journalPath(), j); err != nil {
 		return nil, err

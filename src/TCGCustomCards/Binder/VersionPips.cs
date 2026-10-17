@@ -39,19 +39,21 @@ namespace TCGCustomCards.Binder
             if (p.Fav != null) p.Fav.gameObject.SetActive(false);
         }
 
+        /// <summary>A version's square: its border's colour when owned, dark when not (also drawn by the MTG deck builder).</summary>
+        public static Color ColorOf(BinderEntry e, int v) =>
+            e.Count(v) > 0 ? BorderColors[(v % (e.Per / 2)) % BorderColors.Length] : Missing;
+
         public static void Show(Card3dUIGroup slot, BinderEntry e, int shown)
         {
             var p = Get(slot, e.Per);
             if (p == null) return;
-            int plain = e.Per / 2;
             for (int v = 0; v < p.Squares.Length; v++)
             {
                 var sq = p.Squares[v];
                 bool listed = v < e.Per && e.Listed[v];
                 sq.gameObject.SetActive(listed);
                 if (!listed) continue;
-                bool owned = e.Count(v) > 0;
-                sq.color = owned ? BorderColors[(v % plain) % BorderColors.Length] : Missing;
+                sq.color = ColorOf(e, v);
                 bool isShown = v == shown;
                 sq.rectTransform.localScale = Vector3.one * (isShown ? 1.3f : 1f);
                 p.Outlines[v].enabled = isShown;

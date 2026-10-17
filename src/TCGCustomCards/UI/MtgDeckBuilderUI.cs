@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using TCGCustomCards.Binder;
 using TCGCustomCards.Runtime;
 using TCGCustomCards.Runtime.Mtg;
 using UnityEngine;
@@ -25,8 +26,12 @@ namespace TCGCustomCards.UI
         private string _lastSearch = "";
         private bool _dirty = true;
         private List<(CustomSet set, int pos, MtgCardInfo info)> _all;   // every MTG card of installed sets
-        /// <summary>One tile per owned version (border + foil) of each matching card.</summary>
+        /// <summary>One tile per owned version (border + foil) of each matching card, or one per card when stacked.</summary>
         private List<Tile> _shown = new List<Tile>();
+        /// <summary>One tile per card with its versions stacked, like the enhanced binder (wheel = next version). Per session.</summary>
+        private static bool _stacked = true;
+        /// <summary>The stacked tiles' query: any owned version (the binder's version pick per card is shared).</summary>
+        private static readonly BinderQuery AnyOwned = new BinderQuery();
 
         private sealed class Tile
         {
@@ -36,12 +41,31 @@ namespace TCGCustomCards.UI
             public ECardBorderType Border;
             public bool Foil;
             public int Owned;
+            /// <summary>Stacked: the card with all its versions; Border/Foil/Owned follow the version it shows.</summary>
+            public BinderEntry Entry;
+            public int Version = -1;
             public CardData Data => new CardData { expansionType = Set.Expansion, monsterType = Set.Monsters[Pos].MonsterType, borderType = Border, isFoil = Foil };
+
+            /// <summary>Stacked: takes the shown version (the pick, else the most valuable owned). False = none owned now.</summary>
+            public bool Resolve()
+            {
+                if (Entry == null) return Owned > 0;
+                Version = BinderIndex.Shown(Entry, AnyOwned);
+                if (Version < 0) return false;
+                var d = Entry.Card(Version);
+                Border = d.borderType;
+                Foil = d.isFoil;
+                Owned = Entry.Count(Version);
+                return true;
+            }
         }
         private Vector2 _gridScroll, _deckScroll, _listScroll;
         private string _message = "";
         private float _messageUntil;
         private (CustomSet set, int pos, CardData data)? _hover;
+        /// <summary>Grid card under the mouse (last frame) and whether a text field has the keyboard: for the favourite key.</summary>
+        private CardData _hoverTile;
+        private bool _typing;
         private float _scale = 1f;
         private Vector2 _offset;
         private GUIStyle _text, _small, _title, _button, _big, _toggle;
@@ -94,6 +118,8 @@ namespace TCGCustomCards.UI
         private void Update()
         {
             ResolvePendingCommander();
+            if (_editing != null && _hoverTile != null && !_typing && !_setsOpen && _confirmDelete == null && Plugin.BinderFavouriteKey.Value.IsDown())
+                ToggleFavourite(_hoverTile);
             if (!Input.GetKeyDown(KeyCode.Escape)) return;
             if (_setsOpen) _setsOpen = false;
             else if (_confirmDelete != null) _confirmDelete = null;
@@ -131,7 +157,13 @@ namespace TCGCustomCards.UI
             foreach (var c in _all)
             {
                 if (MtgDeckStore.Owned(c.set, c.pos) <= 0 || !MtgDeckRules.Matches(c.info, _filter)) continue;
-                for (int f = 0; f < 2; f++)                             // non-foil versions first, then foils
+                if (_filter.FavouritesOnly && !Favourites.Has(new CardData { expansionType = c.set.Expansion, monsterType = c.set.Monsters[c.pos].MonsterType })) continue;
+                if (_stacked)
+                {
+                    var entry = BinderIndex.Entry(c.set.Expansion, c.pos);
+                    if (entry != null) { tiles.Add(new Tile { Set = c.set, Pos = c.pos, Info = c.info, Entry = entry }); continue; }
+                }
+                for (int f = 0; f < 2; f++)                            // non-foil versions first, then foils
                     for (int b = 0; b < CardStore.BordersPerCard; b++)  // Base, 1st Edition, Silver, Gold, EX, Full Art
                     {
                         int n = MtgDeckStore.OwnedVariant(c.set, c.pos, (ECardBorderType)b, f == 1);
@@ -205,6 +237,10 @@ namespace TCGCustomCards.UI
             GUI.DrawTexture(new Rect(0, 0, W, H), Texture2D.whiteTexture);
             GUI.color = Color.white;
             _hover = null;
+            if (Event.current.type == EventType.Repaint) { _hoverTile = null; _typing = GUIUtility.keyboardControl != 0; }
+            // A click anywhere drops the text fields' keyboard focus (a clicked field takes it straight back), so the
+            // favourite key works again after searching.
+            if (Event.current.type == EventType.MouseDown) GUIUtility.keyboardControl = 0;
 
             // Sets dropdown open: a click outside it closes it (and is used up so nothing underneath reacts).
             if (_setsOpen && _editing != null && Event.current.type == EventType.MouseDown &&
@@ -338,7 +374,8 @@ namespace TCGCustomCards.UI
                 if (Toggle(new Rect(sx, y, 120, 38), label, _sort == s)) { _sort = s; _dirty = true; }
                 sx += 124;
             }
-            GUI.Label(new Rect(r.xMax - 250, y + 8, 240, 30), $"{_shown.Count} cards", new GUIStyle(_small) { alignment = TextAnchor.UpperRight });
+            if (Toggle(new Rect(sx + 8, y, 124, 38), "Stack versions", _stacked)) { _stacked = !_stacked; _dirty = true; }
+            GUI.Label(new Rect(r.xMax - 90, y + 8, 80, 30), $"{_shown.Count} cards", new GUIStyle(_small) { alignment = TextAnchor.UpperRight });
 
             // Colours + mana value
             y += 46;
@@ -360,8 +397,8 @@ namespace TCGCustomCards.UI
             cx += 20;
             foreach (var rar in MtgDeckRules.RarityOrder)
             {
-                if (Toggle(new Rect(cx, y, 100, 38), char.ToUpper(rar[0]) + rar.Substring(1), _filter.Rarities.Contains(rar))) Flip(_filter.Rarities, rar);
-                cx += 104;
+                if (Toggle(new Rect(cx, y, 92, 38), char.ToUpper(rar[0]) + rar.Substring(1), _filter.Rarities.Contains(rar))) Flip(_filter.Rarities, rar);
+                cx += 96;
             }
 
             // Types + sets
@@ -369,14 +406,14 @@ namespace TCGCustomCards.UI
             float tx = x;
             foreach (var t in MtgDeckRules.CardTypes)
             {
-                if (Toggle(new Rect(tx, y, 120, 38), t, _filter.Types.Contains(t))) Flip(_filter.Types, t);
-                tx += 124;
+                if (Toggle(new Rect(tx, y, 112, 38), t, _filter.Types.Contains(t))) Flip(_filter.Types, t);
+                tx += 116;
             }
-            tx += 16;
+            tx += 12;
             // Sets: a dropdown multi-select (players can have many sets installed)
             int nSets = _filter.Sets.Count;
             string setsLabel = nSets == 0 ? "Sets: All ▾" : nSets == 1 ? $"Sets: {SetCode(_filter.Sets.First())} ▾" : $"Sets: {nSets} selected ▾";
-            _setsButton = new Rect(tx, y, 190, 38);
+            _setsButton = new Rect(tx, y, 180, 38);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = true; // the button itself also closes the popup
             if (Toggle(_setsButton, setsLabel, nSets > 0 || _setsOpen))
@@ -386,9 +423,15 @@ namespace TCGCustomCards.UI
                 _setScroll = Vector2.zero;
             }
             GUI.enabled = wasEnabled;
-            if (GUI.Button(new Rect(r.xMax - 110, y, 100, 38), "Clear", _toggle))
+            if (Toggle(new Rect(_setsButton.xMax + 6, y, 100, 38), $"<color={HeartHex}>♥</color> Favourites", _filter.FavouritesOnly))
+            {
+                _filter.FavouritesOnly = !_filter.FavouritesOnly;
+                _dirty = true;
+            }
+            if (GUI.Button(new Rect(r.xMax - 90, y, 80, 38), "Clear", _toggle))
             {
                 _filter.Search = "";
+                _filter.FavouritesOnly = false;
                 _filter.Colors.Clear(); _filter.Types.Clear(); _filter.ManaValues.Clear(); _filter.Rarities.Clear(); _filter.Sets.Clear();
                 _dirty = true;
             }
@@ -493,6 +536,7 @@ namespace TCGCustomCards.UI
                     int i = row * cols + col;
                     if (i >= _shown.Count) break;
                     var t = _shown[i];
+                    if (!t.Resolve()) { _dirty = true; continue; } // last owned copy went into the deck: rebuilt next frame
                     var (set, pos, info, owned) = (t.Set, t.Pos, t.Info, t.Owned);
                     var data = t.Data;
                     var tile = new Rect(col * cellW + 4, row * cellH + 4, tw, th);
@@ -509,7 +553,29 @@ namespace TCGCustomCards.UI
                     string version = t.Border == ECardBorderType.Base && !t.Foil ? "" : $" <color=#ffd24a>{VersionLabel(t.Border, t.Foil)}</color>";
                     GUI.Label(new Rect(tile.x, tile.yMax + 2, tile.width, 24), info.Name + version,
                         new GUIStyle(_small) { alignment = TextAnchor.UpperCenter, wordWrap = false, clipping = TextClipping.Clip });
-                    if (tile.Contains(Event.current.mousePosition)) _hover = (set, pos, data);
+                    bool hovered = tile.Contains(Event.current.mousePosition);
+                    if (hovered) { _hover = (set, pos, data); _hoverTile = data; }
+                    // Favourite heart (shared with the binder): red when marked, faint on hover = click to mark
+                    bool fav = Favourites.Has(data);
+                    var heart = new Rect(tile.x + 6, tile.y + 6, 28, 28);
+                    if (fav || hovered)
+                    {
+                        GUI.color = fav ? HeartColor : new Color(1f, 1f, 1f, heart.Contains(Event.current.mousePosition) ? 0.8f : 0.4f);
+                        GUI.DrawTexture(heart, Binder.VersionPips.Heart().texture, ScaleMode.ScaleToFit);
+                        GUI.color = Color.white;
+                    }
+                    if (hovered && GUI.Button(heart, "", GUIStyle.none)) ToggleFavourite(data);
+                    if (t.Entry != null)
+                    {
+                        DrawVersionPips(t, new Rect(tile.x + 70, tile.yMax - 30, 76, 26));
+                        // Mouse wheel over the card: next / previous owned version, like the binder (no other version = the grid scrolls)
+                        if (hovered && Event.current.type == EventType.ScrollWheel &&
+                            BinderIndex.Switch(t.Entry, Event.current.delta.y > 0 ? 1 : -1, AnyOwned))
+                        {
+                            SoundManager.GenericPop(1f, 1.2f);
+                            Event.current.Use();
+                        }
+                    }
                     // Commander decks: right-click a card = make it the commander (Forge decides whether it can be one)
                     if (deck.IsCommander && GUI.enabled && Event.current.type == EventType.MouseDown && Event.current.button == 1 &&
                         tile.Contains(Event.current.mousePosition))
@@ -528,6 +594,49 @@ namespace TCGCustomCards.UI
             if (_shown.Count == 0)
                 GUI.Label(new Rect(20, 20, view.width - 60, 60), "<i>No owned MTG cards match these filters.</i>", _text);
             GUI.EndScrollView();
+        }
+
+        private static readonly Color HeartColor = new Color(0.92f, 0.12f, 0.2f); // the binder's heart
+        private const string HeartHex = "#eb1f33";
+
+        /// <summary>Marks / unmarks a card as a favourite: the binder's list (per card, every version), saved with the binder.</summary>
+        private void ToggleFavourite(CardData data)
+        {
+            bool fav = Favourites.Toggle(data);
+            SoundManager.GenericPop(1f, fav ? 1.3f : 0.9f);
+            Say(fav ? "Added to favourites" : "Removed from favourites");
+            if (_filter.FavouritesOnly) _dirty = true;
+        }
+
+        /// <summary>
+        /// The binder's version squares for a stacked tile: top row normal, bottom row foil, lit in the border's colour when
+        /// owned, the shown one outlined. Clicking a lit square shows that version.
+        /// </summary>
+        private void DrawVersionPips(Tile t, Rect r)
+        {
+            var e = t.Entry;
+            int plain = e.Per / 2;
+            const float sq = 9f, step = 12f;
+            GUI.color = new Color(0, 0, 0, 0.75f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            float x0 = r.x + (r.width - (plain * step - (step - sq))) / 2f, y0 = r.y + (r.height - (step + sq)) / 2f;
+            for (int v = 0; v < e.Per; v++)
+            {
+                if (!e.Listed[v]) continue;
+                var cell = new Rect(x0 + (v % plain) * step, y0 + (v / plain) * step, sq, sq);
+                if (v == t.Version)
+                {
+                    GUI.color = Color.white;
+                    GUI.DrawTexture(new Rect(cell.x - 1.5f, cell.y - 1.5f, sq + 3f, sq + 3f), Texture2D.whiteTexture);
+                }
+                GUI.color = VersionPips.ColorOf(e, v);
+                GUI.DrawTexture(cell, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                var hit = new Rect(cell.x - 1.5f, cell.y - 1.5f, step, step);
+                if (v != t.Version && e.Count(v) > 0 && GUI.Button(hit, "", GUIStyle.none) && BinderIndex.Pick(e, v, AnyOwned))
+                    SoundManager.GenericPop(1f, 1.2f);
+            }
+            GUI.color = Color.white;
         }
 
         private void Badge(Rect r, string text, Color bg)
@@ -608,8 +717,8 @@ namespace TCGCustomCards.UI
             y += 96;
 
             // Deck list by type
-            var groups = new[] { "Creatures", "Spells", "Lands" };
-            string GroupOf(MtgCardInfo i) => i.FrontType.Contains("Creature") ? "Creatures" : i.FrontType.Contains("Land") ? "Lands" : "Spells";
+            var groups = MtgDeckRules.DeckGroupOrder;
+            string GroupOf(MtgCardInfo i) => MtgDeckRules.DeckGroupOf(i);
             var ordered = live.OrderBy(t => Array.IndexOf(groups, GroupOf(t.info))).ThenBy(t => t.info.Cmc).ThenBy(t => t.info.Name).ToList();
             var listView = new Rect(x, y, w, r.yMax - y - 10);
             if (listView.height < 60) listView.height = 60;
@@ -627,7 +736,8 @@ namespace TCGCustomCards.UI
                 {
                     var row = new Rect(0, ry, w - 24, rowH - 2);
                     string variant = e.Foil || e.Border != ECardBorderType.Base ? $" <size=12><color=#ffd24a>{VersionLabel(e.Border, e.Foil)}</color></size>" : "";
-                    if (GUI.Button(row, $"{e.Save.Count}×  {info.Name}{variant}   <color=#aaaaaa>{info.ManaCost}</color>",
+                    string fav = Favourites.Has(e.Data) ? $"<color={HeartHex}>♥</color> " : "";
+                    if (GUI.Button(row, $"{e.Save.Count}×  {fav}{info.Name}{variant}   <color=#aaaaaa>{info.ManaCost}</color>",
                             new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 14 }))
                     {
                         MtgDeckStore.RemoveOne(deck, e); // back to the binder

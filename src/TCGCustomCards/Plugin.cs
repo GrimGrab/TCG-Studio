@@ -102,7 +102,8 @@ namespace TCGCustomCards
             OldClassicLayout = cfgBefore.TryGetValue(("Binder", "Layout"), out var oldLayout) && oldLayout == "Classic";
             BinderFavouriteKey = Config.Bind("Binder", "FavouriteKey", new KeyboardShortcut(UnityEngine.KeyCode.T),
                 "In the binder, this key marks the card under the mouse (or held up close) as a favourite, or unmarks it. Favourites " +
-                "get a red heart in the binder and their own filter in the binder panel. Only with EnhancedBinder on.");
+                "get a red heart in the binder and their own filter in the binder panel. Only with EnhancedBinder on. The MTG deck " +
+                "builder shares the same favourites: this key over a card there (or a click on its heart) marks it too, with EnhancedBinder on or off.");
             BinderPadVersion = Config.Bind("Binder", "ControllerVersionButton", UI.BinderPadButton.RightStickClick,
                 "Controller button that switches the card you are aiming at to the next version you own (the mouse wheel does this " +
                 "with a mouse). The choices are buttons the game leaves free in the binder. Only with EnhancedBinder on.");

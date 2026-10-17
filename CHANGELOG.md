@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.10.2 - 2026-10-17
+
+MTG deck builder: cards grouped by type, stacked versions and favourites.
+
+- New: the deck list groups cards as Creatures, Planeswalkers, Battles, Instants, Sorceries, Artifacts, Enchantments and Lands instead of one "Spells" pile.
+- New: "Stack versions" button in the deck builder shows one tile per card with the binder's version squares; the mouse wheel over a card (or a click on a square) switches the version, and the pick is shared with the binder.
+- New: favourites in the deck builder, shared with the binder: click the heart on a card or press the favourite key (Binder → FavouriteKey, T by default), filter with "♥ Favourites", and favourite cards get a ♥ in the deck list.
+- Fixed: the Mythic rarity filter button no longer sticks out of the filter panel.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.10.1 - 2026-10-16
 
 Accessory art now covers every visible part of the model.

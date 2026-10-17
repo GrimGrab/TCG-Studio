@@ -30,6 +30,8 @@ namespace TCGCustomCards.Runtime.Mtg
         public readonly HashSet<int> ManaValues = new HashSet<int>();   // 0..6 (6 = 6 or more)
         public readonly HashSet<string> Rarities = new HashSet<string>();
         public readonly HashSet<string> Sets = new HashSet<string>();
+        /// <summary>Only the binder's favourite cards (Binder.Favourites; checked by the builder, which knows the card).</summary>
+        public bool FavouritesOnly;
     }
 
     internal enum MtgSort { ManaValue, Name, Color, Rarity }
@@ -46,6 +48,25 @@ namespace TCGCustomCards.Runtime.Mtg
         /// <summary>The free basic lands of the builder, with the colour they make.</summary>
         public static readonly (string name, string color)[] Basics =
             { ("Plains", "W"), ("Island", "U"), ("Swamp", "B"), ("Mountain", "R"), ("Forest", "G"), ("Wastes", "C") };
+
+        /// <summary>Deck list groups in display order. A card with several types goes in the first that matches
+        /// (Artifact Creature → Creatures, Enchantment Land → Lands); "Other" = none of them (e.g. Kindred only).</summary>
+        public static readonly string[] DeckGroupOrder =
+            { "Creatures", "Planeswalkers", "Battles", "Instants", "Sorceries", "Artifacts", "Enchantments", "Lands", "Other" };
+        private static readonly (string type, string group)[] DeckGroupPrecedence =
+        {
+            ("Creature", "Creatures"), ("Planeswalker", "Planeswalkers"), ("Battle", "Battles"), ("Land", "Lands"),
+            ("Instant", "Instants"), ("Sorcery", "Sorceries"), ("Artifact", "Artifacts"), ("Enchantment", "Enchantments"),
+        };
+
+        /// <summary>The deck list group of a card, from its front face's card types (subtypes after "—" ignored).</summary>
+        public static string DeckGroupOf(MtgCardInfo c)
+        {
+            var types = c.FrontType.Split('—')[0].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var (type, group) in DeckGroupPrecedence)
+                if (Array.IndexOf(types, type) >= 0) return group;
+            return "Other";
+        }
 
         /// <summary>Basic lands (incl. snow basics) have no copy limit.</summary>
         public static bool IsBasicLand(string typeLine)

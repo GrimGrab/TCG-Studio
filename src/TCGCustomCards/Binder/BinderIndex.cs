@@ -255,16 +255,28 @@ namespace TCGCustomCards.Binder
             int per = CPlayerData.GetCardAmountPerMonsterType(exp);
             var limited = VariantPatches.Limited(exp);
             for (int pos = 0; pos < shown.Count; pos++)
+                into.Add(NewEntry(exp, dimension, pos, shown[pos], per, limited, into.Count));
+        }
+
+        private static BinderEntry NewEntry(ECardExpansionType exp, bool dimension, int pos, EMonsterType monster, int per,
+                                            Runtime.CustomSet limited, int order)
+        {
+            var e = new BinderEntry
             {
-                var e = new BinderEntry
-                {
-                    Expansion = exp, Dimension = dimension, Pos = pos, Monster = shown[pos], Per = per,
-                    Listed = new bool[per], Order = into.Count,
-                };
-                for (int v = 0; v < per; v++)
-                    e.Listed[v] = limited == null || VariantPatches.Listed(limited, exp, e.SaveIndex(v));
-                into.Add(e);
-            }
+                Expansion = exp, Dimension = dimension, Pos = pos, Monster = monster, Per = per,
+                Listed = new bool[per], Order = order,
+            };
+            for (int v = 0; v < per; v++)
+                e.Listed[v] = limited == null || VariantPatches.Listed(limited, exp, e.SaveIndex(v));
+            return e;
+        }
+
+        /// <summary>One card of a set as the binder lists it (all its versions; for other card lists, e.g. the MTG deck builder).</summary>
+        public static BinderEntry Entry(ECardExpansionType exp, int pos)
+        {
+            var shown = InventoryBase.GetShownMonsterList(exp);
+            if (!HasCollection(exp) || pos < 0 || pos >= shown.Count) return null;
+            return NewEntry(exp, false, pos, shown[pos], CPlayerData.GetCardAmountPerMonsterType(exp), VariantPatches.Limited(exp), pos);
         }
 
         private static bool Usable(BinderEntry e, BinderQuery q, int v) => e.Count(v) >= q.MinCount && q.VersionOk(e, v);
@@ -290,16 +302,27 @@ namespace TCGCustomCards.Binder
 
         public static int Shown(BinderEntry e) => Shown(e, Query);
 
+        /// <summary>Picks a version directly (it must be usable under <paramref name="q"/>).</summary>
+        public static bool Pick(BinderEntry e, int v, BinderQuery q)
+        {
+            if (e.Fixed >= 0 || v < 0 || v >= e.Per || !Usable(e, q, v)) return false;
+            Picked[e.Key] = v;
+            return true;
+        }
+
         /// <summary>Next (step +1) or previous (-1) usable version after the shown one; remembers the pick. False if there is no other.</summary>
-        public static bool Switch(BinderEntry e, int step)
+        public static bool Switch(BinderEntry e, int step) => Switch(e, step, Query);
+
+        /// <summary><see cref="Switch(BinderEntry,int)"/> under another list's query (same remembered pick per card).</summary>
+        public static bool Switch(BinderEntry e, int step, BinderQuery q)
         {
             if (e.Fixed >= 0) return false;
-            int cur = Shown(e);
+            int cur = Shown(e, q);
             if (cur < 0) return false;
             for (int i = 1; i < e.Per; i++)
             {
                 int v = ((cur + step * i) % e.Per + e.Per) % e.Per;
-                if (!Usable(e, Query, v)) continue;
+                if (!Usable(e, q, v)) continue;
                 Picked[e.Key] = v;
                 return true;
             }

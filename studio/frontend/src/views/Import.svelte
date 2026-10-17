@@ -75,6 +75,8 @@
 
   async function pickSource(id: string) {
     if (eplImporting || id === sourceId && options) return;
+    if (sourceId === 'epl') clearEPL();
+    else if (sourceId === SHARED) clearShare();
     sourceId = id;
     remember('source', id);
     sets = [];
@@ -129,7 +131,8 @@
   }
 
   // EPL mod (experimental): a mod made for Enhanced Prefab Loader, converted once into Studio sets.
-  let eplPath = $state(remembered('epl', ''));
+  // Not remembered: leaving the page or a finished import starts empty again.
+  let eplPath = $state('');
   let epl = $state<any>(null);
   let eplErr = $state('');
   let eplBusy = $state(false);
@@ -147,8 +150,13 @@
   async function useEPL(path: string) {
     if (!path) return;
     eplPath = path;
-    remember('epl', path);
     await previewEPL();
+  }
+
+  function clearEPL() {
+    eplPath = ''; epl = null; eplErr = '';
+    rarityChoice = {}; pickSets = {}; pickItems = {};
+    originMod = ''; originAuthor = ''; originLink = ''; originFor = '';
   }
 
   async function chooseEPL(folder: boolean) {
@@ -195,6 +203,7 @@
     if (sets.some((x: any) => x.imported) && !(await ask('Some ticked sets are already imported. Delete them first to import them again — they will be skipped now. Continue?'))) return;
     queue.current = epl.name; eplImporting = true;
     queue.progress = { stage: 'cards', done: 0, total: 0, message: 'Starting…' };
+    let ok = false;
     try {
       const r: any = await App.ImportEPL(eplPath, { sets: sets.filter((x: any) => !x.imported).map((x: any) => x.code), rarity: rarityChoice, items,
         options: { ...options, stripNumbers, originMod: originMod.trim(), originAuthor: originAuthor.trim(), originLink: originLink.trim() } } as any);
@@ -212,10 +221,11 @@
         for (const job of r.icons) {
           queue.progress = { stage: 'items', done: made, total: r.icons.length, message: `Making icons… ${made + 1} / ${r.icons.length}` };
           try {
-            models[job.kind] ??= await App.AccessoryModel(job.kind);
+            const key = `${job.kind}/${job.base}`; // tabletop items: one model per base
+            models[key] ??= await App.AccessoryModelFor(job.kind, job.base);
             const size = tpl?.items?.find((i: any) => i.type === job.base)?.iconRect ?? [512, 512];
             const url = accFile(job.texture);
-            icons[job.id] = await renderAccessoryIcon(models[job.kind], url, size[0], size[1]);
+            icons[job.id] = await renderAccessoryIcon(models[key], url, size[0], size[1]);
             made++;
           } catch (e) { notify(`Icon for ${job.id}: ${errText(e)}`, 'error'); }
         }
@@ -230,18 +240,19 @@
         } catch (e) { notify(`Box art for ${id}: ${errText(e)}`, 'error'); }
       }
       if (r.sets.length === 1 && !r.items) open(r.sets[0]);
+      ok = true;
     } catch (e) {
       notify(errText(e), 'error');
     }
     queue.current = null; eplImporting = false;
     queue.progress = null;
-    await previewEPL();
+    if (ok) clearEPL(); else await previewEPL();
   }
 
   // TCG Studio file (.tcgitems): sets and items another player exported from their Catalog page. Imported into the catalog
   // and (ticked) this setup; ids this PC already uses get new ones. The person importing names the source.
   const SHARED = 'tcgitems';
-  let sharePath = $state(remembered('share', ''));
+  let sharePath = $state(''); // not remembered, like the EPL mod
   let share = $state<any>(null);
   let shareErr = $state('');
   let shareBusy = $state(false);
@@ -256,8 +267,12 @@
   async function useShare(path: string) {
     if (!path) return;
     sharePath = path;
-    remember('share', path);
     await previewShare();
+  }
+
+  function clearShare() {
+    sharePath = ''; share = null; shareErr = ''; sharePick = {};
+    shareSource = { name: '', author: '', link: '' };
   }
 
   async function chooseShare() {
@@ -292,6 +307,7 @@
     shareBusy = true; eplImporting = true;
     queue.current = sharePath.split(/[\\/]/).pop() ?? 'file';
     queue.progress = { stage: 'share', done: 0, total: 0, message: 'Starting…' };
+    let ok = false;
     try {
       const r: any = await App.ImportShare(sharePath, { picks, source: { name: shareSource.name.trim(), author: shareSource.author.trim(), link: shareSource.link.trim() }, addHere: shareAddHere } as any);
       const sets = r.items.filter((x: any) => x.kind === 'set').length;
@@ -300,12 +316,13 @@
         (shareAddHere ? ` and this setup${sets ? ' — install the sets on the Sets page to play' : ''}` : ' — add them to a setup with Add from catalog') +
         (renamed ? ` (${renamed} got a new id: this PC already had one with theirs)` : '') + '.', 'ok');
       if (r.items.length === 1 && sets === 1 && shareAddHere) open(r.items[0].id);
+      ok = true;
     } catch (e) {
       notify(errText(e), 'error');
     }
     queue.current = null; queue.progress = null;
     shareBusy = false; eplImporting = false;
-    await previewShare();
+    if (ok) clearShare(); else await previewShare();
   }
 
   const pct = (v: number) => (v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4));
@@ -380,6 +397,8 @@
   });
 
   onMount(async () => {
+    // Paths older versions remembered.
+    try { localStorage.removeItem('import.epl'); localStorage.removeItem('import.share'); } catch {}
     loadCatalog();
     listen();
     sources = await App.ImportSources();
@@ -510,7 +529,7 @@
         The art belongs to the mod's authors, so converted sets stay on this PC (they're left out of setup exports).</p>
       <div class="row">
         <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(false)}
-          title="Pick the mod's download: .zip, .rar or .7z — or drop it on this page">Choose download…</button>
+          title="Pick the mod's download: .zip, .rar or .7z — or drop it on this page">Choose zipped folder…</button>
         <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(true)}
           title="Pick the mod's folder after unpacking it (the one with BepInEx or plugins in it, or the mod's own folder) — or drop it on this page">Choose folder…</button>
         <span class="grow path" title={eplPath}>{eplPath || 'No mod chosen'}</span>

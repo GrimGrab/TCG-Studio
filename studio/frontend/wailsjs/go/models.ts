@@ -2826,6 +2826,7 @@ export namespace setfmt {
 	    texture?: string;
 	    icon?: string;
 	    mesh?: string;
+	    shop?: string;
 	    cost?: number;
 	    marketMin?: number;
 	    marketMax?: number;
@@ -2844,6 +2845,7 @@ export namespace setfmt {
 	        this.texture = source["texture"];
 	        this.icon = source["icon"];
 	        this.mesh = source["mesh"];
+	        this.shop = source["shop"];
 	        this.cost = source["cost"];
 	        this.marketMin = source["marketMin"];
 	        this.marketMax = source["marketMax"];
@@ -2876,6 +2878,8 @@ export namespace setfmt {
 	    bases: string[];
 	    palette: boolean;
 	    model: boolean;
+	    ownModel: boolean;
+	    perBase: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AccessoryKind(source);
@@ -2890,6 +2894,8 @@ export namespace setfmt {
 	        this.bases = source["bases"];
 	        this.palette = source["palette"];
 	        this.model = source["model"];
+	        this.ownModel = source["ownModel"];
+	        this.perBase = source["perBase"];
 	    }
 	}
 	

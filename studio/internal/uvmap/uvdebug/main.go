@@ -53,9 +53,10 @@ func main() {
 		for _, e := range p.Outline {
 			line(e[0], e[1], cols[p.Face])
 		}
-		fmt.Printf("%2d %-6s flat=%v tris=%4d uv x %.3f-%.3f y %.3f-%.3f (px x %4.0f-%4.0f y %4.0f-%4.0f top-down) pos %v..%v areaUV=%.4f area3D=%.4f\n",
+		fmt.Printf("%2d %-6s flat=%v tris=%4d uv x %.3f-%.3f y %.3f-%.3f (px x %4.0f-%4.0f y %4.0f-%4.0f top-down) pos %v..%v areaUV=%.4f area3D=%.4f affine u=(%.2f,%.2f) v=(%.2f,%.2f) plane %v\n",
 			i, p.Face, p.Flat, p.Tris, p.UVMin[0], p.UVMax[0], p.UVMin[1], p.UVMax[1],
-			p.UVMin[0]*w, p.UVMax[0]*w, (1-p.UVMax[1])*h, (1-p.UVMin[1])*h, fmt3(p.PosMin), fmt3(p.PosMax), p.AreaUV, p.Area3D)
+			p.UVMin[0]*w, p.UVMax[0]*w, (1-p.UVMax[1])*h, (1-p.UVMin[1])*h, fmt3(p.PosMin), fmt3(p.PosMax), p.AreaUV, p.Area3D,
+			p.Affine[0][0], p.Affine[0][1], p.Affine[1][0], p.Affine[1][1], p.Plane)
 	}
 	o, _ := os.Create(os.Args[3])
 	png.Encode(o, img)

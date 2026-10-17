@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,25 @@ func TestEPLItemsLive(t *testing.T) {
 		_ = json.Unmarshal(b, &d)
 		FigurineToys = d.Items
 	}
+	// Game models sold as figurines: from Studio's game templates on this PC.
+	tpl := filepath.Join(os.Getenv("LOCALAPPDATA"), "TCG Studio", "game-templates", "accessories")
+	GameModel = func(base string) (string, error) {
+		var d struct {
+			Items []struct{ Type, Mesh string } `json:"items"`
+		}
+		b, err := os.ReadFile(filepath.Join(tpl, "accessories.json"))
+		if err != nil {
+			return "", err
+		}
+		_ = json.Unmarshal(b, &d)
+		for _, it := range d.Items {
+			if it.Type == base && it.Mesh != "" {
+				return filepath.Join(tpl, it.Mesh), nil
+			}
+		}
+		return "", fmt.Errorf("%s isn't in the game templates", base)
+	}
+	defer func() { GameModel = nil }()
 	pv, err := ScanEPL(path, os.Getenv("EPL_STRIP") != "", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +146,7 @@ func TestEPLItemsLive(t *testing.T) {
 			Version     string `json:"version"`
 		}
 		_ = json.Unmarshal(lib.Meta.Layouts[a.ID], &l)
-		if a.Kind != "Figurine" && l.TextureFile == "" {
+		if a.Mesh == "" && l.TextureFile == "" { // own models keep their source in a fig1 layout
 			t.Errorf("%s: no editor layout with the texture", a.ID)
 		}
 	}

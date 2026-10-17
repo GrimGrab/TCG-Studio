@@ -14,6 +14,14 @@ export function AccessoryModel(arg1) {
   return window['go']['main']['App']['AccessoryModel'](arg1);
 }
 
+export function AccessoryModelFor(arg1, arg2) {
+  return window['go']['main']['App']['AccessoryModelFor'](arg1, arg2);
+}
+
+export function AccessoryShops() {
+  return window['go']['main']['App']['AccessoryShops']();
+}
+
 export function AccessoryTemplates() {
   return window['go']['main']['App']['AccessoryTemplates']();
 }

@@ -17,14 +17,22 @@ const AccessorySchemaVersion = 1
 // rows — every item of a kind shares one model, they differ in art and prices) and the mod's [Content] toggle that hides the
 // vanilla ones. Mirrors Core/AccessoryKinds.cs (base names) in the mod.
 type AccessoryKind struct {
-	Kind    string   `json:"kind"`    // Deckbox | Playmat | Sleeve | Dice | Comic | Binder | BattleDeck | Figurine (JSON value in accessories.json)
+	Kind    string   `json:"kind"`    // Deckbox | Playmat | Sleeve | Dice | Comic | Binder | BattleDeck | Figurine | BoardGame | CardSupply (JSON value in accessories.json)
 	Title   string   `json:"title"`   // "Deck boxes"
 	One     string   `json:"one"`     // "deck box"
 	Toggle  string   `json:"toggle"`  // mod config key in [Content]
 	Bases   []string `json:"bases"`   // vanilla items to start from; the first is the default
 	Palette bool     `json:"palette"` // texture is a colour palette (recoloured, no artwork)
 	Model   bool     `json:"model"`   // own 3D model (figurines): the base only gives the shelf slot, shop tab and prices
+	// OwnModel: the art is painted on the base's model, or (optionally) the player's own model replaces it (board games, card supplies).
+	OwnModel bool `json:"ownModel"`
+	// PerBase: every base has its own model and layout (uvmap.ModelForBase), so changing the base changes the editor.
+	PerBase bool `json:"perBase"`
 }
+
+// AccessoryShops: where an accessory can be sold instead of its base item's lists (Accessory.Shop; mirrors AccessoryShop in the mod).
+var AccessoryShops = map[string]string{"items": "Restock: sets", "accessories": "Restock: accessories", "figurines": "Restock: figurines",
+	"tabletop": "Tabletop Geek"}
 
 var AccessoryKinds = []AccessoryKind{
 	{Kind: "Deckbox", Title: "Deck boxes", One: "deck box", Toggle: "ShowVanillaDeckBoxes",
@@ -52,6 +60,14 @@ var AccessoryKinds = []AccessoryKind{
 		Bases: []string{"Toy_PiggyA", "Toy_GolemA", "Toy_StarfishA", "Toy_BatA", "Toy_PiggyB", "Toy_GolemB", "Toy_StarfishB",
 			"Toy_BatB", "Toy_FoxB", "Toy_Beetle", "Toy_PiggyC", "Toy_GolemC", "Toy_StarfishC", "Toy_BatC", "Toy_PiggyD",
 			"Toy_GolemD", "Toy_StarfishD", "Toy_BatD", "Toy_PiggyEvo", "Toy_StarfishEvo"}},
+	// Tabletop Geek shop: every item has its own model (one layout per base); paint it, or bring your own model. The four UP
+	// playmat tubes differ only in the colour of the mat inside (its own face), so UP_Playmat1 stands for all of them.
+	{Kind: "BoardGame", Title: "Board games", One: "board game", Toggle: "ShowVanillaBoardGames", OwnModel: true, PerBase: true,
+		Bases: []string{"Boardgame_Speedrobo_SystemGate1", "Boardgame_Speedrobo_SystemGate2", "Boardgame_Speedrobo_Mafia",
+			"Boardgame_Speedrobo_Necro", "Boardgame_Speedrobo_Claim"}},
+	{Kind: "CardSupply", Title: "Card supplies", One: "card supply", Toggle: "ShowVanillaCardSupplies", OwnModel: true, PerBase: true,
+		Bases: []string{"UP_PennySleeves", "UP_TowerDeckbox", "UP_MagneticHolder", "UP_Toploader", "UP_CardPreserver",
+			"UP_Playmat1", "UP_PlatinumSeriesPocketPages", "UP_SemiRigidCardHolder", "UP_Album"}},
 }
 
 func KindInfo(kind string) (AccessoryKind, bool) {
@@ -77,7 +93,8 @@ type Accessory struct {
 	Base      string           `json:"base,omitempty"`
 	Texture   string           `json:"texture,omitempty"`
 	Icon      string           `json:"icon,omitempty"`
-	Mesh      string           `json:"mesh,omitempty"` // figurines: baked model (Unity mesh space, see internal/figurine)
+	Mesh      string           `json:"mesh,omitempty"` // figurines, board games, card supplies: baked model (Unity mesh space, see internal/figurine)
+	Shop      string           `json:"shop,omitempty"` // shop list to sell it from (AccessoryShops); "" = the base item's lists
 	Cost      *float64         `json:"cost,omitempty"`
 	MarketMin *float64         `json:"marketMin,omitempty"`
 	MarketMax *float64         `json:"marketMax,omitempty"`
@@ -111,6 +128,7 @@ func NewAccessory(kind, id, name, base string) Accessory {
 		"Deckbox": {Level: 5, Price: 100}, "Playmat": {Level: 7, Price: 500}, "Sleeve": {Level: 2, Price: 50},
 		"Dice": {Level: 3, Price: 50}, "Comic": {Level: 13, Price: 900}, "Binder": {Level: 11, Price: 1000},
 		"BattleDeck": {Level: 9, Price: 1000}, "Figurine": {Level: 6, Price: 500},
+		"BoardGame": {Level: 5, Price: 200}, "CardSupply": {Level: 10, Price: 800},
 	}[kind]
 	return Accessory{ID: id, Kind: kind, Name: name, Base: base, License: lic}
 }
@@ -175,13 +193,19 @@ func (l *AccessoryLibrary) Validate(resolve func(rel string) string) (errs, warn
 				}
 			}
 		}
-		if a.Mesh != "" {
-			if a.Kind != "Figurine" {
-				warns = append(warns, where+": 'mesh' is only used by figurines (ignored)")
-			} else if _, err := os.Stat(resolve(a.Mesh)); err != nil {
-				warns = append(warns, fmt.Sprintf("%s: model not found %q (base toy's model used)", where, a.Mesh))
+		if a.Shop != "" {
+			if _, ok := AccessoryShops[a.Shop]; !ok {
+				errs = append(errs, fmt.Sprintf("%s: unknown shop %q", where, a.Shop))
 			}
-		} else if a.Kind == "Figurine" {
+		}
+		k, _ := KindInfo(a.Kind)
+		if a.Mesh != "" {
+			if !k.Model && !k.OwnModel {
+				warns = append(warns, where+": 'mesh' is only used by figurines, board games and card supplies (ignored)")
+			} else if _, err := os.Stat(resolve(a.Mesh)); err != nil {
+				warns = append(warns, fmt.Sprintf("%s: model not found %q (base item's model used)", where, a.Mesh))
+			}
+		} else if k.Model {
 			warns = append(warns, where+": no model imported yet (the base toy's model is used)")
 		}
 	}

@@ -113,7 +113,12 @@ func (x *extractor) shelves() (prefab any, out []shelf, tables []any, err error)
 			if seen[sname] {
 				continue
 			}
-			s := x.shelf(g, root, sname, sh, meshes)
+			// Shelf is an InteractableObject: its look leaves out the placement area, highlight shells etc. (as for furniture).
+			var skip func(*node) bool
+			if io, err := unityfs.ReadInteractableObject(so); err == nil {
+				skip = lookSkip(g, io)
+			}
+			s := x.shelf(g, root, sname, sh, meshes, skip)
 			if len(s.Compartments) == 0 {
 				continue
 			}
@@ -157,7 +162,7 @@ func (x *extractor) itemPrefab(g *graph, item *unityfs.Object) any {
 	}
 }
 
-func (x *extractor) shelf(g *graph, root *node, name string, sh unityfs.Shelf, meshes *meshSet) shelf {
+func (x *extractor) shelf(g *graph, root *node, name string, sh unityfs.Shelf, meshes *meshSet, skip func(*node) bool) shelf {
 	rw := root.world()
 	inv := rw.inverse()
 	invRot := root.worldQuat().inverse()
@@ -200,17 +205,18 @@ func (x *extractor) shelf(g *graph, root *node, name string, sh unityfs.Shelf, m
 		s.Compartments = append(s.Compartments, cc)
 	}
 	if len(s.Compartments) > 0 {
-		if file := x.shelfModel(g, root, name, inv, meshes); file != "" {
+		if file := x.shelfModel(g, root, name, inv, meshes, skip); file != "" {
 			s.Mesh = &file
 		}
 	}
 	return s
 }
 
-// shelfModel merges the shelf's static renderers (not items or boxes on it) into one OBJ in the shelf's root space.
-func (x *extractor) shelfModel(g *graph, root *node, name string, inv mat, meshes *meshSet) string {
+// shelfModel merges the shelf's static renderers (not items or boxes on it, nor what skip rejects: placement area, highlight
+// shells) into one OBJ in the shelf's root space.
+func (x *extractor) shelfModel(g *graph, root *node, name string, inv mat, meshes *meshSet, skip func(*node) bool) string {
 	file := "Shelf_" + safe(name) + ".obj"
-	if !x.mergedModel(g, root, "Shelf "+name, filepath.Join(x.acc, file), inv, meshes, nil) {
+	if !x.mergedModel(g, root, "Shelf "+name, filepath.Join(x.acc, file), inv, meshes, skip) {
 		return ""
 	}
 	return file

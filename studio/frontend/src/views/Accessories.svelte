@@ -19,6 +19,7 @@
   let anchor = $state('');
   let TABS = $state<any[]>([]);           // accessory kinds from Go (setfmt.AccessoryKinds): kind, title, one, toggle, bases
   const kindInfo = (k: string) => TABS.find((tb) => tb.kind === k);
+  let SHOPS = $state<Record<string, string>>({}); // shop lists an accessory can be sold from (setfmt.AccessoryShops)
   let kind = $state('Deckbox');          // current tab
   let items = $derived((view?.accessories ?? []).filter((a: any) => a.kind === kind));
   // Display order of the list (the library order itself stays the Gamify ladder order): library order, name, or source
@@ -36,6 +37,7 @@
   let acc = $state<any>(null);           // working copy of the selected accessory
   let layout = $state<Layout>(newLayout());
   let figLayout = $state<FigLayout>(newFigLayout()); // figurines: own model instead of a texture design
+  let useOwn = $state(false);            // board games / card supplies: own model (figLayout) instead of painting the game's
   let dirty = $state(false);
   $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this accessory will be lost.'));
   let saving = $state(false);
@@ -66,6 +68,7 @@
     try { l = a && view.layouts[id] ? JSON.parse(view.layouts[id]) : null; } catch { l = null; }
     layout = l && l.version === 2 ? l : newLayout();
     figLayout = l && l.version === 'fig1' ? { ...newFigLayout(), ...l } : newFigLayout();
+    useOwn = !!l && l.version === 'fig1';
     dirty = false;
     editorKey++;
   }
@@ -158,7 +161,7 @@
     saving = true;
     try {
       let texture = '', icon = '';
-      if (acc.kind === 'Figurine') {
+      if (ownModel(acc)) {
         // Bake the model into the base toy's mesh space (Go), then render the shop icon.
         if (!figLayout.model) { acc.mesh = ''; acc.texture = ''; acc.icon = ''; }
         else if (figEditor) {
@@ -171,6 +174,7 @@
         }
         view = await App.SaveAccessory(acc, JSON.stringify(figLayout), '', icon);
       } else {
+        acc.mesh = ''; // painted on the game's model
         if (isVanilla(layout)) { acc.texture = ''; acc.icon = ''; }
         else if (editor) ({ texture, icon } = await editor.exportImages());
         view = await App.SaveAccessory(acc, JSON.stringify(layout), texture, icon);
@@ -204,6 +208,7 @@
     (async () => {
       try {
         TABS = await App.AccessoryKinds();
+        SHOPS = await App.AccessoryShops();
         await loadTemplates();
         await load(false);
       } catch (e) { notify(errText(e), 'error'); }
@@ -213,6 +218,11 @@
 
   let t = $derived(tplItem(acc));
   let hasBig = $derived(acc?.kind === 'Deckbox');
+  /** Shown with the own-model editor: figurines always, board games / card supplies when chosen. */
+  const ownModel = (a: any) => a?.kind === 'Figurine' || (!!kindInfo(a?.kind)?.ownModel && useOwn);
+  /** Vanilla item's display name from the game templates ("System Gate 1"), else its type. */
+  const baseName = (b: string) => templates?.items?.find((i: any) => i.type === b)?.name || b;
+
 </script>
 
 <div class="page">
@@ -221,8 +231,9 @@
     <button onclick={() => App.OpenAccessoriesFolder()}>Open folder</button>
   </header>
   <p class="muted small">
-    Your own deck boxes, playmats, sleeves, dice, comics, collection books, battle decks (on the booster-pack tab) and figurines
-    (your own 3D models), sold in the shop next to the vanilla ones. They are
+    Your own deck boxes, playmats, sleeves, dice, comics, collection books, battle decks (on the booster-pack tab), figurines
+    (your own 3D models), and board games and card supplies for the Tabletop Geek shop (paint one of the game's
+    models, or bring your own), sold next to the vanilla ones. They are
     global (not part of a set) and installed into the game on every save — restart the game to see changes. To sell only yours, turn
     off <b>Mod settings → Content → {kindInfo(kind)?.toggle ?? 'ShowVanilla…'}</b> (one switch per type).
     {#if view && !view.installed && view.accessories.length}<span class="warn">The game doesn't read this setup yet — set the game folder in Settings.</span>{/if}
@@ -263,13 +274,21 @@
     {#if acc}
       <div class="form">
         <section>
-          <div class="row">
+          <div class="row head">
             <label class="field grow">Name<input bind:value={acc.name} oninput={() => (dirty = true)} /></label>
             <label class="field" title={acc.kind === 'Figurine'
               ? 'Vanilla toy whose shelf slot (how many fit and how big), shop tab and cost / market range are used.'
-              : 'Vanilla item whose art is the starting point (and whose cost / market range are the defaults). All deck boxes share one model, all playmats another.'}>Start from
+              : kindInfo(acc.kind)?.perBase
+                ? 'Vanilla item whose model you paint (each has its own model) — or whose shelf slot your own model uses — and whose shop, cost and market range are the defaults.'
+                : 'Vanilla item whose art is the starting point (and whose cost / market range are the defaults). All deck boxes share one model, all playmats another.'}>Start from
               <select value={baseOf(acc)} onchange={(e) => { acc.base = e.currentTarget.value; dirty = true; }}>
-                {#each kindInfo(acc.kind)?.bases ?? [] as b}<option>{b}</option>{/each}
+                {#each kindInfo(acc.kind)?.bases ?? [] as b}<option value={b}>{baseName(b)}{baseName(b) !== b ? ` (${b})` : ''}</option>{/each}
+              </select>
+            </label>
+            <label class="field" title="Shop list it is sold from. Default: wherever the “Start from” item is sold.">Sold in
+              <select value={acc.shop ?? ''} onchange={(e) => { acc.shop = e.currentTarget.value || undefined; dirty = true; }}>
+                <option value="">Same as {baseName(baseOf(acc))}</option>
+                {#each Object.entries(SHOPS) as [v, label]}<option value={v}>{label}</option>{/each}
               </select>
             </label>
             <label class="field" style="width:150px">Id<input value={acc.id} readonly /></label>
@@ -294,9 +313,26 @@
               {#if acc.texture}<img src={accUrl(acc.texture)} alt="texture" title="Texture" />{/if}
             </span>
           </div>
-          {#key editorKey}
-            {#if acc.kind === 'Figurine'}
+          {#if kindInfo(acc.kind)?.perBase}
+            <div class="row bases">
+              {#each kindInfo(acc.kind)?.bases ?? [] as b}
+                {@const it = templates?.items?.find((i: any) => i.type === b)}
+                <button class:on={baseOf(acc) === b} title={`${baseName(b)} (${b})`} onclick={() => { acc.base = b; dirty = true; }}>
+                  {#if it?.icon}<img src={tplUrl(it.icon)} alt="" />{/if}<span class="small">{baseName(b)}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if kindInfo(acc.kind)?.ownModel}
+            <div class="row small">
+              <label class="check"><input type="radio" checked={!useOwn} onchange={() => { useOwn = false; dirty = true; }} /> Paint the game's model</label>
+              <label class="check"><input type="radio" checked={useOwn} onchange={() => { useOwn = true; dirty = true; }} /> My own 3D model (.glb / .gltf / .obj)</label>
+            </div>
+          {/if}
+          {#key `${editorKey}|${kindInfo(acc.kind)?.perBase ? baseOf(acc) : ''}|${ownModel(acc)}`}
+            {#if ownModel(acc)}
               <FigurineEditor bind:this={figEditor} base={baseOf(acc)} {templates} bind:layout={figLayout} {notify}
+                noun={kindInfo(acc.kind)?.one ?? 'toy'}
                 onchange={() => (dirty = true)}
                 onimported={(n) => { if (/^Custom figurine( \d+)?$/i.test(acc.name)) { acc.name = n; } }} />
             {:else}
@@ -342,6 +378,11 @@
   .page { padding: 16px 20px; height: 100%; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
   .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
+  .bases { flex-wrap: wrap; gap: 6px; }
+  .bases button { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 92px; padding: 4px; }
+  .bases button img { width: 56px; height: 56px; object-fit: contain; }
+  .bases button.on { border-color: var(--accent); background: #22304d; }
+  .check { display: flex; align-items: center; gap: 6px; }
   .wrap { display: flex; flex: 1; min-height: 0; }
   .list { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
   .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
@@ -349,6 +390,9 @@
   .list button.picked { border-color: var(--accent); background: #1c2740; }
   .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .sortby select { flex: 1; }
+  .head { flex-wrap: wrap; align-items: flex-end; } /* fields wrap instead of running past the box */
+  .head > .field { min-width: 0; max-width: 100%; }
+  .head > .grow { flex: 1 1 180px; }
   .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .ico img { max-width: 100%; max-height: 100%; }
   .form { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }

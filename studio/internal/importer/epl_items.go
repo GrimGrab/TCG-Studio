@@ -18,7 +18,7 @@ import (
 )
 
 // EPLItem is a mod item Studio converts into the accessory library (playmats, sleeves, deck boxes, comics, battle
-// decks on the game's own models: their textures are already in those models' layouts).
+// decks, board games and card supplies on the game's own models: their textures are already in those models' layouts).
 type EPLItem struct {
 	Key    string `json:"key"` // descriptor path in the mod | item name
 	ID     string `json:"id"`  // accessory id it gets (eplmod-…)
@@ -29,21 +29,42 @@ type EPLItem struct {
 	Note   string `json:"note,omitempty"`
 }
 
-// eplItemKind decides what a mod item converts to: an accessory kind + base, or why it isn't converted.
+// eplItemKind decides what a mod item converts to: an accessory kind + base, or why it isn't converted. A game model
+// (MeshToUse) decides the kind, except a board game or card supply the mod sells as a figurine: that becomes a figurine
+// with the game model as its own model. An own model is a figurine, or a board game when the mod sells it as one.
 func eplItemKind(it *epl.Item) (kind, base, reason string) {
 	mesh := strings.TrimSpace(it.MeshToUse)
+	ownModel := mesh == "" && it.Mesh != ""
+	if game, _ := figurineModel(it); game != "" {
+		ownModel = true
+	}
 	switch {
-	case it.AddItemAsBoardGame || strings.HasPrefix(strings.ToLower(mesh), "boardgame"):
-		return "", "", "board games aren't supported by TCG Custom Cards"
-	case mesh == "" && it.Mesh != "" && (it.AddItemAsFigurine || strings.EqualFold(it.ItemCategory, "Figurine")):
-		if toy := pickToy(it); toy != nil {
+	case ownModel && (it.AddItemAsFigurine || strings.EqualFold(it.ItemCategory, "Figurine")):
+		if toy := pickBase("Figurine", it); toy != nil {
 			return "Figurine", toy.Type, ""
 		}
 		return "", "", "figurine sizes aren't known"
-	case mesh == "" && it.Mesh != "":
-		return "", "", "has its own 3D model for an item type that only figurines support"
+	case ownModel && (it.AddItemAsBoardGame || strings.EqualFold(it.ItemCategory, "Boardgame")):
+		if b := pickBase("BoardGame", it); b != nil {
+			return "BoardGame", b.Type, ""
+		}
+		return "", "", "board game sizes aren't known"
+	case ownModel:
+		return "", "", "has its own 3D model for an item type that only figurines and board games support"
 	case mesh == "":
 		return "", "", "no game model named"
+	}
+	if kind, base = gameModelKind(mesh); kind != "" {
+		return kind, base, ""
+	}
+	return "", "", fmt.Sprintf("uses the game model %q, which has no accessory kind here", mesh)
+}
+
+// gameModelKind is the accessory kind and base of a game model an item names (MeshToUse), "" when none has it.
+func gameModelKind(mesh string) (kind, base string) {
+	mesh = strings.TrimSpace(mesh)
+	if m := strings.ToLower(mesh); strings.HasPrefix(m, "up_playmat") { // one tube base for all colours (setfmt.AccessoryKinds)
+		mesh = "UP_Playmat1"
 	}
 	for _, k := range setfmt.AccessoryKinds {
 		if k.Model {
@@ -51,11 +72,95 @@ func eplItemKind(it *epl.Item) (kind, base, reason string) {
 		}
 		for _, b := range k.Bases {
 			if strings.EqualFold(b, mesh) {
-				return k.Kind, b, ""
+				return k.Kind, b
 			}
 		}
 	}
-	return "", "", fmt.Sprintf("uses the game model %q, which has no accessory kind here", mesh)
+	return "", ""
+}
+
+// figurineModel tells whether an item is converted from a model of its own (baked like the Figurine editor): its own
+// prefab (own), or the game's board game / card supply model the mod sells as a figurine (game = that base; only these
+// kinds have one model of their own per base).
+func figurineModel(it *epl.Item) (game string, own bool) {
+	mesh := strings.TrimSpace(it.MeshToUse)
+	if mesh == "" {
+		return "", it.Mesh != ""
+	}
+	if !it.AddItemAsFigurine {
+		return "", false
+	}
+	if kind, base := gameModelKind(mesh); kind == "BoardGame" || kind == "CardSupply" {
+		return base, true
+	}
+	return "", false
+}
+
+// GameModel finds the OBJ file of a game item's model in the game templates (set by the app), or says why there is none.
+var GameModel func(base string) (string, error)
+
+// gameModelScene reads a game item's model from the game templates as a figurine scene with one material (the item's
+// texture). The templates are in Unity's mesh space (left-handed), figurine scenes are right-handed: z is mirrored and the
+// winding swapped here, and figurine.Place turns both back.
+func gameModelScene(base string, tex image.Image) (*figurine.Scene, error) {
+	if GameModel == nil {
+		return nil, fmt.Errorf("the game's models aren't available")
+	}
+	path, err := GameModel(base)
+	if err != nil {
+		return nil, err
+	}
+	scene, err := figurine.LoadOBJ(path)
+	if err != nil {
+		return nil, err
+	}
+	scene.Warnings = nil // the templates have no .mtl: the texture comes from the item
+	scene.Materials = []figurine.Material{{Name: base, Image: tex, Factor: [4]float64{1, 1, 1, 1}}}
+	for i := range scene.Parts {
+		p := &scene.Parts[i]
+		p.Mat = 0
+		for j := range p.Pos {
+			p.Pos[j][2] = -p.Pos[j][2]
+		}
+		for j := range p.Nrm {
+			p.Nrm[j][2] = -p.Nrm[j][2]
+		}
+		for t := 0; t+2 < len(p.Idx); t += 3 {
+			p.Idx[t+1], p.Idx[t+2] = p.Idx[t+2], p.Idx[t+1]
+		}
+	}
+	return scene, nil
+}
+
+// kindShop is the shop list a kind's vanilla items are sold from (setfmt.AccessoryShops).
+func kindShop(kind string) string {
+	switch kind {
+	case "BoardGame", "CardSupply":
+		return "tabletop"
+	case "Figurine":
+		return "figurines"
+	case "BattleDeck":
+		return "items"
+	}
+	return "accessories"
+}
+
+// eplShop: the shop EPL sells an item from (its AddItemAs… flags; EPL's restock entries carry them), "" when that is
+// where the base item is sold anyway or no flag is set. A mod may sell a deck box as a board game.
+func eplShop(it *epl.Item, kind string) string {
+	shop := ""
+	switch {
+	case it.AddItemAsBoardGame:
+		shop = "tabletop"
+	case it.AddItemAsFigurine:
+		shop = "figurines"
+	case it.AddItemAsAccessory:
+		shop = "accessories"
+	}
+	if shop == kindShop(kind) {
+		return ""
+	}
+	return shop
 }
 
 // eplItemID is the accessory id of a converted item: the prefix for converted content, the bundle and the item name.
@@ -144,7 +249,8 @@ func eplItems(b *epl.Bundle, a *epl.Assets, strip bool) (items []EPLItem, skippe
 			continue
 		}
 		id, name := eplItemID(b.Path, it.Name), modName(it.Name, strip)
-		if mats := itemMaterials(it); kind != "Figurine" && len(mats) > 1 {
+		_, ownModel := figurineModel(it)
+		if mats := itemMaterials(it); !ownModel && len(mats) > 1 {
 			for n := range mats {
 				items = append(items, EPLItem{Key: eplVariantKey(b.Rel, it.Name, n+1), ID: variantID(id, n+1),
 					Name: fmt.Sprintf("%s (%d of %d)", name, n+1, len(mats)), Kind: kind, Base: base})
@@ -253,7 +359,7 @@ func ImportEPLItems(path string, keys []string, opt Options, lib *accessories.Li
 			if icon != nil {
 				icons = append(icons, *icon)
 			}
-			if kind, _, _ := eplItemKind(j.it); kind == "Figurine" || j.variant == 0 {
+			if _, own := figurineModel(j.it); j.variant == 0 || own {
 				lib.Meta.Origins[eplItemID(b.Path, j.it.Name)] = *eplOrigin(mod, &b, j.it.Name, opt)
 			} else {
 				lib.Meta.Origins[variantID(eplItemID(b.Path, j.it.Name), j.variant)] = *eplOrigin(mod, &b, j.it.Name, opt)
@@ -292,8 +398,8 @@ func convertItem(a *epl.Assets, b epl.Bundle, it *epl.Item, variant int, strip b
 	if kind == "" {
 		return nil, fmt.Errorf("%s", reason)
 	}
-	if kind == "Figurine" {
-		return nil, convertFigurine(a, b, it, base, strip, lib)
+	if _, own := figurineModel(it); own { // own model or a game model sold as a figurine
+		return nil, convertFigurine(a, b, it, kind, base, strip, lib)
 	}
 	mats := itemMaterials(it)
 	if len(mats) == 0 {
@@ -313,7 +419,7 @@ func convertItem(a *epl.Assets, b epl.Bundle, it *epl.Item, variant int, strip b
 	if err != nil {
 		return nil, err
 	}
-	acc := setfmt.Accessory{ID: id, Kind: kind, Name: name, Base: base,
+	acc := setfmt.Accessory{ID: id, Kind: kind, Name: name, Base: base, Shop: eplShop(it, kind),
 		License: setfmt.AccessoryLicense{Level: max(1, it.LicenseLevelRequirement), Price: it.LicensePrice}}
 	if it.BaseCost > 0 {
 		c := it.BaseCost
@@ -373,7 +479,8 @@ func writePNG(lib *accessories.Library, id, suffix string, img image.Image) (str
 	return lib.WriteImage(id, suffix, b)
 }
 
-// ToySize is a vanilla toy's shelf slot (ItemData.itemDimension, isTallItem) and its mesh bounds (Unity mesh space).
+// ToySize is a vanilla toy's (or board game's / card supply's) shelf slot (ItemData.itemDimension, isTallItem) and its mesh
+// bounds (Unity mesh space).
 type ToySize struct {
 	Type   string     `json:"type"`
 	Dim    [3]float64 `json:"itemDimension"`
@@ -384,12 +491,23 @@ type ToySize struct {
 	} `json:"bounds"`
 }
 
-// FigurineToys are the toys a converted figurine can stand in for (set by the app from its built-in measurements).
+// FigurineToys are the vanilla items a converted own model can stand in for: toys, board games and card supplies (set by
+// the app from its built-in measurements).
 var FigurineToys []ToySize
 
-// pickToy finds the figurine base whose shelf slot is closest to the item's (EPL items name their own dimension).
-func pickToy(it *epl.Item) *ToySize {
-	k, _ := setfmt.KindInfo("Figurine")
+// pickBase finds the base of a kind whose shelf slot is closest to the item's (EPL items name their own dimension). A game
+// model sold as a figurine keeps that model's own slot instead (mods leave the dimension at 1×1): the closest one at least
+// as wide, so the model doesn't reach into its neighbours.
+func pickBase(kind string, it *epl.Item) *ToySize {
+	k, _ := setfmt.KindInfo(kind)
+	x, y, tall, minX := it.ItemDeminsion.X, it.ItemDeminsion.Y, it.IsTallItem, 0.0
+	if game, _ := figurineModel(it); game != "" {
+		for _, t := range FigurineToys {
+			if t.Type == game {
+				x, y, tall, minX = t.Dim[0], t.Dim[1], t.Tall, t.Dim[0]
+			}
+		}
+	}
 	var best *ToySize
 	bestD := math.Inf(1)
 	for i := range FigurineToys {
@@ -401,9 +519,12 @@ func pickToy(it *epl.Item) *ToySize {
 		if !ok {
 			continue
 		}
-		d := math.Hypot(t.Dim[0]-it.ItemDeminsion.X, t.Dim[1]-it.ItemDeminsion.Y)
-		if t.Tall != it.IsTallItem {
+		d := math.Hypot(t.Dim[0]-x, t.Dim[1]-y)
+		if t.Tall != tall {
 			d += 0.5
+		}
+		if t.Dim[0] < minX {
+			d += 100 // only when no slot is wide enough
 		}
 		if d < bestD {
 			best, bestD = t, d
@@ -413,15 +534,33 @@ func pickToy(it *epl.Item) *ToySize {
 }
 
 // convertFigurine bakes an item's own model like the Figurine editor: source files for re-editing (images/src), the
-// model placed on the base toy's footprint at its own size (within reason), its texture and icon.
-func convertFigurine(a *epl.Assets, b epl.Bundle, it *epl.Item, base string, strip bool, lib *accessories.Library) error {
-	scene, err := a.PrefabScene(it.Mesh) // EPL names the model's prefab
-	if err != nil {
-		return err
+// model placed on the base item's footprint at its own size (within reason), its texture and icon. kind = Figurine or
+// BoardGame (own models of both are baked the same way). A game model sold as a figurine comes from the game templates
+// with the item's texture, which is painted for that model's UVs.
+func convertFigurine(a *epl.Assets, b epl.Bundle, it *epl.Item, kind, base string, strip bool, lib *accessories.Library) error {
+	var scene *figurine.Scene
+	game, _ := figurineModel(it)
+	if game != "" {
+		mats := itemMaterials(it)
+		if len(mats) == 0 {
+			return fmt.Errorf("no texture named")
+		}
+		img, err := a.MaterialTexture(mats[0])
+		if err != nil {
+			return err
+		}
+		if scene, err = gameModelScene(game, img); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		if scene, err = a.PrefabScene(it.Mesh); err != nil { // EPL names the model's prefab
+			return err
+		}
 	}
 	// EPL paints the item's own material over the model (its renderers often keep a placeholder such as "defaultmat"
 	// from the model import): do the same when the item names one the bundle has.
-	if it.Material != "" {
+	if game == "" && it.Material != "" {
 		if img, err := a.MaterialTexture(it.Material); err == nil {
 			scene.Materials = []figurine.Material{{Name: it.Material, Image: img, Factor: [4]float64{1, 1, 1, 1}}}
 			for i := range scene.Parts {
@@ -436,9 +575,9 @@ func convertFigurine(a *epl.Assets, b epl.Bundle, it *epl.Item, base string, str
 	if src.Triangles() == 0 {
 		return fmt.Errorf("model %q is empty", it.Mesh)
 	}
-	toy := pickToy(it)
+	toy := pickBase(kind, it)
 	if toy == nil {
-		return fmt.Errorf("figurine sizes aren't known")
+		return fmt.Errorf("%s sizes aren't known", strings.ToLower(kind))
 	}
 	id := eplItemID(b.Path, it.Name)
 	srcModel, srcTex, err := storeSource(lib, src, tex)
@@ -460,7 +599,7 @@ func convertFigurine(a *epl.Assets, b epl.Bundle, it *epl.Item, base string, str
 	if err != nil {
 		return err
 	}
-	acc := setfmt.Accessory{ID: id, Kind: "Figurine", Name: modName(it.Name, strip), Base: base, Mesh: meshRel,
+	acc := setfmt.Accessory{ID: id, Kind: kind, Name: modName(it.Name, strip), Base: base, Mesh: meshRel, Shop: eplShop(it, kind),
 		License: setfmt.AccessoryLicense{Level: max(1, it.LicenseLevelRequirement), Price: it.LicensePrice}}
 	if it.BaseCost > 0 {
 		cost := it.BaseCost

@@ -31,9 +31,10 @@
   import sizes from '../lib/figurineSizes.json';
 
   let {
-    base, templates, layout = $bindable(), notify, onchange, onimported,
+    base, templates, layout = $bindable(), notify, onchange, onimported, noun = 'toy',
   }: {
     base: string;              // vanilla toy (slot size, shop tab, prices)
+    noun?: string;             // what the base is called in the texts ('toy', 'board game', 'card supply')
     templates: any;            // mod export (accessories.json), null when missing
     layout: FigLayout;
     notify: (t: string, k?: string) => void;
@@ -335,7 +336,7 @@
       </div>
       <div class="props">
         <h4>Orientation</h4>
-        <p class="muted small">The front should face you in the Model view (the vanilla toy shows which way).</p>
+        <p class="muted small">The front should face you in the Model view (the vanilla {noun} shows which way).</p>
         <div class="row wrap">
           <button class="tiny" onclick={() => turn('rotX', 90)} title="Tip forward 90° (fixes Z-up models)">Tip ↓</button>
           <button class="tiny" onclick={() => turn('rotX', -90)}>Tip ↑</button>
@@ -354,14 +355,14 @@
           <div>{fit.perCompartment} per compartment, like {base}. Slot {cm(fit.slot.w)} × {cm(fit.slot.d)} cm.</div>
           <div class="muted">Figurine {cm(fit.fig.w)} wide × {cm(fit.fig.d)} deep × {cm(fit.fig.h)} tall · {base} {cm(fit.base.w)} × {cm(fit.base.d)} × {cm(fit.base.h)}</div>
           {#each fit.problems as pr}<div class="warn">⚠ {pr}</div>{/each}
-          {#if fit.problems.length}<div class="muted">Make it smaller, or pick a bigger “Start from” toy (its slot size is used).</div>{/if}
+          {#if fit.problems.length}<div class="muted">Make it smaller, or pick a bigger “Start from” {noun} (its slot size is used).</div>{/if}
         </div>
       {/if}
     {/if}
     {#if !item?.bounds}
       <p class="warn small">No size known for {base}: the game templates aren't available yet (Settings → Game).</p>
     {:else if !shelves.length}
-      <p class="muted small">Sizes and the shelf fit use built-in data until TCG Studio has read the game files (Settings → Game); the vanilla toy beside yours and the “On a shelf” view appear then.</p>
+      <p class="muted small">Sizes and the shelf fit use built-in data until TCG Studio has read the game files (Settings → Game); the vanilla {noun} beside yours and the “On a shelf” view appear then.</p>
     {/if}
   </div>
 </div>

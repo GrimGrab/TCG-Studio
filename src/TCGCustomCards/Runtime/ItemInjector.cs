@@ -156,12 +156,37 @@ namespace TCGCustomCards.Runtime
                 }
             }
 
-            // Shop tabs: wherever the base item is listed (accessories, supplies, all), in license order.
+            // Shop tabs: wherever the base item is listed (accessories, supplies, Tabletop Geek, all), in license order — or the list the
+            // accessory names (Def.Shop; plus "all" unless that is the Tabletop Geek shop, which has no "all" page).
             var added = Registry.Accessories.Where(a => a.Item != EItemType.None)
                 .OrderBy(a => a.Def.License.Level).ThenBy(a => a.Def.License.Price).ToList();
-            foreach (var list in new[] { so.m_ShownItemType, so.m_ShownAccessoryItemType, so.m_ShownFigurineItemType, so.m_ShownBoardGameItemType, so.m_ShownAllItemType })
-                foreach (var acc in added)
-                    if (list.Contains(acc.Def.BaseItem)) list.Add(acc.Item);
+            var shops = new[]
+            {
+                (Core.AccessoryShop.Items, so.m_ShownItemType), (Core.AccessoryShop.Accessories, so.m_ShownAccessoryItemType),
+                (Core.AccessoryShop.Figurines, so.m_ShownFigurineItemType), (Core.AccessoryShop.Tabletop, so.m_ShownBoardGameItemType),
+                (Core.AccessoryShop.Base, so.m_ShownAllItemType),
+            };
+            foreach (var acc in added)
+            {
+                var shop = acc.Def.Shop;
+                foreach (var (which, list) in shops)
+                {
+                    bool add = shop == Core.AccessoryShop.Base ? list.Contains(acc.Def.BaseItem)
+                        : which == shop || (list == so.m_ShownAllItemType && shop != Core.AccessoryShop.Tabletop);
+                    if (add) AddShown(list, acc.Item);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Appends to a shown list, before the trailing EItemType.None entries: the Tabletop Geek list ends in empty placeholder slots
+        /// (RestockItemBoardGameScreen shows a blank panel for each), which would otherwise stand between the vanilla and custom items.
+        /// </summary>
+        private static void AddShown(List<EItemType> list, EItemType item)
+        {
+            int at = list.Count;
+            while (at > 0 && list[at - 1] == EItemType.None) at--;
+            list.Insert(at, item);
         }
 
         /// <summary>
@@ -174,7 +199,8 @@ namespace TCGCustomCards.Runtime
             md.materialList = vanilla.materialList != null ? new List<Material>(vanilla.materialList) : null;
             var tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
 
-            // Figurines with their own model: one mesh, one material (the base toy's material with our texture); no secondary parts.
+            // Own model (figurines, board games, card supplies): one mesh, one material (the base item's material with our texture); no
+            // secondary parts.
             var mesh = string.IsNullOrEmpty(def.Mesh) ? null : MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
             if (mesh != null)
             {

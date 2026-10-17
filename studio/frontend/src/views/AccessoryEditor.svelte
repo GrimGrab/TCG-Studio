@@ -810,7 +810,7 @@
 
   onMount(async () => {
     try {
-      model = givenModel ?? ((await App.AccessoryModel(kind)) as unknown as Model);
+      model = givenModel ?? ((await App.AccessoryModelFor(kind, base)) as unknown as Model); // tabletop items: per base
       S = netScale(model);
       if (model.palette || model.projected) view = '3d';
       if (!layout || layout.version !== 2) layout = newLayout();

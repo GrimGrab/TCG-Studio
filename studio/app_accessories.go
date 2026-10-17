@@ -86,6 +86,9 @@ func (a *App) Accessories() (AccessoryView, error) {
 // AccessoryKinds lists the accessory kinds (tabs), their vanilla bases and mod toggles.
 func (a *App) AccessoryKinds() []setfmt.AccessoryKind { return setfmt.AccessoryKinds }
 
+// AccessoryShops lists the shop lists an accessory can be sold from instead of its base item's (value → label).
+func (a *App) AccessoryShops() map[string]string { return setfmt.AccessoryShops }
+
 // AccessoryTemplates returns accessories.json of the game templates (items, meshes, textures, license rows, shelves; see
 // app_templates.go) as raw JSON, or "" while they aren't available.
 func (a *App) AccessoryTemplates() string { return a.templateJSON("accessories", "accessories.json") }
@@ -95,6 +98,21 @@ func (a *App) AccessoryModel(kind string) (uvmap.Model, error) {
 	m, ok := uvmap.ModelFor(kind)
 	if !ok {
 		return m, errors.New("unknown accessory kind " + kind)
+	}
+	return m, nil
+}
+
+// AccessoryModelFor returns the layout of an accessory's model: per base for the tabletop kinds (every board game and card supply
+// has its own mesh), the kind's otherwise.
+func (a *App) AccessoryModelFor(kind, base string) (uvmap.Model, error) {
+	if base == "" {
+		if k, ok := setfmt.KindInfo(kind); ok && len(k.Bases) > 0 {
+			base = k.Bases[0]
+		}
+	}
+	m, ok := uvmap.ModelForBase(kind, base)
+	if !ok {
+		return m, errors.New("no editable layout for " + kind + " " + base)
 	}
 	return m, nil
 }

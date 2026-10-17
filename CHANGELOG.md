@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.10.3 - 2026-10-17
+
+Custom board games and card supplies for the Tabletop Geek shop.
+
+- New: two new accessory kinds in TCG Studio → Accessories: Board games and Card supplies (penny sleeves, toploaders, card holders, pocket pages, albums, tower deck boxes, playmat tubes). Each one starts from a vanilla item you pick, uses that item's model, and is sold in the Tabletop Geek app next to the vanilla items.
+- New: Content → ShowVanillaBoardGames and Content → ShowVanillaCardSupplies turn the vanilla board games and card supplies off in the shop and for customer demand. Items you already own stay.
+- New: "Sold in" on every accessory picks the shop it's sold from (Restock: sets, accessories or figurines, or Tabletop Geek) instead of the vanilla item's shop.
+- New: importing an EPL mod now converts its board games and card supplies too.
+- Fixed: the fields at the top of the Accessories form no longer run past the edge of their box.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.10.2 - 2026-10-17
 
 MTG deck builder: cards grouped by type, stacked versions and favourites.

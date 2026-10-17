@@ -16,6 +16,8 @@
     Comic: 'Vanilla: levels 13–72, licenses 900–16 000.',
     Binder: 'Vanilla: levels 11 and 50, licenses 1 000 and 10 000.',
     BattleDeck: 'Vanilla: levels 9–22 at 1 000 (elements), 33–50 at 5 000 (Destiny).',
+    BoardGame: 'Vanilla (Tabletop Geek): levels 5–24, licenses 200–1 500.',
+    CardSupply: 'Vanilla (Tabletop Geek): levels 10–49, licenses 800–8 000.',
   };
 
   let list = $state<any[]>([]);

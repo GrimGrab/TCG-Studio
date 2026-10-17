@@ -28,11 +28,12 @@ func TestModelsMatchMeshes(t *testing.T) {
 	type check struct {
 		kind, mesh string
 		faces      []Face
+		size       int
 	}
 	var checks []check
 	for _, kind := range []string{"Deckbox", "Playmat", "Sleeve", "Comic", "Binder", "BattleDeck", "Pack", "Box"} { // Dice is a palette (swatches, not UV islands)
 		m, _ := ModelFor(kind)
-		checks = append(checks, check{kind, m.Mesh, m.Faces})
+		checks = append(checks, check{kind, m.Mesh, m.Faces, m.TextureSize})
 	}
 	// Box bases read other atlas areas through the Rare/Epic/Legendary box meshes.
 	for i, b := range box.Bases[1:4] {
@@ -40,11 +41,22 @@ func TestModelsMatchMeshes(t *testing.T) {
 		for _, f := range box.Faces {
 			faces = append(faces, Face{ID: f.ID, Targets: b.Targets[f.ID]})
 		}
-		checks = append(checks, check{b.ID, fmt.Sprintf("CardBoxMesh_%d", i+2), faces})
+		checks = append(checks, check{b.ID, fmt.Sprintf("CardBoxMesh_%d", i+2), faces, 1024})
+	}
+	// Tabletop items: one layout per base. The UP playmats' "mat" swatches are colour areas (not islands).
+	for _, b := range TabletopBases() {
+		m := tabletop[b]
+		var faces []Face
+		for _, f := range m.Faces {
+			if f.ID != "mat" {
+				faces = append(faces, f)
+			}
+		}
+		checks = append(checks, check{b, m.Mesh, faces, m.TextureSize})
 	}
 	for _, c := range checks {
 		kind := c.kind
-		m := Model{Faces: c.faces, TextureSize: 1024}
+		m := Model{Faces: c.faces, TextureSize: c.size}
 		mesh, err := LoadOBJ(filepath.Join(dir, c.mesh+".obj"))
 		if err != nil {
 			t.Fatalf("%s: %v", kind, err)
@@ -133,8 +145,11 @@ func TestBattleDeckOrientation(t *testing.T) {
 
 func TestPreviewMeshesExported(t *testing.T) {
 	dir := templatesDir(t)
-	for _, kind := range []string{"Deckbox", "Playmat", "Sleeve", "Dice", "Comic", "Binder", "BattleDeck"} {
+	for _, kind := range append([]string{"Deckbox", "Playmat", "Sleeve", "Dice", "Comic", "Binder", "BattleDeck"}, TabletopBases()...) {
 		m, ok := ModelFor(kind)
+		if !ok {
+			m, ok = tabletop[kind]
+		}
 		if !ok || len(m.Preview) == 0 {
 			t.Fatalf("%s: no preview parts", kind)
 		}

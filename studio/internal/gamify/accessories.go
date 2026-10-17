@@ -40,6 +40,9 @@ var vanillaCurves = map[string][][2]float64{
 	"Figurine": {{6, 500}, {8, 700}, {10, 900}, {12, 1200}, {15, 2500}, {18, 2500}, {20, 2500}, {24, 2500}, {28, 3500},
 		{30, 5000}, {34, 5000}, {42, 5000}, {50, 5000}, {55, 10000}, {65, 10000}, {70, 15000}, {75, 15000}, {77, 15000},
 		{80, 20000}},
+	// Tabletop Geek shop (one big delivery box each): the Speedrobo board games and the Ultra-PRO card supplies.
+	"BoardGame":  {{5, 200}, {7, 300}, {11, 500}, {17, 1000}, {24, 1500}},
+	"CardSupply": {{10, 800}, {14, 1500}, {19, 2000}, {23, 2500}, {28, 2500}, {31, 3000}, {32, 3000}, {33, 3000}, {34, 3000}, {39, 5000}, {44, 5000}, {49, 8000}},
 }
 
 // DefaultAccessorySettings spans each kind's vanilla level range.
@@ -53,6 +56,8 @@ func DefaultAccessorySettings() AccessorySettings {
 		"Binder":     {MinLevel: 11, MaxLevel: 50, PriceScale: 1},
 		"BattleDeck": {MinLevel: 9, MaxLevel: 50, PriceScale: 1},
 		"Figurine":   {MinLevel: 6, MaxLevel: 77, PriceScale: 1},
+		"BoardGame":  {MinLevel: 5, MaxLevel: 24, PriceScale: 1},
+		"CardSupply": {MinLevel: 10, MaxLevel: 49, PriceScale: 1},
 	}
 }
 

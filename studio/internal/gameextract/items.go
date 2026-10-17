@@ -34,7 +34,7 @@ func (x *extractor) packTemplates() error {
 
 // kindOf mirrors the mod's AccessoryKinds.KindOf (true = an item Studio can make custom versions of).
 func kindOf(name string) bool {
-	for _, p := range []string{"DeckBox", "Playmat", "PlayMat", "CardSleeve_", "D20DiceBox", "Manga", "BinderBook", "PreconDeck_", "Toy_"} {
+	for _, p := range []string{"DeckBox", "Playmat", "PlayMat", "CardSleeve_", "D20DiceBox", "Manga", "BinderBook", "PreconDeck_", "Toy_", "Boardgame_", "UP_"} {
 		if strings.HasPrefix(name, p) {
 			return true
 		}
@@ -114,7 +114,7 @@ func (x *extractor) accessories() ([]accItem, error) {
 		name := x.itemNames[int32(i)]
 		d := x.so.Items[i]
 		cat := x.catNames[d.Category]
-		if !kindOf(name) && cat != "Sleeve" && cat != "Dice" {
+		if !kindOf(name) && cat != "Sleeve" && cat != "Dice" && cat != "Boardgame" && !has(x.so.ShownBoardGame, i) {
 			continue
 		}
 		md := x.so.Meshes[i]

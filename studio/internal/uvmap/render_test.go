@@ -25,11 +25,16 @@ func TestRenderOrientation(t *testing.T) {
 	}
 	dir := templatesDir(t)
 	kinds := []string{"Pack", "Box"}
-	if k := os.Getenv("RENDER_KIND"); k != "" {
+	if k := os.Getenv("RENDER_KIND"); k == "tabletop" {
+		kinds = TabletopBases()
+	} else if k != "" {
 		kinds = []string{k}
 	}
 	for _, kind := range kinds {
-		m, _ := ModelFor(kind)
+		m, ok := ModelFor(kind)
+		if !ok { // a tabletop base: its own model
+			m = tabletop[kind]
+		}
 		if kind == "LegendaryCardBox" { // a box base: its targets on its own mesh
 			m, _ = ModelFor("Box")
 			b := m.Bases[3]

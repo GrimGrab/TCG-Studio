@@ -59,14 +59,14 @@ namespace TCGCustomCards.Core
                         Plugin.Log.LogWarning($"Accessory library {where}: image not found '{img}' (vanilla art used)");
                 if (!string.IsNullOrEmpty(a.Mesh))
                 {
-                    if (a.Kind != AccessoryKind.Figurine)
+                    if (!AccessoryKinds.TakesMesh(a.Kind))
                     {
-                        Plugin.Log.LogWarning($"Accessory library {where}: 'mesh' is only used by figurines (ignored)");
+                        Plugin.Log.LogWarning($"Accessory library {where}: 'mesh' is only used by figurines, board games and card supplies (ignored)");
                         a.Mesh = null;
                     }
                     else if (!File.Exists(StudioPaths.ItemFile(dir, a.Mesh)))
                     {
-                        Plugin.Log.LogWarning($"Accessory library {where}: model not found '{a.Mesh}' (base toy's model used)");
+                        Plugin.Log.LogWarning($"Accessory library {where}: model not found '{a.Mesh}' (base item's model used)");
                         a.Mesh = null;
                     }
                 }

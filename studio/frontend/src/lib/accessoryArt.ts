@@ -56,6 +56,7 @@ export const newLayout = (): Layout => ({ version: 2, layers: [], base: 'vanilla
  *  read straight from that texture, as the editor does with a painted texture. Same output as the editor's export. */
 export async function renderAccessoryIcon(m: Model, textureUrl: string, w = 512, h = 512): Promise<string> {
   const tex = await loadImage(textureUrl);
+  if (m.icon === 'mesh' || m.icon === 'pack') return meshIcon(m, tex); // the model itself, textured
   const S = netScale(m), net = document.createElement('canvas');
   await renderNet(net, m, newLayout(), tex, () => '', S);
   return composeIcon(m, net, S, w, h).toDataURL('image/png');

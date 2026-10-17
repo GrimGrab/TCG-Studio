@@ -7,7 +7,8 @@ namespace TCGCustomCards.Runtime
     /// <summary>
     /// Custom-only mode. Hiding filters what the game offers; it never deletes anything, and turning it back on restores vanilla.
     ///  • Packs hidden: vanilla card packs/boxes leave the restock lists, customer demand, worker/auto-opener pack list and play-table prizes.
-    ///  • Accessories hidden (per kind: deck boxes, playmats, sleeves, dice, comics, collection books, battle decks, figurines): the vanilla items of that kind
+    ///  • Accessories hidden (per kind: deck boxes, playmats, sleeves, dice, comics, collection books, battle decks, figurines, board games,
+    ///    card supplies): the vanilla items of that kind
     ///    leave the restock lists, the deck picker, play tables and customer demand.
     ///  • Cards hidden: vanilla sets leave the binder and set pickers, screens default to a custom set, trade customers bring custom cards.
     ///  • Furniture hidden: vanilla pieces leave the furniture shop (applied when the shop opens); essential ones stay without a custom one.
@@ -74,7 +75,7 @@ namespace TCGCustomCards.Runtime
         }
 
         private static StockItemData_ScriptableObject _so;
-        private static List<EItemType> _origShown, _origShownAll, _origPackList, _origShownAccessory, _origShownFigurine;
+        private static List<EItemType> _origShown, _origShownAll, _origPackList, _origShownAccessory, _origShownFigurine, _origShownBoardGame;
         private static readonly HashSet<EItemType> VanillaCardProducts = new HashSet<EItemType>();
 
         /// <summary>Called by ItemInjector after custom items are added: remembers the full lists so filtering is reversible.</summary>
@@ -86,6 +87,7 @@ namespace TCGCustomCards.Runtime
             _origPackList = new List<EItemType>(so.m_CardPackItemTypeList);
             _origShownAccessory = new List<EItemType>(so.m_ShownAccessoryItemType);
             _origShownFigurine = new List<EItemType>(so.m_ShownFigurineItemType);
+            _origShownBoardGame = new List<EItemType>(so.m_ShownBoardGameItemType);
             VanillaCardProducts.Clear();
             for (int i = 0; i < (int)EItemType.Max; i++)
                 if (InventoryBase.ItemTypeToCollectionPackType((EItemType)i) != ECollectionPackType.None)
@@ -114,6 +116,7 @@ namespace TCGCustomCards.Runtime
             Refill(_so.m_CardPackItemTypeList, _origPackList);
             Refill(_so.m_ShownAccessoryItemType, _origShownAccessory);
             Refill(_so.m_ShownFigurineItemType, _origShownFigurine);
+            Refill(_so.m_ShownBoardGameItemType, _origShownBoardGame); // Tabletop Geek shop (its None placeholders stay)
             ApplyPlayerDefaults();
             // The deck box / playmat picker caches its lists until a license is bought; make it rebuild them.
             GameInstance.m_IsItemLicenseUnlocked = true;

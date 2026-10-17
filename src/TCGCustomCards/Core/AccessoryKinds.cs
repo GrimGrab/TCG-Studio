@@ -22,8 +22,14 @@ namespace TCGCustomCards.Core
             if (n.StartsWith("PreconDeck_", StringComparison.Ordinal)) return AccessoryKind.BattleDeck;
             // Figurines: every toy has its own model; custom ones bring a mesh and stand in the base toy's shelf slot.
             if (n.StartsWith("Toy_", StringComparison.Ordinal)) return AccessoryKind.Figurine;
+            // Tabletop Geek shop: every board game and card supply has its own model.
+            if (n.StartsWith("Boardgame_", StringComparison.Ordinal)) return AccessoryKind.BoardGame;
+            if (n.StartsWith("UP_", StringComparison.Ordinal)) return AccessoryKind.CardSupply;
             return null;
         }
+
+        /// <summary>Kinds that may bring their own model (<see cref="AccessoryDef.Mesh"/>).</summary>
+        public static bool TakesMesh(AccessoryKind k) => k == AccessoryKind.Figurine || k == AccessoryKind.BoardGame || k == AccessoryKind.CardSupply;
 
         /// <summary>Base model used when an accessory doesn't name one.</summary>
         public static string DefaultBase(AccessoryKind k)
@@ -37,6 +43,8 @@ namespace TCGCustomCards.Core
                 case AccessoryKind.Comic: return "Manga1";
                 case AccessoryKind.BattleDeck: return "PreconDeck_Fire";
                 case AccessoryKind.Figurine: return "Toy_PiggyA";
+                case AccessoryKind.BoardGame: return "Boardgame_Speedrobo_SystemGate1";
+                case AccessoryKind.CardSupply: return "UP_PennySleeves";
                 default: return "BinderBook";
             }
         }

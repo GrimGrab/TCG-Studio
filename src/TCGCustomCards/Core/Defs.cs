@@ -440,8 +440,12 @@ namespace TCGCustomCards.Core
         [JsonProperty("boxes")] public bool? Boxes;
     }
 
-    /// <summary>Deck boxes, playmats, card sleeves, dice boxes, comics (Manga items), collection books (binders), battle decks (PreconDeck items), figurines (Toy items).</summary>
-    public enum AccessoryKind { Deckbox, Playmat, Sleeve, Dice, Comic, Binder, BattleDeck, Figurine }
+    /// <summary>Deck boxes, playmats, card sleeves, dice boxes, comics (Manga items), collection books (binders), battle decks (PreconDeck items), figurines (Toy items),
+    /// board games (Boardgame_* items) and card supplies (UP_* items) — the last two sold in the Tabletop Geek phone shop.</summary>
+    public enum AccessoryKind { Deckbox, Playmat, Sleeve, Dice, Comic, Binder, BattleDeck, Figurine, BoardGame, CardSupply }
+
+    /// <summary>Shop list an accessory is sold from instead of its base item's (EPL mods put a board-game model in the figurine tab).</summary>
+    public enum AccessoryShop { Base, Items, Accessories, Figurines, Tabletop }
 
     public class AccessoryDef
     {
@@ -457,10 +461,13 @@ namespace TCGCustomCards.Core
         [JsonProperty("texture")] public string Texture;
         [JsonProperty("icon")] public string Icon;
         /// <summary>
-        /// Figurines only: own model as a baked OBJ written by TCG Studio (Unity space: left-handed, Y up, UV origin bottom-left; one object,
-        /// triangles), placed in the base toy's mesh space so it stands in the base toy's shelf slot. Null = the base toy's model.
+        /// Figurines, board games and card supplies: own model as a baked OBJ written by TCG Studio (Unity space: left-handed, Y up, UV
+        /// origin bottom-left; one object, triangles), placed in the base item's mesh space so it stands in the base item's shelf slot.
+        /// Null = the base item's model.
         /// </summary>
         [JsonProperty("mesh")] public string Mesh;
+        /// <summary>Shop list to sell it from. Missing = every list the base item is in (<see cref="AccessoryShop.Base"/>).</summary>
+        [JsonProperty("shop"), JsonConverter(typeof(StringEnumConverter))] public AccessoryShop Shop = AccessoryShop.Base;
         /// <summary>Wholesale cost per item. Null = base item's cost.</summary>
         [JsonProperty("cost")] public float? Cost;
         /// <summary>Market price range as multiples of cost. Null = base item's range.</summary>

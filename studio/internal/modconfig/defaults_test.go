@@ -14,7 +14,7 @@ import (
 var loopBinds = map[string][]string{
 	`Config.Bind("Content", key,`: {"Content/ShowVanillaDeckBoxes", "Content/ShowVanillaPlaymats", "Content/ShowVanillaSleeves",
 		"Content/ShowVanillaDice", "Content/ShowVanillaComics", "Content/ShowVanillaCollectionBooks", "Content/ShowVanillaBattleDecks",
-		"Content/ShowVanillaFigurines"},
+		"Content/ShowVanillaFigurines", "Content/ShowVanillaBoardGames", "Content/ShowVanillaCardSupplies"},
 	`Config.Bind(foilSection, $"{grades[g]}`: foilGrades(),
 	`Config.Bind(aiCol, i == 0 ? "AiDeckWeight1Color"`: {"MTG - AI deck colours/AiDeckWeight1Color",
 		"MTG - AI deck colours/AiDeckWeight2Colors", "MTG - AI deck colours/AiDeckWeight3Colors",

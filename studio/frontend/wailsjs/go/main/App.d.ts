@@ -27,6 +27,10 @@ export function AccessoryKinds():Promise<Array<setfmt.AccessoryKind>>;
 
 export function AccessoryModel(arg1:string):Promise<uvmap.Model>;
 
+export function AccessoryModelFor(arg1:string,arg2:string):Promise<uvmap.Model>;
+
+export function AccessoryShops():Promise<Record<string, string>>;
+
 export function AccessoryTemplates():Promise<string>;
 
 export function AddFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.AddResult>;

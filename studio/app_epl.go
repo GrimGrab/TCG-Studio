@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -97,6 +98,38 @@ type EPLResult struct {
 	Problems []string           `json:"problems"`
 }
 
+// gameModel is the OBJ of a game item's model in the game templates (accessories.json "mesh"), for a converted item that
+// uses it as a figurine's own model. Items whose model has a second part (the album's pages) aren't supported.
+func (a *App) gameModel(base string) (string, error) {
+	raw := a.templateJSON("accessories", "accessories.json")
+	if raw == "" {
+		return "", errors.New("the game's models haven't been read yet: open Game & mod and let Studio read the game files")
+	}
+	var t struct {
+		Items []struct {
+			Type          string `json:"type"`
+			Mesh          string `json:"mesh"`
+			MeshSecondary string `json:"meshSecondaryFile"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(raw), &t); err != nil {
+		return "", err
+	}
+	for _, it := range t.Items {
+		if it.Type != base {
+			continue
+		}
+		switch {
+		case it.Mesh == "":
+			return "", fmt.Errorf("the game's model of %s wasn't read", base)
+		case it.MeshSecondary != "":
+			return "", fmt.Errorf("the game's model of %s has two parts, which a figurine can't use", base)
+		}
+		return a.templateFile("accessories", it.Mesh), nil
+	}
+	return "", fmt.Errorf("%s isn't in the game templates", base)
+}
+
 // ImportEPL converts the chosen parts of a mod in one go: its card sets (as ImportSet would, one after another) and its
 // accessories (into the accessory library, installed to the game when it is set up). A failed set doesn't stop the rest.
 func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
@@ -124,6 +157,7 @@ func (a *App) ImportEPL(path string, sel EPLSelection) (EPLResult, error) {
 		if err != nil {
 			return res, err
 		}
+		importer.GameModel = a.gameModel
 		n, icons, failed, err := importer.ImportEPLItems(path, sel.Items, sel.Options, l, func(pr importer.Progress) {
 			runtime.EventsEmit(a.ctx, evImportProgress, pr)
 		})

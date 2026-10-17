@@ -69,6 +69,9 @@ type Base struct {
 
 var full = [4]float64{0, 0, 1, 1}
 
+// edgeSwatch: a thin strip at the middle of a face's left edge — the colour that small swatches of a part's card edges take.
+var edgeSwatch = [4]float64{0.01, 0.4, 0.05, 0.6}
+
 // PreviewPart is one mesh of the 3D preview. Texture "main" = the texture being edited, "secondary" = the base item's
 // second texture (<base>_texture2.png, e.g. binder pages); Glass parts are drawn see-through and untextured.
 type PreviewPart struct {
@@ -88,26 +91,30 @@ var deckbox = Model{
 	Size:    [3]float64{0.914, 1.225, 0.862},
 	Faces: []Face{
 		{ID: "left", Label: "Left side", Net: [4]float64{0, 0, 0.862, 1.225}, Targets: []Target{
-			{Rect: [4]float64{189, 44, 419, 484}, Src: full}}},
+			{Rect: [4]float64{189, 42, 419, 486}, Src: full}}},
 		{ID: "front", Label: "Front", Net: [4]float64{0.862, 0, 0.914, 1.225}, Targets: []Target{
-			// The tray's own front (under the cover; its top edge shows above the cover).
-			{Rect: [4]float64{419, 44, 651, 484}, Src: full},
-			// The cover spans y −0.550…0.525 of the tray's −0.593…0.632.
-			{Rect: [4]float64{62, 538, 400, 968}, Src: [4]float64{0, 0.087, 1, 0.965}}}},
+			// The tray's own front (under the cover; its top edge shows above the cover). The tray strip (y 44–484) reaches 2 px
+			// further up and down into unused texels, so mipmaps don't draw a red line along the top of the sides.
+			{Rect: [4]float64{419, 42, 651, 486}, Src: full},
+			// The cover spans y −0.550…0.525 of the tray's −0.593…0.632. Its island is x 62–400 × y 538–968; the rect reaches 2 px
+			// further into the unused texels around it, so mipmaps don't pull the vanilla red into its edges.
+			{Rect: [4]float64{60, 536, 402, 970}, Src: [4]float64{0, 0.087, 1, 0.965}}}},
 		{ID: "right", Label: "Right side", Net: [4]float64{1.776, 0, 0.862, 1.225}, Targets: []Target{
-			{Rect: [4]float64{651, 44, 881, 484}, Src: full}}},
+			{Rect: [4]float64{651, 42, 881, 486}, Src: full}}},
 		{ID: "back", Label: "Back", Net: [4]float64{2.638, 0, 0.862, 1.225}, Targets: []Target{
-			{Rect: [4]float64{881, 44, 994, 484}, Src: [4]float64{0, 0, 0.5, 1}},
-			{Rect: [4]float64{75, 44, 189, 484}, Src: [4]float64{0.5, 0, 1, 1}}}},
+			{Rect: [4]float64{881, 42, 996, 486}, Src: [4]float64{0, 0, 0.5, 1}},
+			{Rect: [4]float64{74, 42, 189, 486}, Src: [4]float64{0.5, 0, 1, 1}}}},
+		// Lid island x 731–991 × y 535–781, plus 2 px around it.
 		{ID: "top", Label: "Lid", Net: [4]float64{0.862, -0.864, 0.914, 0.864}, Targets: []Target{
-			{Rect: [4]float64{731, 535, 991, 781}, Src: full}}},
+			{Rect: [4]float64{729, 533, 993, 783}, Src: full}}},
 		{ID: "bottom", Label: "Bottom", Net: [4]float64{0.862, 1.225, 0.914, 0.864}, Hidden: true, Targets: []Target{
-			{Rect: [4]float64{458, 558, 687, 790}, Src: full, FlipY: true}}},
+			{Rect: [4]float64{457, 557, 689, 790}, Src: full, FlipY: true}}},
 	},
 }
 
-// Playmat: one printed surface (table mesh top, also wrapped around the rolled shop item). The dark lower part of the
-// texture is the rubber underside and edge.
+// Playmat: one printed surface (table mesh top, also wrapped around the rolled shop item), the rubber underside (x 21–372 ×
+// y 751–1004, same direction as the top: shown as if the mat were flipped towards you) and the rim (x 427–561 × y 774–910,
+// all four edges squashed into it — colour only).
 var playmat = Model{
 	Kind: "Playmat", Mesh: "PlayMatFlatMesh", TextureSize: 1024, Icon: "tilt",
 	Preview: mainPart("PlayMatFlatMesh"),
@@ -117,39 +124,53 @@ var playmat = Model{
 			// Bleed: the whole face stretched over the printed area incl. its margin, then the exact mapping on top.
 			{Rect: [4]float64{0, 0, 1024, 604}, Src: full, Bleed: true},
 			{Rect: [4]float64{28, 27, 996, 569}, Src: full}}},
+		{ID: "bottom", Label: "Underside", Net: [4]float64{0, 2.925, 4.614, 2.825}, Targets: []Target{
+			{Rect: [4]float64{19, 749, 374, 1006}, Src: full, FlipY: true}}},
+		{ID: "edges", Label: "Rim", Net: [4]float64{0, 5.85, 0.6, 0.6}, Hidden: true, Targets: []Target{
+			{Rect: [4]float64{425, 772, 563, 912}, Src: full}}},
 	},
 }
 
 // Sleeve pack: a flat box of sleeves with a printed front (the logo art), a plain back and a hang tab above it (the same
-// print on both sides of the tab). The box edges share one strip (x 775–988), rotated in the texture — colour only.
+// print on both sides of the tab). The tab's rect runs on over the crimp below it (y 862–906, the fold into the box), so
+// the tab's art continues over it. The box edges share one strip (x 774–988, incl. the left edge's rows 988–1012), rotated
+// in the texture — colour only.
 var sleeve = Model{
 	Kind: "Sleeve", Mesh: "ItemCardSleeveMesh", TextureSize: 1024, Icon: "tilt",
 	Preview: mainPart("ItemCardSleeveMesh"),
 	Size:    [3]float64{0.693, 1.088, 0.206},
 	Faces: []Face{
-		{ID: "top", Label: "Hang tab", Net: [4]float64{0, -0.387, 0.700, 0.287}, Targets: []Target{
-			{Rect: [4]float64{11, 577, 699, 862}, Src: full}}},
+		{ID: "top", Label: "Hang tab", Net: [4]float64{0, -0.387, 0.700, 0.331}, Targets: []Target{
+			{Rect: [4]float64{10, 577, 701, 906}, Src: full},
+			// The tab's thin card edges (its sides, top and the hang hole's wall) are small colour swatches: the colour at the
+			// tab's left edge.
+			{Rect: [4]float64{173, 940, 216, 982}, Src: edgeSwatch},
+			{Rect: [4]float64{711, 830, 741, 860}, Src: edgeSwatch},
+			{Rect: [4]float64{382, 428, 394, 454}, Src: edgeSwatch}}},
 		{ID: "front", Label: "Front", Net: [4]float64{0, 0, 0.693, 1.088}, Targets: []Target{
 			{Rect: [4]float64{394, 20, 748, 517}, Src: full}}},
 		{ID: "back", Label: "Back", Net: [4]float64{0.793, 0, 0.693, 1.088}, Targets: []Target{
-			{Rect: [4]float64{13, 20, 367, 517}, Src: full}}},
+			{Rect: [4]float64{12, 20, 367, 517}, Src: full}}},
 		{ID: "edges", Label: "Edges", Net: [4]float64{1.586, 0, 0.206, 1.088}, Hidden: true, Targets: []Target{
-			{Rect: [4]float64{775, 12, 988, 988}, Src: full}}},
+			{Rect: [4]float64{774, 11, 989, 1012}, Src: full}}},
 	},
 }
 
-// Comic: one cover wrap back | spine | front (y 20–734), upright; the lower part of the texture is the page edges (kept).
+// Comic: one cover wrap back | spine | front (y 19–735), upright. The lower part of the texture (x 30–980 × y 753–1001) is the
+// page edges: one strip of page lines that the fore-edge, the top and the bottom all reuse (the book's height runs across it).
 var comic = Model{
 	Kind: "Comic", Mesh: "Manga_Mesh", TextureSize: 1024, Icon: "tilt",
 	Preview: mainPart("Manga_Mesh"),
 	Size:    [3]float64{1.226, 1.699, 0.227},
 	Faces: []Face{
 		{ID: "back", Label: "Back cover", Net: [4]float64{0, 0, 1.226, 1.699}, Targets: []Target{
-			{Rect: [4]float64{15, 20, 450, 734}, Src: full}}},
+			{Rect: [4]float64{15, 19, 450, 735}, Src: full}}},
 		{ID: "left", Label: "Spine", Net: [4]float64{1.226, 0, 0.227, 1.699}, Targets: []Target{
-			{Rect: [4]float64{450, 20, 524, 734}, Src: full}}},
+			{Rect: [4]float64{450, 19, 524, 735}, Src: full}}},
 		{ID: "front", Label: "Front cover", Net: [4]float64{1.453, 0, 1.226, 1.699}, Targets: []Target{
-			{Rect: [4]float64{524, 20, 1002, 734}, Src: full}}},
+			{Rect: [4]float64{524, 19, 1003, 735}, Src: full}}},
+		{ID: "pages", Label: "Page edges", Net: [4]float64{0, 1.799, 1.699, 0.443}, Targets: []Target{
+			{Rect: [4]float64{29, 752, 981, 1002}, Src: full}}},
 	},
 }
 
@@ -187,7 +208,7 @@ var dice = Model{
 }
 
 // Battle deck (vanilla PreconDeck_*, mesh "PerconDeck_Mesh" — the game's spelling): a box with a big printed front, two sides,
-// a lid, and a hang tab standing up from the back edge. The back and the back of the tab are one panel lying on its side in
+// a lid, and a hang tab standing up from the back edge. Rects reach 1–2 px past their islands into unused texels (mipmaps). The back and the back of the tab are one panel lying on its side in
 // the texture (x 25–392, y 765–998). The grey block around x 400–625 × 765–1010 is the inside (tray, card stack) — kept.
 var battleDeck = Model{
 	Kind: "BattleDeck", Mesh: "PerconDeck_Mesh", TextureSize: 1024, Icon: "box",
@@ -198,16 +219,19 @@ var battleDeck = Model{
 			{Rect: [4]float64{636, 913, 1024, 1018}, Src: full, Bleed: true},
 			{Rect: [4]float64{644, 921, 1016, 1010}, Src: full}}},
 		{ID: "top", Label: "Lid", Net: [4]float64{0.471, -0.471, 1.055, 0.471}, Targets: []Target{
-			{Rect: [4]float64{632, 756, 1012, 905}, Src: full}}},
+			{Rect: [4]float64{630, 754, 1014, 907}, Src: full}}},
 		{ID: "left", Label: "Left side", Net: [4]float64{0, 0, 0.471, 1.454}, Targets: []Target{
-			{Rect: [4]float64{17, 14, 241, 746}, Src: full}}},
+			{Rect: [4]float64{16, 13, 242, 748}, Src: full},
+			// The sloped rim on top of the walls around the opening, the lid's thin edge and its underside all read one small
+			// swatch (x 417–448 × y 998–1021): the colour at the top of the left side.
+			{Rect: [4]float64{416, 996, 449, 1022}, Src: [4]float64{0.2, 0.005, 0.8, 0.03}}}},
 		{ID: "front", Label: "Front", Net: [4]float64{0.471, 0, 1.055, 1.454}, Targets: []Target{
-			{Rect: [4]float64{243, 15, 783, 746}, Src: full}}},
+			{Rect: [4]float64{242, 14, 784, 748}, Src: full}}},
 		{ID: "right", Label: "Right side", Net: [4]float64{1.526, 0, 0.471, 1.454}, Targets: []Target{
-			{Rect: [4]float64{785, 14, 1008, 746}, Src: full}}},
+			{Rect: [4]float64{784, 13, 1009, 748}, Src: full}}},
 		// Back incl. the back of the tab (top 0.267): face top → texture left, face left → texture top.
 		{ID: "back", Label: "Back", Net: [4]float64{1.997, -0.267, 1.055, 1.721}, Targets: []Target{
-			{Rect: [4]float64{25, 765, 392, 998}, Src: full, Transpose: true}}},
+			{Rect: [4]float64{23, 763, 394, 1000}, Src: full, Transpose: true}}},
 	},
 }
 

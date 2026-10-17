@@ -3,6 +3,18 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.10.1 - 2026-10-16
+
+Accessory art now covers every visible part of the model.
+
+- Fixed: card sleeves — the hang tab's art now continues over the crimp below it, and the tab's thin edges and the left box edge no longer show the vanilla colour.
+- Fixed: deck boxes — no more red lines along the top of the sides, around the lid or at the front cover's edges when seen from a distance.
+- Fixed: battle decks — the lid is covered right to its edges, and the rim around the top of the box takes your side colour instead of the vanilla band.
+- Fixed: comics — thin uncovered lines along the cover and spine edges.
+- New: comics have a "Page edges" face to repaint the page block (front edge, top and bottom).
+- New: playmats have an "Underside" face (and a "Rim" colour) to paint the rubber back.
+After updating: open your accessories in Studio and save them again to apply the fixes to their textures.
+
 ## v1.10.0 - 2026-10-16
 
 Share single sets and items with other players, without sending a whole setup.

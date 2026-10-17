@@ -49,7 +49,7 @@ func TestModelsMatchMeshes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", kind, err)
 		}
-		panels := mesh.Panels(0.002)
+		panels, small := mesh.Panels(0.002), mesh.Panels(0) // small: colour swatches of thin card edges
 		px := func(p Panel) [4]float64 {
 			s := float64(m.TextureSize)
 			return [4]float64{p.UVMin[0] * s, (1 - p.UVMax[1]) * s, p.UVMax[0] * s, (1 - p.UVMin[1]) * s}
@@ -61,7 +61,11 @@ func TestModelsMatchMeshes(t *testing.T) {
 				}
 				// Union of the panels overlapping the target must match the target within tolerance.
 				u := [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
-				for _, p := range panels {
+				ps := panels
+				if (tg.Rect[2]-tg.Rect[0])*(tg.Rect[3]-tg.Rect[1]) < 64*64 {
+					ps = small
+				}
+				for _, p := range ps {
 					r := px(p)
 					if r[0] < tg.Rect[2]-4 && r[2] > tg.Rect[0]+4 && r[1] < tg.Rect[3]-4 && r[3] > tg.Rect[1]+4 {
 						u = [4]float64{math.Min(u[0], r[0]), math.Min(u[1], r[1]), math.Max(u[2], r[2]), math.Max(u[3], r[3])}

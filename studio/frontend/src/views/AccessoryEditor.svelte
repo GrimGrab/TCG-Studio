@@ -15,6 +15,7 @@
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, composeTexture, composeIcon,
     recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon, pickableFaces, previewUrl, layerTextures,
+    shownArea, shownNet,
   } from '../lib/accessoryArt';
   import { ProjectPainter, MAX_LAYER_TEXTURES, renderPaintIcon, type LayerTexture } from '../lib/projectPaint';
   import { MeshView } from '../lib/meshView';
@@ -118,8 +119,8 @@
       // Projected models: their views are the frames (their faces are many and overlap).
       const b0 = netBounds(model);
       const frames = [
-        ...model.faces.map((f) => ({ label: f.label, hidden: f.hidden, r: faceRect(model!, f, S) })),
-        ...(model.views ?? []).map((v) => ({ label: v.label, hidden: false, r: { x: (v.net[0] - b0.x0) * S, y: (v.net[1] - b0.y0) * S, w: v.net[2] * S, h: v.net[3] * S } })),
+        ...model.faces.map((f) => ({ label: f.label, hidden: f.hidden, r: faceRect(model!, f, S), shown: f.shown })),
+        ...(model.views ?? []).map((v) => ({ label: v.label, hidden: false, shown: undefined, r: { x: (v.net[0] - b0.x0) * S, y: (v.net[1] - b0.y0) * S, w: v.net[2] * S, h: v.net[3] * S } })),
       ];
       for (const f of frames) {
         const r = f.r;
@@ -127,6 +128,13 @@
         ctx.setLineDash([lw * 4, lw * 3]);
         ctx.lineWidth = lw;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
+        if (f.shown) {
+          // The face's outer strip (texture past the item's edge): a finer line where the item ends.
+          const [sx, sy, sw, sh] = f.shown;
+          ctx.strokeStyle = 'rgba(255,214,90,0.8)';
+          ctx.setLineDash([lw * 2, lw * 2]);
+          ctx.strokeRect(r.x + sx * r.w, r.y + sy * r.h, sw * r.w, sh * r.h);
+        }
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         const label = f.label + (f.hidden ? ' (hidden)' : '');
@@ -247,9 +255,7 @@
   function wrapArea(): number[] {
     // One panorama across the main row (deck box: Left–Front–Right–Back; books: Back–Spine–Front); else the main face.
     const row = wrapFaces();
-    if (row.length < 2) return mainFace().net;
-    const x0 = Math.min(...row.map((f) => f.net[0])), x1 = Math.max(...row.map((f) => f.net[0] + f.net[2]));
-    return [x0, row[0].net[1], x1 - x0, row[0].net[3]];
+    return row.length < 2 ? shownNet(mainFace()) : shownArea(row);
   }
 
   async function addImage() {
@@ -361,11 +367,7 @@
     const l: Layer = { id: layerId(), kind: 'image', name: name || rel.split('/').pop() || 'Image', visible: true, opacity: 1, blend: 'source-over',
       x: 0, y: 0, w: 1, h: 1, rot: 0, src: rel };
     const fs = faces.map(faceById).filter((f): f is Face => !!f);
-    let area = mainFace().net;
-    if (fs.length) {
-      const x0 = Math.min(...fs.map((f) => f.net[0])), y0 = Math.min(...fs.map((f) => f.net[1]));
-      area = [x0, y0, Math.max(...fs.map((f) => f.net[0] + f.net[2])) - x0, Math.max(...fs.map((f) => f.net[1] + f.net[3])) - y0];
-    }
+    const area = fs.length ? shownArea(fs) : shownNet(mainFace());
     const [x, y, w, h] = area;
     if (fit === 'stretch') { l.w = w; l.h = h; l.x = x + w / 2; l.y = y + h / 2; }
     else fitInto(l, area, fit, img.width / img.height);
@@ -391,9 +393,9 @@
   }
 
   function addText() {
-    const f = mainFace();
+    const [fx, fy, fw, fh] = shownNet(mainFace());
     const l: Layer = { id: layerId(), kind: 'text', name: 'Text', visible: true, opacity: 1, blend: 'source-over',
-      x: f.net[0] + f.net[2] / 2, y: f.net[1] + f.net[3] * 0.15, w: f.net[2] * 0.8, h: f.net[3] * 0.08, rot: 0,
+      x: fx + fw / 2, y: fy + fh * 0.15, w: fw * 0.8, h: fh * 0.08, rot: 0,
       text: defaultText, color: '#ffffff', outline: '#000000' };
     layout.layers.push(l);
     selected = l.id;
@@ -445,7 +447,7 @@
       const f = faceById(id);
       if (!f || f.id === from.id) continue;
       const c = insertCopy(src, `${src.name.replace(/ \([^()]*\)$/, '')} (${f.label.toLowerCase()})`, last);
-      mapRect(c, from.net, f.net);
+      mapRect(c, shownNet(from), shownNet(f));
       last = c.id;
     }
     commit();
@@ -464,7 +466,7 @@
 
   function copyLayer() {
     if (!sel || !model) return;
-    clipboard = { layer: JSON.parse(JSON.stringify(sel)), kind: model.kind, face: [...faceOf(sel).net] };
+    clipboard = { layer: JSON.parse(JSON.stringify(sel)), kind: model.kind, face: [...shownNet(faceOf(sel))] };
     notify(`Copied "${sel.name}" — Ctrl+V pastes it`);
   }
 
@@ -472,7 +474,7 @@
     if (!clipboard || !model) return;
     const c = insertCopy(clipboard.layer as Layer, clipboard.layer.name, selected || undefined);
     // From another model (e.g. a deck box into a pack): same relative place on this model's main face.
-    if (clipboard.kind !== model.kind && c.kind !== 'fill') mapRect(c, clipboard.face, mainFace().net);
+    if (clipboard.kind !== model.kind && c.kind !== 'fill') mapRect(c, clipboard.face, shownNet(mainFace()));
     if (c.kind === 'fill' && c.face && !faceById(c.face)) c.face = '';
     commit();
   }
@@ -503,9 +505,9 @@
 
   function setSize(dim: 'w' | 'h', pct: number) {
     if (!sel || !(pct > 0)) return;
-    const f = mainFace();
-    if (dim === 'w') sel.w = (pct / 100) * f.net[2];
-    else sel.h = (pct / 100) * f.net[3];
+    const f = shownNet(mainFace());
+    if (dim === 'w') sel.w = (pct / 100) * f[2];
+    else sel.h = (pct / 100) * f[3];
     changed();
   }
 
@@ -516,7 +518,7 @@
 
   async function fitSelected(target: string, mode: 'cover' | 'contain' | 'stretch') {
     if (!sel || !model) return;
-    const area = target === '_wrap' ? wrapArea() : faceById(target)?.net;
+    const face = faceById(target), area = target === '_wrap' ? wrapArea() : face && shownNet(face);
     if (!area) return;
     let aspect = sel.w / sel.h;
     if (sel.kind === 'image' && sel.src) { try { const img = await loadImage(accUrl(sel.src)); aspect = img.width / img.height; } catch { /* keep */ } }
@@ -528,7 +530,7 @@
   // ---------------------------------------------------------------- straighten (perspective correction of a photo)
 
   let straightening = $state<Layer | null>(null);
-  const straightenFaces = $derived(pickFaces.filter((f) => !f.hidden).map((f) => ({ label: f.label.toLowerCase(), aspect: f.net[2] / f.net[3] })));
+  const straightenFaces = $derived(pickFaces.filter((f) => !f.hidden).map((f) => ({ label: f.label.toLowerCase(), aspect: shownNet(f)[2] / shownNet(f)[3] })));
 
   async function applyStraighten(png: string, pts: number[], aspect: number) {
     const l = straightening;
@@ -665,8 +667,9 @@
       if (!e.altKey && model) {
         const tol = 0.03 * Math.max(model.size[0], model.size[1]);
         for (const f of pickFaces) {
-          for (const cx of [f.net[0], f.net[0] + f.net[2] / 2, f.net[0] + f.net[2]]) if (Math.abs(sel.x - cx) < tol) sel.x = cx;
-          for (const cy of [f.net[1], f.net[1] + f.net[3] / 2, f.net[1] + f.net[3]]) if (Math.abs(sel.y - cy) < tol) sel.y = cy;
+          const [fx, fy, fw, fh] = shownNet(f);
+          for (const cx of [fx, fx + fw / 2, fx + fw]) if (Math.abs(sel.x - cx) < tol) sel.x = cx;
+          for (const cy of [fy, fy + fh / 2, fy + fh]) if (Math.abs(sel.y - cy) < tol) sel.y = cy;
         }
       }
     } else if (drag.mode === 'scale') {
@@ -992,9 +995,9 @@
             <label class="field">Rotation {Math.round(sel.rot)}°<input type="range" min="-180" max="180" step="1" bind:value={sel.rot} oninput={changed} /></label>
             <div class="row size">
               <label class="field" title="% of the {mainFace().label.toLowerCase()} width">Width %<input type="number" min="1" step="1"
-                value={Math.round((sel.w / mainFace().net[2]) * 100)} oninput={(e) => setSize('w', +e.currentTarget.value)} /></label>
+                value={Math.round((sel.w / shownNet(mainFace())[2]) * 100)} oninput={(e) => setSize('w', +e.currentTarget.value)} /></label>
               <label class="field" title="% of the {mainFace().label.toLowerCase()} height">Height %<input type="number" min="1" step="1"
-                value={Math.round((sel.h / mainFace().net[3]) * 100)} oninput={(e) => setSize('h', +e.currentTarget.value)} /></label>
+                value={Math.round((sel.h / shownNet(mainFace())[3]) * 100)} oninput={(e) => setSize('h', +e.currentTarget.value)} /></label>
               {#if sel.kind === 'image'}<button class="tiny" onclick={resetProportions} title="Back to the image's own proportions (keeps the width)">Unstretch</button>{/if}
             </div>
             <div class="small muted">Fill (keeps proportions, crops the overflow):</div>

@@ -19,7 +19,7 @@ import (
 
 // Older Studio versions kept the active setup's content in the game folder: its installed sets (<plugin>\Sets\<id>, files in
 // <plugin>\Library\<id>), the accessory library (<plugin>\Accessories), the global card back (<plugin>\card_back.png) and the
-// Shop look pictures and fonts (<plugin>\ShopSign). A switch parked an inactive setup's hand-installed sets and accessories
+// Game look pictures and fonts (<plugin>\ShopSign). A switch parked an inactive setup's hand-installed sets and accessories
 // in <setup>\game\Sets and game\Accessories. The mod now reads everything from the setup (game.StudioPathsFile), so each
 // setup takes that content over once (setups.Info.AdoptedGame); afterwards the game folder's copies are only leftovers the
 // Storage page may remove. Files are copied, never moved.
@@ -31,7 +31,7 @@ type GameState struct {
 	Imported    []string `json:"imported"`    // installed sets without a project: become projects of the setup
 	Accessories bool     `json:"accessories"` // an accessory library the setup doesn't have
 	CardBack    bool     `json:"cardBack"`    // a global card back the setup doesn't have, or an older one
-	ShopLook    []string `json:"shopLook"`    // Shop look files the setup doesn't have, or older ones
+	ShopLook    []string `json:"shopLook"`    // Game look files the setup doesn't have, or older ones
 	Others      []string `json:"others"`      // inactive setups with parked content
 }
 
@@ -107,7 +107,7 @@ func setupState(h setups.Home, id string, src source) GameState {
 	return g
 }
 
-// newer: src exists and dst is missing or older (the game folder had the newest card back / Shop look: older Studio versions
+// newer: src exists and dst is missing or older (the game folder had the newest card back / Game look: older Studio versions
 // wrote it there and only copied it into the setup on a switch).
 func newer(src, dst string) bool {
 	si, err := os.Stat(src)

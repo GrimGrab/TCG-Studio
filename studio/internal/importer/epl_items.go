@@ -15,6 +15,7 @@ import (
 	"tcgstudio/internal/figurine"
 	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/uvmap"
 )
 
 // EPLItem is a mod item Studio converts into the accessory library (playmats, sleeves, deck boxes, comics, battle
@@ -435,7 +436,7 @@ func convertItem(a *epl.Assets, b epl.Bundle, it *epl.Item, variant int, strip b
 	// The Accessory editor shows the mod's texture as a painted texture (layers added later go on top of it), instead of
 	// starting from the vanilla art. A re-import reuses the earlier copy.
 	src := acc.Texture // same bytes: the store keeps one file for both
-	lib.Meta.Layouts[id], _ = json.Marshal(map[string]any{"version": 2, "layers": []any{}, "base": "vanilla",
+	lib.Meta.Layouts[id], _ = json.Marshal(map[string]any{"version": 2, "net": uvmap.NetVersion, "layers": []any{}, "base": "vanilla",
 		"baseColor": "#3a3a3a", "textureFile": src})
 
 	var job *IconJob

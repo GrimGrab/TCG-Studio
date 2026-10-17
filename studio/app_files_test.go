@@ -38,7 +38,7 @@ func TestRouteFile(t *testing.T) {
 		{"templates/../x.png", ""},
 		{"furntemplates/sub/x.json", ""},
 		{"signtemplates/fonts/x.ttf", ""},
-		{"shopsign/sign.png", filepath.Join(setup, "game", "ShopSign", "sign.png")}, // the setup's Shop look files
+		{"shopsign/sign.png", filepath.Join(setup, "game", "ShopSign", "sign.png")}, // the setup's Game look files
 		{"shopsign/../x.png", ""},
 		{"globalback/card_back.png", filepath.Join(setup, "game", "card_back.png")},
 		{"globalback/other.png", ""},

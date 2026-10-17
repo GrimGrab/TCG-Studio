@@ -34,6 +34,7 @@ import (
 	"tcgstudio/internal/setups"
 	"tcgstudio/internal/tcgdex"
 	"tcgstudio/internal/updater"
+	"tcgstudio/internal/uvmap"
 	"tcgstudio/internal/workspace"
 )
 
@@ -440,20 +441,6 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 
 const globalBackFile = "card_back.png" // the setup's global card back (<setup>\game\card_back.png, read by the mod)
 
-// ChooseSetCardBack lets the user pick an image, composes it into the vanilla card-back shape and returns its path.
-func (a *App) ChooseSetCardBack(id string) (string, error) {
-	file, err := a.pickImageFile("Choose a card back image")
-	if err != nil || file == "" {
-		return "", err
-	}
-	p, err := a.loadProject(id)
-	if err != nil {
-		return "", err
-	}
-	rel, out := p.WriteTarget("images/card_back.png")
-	return rel, art.CardBackFromFile(file, out)
-}
-
 // GenerateSetCardBack makes a card back from a colour, the set icon and a title.
 func (a *App) GenerateSetCardBack(id, color, title string) (string, error) {
 	p, err := a.loadProject(id)
@@ -508,7 +495,7 @@ func (a *App) boxArtFromPack(p *project.Project, pk *setfmt.Pack) (BoxArt, error
 			_ = os.Remove(p.ImagePath(f))
 		}
 	}
-	layout, _ := json.Marshal(map[string]any{"version": 2, "layers": []any{}, "base": "vanilla",
+	layout, _ := json.Marshal(map[string]any{"version": 2, "net": uvmap.NetVersion, "layers": []any{}, "base": "vanilla",
 		"baseColor": "#3a3a3a", "baseItem": "file", "baseFile": r.BoxTexture})
 	return BoxArt{BoxTexture: r.BoxTexture, BoxIcon: r.BoxIcon, Layout: string(layout)}, nil
 }
@@ -586,6 +573,9 @@ type SaveResult struct {
 	InstallState string         `json:"installState"` // project.StateNone / StateCurrent / StateStale after the call
 	GameRunning  bool           `json:"gameRunning"`  // the game must be restarted to load the change
 	SyncError    string         `json:"syncError"`    // why an installed set couldn't be updated (e.g. validation errors)
+	// Pictures: the file each picture slot was cut into (bakeSetPictures; "" = slot dropped), which set.json now names; the
+	// page's copy follows.
+	Pictures map[string]string `json:"pictures"`
 }
 
 // SaveProject writes the project (even with issues); an installed set is what the game loads at its next start
@@ -597,10 +587,14 @@ func (a *App) SaveProject(p project.Project) (SaveResult, error) {
 	ws, gameDir := a.ws(), a.gameDir()
 	p.Folder = ws.Folder(p.ID)
 	p.Set.ID = p.ID
+	baked, err := bakeSetPictures(&p)
+	if err != nil {
+		return SaveResult{}, err
+	}
 	if err := ws.Save(&p); err != nil {
 		return SaveResult{}, err
 	}
-	r := SaveResult{Issues: issues(p.Set.Validate(p.LibFolder))}
+	r := SaveResult{Issues: issues(p.Set.Validate(p.LibFolder)), Pictures: baked}
 	if !game.IsGameDir(gameDir) {
 		r.InstallState = project.StateNone
 		return r, nil

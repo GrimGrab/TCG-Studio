@@ -1889,6 +1889,7 @@ export namespace main {
 	    installState: string;
 	    gameRunning: boolean;
 	    syncError: string;
+	    pictures: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new SaveResult(source);
@@ -1901,6 +1902,7 @@ export namespace main {
 	        this.installState = source["installState"];
 	        this.gameRunning = source["gameRunning"];
 	        this.syncError = source["syncError"];
+	        this.pictures = source["pictures"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1920,6 +1922,20 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class SetPictureSource {
+	    file: string;
+	    crop: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SetPictureSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.crop = source["crop"];
+	    }
 	}
 	export class Settings {
 	    gameDir: string;
@@ -2044,6 +2060,7 @@ export namespace main {
 	    crop: number[];
 	    png: string;
 	    design: string;
+	    items: ShopPictureSave[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ShopPictureSave(source);
@@ -2055,10 +2072,31 @@ export namespace main {
 	        this.crop = source["crop"];
 	        this.png = source["png"];
 	        this.design = source["design"];
+	        this.items = this.convertValues(source["items"], ShopPictureSave);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ShopLookSave {
 	    pictures: Record<string, ShopPictureSave>;
+	    options: Record<string, boolean>;
+	    choices: Record<string, string>;
 	    showName?: boolean;
 	    font?: string;
 	    text?: ShopSignText;
@@ -2072,6 +2110,8 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.pictures = this.convertValues(source["pictures"], ShopPictureSave, true);
+	        this.options = source["options"];
+	        this.choices = source["choices"];
 	        this.showName = source["showName"];
 	        this.font = source["font"];
 	        this.text = this.convertValues(source["text"], ShopSignText);
@@ -2137,6 +2177,7 @@ export namespace main {
 	    crop: number[];
 	    aspect: number;
 	    design: string;
+	    items: ShopPictureView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ShopPictureView(source);
@@ -2149,14 +2190,33 @@ export namespace main {
 	        this.crop = source["crop"];
 	        this.aspect = source["aspect"];
 	        this.design = source["design"];
+	        this.items = this.convertValues(source["items"], ShopPictureView);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ShopLookView {
 	    pictures: Record<string, ShopPictureView>;
+	    options: Record<string, boolean>;
+	    choices: Record<string, string>;
 	    sign: ShopSignView;
-	    signLayout: string;
-	    phoneLayout: string;
-	    doorLayout: string;
+	    layouts: Record<string, string>;
 	    cardBack: CardBackView;
 	
 	    static createFrom(source: any = {}) {
@@ -2166,10 +2226,10 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.pictures = this.convertValues(source["pictures"], ShopPictureView, true);
+	        this.options = source["options"];
+	        this.choices = source["choices"];
 	        this.sign = this.convertValues(source["sign"], ShopSignView);
-	        this.signLayout = source["signLayout"];
-	        this.phoneLayout = source["phoneLayout"];
-	        this.doorLayout = source["doorLayout"];
+	        this.layouts = source["layouts"];
 	        this.cardBack = this.convertValues(source["cardBack"], CardBackView);
 	    }
 	
@@ -2619,6 +2679,22 @@ export namespace project {
 	        this.locked = source["locked"];
 	    }
 	}
+	export class PictureSource {
+	    file: string;
+	    crop?: number[];
+	    out?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PictureSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file = source["file"];
+	        this.crop = source["crop"];
+	        this.out = source["out"];
+	    }
+	}
 	export class Pricing {
 	    mode: string;
 	    borderCurve: string;
@@ -2655,6 +2731,7 @@ export namespace project {
 	    srcPriceDefaults?: setfmt.PriceDefaults;
 	    cards: Record<string, CardMeta>;
 	    packArt?: Record<string, any>;
+	    pictures?: Record<string, PictureSource>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Meta(source);
@@ -2677,6 +2754,7 @@ export namespace project {
 	        this.srcPriceDefaults = this.convertValues(source["srcPriceDefaults"], setfmt.PriceDefaults);
 	        this.cards = this.convertValues(source["cards"], CardMeta, true);
 	        this.packArt = source["packArt"];
+	        this.pictures = this.convertValues(source["pictures"], PictureSource, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2697,6 +2775,7 @@ export namespace project {
 		    return a;
 		}
 	}
+	
 	
 	export class Project {
 	    id: string;
@@ -4168,6 +4247,7 @@ export namespace uvmap {
 	    label: string;
 	    net: number[];
 	    hidden?: boolean;
+	    shown?: number[];
 	    targets: Target[];
 	
 	    static createFrom(source: any = {}) {
@@ -4180,6 +4260,7 @@ export namespace uvmap {
 	        this.label = source["label"];
 	        this.net = source["net"];
 	        this.hidden = source["hidden"];
+	        this.shown = source["shown"];
 	        this.targets = this.convertValues(source["targets"], Target);
 	    }
 	
@@ -4286,6 +4367,22 @@ export namespace uvmap {
 		    }
 		    return a;
 		}
+	}
+	export class NetMove {
+	    Version: number;
+	    From: number;
+	    DX: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetMove(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Version = source["Version"];
+	        this.From = source["From"];
+	        this.DX = source["DX"];
+	    }
 	}
 	
 	

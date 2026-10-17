@@ -42,6 +42,18 @@ type Meta struct {
 	// PackArt holds the pack editor's layouts per pack id: {"pack": layout, "box": layout} (layout = the accessory editor's
 	// JSON, see frontend lib/accessoryArt.ts). Packs without an entry use generated or chosen images only.
 	PackArt map[string]map[string]json.RawMessage `json:"packArt,omitempty"`
+	// Pictures: set files cut from a picture with Studio's crop box (the set's card back, pack/box textures and icons) by
+	// slot ("cardBack", "pack/<pack id>/<field>"); saving the set makes each file again when its picture or crop changed.
+	Pictures map[string]PictureSource `json:"pictures,omitempty"`
+}
+
+// PictureSource is the picture a set file was cut from and the part used.
+type PictureSource struct {
+	File string    `json:"file"`           // the picture (a set file path, "images/…")
+	Crop []float64 `json:"crop,omitempty"` // x, y, w, h fractions of the picture from its top-left; empty = the middle
+	// Out is the file saving last cut it into. When set.json names another file, something else replaced it (the pack art
+	// editor, Smart generate, Generate) and the picture is dropped.
+	Out string `json:"out,omitempty"`
 }
 
 // SourceCode is the imported set's code at its source (empty for hand-made sets).
@@ -243,7 +255,8 @@ func (w Workspace) Load(id string) (*Project, error) {
 		}
 	}
 	p := &Project{ID: id, Folder: folder, LibFolder: w.LibFolder(id), Set: set, Meta: meta}
-	FillMtg(p) // older imports: saved (and installed) with the project's next save/install
+	FillMtg(p)        // older imports: saved (and installed) with the project's next save/install
+	MigratePackArt(p) // pack editor layouts made for an older net
 	return p, nil
 }
 

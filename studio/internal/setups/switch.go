@@ -43,7 +43,7 @@ func (h Home) PendingSwitch() (*Journal, bool) {
 }
 
 // Snapshot copies the game's mod config into the active setup's game\ folder. Everything else the game uses already lives
-// in the setup (installed sets, accessory library, card back, Shop look pictures; game.StudioPathsFile). Nothing in the
+// in the setup (installed sets, accessory library, card back, Game look pictures; game.StudioPathsFile). Nothing in the
 // game changes.
 func Snapshot(dir, gameDir string) error {
 	if !game.IsGameDir(gameDir) {

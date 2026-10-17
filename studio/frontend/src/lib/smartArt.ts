@@ -3,7 +3,7 @@
 // hidden or recoloured; box faces cut from the display photo keep their corners (layer.straighten) for Adjust straighten….
 import { App, projectFile } from './api';
 import { templateFile } from './urls';
-import { composeIcon, composeTexture, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, type Layer, type Layout, type Model } from './accessoryArt';
+import { composeIcon, composeTexture, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, shownArea, type Layer, type Layout, type Model } from './accessoryArt';
 import { rectify, type Pt } from './perspective';
 
 export const AUTO = 'Auto: ';
@@ -24,11 +24,8 @@ interface Job { projectId: string; packId: string; title: string; src: SmartSour
 
 // ---------------------------------------------------------------- layers
 
-function area(m: Model, ids: string[]): Area {
-  const fs = m.faces.filter((f) => ids.includes(f.id));
-  const x0 = Math.min(...fs.map((f) => f.net[0])), y0 = Math.min(...fs.map((f) => f.net[1]));
-  return [x0, y0, Math.max(...fs.map((f) => f.net[0] + f.net[2])) - x0, Math.max(...fs.map((f) => f.net[1] + f.net[3])) - y0];
-}
+/** Where art goes on these faces: around the parts the item shows (shownArea). */
+const area = (m: Model, ids: string[]): Area => shownArea(m.faces.filter((f) => ids.includes(f.id))) as Area;
 
 const base = (name: string, kind: Layer['kind'], opacity = 1): Layer =>
   ({ id: layerId(), kind, name: AUTO + name, visible: true, opacity, blend: 'source-over', x: 0, y: 0, w: 0, h: 0, rot: 0 });
@@ -227,7 +224,8 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     c.top = shade(c.top, 0.8); c.bottom = shade(c.bottom, 0.55); // card art colours are bright: darker packaging
     pack.layers.push(fill('crimps', 'crimpTop', c.top), fill('crimps (bottom)', 'crimpBottom', c.bottom));
   }
-  pack.layers.push(fill('back', 'back', c.top, c.bottom), fill('edges', 'edges', c.top, c.bottom), fill('seam', 'seam', c.top, c.bottom));
+  pack.layers.push(fill('front', 'front', c.top, c.bottom), fill('back', 'back', c.top, c.bottom), fill('edges', 'edges', c.top, c.bottom),
+    fill('seam', 'seam', c.top, c.bottom));
   // Back: the art faded over the packaging colours and the set icon (no set name on packs: user choice 2026-10-03).
   const band = packPhoto ? crop(packPhoto, [0.05, 0.3, 0.95, 0.75]) : arts[0];
   pack.layers.push(image('back art', await save('packback', cover(band, back[2] / back[3], 768, 'blur(5px) brightness(0.8)')), back, 0.45));

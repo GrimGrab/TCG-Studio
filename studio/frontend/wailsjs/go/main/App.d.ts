@@ -65,8 +65,6 @@ export function CheckForUpdate():Promise<updater.Release>;
 
 export function CheckModLoaded():Promise<main.ModCheck>;
 
-export function ChooseSetCardBack(arg1:string):Promise<string>;
-
 export function Collections():Promise<Array<string>>;
 
 export function CompressSaves():Promise<main.StorageResult>;
@@ -241,6 +239,8 @@ export function PickImportFolder():Promise<string>;
 
 export function PickPackAndBox(arg1:Array<importer.SealedProduct>,arg2:number):Promise<main.PickedProducts>;
 
+export function PickSetPicture(arg1:string,arg2:string):Promise<main.SetPictureSource>;
+
 export function PickSetupFile():Promise<share.SetupInfo>;
 
 export function PickShareFile():Promise<string>;
@@ -302,6 +302,8 @@ export function SaveToCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
 
 export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
+
+export function SetPictureAspects():Promise<Record<string, number>>;
 
 export function SetupRepair():Promise<string>;
 

@@ -90,10 +90,6 @@ export function CheckModLoaded() {
   return window['go']['main']['App']['CheckModLoaded']();
 }
 
-export function ChooseSetCardBack(arg1) {
-  return window['go']['main']['App']['ChooseSetCardBack'](arg1);
-}
-
 export function Collections() {
   return window['go']['main']['App']['Collections']();
 }
@@ -442,6 +438,10 @@ export function PickPackAndBox(arg1, arg2) {
   return window['go']['main']['App']['PickPackAndBox'](arg1, arg2);
 }
 
+export function PickSetPicture(arg1, arg2) {
+  return window['go']['main']['App']['PickSetPicture'](arg1, arg2);
+}
+
 export function PickSetupFile() {
   return window['go']['main']['App']['PickSetupFile']();
 }
@@ -564,6 +564,10 @@ export function SetAccessoryIcons(arg1) {
 
 export function SetModSetting(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
+}
+
+export function SetPictureAspects() {
+  return window['go']['main']['App']['SetPictureAspects']();
 }
 
 export function SetupRepair() {

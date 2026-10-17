@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Text style of the Shop look page (shop name, door sign words): own colour or the default, size, outline and its colour.
+  // Text style of the Game look page (shop name, door sign words): own colour or the default, size, outline and its colour.
   // `style` follows every move (live previews); `oncommit` runs when a control is released.
   import type { TextStyleValue } from '../lib/shopLook';
 
@@ -7,7 +7,7 @@
     style: TextStyleValue;
     defaultColor: string; // where "Own colour" starts
     defaultLabel: string; // shown while the default colour is used, e.g. "game gold"
-    oncommit?: () => void; // when a control is released (the Shop look page saves with its Save button instead)
+    oncommit?: () => void; // when a control is released (the Game look page saves with its Save button instead)
   } = $props();
 
   function ownColor(on: boolean) {

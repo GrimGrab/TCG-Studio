@@ -55,6 +55,10 @@ namespace TCGCustomCards
         internal static ConfigEntry<string> ShopSignFont, ShopSignTextColor, ShopSignOutlineColor;
         internal static ConfigEntry<float> ShopSignTextSize, ShopSignOutline;
         internal static ConfigEntry<string> PhoneWallpaperImage, PhoneWallpaperCrop, OpenSignImage, OpenSignCrop, ClosedSignImage, ClosedSignCrop;
+        internal static ConfigEntry<string> CreditCardImages, CreditCardCrops, LoadingScreenImages, LoadingScreenCrops, MainMenuImage, MainMenuCrop;
+        internal static ConfigEntry<bool> CreditCardKeepChip, CreditCardKeepPrint;
+        internal static ConfigEntry<Runtime.LoadingCardMode> LoadingScreenCard;
+        internal static ConfigEntry<string> LoadingScreenCardImage, LoadingScreenCardCrop;
         internal static ConfigEntry<bool> GradeLabel;
         internal static ConfigEntry<float> GradeLabelOffsetX;
         internal static ConfigEntry<float> GradeLabelOffsetY;
@@ -168,17 +172,17 @@ namespace TCGCustomCards
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
             ShopSignImage = Config.Bind("Visuals", "ShopSignImage", "",
-                "Your own picture for the sign above the shop entrance: a file name in the active setup's Shop look folder (TCG Studio's " +
-                "Shop look page copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
+                "Your own picture for the sign above the shop entrance: a file name in the active setup's Game look folder (TCG Studio's " +
+                "Game look page copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
                 "other shapes are cropped (see ShopSignCrop). Empty = the vanilla sign. Applies live.");
             ShopSignCrop = Config.Bind("Visuals", "ShopSignCrop", "",
                 "The part of ShopSignImage shown on the sign: x,y,width,height as fractions of the image (0-1, from its top-left " +
-                "corner), set with the crop box in TCG Studio's Shop look page. Empty = the largest 4.11:1 area from the middle. Applies live.");
+                "corner), set with the crop box in TCG Studio's Game look page. Empty = the largest 4.11:1 area from the middle. Applies live.");
             ShowShopNameOnSign = Config.Bind("Visuals", "ShowShopNameOnSign", true,
                 "Show your shop's name on the sign above the entrance. Turn it off when your ShopSignImage already has a name or logo. Applies live.");
             const string signText = "Visuals - Shop sign text";
             ShopSignFont = Config.Bind(signText, "ShopSignFont", "",
-                "Font of the shop name on the sign: a .ttf/.otf file name in the active setup's Shop look folder (TCG Studio's Shop look page " +
+                "Font of the shop name on the sign: a .ttf/.otf file name in the active setup's Game look folder (TCG Studio's Game look page " +
                 "copies the font you choose there) or a full path. Empty = the game's own font. Applies live.");
             ShopSignTextColor = Config.Bind(signText, "ShopSignTextColor", "",
                 "Colour of the shop name on the sign as #RRGGBB. Empty = the game's gold. It still dims at night. Applies live.");
@@ -191,17 +195,17 @@ namespace TCGCustomCards
             ShopSignOutlineColor = Config.Bind(signText, "ShopSignOutlineColor", "#000000",
                 "Colour of the shop name's outline (ShopSignOutline) as #RRGGBB. Applies live.");
             ShopSign.Init();
-            const string look = "Visuals - Shop look";
+            const string look = "Visuals - Game look";
             PhoneWallpaperImage = Config.Bind(look, "PhoneWallpaperImage", "",
-                "Your own wallpaper for the phone's home screen: a file name in the active setup's Shop look folder (TCG Studio's Shop look page " +
+                "Your own wallpaper for the phone's home screen: a file name in the active setup's Game look folder (TCG Studio's Game look page " +
                 "copies the image you choose there) or a full path to a PNG/JPG. Best upright at about 10:17; other shapes are cropped " +
                 "(see PhoneWallpaperCrop). Empty = the vanilla wallpaper. Applies live.");
             PhoneWallpaperCrop = Config.Bind(look, "PhoneWallpaperCrop", "",
                 "The part of PhoneWallpaperImage shown on the phone: x,y,width,height as fractions of the image (0-1, from its top-left " +
-                "corner), set with the crop box in TCG Studio's Shop look page. Empty = the largest phone-shaped area from the middle. Applies live.");
+                "corner), set with the crop box in TCG Studio's Game look page. Empty = the largest phone-shaped area from the middle. Applies live.");
             OpenSignImage = Config.Bind(look, "OpenSignImage", "",
                 "Your own picture for the OPEN side of the open/closed sign at the door, drawn inside the sign's black frame: a file name " +
-                "in the active setup's Shop look folder (TCG Studio's Shop look page copies it there) or a full path to a PNG/JPG. Best at about " +
+                "in the active setup's Game look folder (TCG Studio's Game look page copies it there) or a full path to a PNG/JPG. Best at about " +
                 "8:5; other shapes are cropped (see OpenSignCrop). Empty = the vanilla side. Applies live.");
             OpenSignCrop = Config.Bind(look, "OpenSignCrop", "",
                 "The part of OpenSignImage shown on the sign: x,y,width,height as fractions of the image (0-1, from its top-left corner). " +
@@ -211,8 +215,49 @@ namespace TCGCustomCards
             ClosedSignCrop = Config.Bind(look, "ClosedSignCrop", "",
                 "The part of ClosedSignImage shown on the sign: x,y,width,height as fractions of the image (0-1, from its top-left corner). " +
                 "Empty = the largest 8:5 area from the middle. Applies live.");
+            CreditCardImages = Config.Bind(look, "CreditCardImages", "",
+                "Your own designs for the credit card customers pay with, separated by | : file names in the active setup's Game look " +
+                "folder (TCG Studio's Game look page copies the images you choose there) or full paths to PNG/JPG files. Each time a " +
+                "customer pays by card they hand over one of them at random (the card at the counter shows the same). Best at about " +
+                "1.59:1 (a real card's shape); other shapes are cropped (see CreditCardCrops). Empty = the vanilla card. Applies live.");
+            CreditCardCrops = Config.Bind(look, "CreditCardCrops", "",
+                "The part of each CreditCardImages design shown on the card, in the same order, separated by | : x,y,width,height as " +
+                "fractions of the image (0-1, from its top-left corner). Empty = the largest 1.59:1 area from the middle. Applies live.");
+            CreditCardKeepChip = Config.Bind(look, "CreditCardKeepChip", true,
+                "Keep the vanilla card's chip on top of the CreditCardImages designs. Applies live.");
+            CreditCardKeepPrint = Config.Bind(look, "CreditCardKeepPrint", true,
+                "Keep the vanilla card's embossed number, expiry date and name on top of the CreditCardImages designs. Applies live.");
+            LoadingScreenImages = Config.Bind(look, "LoadingScreenImages", "",
+                "Your own pictures for the loading screen, separated by | : file names in the active setup's Game look folder (TCG Studio's " +
+                "Game look page copies the images you choose there) or full paths to PNG/JPG files. Each time the loading screen opens " +
+                "it shows one of them at random. Best at 16:9; other shapes are cropped (see LoadingScreenCrops). Empty = the vanilla " +
+                "black screen. The game's text and spinning card stay on top. Applies the next time it opens.");
+            LoadingScreenCrops = Config.Bind(look, "LoadingScreenCrops", "",
+                "The part of each LoadingScreenImages picture that's shown, in the same order, separated by | : x,y,width,height as " +
+                "fractions of the image (0-1, from its top-left corner). Empty = the largest 16:9 area from the middle.");
+            LoadingScreenCard = Config.Bind(look, "LoadingScreenCard", Runtime.LoadingCardMode.RandomFromMySets,
+                "The card spinning on the loading screen: Vanilla = the game's card back, RandomFromMySets = a random card from your " +
+                "installed sets (picked each time the screen opens), GlobalCardBack = your setup's card back (TCG Studio's Game look " +
+                "page, Card back), Picture = LoadingScreenCardImage, Hidden = no card. Applies the next time it opens.");
+            LoadingScreenCardImage = Config.Bind(look, "LoadingScreenCardImage", "",
+                "Your own picture for the loading screen's card when LoadingScreenCard is Picture: a file name in the active setup's Game " +
+                "look folder (TCG Studio's Game look page copies the image you choose there) or a full path to a PNG/JPG. Best at a card's " +
+                "shape (about 5:7); other shapes are cropped (see LoadingScreenCardCrop).");
+            LoadingScreenCardCrop = Config.Bind(look, "LoadingScreenCardCrop", "",
+                "The part of LoadingScreenCardImage on the card: x,y,width,height as fractions of the image (0-1, from its top-left " +
+                "corner). Empty = the largest card-shaped area from the middle.");
+            MainMenuImage = Config.Bind(look, "MainMenuImage", "",
+                "Your own background for the main menu: a file name in the active setup's Game look folder (TCG Studio's Game look page " +
+                "copies the image you choose there) or a full path to a PNG/JPG. Best at 16:9; other shapes are cropped (see " +
+                "MainMenuCrop). The logo and buttons stay on top. Empty = the vanilla background. Applies live.");
+            MainMenuCrop = Config.Bind(look, "MainMenuCrop", "",
+                "The part of MainMenuImage that's shown: x,y,width,height as fractions of the image (0-1, from its top-left corner). " +
+                "Empty = the largest 16:9 area from the middle. Applies live.");
             PhoneWallpaper.Init();
             DoorSign.Init();
+            CreditCard.Init();
+            ScreenPictures.Init();
+            LoadingScreenLook.Init();
             GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
                 "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");
             GradeLabelOffsetX = Config.Bind("Visuals - Grade label", "GradeLabelOffsetX", 0f, new ConfigDescription(
@@ -349,7 +394,7 @@ namespace TCGCustomCards
             ShowVanillaPacks.SettingChanged += (_, __) => VanillaFilter.Apply();
             DevTools.Init(Config);
             ConfigMoves.CarryMoved(Config, cfgBefore); // after every Bind
-            ConfigMoves.DropRemoved(Config, ("Binder", "Layout"));
+            ConfigMoves.DropRemoved(Config, ("Binder", "Layout"), ("Visuals - Game look", "CreditCardImage"), ("Visuals - Game look", "CreditCardCrop"));
 
             StudioPaths.Load(PluginDir);
             if (StudioPaths.Problem != null) StartCoroutine(UI.ContentMissingNotice.ShowWhenInShop());

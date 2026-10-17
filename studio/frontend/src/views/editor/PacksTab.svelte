@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { App, projectFile, setRarities, splitWeights, BORDERS, errText, ask } from '../../lib/api';
+  import { App, projectFile, setRarities, splitWeights, BORDERS, ask } from '../../lib/api';
+  import { packSlot, pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
+  import PictureSlot from '../PictureSlot.svelte';
   import PackArtEditor from './PackArtEditor.svelte';
   import PackContents from './PackContents.svelte';
 
@@ -76,12 +78,8 @@
   }
 
 
-  async function pick(field: string, title: string) {
-    try {
-      const rel = await App.PickImage(project.id, title);
-      if (rel) pack[field] = rel;
-    } catch (e) { notify(errText(e), 'error'); }
-  }
+  let aspects = $state<Record<string, number>>({});
+  $effect(() => { App.SetPictureAspects().then((a: Record<string, number>) => (aspects = a)); });
 
   function optNumber(v: string) { const n = parseFloat(v); return isNaN(n) ? undefined : n; }
 
@@ -168,16 +166,18 @@
       <section>
         <h3>Art</h3>
         <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {save} {hooks} onapplied={() => (artBust = Date.now())} />
-        <p class="muted small">The finished images the pack uses (made by the editor above), or your own: 1024² in the vanilla layout. Empty = vanilla art.</p>
+        <p class="muted small">The finished images the pack uses (made by the editor above), or your own picture: textures in the
+          vanilla layout (cut to 1024²), icons in the vanilla icon's shape. Drag the box to pick the part used; saving the set cuts it.
+          Empty = vanilla art.</p>
         <div class="art">
-          {#each [['packTexture', 'Pack texture'], ['packIcon', 'Pack icon'], ...(pack.hasBox ? [['boxTexture', 'Box texture'], ['boxIcon', 'Box icon']] : [])] as [field, label]}
+          {#each [['packTexture', 'Pack texture'], ['packIcon', 'Pack icon'], ...(pack.hasBox ? [['boxTexture', 'Box texture'], ['boxIcon', 'Box icon']] : [])] as [field, label] (pack.id + field)}
+            {@const slot = packSlot(pack.id, field)}
             <div class="artbox">
-              <div class="thumb">{#if pack[field]}<img src={projectFile(project.id, pack[field], imgBust + artBust)} alt={label} />{:else}<span class="muted">vanilla</span>{/if}</div>
               <div class="small">{label}</div>
-              <div class="row">
-                <button class="small" onclick={() => pick(field, `Choose ${label.toLowerCase()}`)}>Choose…</button>
-                {#if pack[field]}<button class="small" onclick={() => (pack[field] = undefined)}>Clear</button>{/if}
-              </div>
+              {#if !pack[field] && !project.meta.pictures?.[slot]}<div class="thumb"><span class="muted">vanilla</span></div>{/if}
+              <PictureSlot compact aspect={aspects[field] ?? 1} {notify} pick={() => pickSetPicture(project, slot)} chooseLabel="Choose…"
+                removeLabel="Clear" fallback={pack[field] ? projectFile(project.id, pack[field], imgBust + artBust) : ''}
+                bind:value={() => setPicture(project, slot, imgBust + artBust), (v) => putSetPicture(project, slot, v)} />
             </div>
           {/each}
         </div>
@@ -199,6 +199,5 @@
   .art { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .artbox { display: flex; flex-direction: column; gap: 6px; }
   .thumb { aspect-ratio: 1; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .thumb img { max-width: 100%; max-height: 100%; }
   .small { font-size: 12px; }
 </style>

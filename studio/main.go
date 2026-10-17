@@ -32,6 +32,7 @@ func main() {
 	if exe, err := os.Executable(); err == nil {
 		updater.Cleanup(exe) // remove the previous version left behind by an update
 	}
+	clearWebViewExperiments() // before the WebView starts: an Edge experiment seed broke the colour pickers
 	err := wails.Run(&options.App{
 		Title:     "TCG Studio",
 		Width:     1400,

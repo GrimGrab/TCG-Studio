@@ -91,7 +91,7 @@ type Report struct {
 	List   []File   `json:"list"`
 	Differ []Differ `json:"differ"`
 	Named  []Named  `json:"named"`
-	// Game: the active setup's content that is still only in the game folder (installed sets, card back, Shop look).
+	// Game: the active setup's content that is still only in the game folder (installed sets, card back, Game look).
 	Game GameState `json:"game"`
 }
 

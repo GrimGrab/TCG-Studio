@@ -20,11 +20,14 @@ type Target struct {
 }
 
 type Face struct {
-	ID      string     `json:"id"`
-	Label   string     `json:"label"`
-	Net     [4]float64 `json:"net"`              // x, y, w, h in the net (object units)
-	Hidden  bool       `json:"hidden,omitempty"` // mostly not visible in game (still painted)
-	Targets []Target   `json:"targets"`
+	ID     string     `json:"id"`
+	Label  string     `json:"label"`
+	Net    [4]float64 `json:"net"`              // x, y, w, h in the net (object units)
+	Hidden bool       `json:"hidden,omitempty"` // mostly not visible in game (still painted)
+	// Shown: the part of the face the item shows (x, y, w, h fractions of Net); nil = all of it. The rest covers texture the
+	// meshes don't show (the pack's outer strips): the editor places and fits art on the shown part.
+	Shown   *[4]float64 `json:"shown,omitempty"`
+	Targets []Target    `json:"targets"`
 }
 
 // View is a labelled frame drawn as a guide in the net (furniture: Front, Left, Top… — each holds many faces).
@@ -53,9 +56,11 @@ type Model struct {
 	Bases []Base `json:"bases,omitempty"`
 	// Projected: no faces — the net is the Views, and the editor's GPU painter projects the layers onto every surface by its
 	// place in its view (Preview[0] is the .bin of gameextract/furniture_paint.go). Density: atlas pixels per net unit.
-	Projected bool    `json:"projected,omitempty"`
-	Views     []View  `json:"views,omitempty"`
-	Density   float64 `json:"density,omitempty"`
+	// NetMoves: how the net changed in a later NetVersion (layouts made before it get their layers moved, MigrateLayout).
+	NetMoves  []NetMove `json:"-"`
+	Projected bool      `json:"projected,omitempty"`
+	Views     []View    `json:"views,omitempty"`
+	Density   float64   `json:"density,omitempty"`
 	// Turn: extra turn of the 3D preview / icon camera around the vertical axis (radians) — furniture fronts face +z.
 	Turn float64 `json:"turn,omitempty"`
 }
@@ -239,26 +244,42 @@ var battleDeck = Model{
 // (561–603, shared by both curved edges) | front (607–948), all y 114–720, with the ridged crimps above (y 41–108) and below
 // (726–794) and the back's fin seam at x 80–172. The front is upright; the back is mirrored in the texture (u grows with +x on
 // the side facing +z). The pack torn open in the opening sequence ("CardPack_Mesh", skinned) reads the same areas.
+//
+// Front and back reach on past what the meshes show, over the vanilla print beside them (front to x 996, back from x 192):
+// no mesh shows it, but the opening pack's fold edge (x 209–218) sits next to the back's and texture filtering pulls it in, so
+// vanilla blue showed along the edge (2026-10-17). Those parts are the faces' own outer strips (same scale as the face, no
+// stretch); NetVersion 2 widened the two faces in the net and moved the faces after them.
+const (
+	packFrontShown = 341.0 / 389 // the part of the front face the meshes show (x 607–948 of 607–996)
+	packBackShown  = 341.0 / 366 // the same for the back (x 558–217 of 558–192, mirrored)
+)
+
 var pack = Model{
 	Kind: "Pack", Mesh: "CardPackStatic_Mesh", TextureSize: 1024, Icon: "pack",
 	Preview: mainPart("CardPackStatic_Mesh"),
 	Size:    [3]float64{0.678, 1.354, 0.148},
+	NetMoves: []NetMove{ // 0.0954 / 0.0497 = 48 / 25 texture px at the faces' 503 px per unit
+		{Version: 2, From: 0.678, DX: 0.0954}, // edges, back and seam after the wider front
+		{Version: 2, From: 1.466, DX: 0.0497}, // the seam after the wider back
+	},
 	Faces: []Face{
 		{ID: "crimpTop", Label: "Top crimp", Net: [4]float64{0, -0.127, 0.678, 0.127}, Targets: []Target{
 			{Rect: [4]float64{588, 41, 967, 108}, Src: full},
 			{Rect: [4]float64{199, 41, 577, 108}, Src: full, FlipX: true},
 			// the fin seam's crimp end: the middle of the crimp
 			{Rect: [4]float64{80, 41, 172, 108}, Src: [4]float64{0.4, 0, 0.6, 1}, FlipX: true}}},
-		{ID: "front", Label: "Front", Net: [4]float64{0, 0, 0.678, 1.082}, Targets: []Target{
-			{Rect: [4]float64{600, 108, 960, 724}, Src: full, Bleed: true},
-			{Rect: [4]float64{607, 114, 948, 720}, Src: full}}},
-		{ID: "edges", Label: "Edges", Net: [4]float64{0.678, 0, 0.11, 1.082}, Targets: []Target{
+		{ID: "front", Label: "Front", Net: [4]float64{0, 0, 0.7734, 1.082}, Shown: &[4]float64{0, 0, packFrontShown, 1}, Targets: []Target{
+			{Rect: [4]float64{600, 108, 996, 724}, Src: full, Bleed: true},
+			{Rect: [4]float64{948, 114, 996, 720}, Src: [4]float64{packFrontShown, 0, 1, 1}, Bleed: true}, // the outer strip (unused texels)
+			{Rect: [4]float64{607, 114, 948, 720}, Src: [4]float64{0, 0, packFrontShown, 1}}}},
+		{ID: "edges", Label: "Edges", Net: [4]float64{0.7734, 0, 0.11, 1.082}, Targets: []Target{
 			{Rect: [4]float64{558, 104, 607, 730}, Src: full, Bleed: true},
 			{Rect: [4]float64{561, 111, 603, 720}, Src: full}}},
-		{ID: "back", Label: "Back", Net: [4]float64{0.788, 0, 0.678, 1.082}, Targets: []Target{
-			{Rect: [4]float64{210, 108, 562, 724}, Src: full, FlipX: true, Bleed: true},
-			{Rect: [4]float64{217, 114, 558, 720}, Src: full, FlipX: true}}},
-		{ID: "seam", Label: "Back seam", Net: [4]float64{1.566, 0, 0.125, 1.082}, Hidden: true, Targets: []Target{
+		{ID: "back", Label: "Back", Net: [4]float64{0.8834, 0, 0.7277, 1.082}, Shown: &[4]float64{0, 0, packBackShown, 1}, Targets: []Target{
+			{Rect: [4]float64{192, 108, 562, 724}, Src: full, FlipX: true, Bleed: true},
+			{Rect: [4]float64{192, 114, 217, 720}, Src: [4]float64{packBackShown, 0, 1, 1}, FlipX: true, Bleed: true}, // the outer strip
+			{Rect: [4]float64{217, 114, 558, 720}, Src: [4]float64{0, 0, packBackShown, 1}, FlipX: true}}},
+		{ID: "seam", Label: "Back seam", Net: [4]float64{1.7111, 0, 0.125, 1.082}, Hidden: true, Targets: []Target{
 			{Rect: [4]float64{80, 114, 172, 713}, Src: full, FlipX: true}}},
 		{ID: "crimpBottom", Label: "Bottom crimp", Net: [4]float64{0, 1.082, 0.678, 0.127}, Targets: []Target{
 			{Rect: [4]float64{588, 726, 967, 794}, Src: full},

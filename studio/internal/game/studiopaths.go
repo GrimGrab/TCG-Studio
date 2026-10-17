@@ -8,7 +8,7 @@ import (
 )
 
 // StudioPathsFile, next to the mod DLL, names the Studio workspace folders the mod reads all content from — the game folder
-// holds only the mod: the active setup (its installed sets' set.json, accessory library, card back, Shop look pictures),
+// holds only the mod: the active setup (its installed sets' set.json, accessory library, card back, Game look pictures),
 // every set's files (<library>\<set id>) and accessory / furniture / decoration files ("assets/<hash>.<ext>", <assets>).
 // Not a mod setting: Studio writes it (Core/StudioPaths.cs reads it at game start).
 const StudioPathsFile = "studio-paths.json"
@@ -17,7 +17,7 @@ const StudioPathsFile = "studio-paths.json"
 type StudioPaths struct {
 	Library string `json:"library"` // <workspace>\library
 	Assets  string `json:"assets"`  // <workspace>\assets
-	Setup   string `json:"setup"`   // the active setup's folder: its installed sets, accessory library, card back, Shop look
+	Setup   string `json:"setup"`   // the active setup's folder: its installed sets, accessory library, card back, Game look
 }
 
 // ReadStudioPaths is the game's StudioPathsFile (empty fields when it is missing).

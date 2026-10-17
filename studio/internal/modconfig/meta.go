@@ -22,7 +22,7 @@ type Meta struct {
 	Elsewhere []string            `json:"elsewhere"` // settings edited on another studio page (hidden on Mod settings)
 }
 
-// ShopSignFolder is the plugin-dir folder holding the Shop look page's pictures and fonts (shop sign, phone wallpaper,
+// ShopSignFolder is the plugin-dir folder holding the Game look page's pictures and fonts (shop sign, phone wallpaper,
 // open/closed sign; a setup carries it with its mod config).
 const ShopSignFolder = "ShopSign"
 

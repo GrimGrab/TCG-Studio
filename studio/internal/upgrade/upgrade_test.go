@@ -322,7 +322,7 @@ func TestNeeded(t *testing.T) {
 	}
 }
 
-// The active setup's content kept only in the game folder (installed sets, card back, Shop look) moves into the setup.
+// The active setup's content kept only in the game folder (installed sets, card back, Game look) moves into the setup.
 func TestRunAdoptsGameContent(t *testing.T) {
 	h, _ := newHome(t)
 	gameDir := t.TempDir()

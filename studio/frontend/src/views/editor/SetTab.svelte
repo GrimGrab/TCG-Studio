@@ -1,5 +1,7 @@
 <script lang="ts">
   import { App, projectFile, FRAME_TEMPLATES, BORDERS, errText } from '../../lib/api';
+  import { pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
+  import PictureSlot from '../PictureSlot.svelte';
   import RaritiesEditor from './RaritiesEditor.svelte';
   import VariantsEditor from './VariantsEditor.svelte';
 
@@ -7,20 +9,17 @@
 
   let backBust = $state(0);
   let backColor = $state('#3a7bd5');
+  let aspects = $state<Record<string, number>>({});
+  $effect(() => { App.SetPictureAspects().then((a: Record<string, number>) => (aspects = a)); });
+  const own = $derived(setPicture(project, 'cardBack', imgBust + backBust)); // the picture this set's back is cut from
   let globalBack = $state('');
   $effect(() => { App.DefaultArtColor(project.id).then((c: string) => (backColor = c)); App.GlobalCardBack().then((u: string) => (globalBack = u)); });
   let collections: string[] = $state([]);
   $effect(() => { App.Collections().then((c: string[]) => (collections = c ?? [])); });
 
-  async function pickBack() {
-    try {
-      const rel = await App.ChooseSetCardBack(project.id);
-      if (rel) { project.set.cardBack = rel; backBust = Date.now(); notify('Card back set — save to keep it', 'ok'); }
-    } catch (e) { notify(errText(e), 'error'); }
-  }
-
   async function generateBack() {
     try {
+      putSetPicture(project, 'cardBack', { file: '', url: '', crop: null }); // the generated back replaces any picture
       project.set.cardBack = await App.GenerateSetCardBack(project.id, backColor, project.set.name);
       backBust = Date.now();
       notify('Card back generated — save to keep it', 'ok');
@@ -71,18 +70,20 @@
 
   <section>
     <h3>Card back</h3>
-    <div class="row">
-      <div class="back">
-        {#if project.set.cardBack}<img src={projectFile(project.id, project.set.cardBack, imgBust + backBust)} alt="card back" />
-        {:else if globalBack}<img src={globalBack} alt="global card back" />
-        {:else}<span class="muted">template's back</span>{/if}
-      </div>
-      <div class="col">
-        <span class="muted small">{project.set.cardBack ? 'This set has its own back.' : globalBack ? 'Using the global back (Shop look → Card back).' : `Using the ${project.set.frameTemplate} back.`}</span>
-        <button onclick={pickBack}>Choose image…</button>
-        <div class="row"><input type="color" bind:value={backColor} /><button onclick={generateBack}>Generate</button></div>
-        {#if project.set.cardBack}<button onclick={() => (project.set.cardBack = undefined)}>Use {globalBack ? 'global' : "template's"} back</button>{/if}
-      </div>
+    <span class="muted small">{own.file || project.set.cardBack ? 'This set has its own back (saving the set cuts it from your picture).'
+      : globalBack ? 'Using the global back (Game look → Card back).' : `Using the ${project.set.frameTemplate} back.`}</span>
+    <div class="row back-row">
+      {#if !own.file && !project.set.cardBack}
+        <div class="back">{#if globalBack}<img src={globalBack} alt="global card back" />{:else}<span class="muted">template's back</span>{/if}</div>
+      {/if}
+      <PictureSlot aspect={aspects.cardBack ?? 718 / 1006} {notify} pick={() => pickSetPicture(project, 'cardBack')}
+        bind:value={() => own, (v) => putSetPicture(project, 'cardBack', v)}
+        fallback={project.set.cardBack ? projectFile(project.id, project.set.cardBack, imgBust + backBust) : ''}
+        removeLabel="Use {globalBack ? 'global' : "template's"} back">
+        {#snippet extra()}
+          <span class="row"><input type="color" bind:value={backColor} /><button onclick={generateBack}>Generate</button></span>
+        {/snippet}
+      </PictureSlot>
     </div>
   </section>
 
@@ -103,7 +104,7 @@
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .back { width: 120px; height: 168px; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .back img { max-width: 100%; max-height: 100%; }
-  .col { display: flex; flex-direction: column; gap: 6px; }
+  .back-row { align-items: flex-start; gap: 14px; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }
   .small { font-size: 12px; }
 </style>

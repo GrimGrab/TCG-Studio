@@ -9,7 +9,7 @@ namespace TCGCustomCards.Core
     /// The TCG Studio workspace folders all content is read from, named by TCG Studio in &lt;plugin&gt;\studio-paths.json — the
     /// game folder holds only the mod itself:
     ///   - setup: the active setup — its installed sets (setup.json "installedSets", each projects\&lt;id&gt;\set.json), its
-    ///     accessory library (accessories\accessories.json), global card back and Shop look pictures (game\…);
+    ///     accessory library (accessories\accessories.json), global card back and Game look pictures (game\…);
     ///   - library: every set's files, &lt;library&gt;\&lt;set id&gt;;
     ///   - assets: accessory / furniture / decoration files ("assets/&lt;hash&gt;.&lt;ext&gt;").
     /// No fallback to the game folder. Not a setting: TCG Studio keeps the file in step. Read once at game start.

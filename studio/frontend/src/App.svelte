@@ -198,7 +198,7 @@
       <button class:active={view === 'accessories'} onclick={() => go('accessories')}>Accessories</button>
       <button class:active={view === 'furniture'} onclick={() => go('furniture')}>Furniture</button>
       <button class:active={view === 'decorations'} onclick={() => go('decorations')}>Decorations</button>
-      <button class:active={view === 'shoplook'} onclick={() => go('shoplook')}>Shop look</button>
+      <button class:active={view === 'shoplook'} onclick={() => go('shoplook')}>Game look</button>
       <button class:active={view === 'gamify'} onclick={() => go('gamify')}>Gamify</button>
       <button class:active={view === 'modsettings'} onclick={() => go('modsettings')}>Mod settings</button>
     </div>

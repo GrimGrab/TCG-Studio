@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Font choice of the Shop look page (shop name, door sign text): the game's own default, the game's fonts, fonts installed on
+  // Font choice of the Game look page (shop name, door sign text): the game's own default, the game's fonts, fonts installed on
   // Windows or a font file. `onpick` gets source "" (default), "game", "windows" or "file" (+ the App.ShopSignFonts id).
   let { fonts, current = '', defaultLabel, onpick }: {
     fonts: { source: string; id: string; name: string }[]; // App.ShopSignFonts

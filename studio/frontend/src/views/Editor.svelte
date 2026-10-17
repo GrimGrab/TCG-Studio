@@ -5,6 +5,7 @@
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
   import SetTab from './editor/SetTab.svelte';
+  import { applyBakedPictures } from '../lib/setPictures';
 
   let { id, notify, close }: { id: string; notify: (t: string, k?: string) => void; close: () => void } = $props();
 
@@ -48,6 +49,7 @@
       const r = await App.SaveProject($state.snapshot(project) as any);
       issues = r.issues;
       installState = r.installState as any;
+      applyBakedPictures(project, r.pictures); // the files the crop boxes' pictures were cut into
       saved = JSON.stringify(project);
       if (r.synced) notify(`Saved and updated in the game — ${restartHint(r.gameRunning)}.`, 'ok');
       else if (r.syncError) { notify(`Saved, but ${r.syncError}.`, 'error'); showIssues = errors > 0; }

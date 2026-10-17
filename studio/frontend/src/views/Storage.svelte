@@ -416,7 +416,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         <h3>Remove the game's copies of your content</h3>
         <p class="small">Older TCG Studio versions copied your content into the game folder
           (<code>BepInEx\plugins\TCGCustomCards</code>): every installed set with its card art, card backs and pack &amp; box art,
-          every accessory's, furniture piece's and decoration's models and textures, the global card back and the Shop look
+          every accessory's, furniture piece's and decoration's models and textures, the global card back and the Game look
           pictures. So each file was stored twice: once here and once in the game. The game now reads everything straight from
           your TCG Studio workspace (see Settings → Workspace) and the game folder only holds the mod itself, so those copies
           are no longer used: {size(report.gameLibrary)} you can free.</p>
@@ -459,7 +459,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
       <section>
         <h3>Kept by the upgrade</h3>
         <p class="small">When TCG Studio moved your files into shared storage, it didn't delete anything that wasn't an exact copy:
-          images nothing pointed at, art you chose not to keep, and older card backs or Shop look pictures it replaced went
+          images nothing pointed at, art you chose not to keep, and older card backs or Game look pictures it replaced went
           into a folder instead ({size(report.kept)}). Look through it, then delete it when you're sure.</p>
         <div class="row">
           <button onclick={() => App.OpenFolder(report.keptDir)}>Open folder</button>

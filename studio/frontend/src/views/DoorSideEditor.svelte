@@ -5,8 +5,8 @@
   import { App, errText } from '../lib/api';
   import { shopSignFile } from '../lib/urls';
   import { loadImage } from '../lib/accessoryArt';
-  import { doorSignDefaults, drawSignText, fontFamily, latestPerFrame, type SignTextDesign } from '../lib/shopLook';
-  import CropBox from './CropBox.svelte';
+  import { doorSignDefaults, drawSignText, fontFamily, latestPerFrame, type Picture, type SignTextDesign } from '../lib/shopLook';
+  import PictureSlot from './PictureSlot.svelte';
   import FontPicker from './FontPicker.svelte';
   import TextStyle from './TextStyle.svelte';
 
@@ -86,12 +86,10 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
-  async function pickBackground() {
-    try {
-      const f = await App.ImportDoorBackground(side);
-      if (f.file) draft.background = { file: f.file, crop: null };
-    } catch (e) { notify(errText(e), 'error'); }
-  }
+  // The background picture as the crop box slot sees it; removing it goes back to the board colour.
+  const background = (): Picture => draft.background ? { file: draft.background.file, url: url(draft.background.file), crop: draft.background.crop }
+    : { file: '', url: '', crop: null };
+  const setBackground = (v: Picture) => { draft.background = v.file ? { file: v.file, crop: v.crop } : null; };
 </script>
 
 <div class="editor">
@@ -101,19 +99,10 @@
   {:else}
     <div class="row wrap">
       <span class="muted small">Background</span>
-      {#if draft.background}
-        <button onclick={pickBackground}>Other picture…</button>
-        <button onclick={() => draft.background && (draft.background = { ...draft.background, crop: null })} disabled={!draft.background.crop}>Centre</button>
-        <button onclick={() => (draft.background = null)}>Use a colour</button>
-      {:else}
-        <label>Board colour <input type="color" bind:value={draft.boardColor} /></label>
-        <button onclick={pickBackground}>Picture…</button>
-      {/if}
+      {#if !draft.background}<label>Board colour <input type="color" bind:value={draft.boardColor} /></label>{/if}
     </div>
-    {#if draft.background}
-      <CropBox src={url(draft.background.file)} {aspect} crop={draft.background.crop}
-        onchange={(c) => draft.background && (draft.background = { ...draft.background, crop: c })} />
-    {/if}
+    <PictureSlot {aspect} {notify} pick={() => App.ImportDoorBackground(side)} chooseLabel={draft.background ? 'Other picture…' : 'Picture…'}
+      removeLabel="Use a colour" bind:value={background, setBackground} />
     <textarea rows="3" bind:value={draft.text} placeholder="Your words, one line per row (empty = picture only)"></textarea>
     <div class="row wrap">
       <FontPicker {fonts} current={draft.font?.name ?? ''} defaultLabel="Default (Impact)" onpick={pickFont} />

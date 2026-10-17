@@ -6,7 +6,9 @@ import { renderMeshIcon } from './meshView';
 import { templateFile } from './urls';
 
 export interface Target { rect: number[]; src: number[]; flipX?: boolean; flipY?: boolean; transpose?: boolean; bleed?: boolean }
-export interface Face { id: string; label: string; net: number[]; hidden?: boolean; targets: Target[] }
+/** shown: the part of the face the item shows (x, y, w, h fractions of net; missing = all of it) — the pack's front and back
+ *  reach on over texture no mesh shows; art is placed and fitted on the shown part (shownNet). */
+export interface Face { id: string; label: string; net: number[]; hidden?: boolean; shown?: number[]; targets: Target[] }
 /** A labelled frame of the net (furniture: Front, Left, Top… — each holds many faces). */
 export interface View { label: string; net: number[] }
 export interface Base { id: string; label: string; texture: string; targets?: Record<string, Target[]> }
@@ -18,6 +20,19 @@ export interface Model { kind: string; mesh: string; textureSize: number; size: 
 
 /** URL of a preview mesh: its own, else the accessory templates. */
 export const previewUrl = (p: PreviewPart) => p.url ?? templateFile('acc', p.mesh + '.obj');
+
+/** The part of a face the item shows, in net units: where art is placed and fitted (its own net when it shows all of it). */
+export function shownNet(f: Face): number[] {
+  const [x, y, w, h] = f.net, s = f.shown;
+  return s ? [x + s[0] * w, y + s[1] * h, s[2] * w, s[3] * h] : f.net;
+}
+
+/** The net rectangle around several faces' shown parts. */
+export function shownArea(fs: Face[]): number[] {
+  const rs = fs.map(shownNet);
+  const x0 = Math.min(...rs.map((r) => r[0])), y0 = Math.min(...rs.map((r) => r[1]));
+  return [x0, y0, Math.max(...rs.map((r) => r[0] + r[2])) - x0, Math.max(...rs.map((r) => r[1] + r[3])) - y0];
+}
 
 /** Faces the user picks from (fit, wrap, copy to, fill): the model's faces, or a projected model's views as faces. */
 export function pickableFaces(m: Model): Face[] {
@@ -45,12 +60,16 @@ export interface Layer {
 }
 export interface Layout {
   version: 2; layers: Layer[]; base: 'vanilla' | 'color'; baseColor: string;
+  net?: number;                 // the net version it was made for (missing = 1): Studio moves older layouts' layers when a net changed (uvmap.MigrateLayout)
   baseItem?: string;            // pack/box editor: the model base (vanilla item) the art starts from, or 'file'
   baseFile?: string;            // baseItem 'file': project image in the model's own layout (a snapshot of earlier art)
   textureFile?: string;         // painted texture (made from an exported template): used at its own resolution, layers go on top
 }
 
-export const newLayout = (): Layout => ({ version: 2, layers: [], base: 'vanilla', baseColor: '#3a3a3a' });
+/** The current net version (uvmap.NetVersion). */
+export const NET_VERSION = 2;
+
+export const newLayout = (): Layout => ({ version: 2, net: NET_VERSION, layers: [], base: 'vanilla', baseColor: '#3a3a3a' });
 
 /** The shop icon of an accessory whose whole texture is given (an imported or painted texture, no layers): the faces are
  *  read straight from that texture, as the editor does with a painted texture. Same output as the editor's export. */

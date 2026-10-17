@@ -1,5 +1,5 @@
 {
-  "_about": "Extra structure for the mod's settings, read by the mod (embedded resource: F1 menu) and TCG Studio (Mod settings). showWhen: a setting is only shown while another setting has one of the listed values. Keys are unique across sections. TestSettingsMeta checks every name and value against defaults.cfg. elsewhere: settings edited on another Studio page (the Shop look page), hidden on Mod settings.",
+  "_about": "Extra structure for the mod's settings, read by the mod (embedded resource: F1 menu) and TCG Studio (Mod settings). showWhen: a setting is only shown while another setting has one of the listed values. Keys are unique across sections. TestSettingsMeta checks every name and value against defaults.cfg. elsewhere: settings edited on another Studio page (the Game look page), hidden on Mod settings.",
   "showWhen": {
     "FavouriteKey": { "setting": "EnhancedBinder", "is": ["true"] },
     "ControllerVersionButton": { "setting": "EnhancedBinder", "is": ["true"] },
@@ -19,5 +19,6 @@
     "AiDeckWeight5Colors": { "setting": "AiDeckStyle", "is": ["Random"] }
   },
   "elsewhere": ["ShopSignImage", "ShopSignCrop", "ShowShopNameOnSign", "ShopSignFont", "ShopSignTextColor", "ShopSignTextSize", "ShopSignOutline", "ShopSignOutlineColor",
-    "PhoneWallpaperImage", "PhoneWallpaperCrop", "OpenSignImage", "OpenSignCrop", "ClosedSignImage", "ClosedSignCrop"]
+    "PhoneWallpaperImage", "PhoneWallpaperCrop", "OpenSignImage", "OpenSignCrop", "ClosedSignImage", "ClosedSignCrop",
+    "CreditCardImages", "CreditCardCrops", "CreditCardKeepChip", "CreditCardKeepPrint", "LoadingScreenImages", "LoadingScreenCrops", "MainMenuImage", "MainMenuCrop", "LoadingScreenCard", "LoadingScreenCardImage", "LoadingScreenCardCrop"]
 }

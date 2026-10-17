@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,16 +26,17 @@ import (
 	"tcgstudio/internal/setups"
 )
 
-// ---------------------------------------------------------------- Shop look page
+// ---------------------------------------------------------------- Game look page
 //
-// The shop sign above the entrance, the phone wallpaper, the open/closed sign at the door and the global card back. Stored as mod settings (a picture
-// = an image file name in the setup's ShopSign folder + the part shown), so a running game applies changes live; settings-meta.json
-// "elsewhere" keeps them off the Mod settings page.
+// The shop sign above the entrance, the phone wallpaper, the open/closed sign at the door, the global card back, the customers'
+// credit card, the loading screen and the main menu. Stored as mod settings (a picture = an image file name in the setup's
+// ShopSign folder + the part shown), so a running game applies changes live; settings-meta.json "elsewhere" keeps them off the
+// Mod settings page.
 
 const (
 	shopSignSection = "Visuals"
 	shopSignNameKey = "ShowShopNameOnSign"
-	shopLookSection = "Visuals - Shop look"
+	shopLookSection = "Visuals - Game look"
 
 	// [Visuals - Shop sign text]: the shop name's font, colour, size and outline.
 	shopSignTextSection = "Visuals - Shop sign text"
@@ -46,30 +48,59 @@ const (
 )
 
 // shopPicture is one picture slot of the page. Aspects (width ÷ height of what the game shows) are measured from the game files
-// (the mod's ShopSign.FaceAspect, PhoneWallpaper.ScreenAspect, DoorSign.BoardAspect).
+// (the mod's ShopSign.FaceAspect, PhoneWallpaper.ScreenAspect, DoorSign.BoardAspect, CreditCard.FaceAspect, ScreenPictures.Aspect).
 type shopPicture struct {
 	section, imageKey, cropKey string
 	prefix                     string // of the copied file, so slots never share one
 	title                      string // of the file dialog
 	aspect                     float64
+	list                       bool // several pictures: both settings hold one value per picture, joined by listSeparator
 }
 
+// listSeparator joins a list slot's values (the mod's ScreenPictures.ListSeparator); copied file names never contain it.
+const listSeparator = "|"
+
 var shopPictures = map[string]shopPicture{
-	"sign":      {shopSignSection, "ShopSignImage", "ShopSignCrop", "sign_", "Choose the shop sign image", 4.11},
-	"wallpaper": {shopLookSection, "PhoneWallpaperImage", "PhoneWallpaperCrop", "wallpaper_", "Choose the phone wallpaper", 24.63 / 41.896},
-	"open":      {shopLookSection, "OpenSignImage", "OpenSignCrop", "open_", "Choose the OPEN side of the door sign", 328.0 / 206},
-	"closed":    {shopLookSection, "ClosedSignImage", "ClosedSignCrop", "closed_", "Choose the CLOSED side of the door sign", 328.0 / 206},
+	"sign":      {shopSignSection, "ShopSignImage", "ShopSignCrop", "sign_", "Choose the shop sign image", 4.11, false},
+	"wallpaper": {shopLookSection, "PhoneWallpaperImage", "PhoneWallpaperCrop", "wallpaper_", "Choose the phone wallpaper", 24.63 / 41.896, false},
+	"open":      {shopLookSection, "OpenSignImage", "OpenSignCrop", "open_", "Choose the OPEN side of the door sign", 328.0 / 206, false},
+	"closed":    {shopLookSection, "ClosedSignImage", "ClosedSignCrop", "closed_", "Choose the CLOSED side of the door sign", 328.0 / 206, false},
+	"card":      {shopLookSection, "CreditCardImages", "CreditCardCrops", "card_", "Choose a credit card design", gameextract.CardAspect, true},
+	"menu":      {shopLookSection, "MainMenuImage", "MainMenuCrop", "menu_", "Choose the main menu background", 16.0 / 9, false},
+	"loading":   {shopLookSection, "LoadingScreenImages", "LoadingScreenCrops", "loading_", "Choose a loading screen picture", 16.0 / 9, true},
+	"loadCard":  {shopLookSection, "LoadingScreenCardImage", "LoadingScreenCardCrop", "loadcard_", "Choose the loading screen card picture", 635.0 / 887, false},
 }
+
+// shopOptions are the page's on/off settings by id.
+var shopOptions = map[string][2]string{
+	"cardKeepChip":  {shopLookSection, "CreditCardKeepChip"},
+	"cardKeepPrint": {shopLookSection, "CreditCardKeepPrint"},
+}
+
+// shopChoice is a setting with a fixed list of values.
+type shopChoice struct {
+	section, key string
+	values       []string
+}
+
+// shopChoices are the page's pick-one settings by id.
+var shopChoices = map[string]shopChoice{
+	"loadingCard": {shopLookSection, "LoadingScreenCard", []string{"Vanilla", "RandomFromMySets", "GlobalCardBack", "Picture", "Hidden"}},
+}
+
+// shopLayouts are the game's layouts for the previews (templates shopsign/) by preview id.
+var shopLayouts = map[string]string{"sign": "sign.json", "phone": "phone.json", "door": "door.json", "card": "card.json",
+	"menu": "menu.json", "loading": "loading.json"}
 
 // ShopLookView is the page's state.
 type ShopLookView struct {
 	Pictures map[string]ShopPictureView `json:"pictures"` // by slot (shopPictures)
+	Options  map[string]bool            `json:"options"`  // by id (shopOptions)
+	Choices  map[string]string          `json:"choices"`  // by id (shopChoices)
 	Sign     ShopSignView               `json:"sign"`
-	// URLs of the game's layouts for the previews (templates shopsign/); "" = not read yet.
-	SignLayout  string `json:"signLayout"`
-	PhoneLayout string `json:"phoneLayout"`
-	DoorLayout  string `json:"doorLayout"`
-	CardBack    CardBackView `json:"cardBack"`
+	// URLs of the game's layouts for the previews by id (shopLayouts); missing = not read yet.
+	Layouts  map[string]string `json:"layouts"`
+	CardBack CardBackView      `json:"cardBack"`
 }
 
 // CardBackView is the global card back: the picture it was cut from and the crop (to edit it again), and the result.
@@ -99,11 +130,12 @@ func (a *App) loadCardBackDesign() (cardBackDesign, bool) {
 }
 
 type ShopPictureView struct {
-	Image  string    `json:"image"`  // URL of the chosen image, "" = vanilla
-	File   string    `json:"file"`   // its file name in the setup's ShopSign folder (for SaveShopLook), "" = vanilla
-	Crop   []float64 `json:"crop"`   // x, y, w, h as fractions of the image (top-left origin); nil = the middle
-	Aspect float64   `json:"aspect"` // width ÷ height of the crop box
-	Design string    `json:"design"` // a side drawn from text: its design (JSON, see ShopPictureSave); "" = a picture
+	Image  string            `json:"image"`  // URL of the chosen image, "" = vanilla
+	File   string            `json:"file"`   // its file name in the setup's ShopSign folder (for SaveShopLook), "" = vanilla
+	Crop   []float64         `json:"crop"`   // x, y, w, h as fractions of the image (top-left origin); nil = the middle
+	Aspect float64           `json:"aspect"` // width ÷ height of the crop box
+	Design string            `json:"design"` // a side drawn from text: its design (JSON, see ShopPictureSave); "" = a picture
+	Items  []ShopPictureView `json:"items"`  // a list slot's pictures (Image/File/Crop each); the fields above stay empty
 }
 
 // ShopSignView is the shop name on the sign.
@@ -133,23 +165,53 @@ func (a *App) ShopLook() (ShopLookView, error) {
 	if err != nil {
 		return ShopLookView{}, err
 	}
-	v := ShopLookView{Pictures: map[string]ShopPictureView{}}
+	v := ShopLookView{Pictures: map[string]ShopPictureView{}, Options: map[string]bool{}, Choices: map[string]string{}, Layouts: map[string]string{}}
 	for slot, pic := range shopPictures {
 		img, err := modconfig.Get(p, pic.section, pic.imageKey)
 		if err != nil {
 			return ShopLookView{}, err
 		}
-		pv := ShopPictureView{Image: a.shopSignURL(img.Value), Aspect: pic.aspect}
+		crop := ""
+		if c, err := modconfig.Get(p, pic.section, pic.cropKey); err == nil {
+			crop = c.Value
+		}
+		if pic.list {
+			pv := ShopPictureView{Aspect: pic.aspect, Items: []ShopPictureView{}}
+			crops := strings.Split(crop, listSeparator)
+			for i, file := range strings.Split(img.Value, listSeparator) {
+				if u := a.shopSignURL(file); u != "" {
+					it := ShopPictureView{Image: u, File: file, Aspect: pic.aspect}
+					if i < len(crops) {
+						it.Crop = parseCrop(crops[i])
+					}
+					pv.Items = append(pv.Items, it)
+				}
+			}
+			v.Pictures[slot] = pv
+			continue
+		}
+		pv := ShopPictureView{Image: a.shopSignURL(img.Value), Aspect: pic.aspect, Crop: parseCrop(crop)}
 		if pv.Image != "" {
 			pv.File = img.Value
 			if b, err := os.ReadFile(filepath.Join(a.shopSignDir(), designFile(img.Value))); err == nil {
 				pv.Design = string(b)
 			}
 		}
-		if c, err := modconfig.Get(p, pic.section, pic.cropKey); err == nil {
-			pv.Crop = parseCrop(c.Value)
-		}
 		v.Pictures[slot] = pv
+	}
+	for id, o := range shopOptions {
+		e, err := modconfig.Get(p, o[0], o[1])
+		if err != nil {
+			return ShopLookView{}, err
+		}
+		v.Options[id] = e.Value != "false"
+	}
+	for id, c := range shopChoices {
+		e, err := modconfig.Get(p, c.section, c.key)
+		if err != nil {
+			return ShopLookView{}, err
+		}
+		v.Choices[id] = e.Value
 	}
 	name, err := modconfig.Get(p, shopSignSection, shopSignNameKey)
 	if err != nil {
@@ -182,9 +244,9 @@ func (a *App) ShopLook() (ShopLookView, error) {
 			v.CardBack.File, v.CardBack.Source, v.CardBack.Crop = d.File, src, d.Crop
 		}
 	}
-	for file, url := range map[string]*string{"sign.json": &v.SignLayout, "phone.json": &v.PhoneLayout, "door.json": &v.DoorLayout} {
+	for id, file := range shopLayouts {
 		if exists(a.templateFile(gameextract.ShopSignDir, file)) {
-			*url = "/signtemplates/" + file
+			v.Layouts[id] = "/signtemplates/" + file
 		}
 	}
 	return v, nil
@@ -235,7 +297,7 @@ func (a *App) importPicture(title, prefix string) (ShopFile, error) {
 	if err := os.MkdirAll(a.shopSignDir(), 0o755); err != nil {
 		return ShopFile{}, err
 	}
-	name := prefix + filepath.Base(file)
+	name := prefix + strings.ReplaceAll(filepath.Base(file), listSeparator, "_")
 	if err := os.WriteFile(filepath.Join(a.shopSignDir(), name), b, 0o644); err != nil {
 		return ShopFile{}, err
 	}
@@ -264,6 +326,9 @@ func (a *App) ImportDoorBackground(slot string) (ShopFile, error) {
 // cardBackPrefix starts the card back's source pictures in the ShopSign folder. Save cuts the picture at its crop into the
 // setup's card_back.png (the file the mod reads) and keeps picture + crop (cardBackDesign) to edit it again.
 const cardBackPrefix = "back_"
+
+// shopFontPrefix starts the fonts copied into the ShopSign folder (the shop name's and door sign designs').
+const shopFontPrefix = "font_"
 
 // CardBackSource is a picture for the card back in the draft, with the crop to start from.
 type CardBackSource struct {
@@ -418,7 +483,7 @@ func (a *App) ImportShopFont(source, id string) (ShopFile, error) {
 	if err := os.MkdirAll(a.shopSignDir(), 0o755); err != nil {
 		return ShopFile{}, err
 	}
-	name := "font_" + filepath.Base(from)
+	name := shopFontPrefix + filepath.Base(from)
 	path := filepath.Join(a.shopSignDir(), name)
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return ShopFile{}, err
@@ -436,6 +501,8 @@ func (a *App) ImportShopFont(source, id string) (ShopFile, error) {
 // changed setting in one go. Missing pictures / nil fields = unchanged.
 type ShopLookSave struct {
 	Pictures map[string]ShopPictureSave `json:"pictures"` // by slot (shopPictures)
+	Options  map[string]bool            `json:"options"`  // by id (shopOptions)
+	Choices  map[string]string          `json:"choices"`  // by id (shopChoices)
 	ShowName *bool                      `json:"showName"`
 	Font     *string                    `json:"font"`     // font file in the setup's ShopSign folder, "" = the game's own
 	Text     *ShopSignText              `json:"text"`     // colour, size, outline, outline colour (the font: Font)
@@ -451,10 +518,11 @@ type CardBackSave struct {
 
 // ShopPictureSave is one picture slot of the draft.
 type ShopPictureSave struct {
-	File   string    `json:"file"`   // image file in the setup's ShopSign folder (ImportShopPicture), "" = vanilla
-	Crop   []float64 `json:"crop"`   // x, y, w, h as fractions of the image (top-left origin); empty = the middle
-	PNG    string    `json:"png"`    // a door sign side drawn in the page (base64 PNG), used instead of File
-	Design string    `json:"design"` // that side's design (JSON: text, colours, font {file, name}, background {file, crop})
+	File   string            `json:"file"`   // image file in the setup's ShopSign folder (ImportShopPicture), "" = vanilla
+	Crop   []float64         `json:"crop"`   // x, y, w, h as fractions of the image (top-left origin); empty = the middle
+	PNG    string            `json:"png"`    // a door sign side drawn in the page (base64 PNG), used instead of File
+	Design string            `json:"design"` // that side's design (JSON: text, colours, font {file, name}, background {file, crop})
+	Items  []ShopPictureSave `json:"items"`  // a list slot's pictures (File + Crop each), instead of File/Crop
 }
 
 // SaveShopLook stores the page's draft (renaming the shop in the game's saves when the name changed), deletes the
@@ -479,23 +547,52 @@ func (a *App) SaveShopLook(s ShopLookSave) (ShopLookView, error) {
 		if err != nil {
 			return ShopLookView{}, err
 		}
-		name, crop := ps.File, ""
-		if ps.PNG != "" {
-			if name, err = a.writeDesignedPicture(pic, slot, ps.PNG, ps.Design); err != nil {
-				return ShopLookView{}, err
+		items := ps.Items
+		if !pic.list {
+			items = []ShopPictureSave{ps}
+		}
+		var names, crops []string
+		for _, it := range items {
+			name, crop := it.File, ""
+			if it.PNG != "" && !pic.list {
+				if name, err = a.writeDesignedPicture(pic, slot, it.PNG, it.Design); err != nil {
+					return ShopLookView{}, err
+				}
+			} else {
+				if name != "" && (filepath.Base(name) != name || strings.Contains(name, listSeparator) || !exists(filepath.Join(a.shopSignDir(), name))) {
+					return ShopLookView{}, errors.New("picture not found: " + name)
+				}
+				if crop, err = cropValue(it.Crop); err != nil {
+					return ShopLookView{}, err
+				}
 			}
-		} else {
-			if name != "" && (filepath.Base(name) != name || !exists(filepath.Join(a.shopSignDir(), name))) {
-				return ShopLookView{}, errors.New("picture not found: " + name)
-			}
-			if crop, err = cropValue(ps.Crop); err != nil {
-				return ShopLookView{}, err
+			if name != "" || !pic.list {
+				names, crops = append(names, name), append(crops, crop)
 			}
 		}
-		if old, err := modconfig.Get(p, pic.section, pic.imageKey); err == nil && old.Value != name {
-			replaced = append(replaced, old.Value)
+		if old, err := modconfig.Get(p, pic.section, pic.imageKey); err == nil {
+			for _, f := range strings.Split(old.Value, listSeparator) {
+				if !slices.Contains(names, f) {
+					replaced = append(replaced, f)
+				}
+			}
 		}
-		kvs = append(kvs, [3]string{pic.section, pic.cropKey, crop}, [3]string{pic.section, pic.imageKey, name})
+		kvs = append(kvs, [3]string{pic.section, pic.cropKey, strings.Join(crops, listSeparator)},
+			[3]string{pic.section, pic.imageKey, strings.Join(names, listSeparator)})
+	}
+	for id, on := range s.Options {
+		o, ok := shopOptions[id]
+		if !ok {
+			return ShopLookView{}, errors.New("unknown option " + id)
+		}
+		kvs = append(kvs, [3]string{o[0], o[1], strconv.FormatBool(on)})
+	}
+	for id, v := range s.Choices {
+		c, ok := shopChoices[id]
+		if !ok || !slices.Contains(c.values, v) {
+			return ShopLookView{}, fmt.Errorf("unknown choice %s = %s", id, v)
+		}
+		kvs = append(kvs, [3]string{c.section, c.key, v})
 	}
 	if s.ShowName != nil {
 		kvs = append(kvs, [3]string{shopSignSection, shopSignNameKey, strconv.FormatBool(*s.ShowName)})
@@ -613,7 +710,7 @@ func (a *App) shopFilesInUse(p string) []string {
 	}
 	for _, pic := range shopPictures {
 		if e, err := modconfig.Get(p, pic.section, pic.imageKey); err == nil && e.Value != "" {
-			out = append(out, e.Value)
+			out = append(out, strings.Split(e.Value, listSeparator)...)
 		}
 	}
 	if e, err := modconfig.Get(p, shopSignTextSection, shopSignFontKey); err == nil && e.Value != "" {
@@ -622,9 +719,9 @@ func (a *App) shopFilesInUse(p string) []string {
 	return out
 }
 
-// pruneFiles deletes the files the page copies (font_*, sign_*, wallpaper_*, open_*, closed_*: pictures, door sign designs and
-// their backgrounds; back_*: card back pictures) from dir unless they're in use: named in inUse, the design of such a picture, or the font/background
-// that design names. Other files (e.g. a picture set by hand) stay.
+// pruneFiles deletes the files the page copies (font_*; every picture slot's prefix*: pictures, door sign designs and their
+// backgrounds; back_*: card back pictures) from dir unless they're in use: named in inUse, the design of such a picture, or the
+// font/background that design names. Other files (e.g. a picture set by hand) stay.
 func pruneFiles(dir string, inUse []string) {
 	used := map[string]bool{}
 	for _, f := range inUse {
@@ -642,8 +739,12 @@ func pruneFiles(dir string, inUse []string) {
 			used[d.Font.File], used[d.Background.File] = true, true
 		}
 	}
-	for _, pattern := range []string{"font_*", "sign_*", "wallpaper_*", "open_*", "closed_*", cardBackPrefix + "*"} {
-		files, _ := filepath.Glob(filepath.Join(dir, pattern))
+	prefixes := []string{shopFontPrefix, cardBackPrefix}
+	for _, pic := range shopPictures {
+		prefixes = append(prefixes, pic.prefix)
+	}
+	for _, prefix := range prefixes {
+		files, _ := filepath.Glob(filepath.Join(dir, prefix+"*"))
 		for _, f := range files {
 			if !used[filepath.Base(f)] {
 				_ = os.Remove(f)

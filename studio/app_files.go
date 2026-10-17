@@ -50,7 +50,7 @@ var fileRoutes = []fileRoute{
 		}
 		return safeJoin(a.root(), setups.GameStateDir, rel)
 	}},
-	// Shop look previews (sign layout, fonts, phone, open/closed sign) and the chosen pictures and fonts
+	// Game look previews (sign layout, fonts, phone, open/closed sign) and the chosen pictures and fonts
 	{"signtemplates/", 2, func(a *App, rel string) string {
 		return safeJoin(a.templatesDir(), gameextract.ShopSignDir, rel)
 	}},

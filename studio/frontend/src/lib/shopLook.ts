@@ -1,4 +1,8 @@
-// Shared by the Shop look page's crop box and previews (shop sign, phone wallpaper, open/closed sign).
+// Shared by the crop boxes (views/PictureSlot.svelte) and the Game look page's previews.
+
+/** A picture cut with the crop box: its file (as the page's backend names it, '' = none), a URL to show it and the crop
+ *  ([x, y, w, h] fractions from its top-left, null = the middle). */
+export type Picture = { file: string; url: string; crop: number[] | null };
 
 /** The part of an image the game shows, [x, y, w, h] as fractions from its top-left corner: the crop setting (its height
  *  re-derived so the shape is exact) or, without one, the largest `aspect` box in the middle. Same rule as the mod's

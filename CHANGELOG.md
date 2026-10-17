@@ -3,6 +3,20 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.11.0 - 2026-10-17
+
+Game look: your own credit cards, loading screens and main menu.
+
+- New: the Shop look page is now Game look, with three new tabs:
+  - Credit card: add several designs; each customer who pays by card hands over a random one (the card at the counter matches). Keep the chip and the embossed number, expiry date and name on top, or show your picture alone.
+  - Loading screen: add several backgrounds; one is picked at random each time it opens and stays up for the whole load. Choose what the spinning card shows: a random card from your sets, your global card back, your own picture, the vanilla card back, or no card.
+  - Main menu: your own background behind the logo and buttons.
+- New: a crop box for every picture. A set's card back (Set tab) and pack/box textures and icons (Packs tab) can now be moved and resized like the Game look pictures; saving the set cuts them.
+- Fixed: colour pickers in TCG Studio stopped opening, caused by a Microsoft Edge test setting. Studio now clears it when it starts.
+- Fixed: a thin line of the vanilla blue pack art could show along the edge of a pack while opening it. In the pack editor the front and back now reach over that area. Existing designs keep their look: run Smart generate or move your layers over the strip to fix a pack.
+- Changed: F1 settings moved from Visuals - Shop look to Visuals - Game look (your values are kept). New: Visuals - Game look → CreditCardImages, CreditCardCrops, CreditCardKeepChip, CreditCardKeepPrint, LoadingScreenImages, LoadingScreenCrops, LoadingScreenCard, LoadingScreenCardImage, LoadingScreenCardCrop, MainMenuImage, MainMenuCrop.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.10.3 - 2026-10-17
 
 Custom board games and card supplies for the Tabletop Geek shop.

@@ -370,7 +370,7 @@ func HumanSize(n int64) string {
 }
 
 // gameCopies is the content older Studio versions put into the game folder: installed sets (<plugin>\Sets), their files
-// (<plugin>\Library), the accessory library and its files (<plugin>\Accessories), the global card back and the Shop look
+// (<plugin>\Library), the accessory library and its files (<plugin>\Accessories), the global card back and the Game look
 // pictures (<plugin>\ShopSign). The mod reads all of it from the workspace now (game.StudioPathsFile); the game folder
 // holds only the mod.
 func gameCopies(gameDir string) []string {

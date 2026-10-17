@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 
 	xdraw "golang.org/x/image/draw"
 )
@@ -319,20 +318,8 @@ func CardBackFromCrop(srcPath string, crop []float64, out string) error {
 	if err != nil {
 		return fmt.Errorf("card back image: %w", err)
 	}
-	b := src.Bounds()
-	r := b
-	if len(crop) >= 3 && crop[2] > 0 {
-		iw, ih := float64(b.Dx()), float64(b.Dy())
-		w := min(crop[2], 1) * iw
-		h := w / CardBackAspect
-		x := min(max(crop[0]*iw, 0), iw-w)
-		y := min(max(crop[1]*ih, 0), max(ih-h, 0))
-		r = image.Rect(b.Min.X+int(x+0.5), b.Min.Y+int(y+0.5), b.Min.X+int(x+w+0.5), b.Min.Y+int(min(y+h, ih)+0.5))
-	}
 	img := image.NewNRGBA(backArt)
-	sub := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
-	xdraw.Copy(sub, image.Point{}, src, r, xdraw.Src, nil)
-	drawCover(img, backArt, sub)
+	drawCover(img, backArt, cropped(src, crop, CardBackAspect))
 	return savePNG(out, img)
 }
 
@@ -350,18 +337,6 @@ func absInt(v int) int {
 		return -v
 	}
 	return v
-}
-
-// CardBackFromFile composes an image file into a card back.
-func CardBackFromFile(srcPath, out string) error {
-	src, err := loadImage(srcPath)
-	if err != nil {
-		return fmt.Errorf("card back image: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		return err
-	}
-	return ComposeCardBack(src, out)
 }
 
 // SavePNG writes an image as PNG (creating the folder).

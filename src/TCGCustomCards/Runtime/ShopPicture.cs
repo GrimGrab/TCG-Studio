@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using UnityEngine;
@@ -7,9 +8,9 @@ using Object = UnityEngine.Object;
 namespace TCGCustomCards.Runtime
 {
     /// <summary>
-    /// The shared part of TCG Studio's Shop look pictures (shop sign, phone wallpaper, open/closed sign): an image setting (a file
-    /// in the active setup's game\ShopSign or a full path) plus a crop setting "x,y,w,h", painted into a copy of a vanilla texture or shown
-    /// as a sprite.
+    /// The shared part of TCG Studio's Game look pictures (shop sign, phone wallpaper, open/closed sign, credit card, loading screen,
+    /// main menu): an image setting (a file in the active setup's game\ShopSign or a full path) plus a crop setting "x,y,w,h", painted
+    /// into a copy of a vanilla texture or shown as a sprite.
     /// </summary>
     internal static class ShopPicture
     {
@@ -72,6 +73,22 @@ namespace TCGCustomCards.Runtime
             return null;
         }
 
+        /// <summary>A sprite of the picture's cropped part (mipmapped, clamped; the sprite owns its texture); null when
+        /// <paramref name="path"/> is null or the file can't be read.</summary>
+        internal static Sprite CropSprite(string path, string crop, string setting, float aspect, string what)
+        {
+            if (path == null) return null;
+            var tex = Load(path, what, mipmaps: true);
+            if (tex == null) return null;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+            var c = Crop(crop, setting, tex, aspect);
+            float x = c.x * tex.width, y = c.y * tex.height; // Sprite.Create throws on a rect past the edge
+            var rect = new Rect(x, y, Mathf.Min(c.width * tex.width, tex.width - x), Mathf.Min(c.height * tex.height, tex.height - y));
+            Plugin.Log.LogInfo($"{what}: using {path}");
+            return Sprite.Create(tex, rect, new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+        }
+
         /// <summary>Pixels painted past each area so mipmaps/bilinear filtering don't pull in vanilla art at the edges.</summary>
         private const int Bleed = 3;
 
@@ -120,17 +137,26 @@ namespace TCGCustomCards.Runtime
         private static MaterialPropertyBlock _block;
 
         /// <summary>Shows <paramref name="tex"/> instead of the material's main texture in every slot that uses it (e.g. _MainTex and
-        /// _EmissionMap) through a MaterialPropertyBlock, so null restores vanilla.</summary>
-        internal static void SetTexture(Renderer r, Texture tex)
+        /// _EmissionMap) through a MaterialPropertyBlock, so null restores vanilla. <paramref name="materialIndex"/> -1 = the whole
+        /// renderer (its first material's texture), otherwise only that material of a multi-material renderer.</summary>
+        internal static void SetTexture(Renderer r, Texture tex, int materialIndex = -1)
         {
             if (r == null) return;
-            if (tex == null) { r.SetPropertyBlock(null); return; }
             _block ??= new MaterialPropertyBlock();
-            _block.Clear();
-            var mat = r.sharedMaterial;
-            foreach (var prop in mat.GetTexturePropertyNames())
-                if (mat.GetTexture(prop) == mat.mainTexture) _block.SetTexture(prop, tex);
-            r.SetPropertyBlock(_block);
+            _block.Clear(); // an empty block = no overrides
+            var mat = materialIndex < 0 ? r.sharedMaterial : r.sharedMaterials[materialIndex];
+            if (tex != null && mat != null)
+                foreach (var prop in mat.GetTexturePropertyNames())
+                    if (mat.GetTexture(prop) == mat.mainTexture) _block.SetTexture(prop, tex);
+            if (materialIndex < 0) r.SetPropertyBlock(tex == null ? null : _block);
+            else r.SetPropertyBlock(_block, materialIndex);
+        }
+
+        /// <summary>Destroys a built picture (a sprite with the texture it owns).</summary>
+        internal static void Release(Object value)
+        {
+            if (value is Sprite s && s.texture != null) Object.Destroy(s.texture);
+            if (value != null) Object.Destroy(value);
         }
     }
 
@@ -143,12 +169,34 @@ namespace TCGCustomCards.Runtime
         internal T Get(string key, Func<T> build)
         {
             if (key == _key) return _value;
-            if (_value is Sprite s && s.texture != null) Object.Destroy(s.texture);
-            if (_value != null) Object.Destroy(_value);
+            ShopPicture.Release(_value);
             _key = key;
             _value = null;
             _value = build();
             return _value;
+        }
+    }
+
+    /// <summary>Several built pictures by key (a picture list such as the loading screens): built on first use, released when
+    /// <see cref="Keep"/> no longer lists their key.</summary>
+    internal sealed class PictureSet<T> where T : Object
+    {
+        private readonly Dictionary<string, T> _values = new Dictionary<string, T>();
+
+        internal T Get(string key, Func<T> build)
+        {
+            if (!_values.TryGetValue(key, out var value)) _values[key] = value = build();
+            return value;
+        }
+
+        internal void Keep(ICollection<string> keys)
+        {
+            foreach (var k in new List<string>(_values.Keys))
+            {
+                if (keys.Contains(k)) continue;
+                ShopPicture.Release(_values[k]);
+                _values.Remove(k);
+            }
         }
     }
 }

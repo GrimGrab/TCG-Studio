@@ -5,7 +5,7 @@ using UnityEngine;
 namespace TCGCustomCards.Runtime
 {
     /// <summary>
-    /// [Visuals - Shop look] OpenSignImage / ClosedSignImage: the open/closed sign at the door (InteractableOpenCloseSign). Both of
+    /// [Visuals - Game look] OpenSignImage / ClosedSignImage: the open/closed sign at the door (InteractableOpenCloseSign). Both of
     /// its models (Model_Open, Model_Close) use material MAT_OpenCloseSign with one 512² texture T_OpenCloseSign that holds the green
     /// OPEN board above the red CLOSED board; each model shows one board on its front and the other on its back. A picture is painted
     /// inside a board's black frame (the frame and screws stay) in a copy of that texture, set per renderer.

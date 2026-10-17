@@ -16,7 +16,7 @@ import (
 )
 
 // A setup file (version 3) = manifest.json + setup/setup.json (installed sets) + setup/game/… (the mod's settings, the
-// card back, Shop look pictures) + items/<kind>/<id>/… for every item of the setup, in its list order. Saves never go.
+// card back, Game look pictures) + items/<kind>/<id>/… for every item of the setup, in its list order. Saves never go.
 
 const setupDir = "setup/"
 
@@ -80,7 +80,7 @@ func ExportSetup(h setups.Home, id, dest, studioVersion string, progress func(do
 	return z.Close()
 }
 
-// exportGame adds a setup's game folder: the mod's settings (absolute paths blanked), card back, Shop look pictures.
+// exportGame adds a setup's game folder: the mod's settings (absolute paths blanked), card back, Game look pictures.
 // Content older Studio versions parked there (Sets, Accessories, Library) stays on this PC.
 func exportGame(dir, zipDir string, z *ziputil.Writer) error {
 	return filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {

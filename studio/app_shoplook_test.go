@@ -21,16 +21,19 @@ func TestPruneFiles(t *testing.T) {
 	write("sign_banner.png", "x")
 	write("sign_unsaved.png", "x")
 	write("by_hand.jpg", "x")
+	write("loading_a.png", "x")
+	write("loading_b.png", "x")
+	write("card_old.png", "x")
 	write("open_text_1.png", "x")
 	write("open_bg_cat.png", "x")
 	write("closed_bg_old.png", "x")
 	write("closed_text_2.png", "x")
 	write("closed_text_2.png.json", `{"text":"OLD","font":{"file":"font_old.ttf","name":"Old"},"background":{"file":"closed_bg_old.png"}}`)
 	write("open_text_1.png.json", `{"text":"HI","font":{"file":"font_door.ttf","name":"Door"},"background":{"file":"open_bg_cat.png"}}`)
-	pruneFiles(dir, []string{"font_sign.ttf", "sign_banner.png", "open_text_1.png"})
+	pruneFiles(dir, []string{"font_sign.ttf", "sign_banner.png", "open_text_1.png", "loading_a.png"})
 	for name, want := range map[string]bool{"font_sign.ttf": true, "font_door.ttf": true, "font_old.ttf": false, "open_bg_cat.png": true,
 		"closed_bg_old.png": false, "closed_text_2.png": false, "closed_text_2.png.json": false, "sign_banner.png": true,
-		"sign_unsaved.png": false, "by_hand.jpg": true, "open_text_1.png": true, "open_text_1.png.json": true} {
+		"sign_unsaved.png": false, "by_hand.jpg": true, "loading_a.png": true, "loading_b.png": false, "card_old.png": false, "open_text_1.png": true, "open_text_1.png.json": true} {
 		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
 			t.Errorf("%s: exists = %v, want %v", name, err == nil, want)
 		}

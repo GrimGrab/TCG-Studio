@@ -419,7 +419,7 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 		art := map[string]json.RawMessage{}
 		for which, file := range map[string]string{"pack": pk.PackTexture, "box": pk.BoxTexture} {
 			if file != "" {
-				art[which], _ = json.Marshal(map[string]any{"version": 2, "layers": []any{}, "base": "vanilla",
+				art[which], _ = json.Marshal(map[string]any{"version": 2, "net": uvmap.NetVersion, "layers": []any{}, "base": "vanilla",
 					"baseColor": "#3a3a3a", "baseItem": "file", "baseFile": file})
 			}
 		}

@@ -16,6 +16,7 @@
   let loading = $state(true);
   let busy = $state('');
   let filter = $state('');
+  let orphans = $state(false); // only what no setup uses (cleanup)
   let games = $state<Record<string, string>>({});
   let picked = $state<string[]>([]);
   let anchor = '';
@@ -37,6 +38,7 @@
   });
 
   const shown = $derived((lists[kind] ?? []).filter((e) => {
+    if (orphans && e.usedBy?.length) return false;
     const q = filter.trim().toLowerCase();
     return !q || `${e.name} ${e.id} ${e.origin} ${e.author} ${e.sub} ${(e.usedBy ?? []).map((u: any) => u.name).join(' ')}`.toLowerCase().includes(q);
   }));
@@ -131,13 +133,14 @@
   </header>
   <p class="muted intro">Everything in this workspace — every set, accessory and furniture piece in any of your setups — and which
     setups use it. Add one to the setup you're in, export a selection to share it, or delete it: deleting removes it
-    <b>everywhere</b>. Click to select; Ctrl/Shift+click for several; <b>Delete</b> removes the selection.</p>
+    <b>everywhere</b>. Click to select; Ctrl/Shift+click for several; <b>Delete</b> removes the selection. To clean up, tick <b>Only what no setup uses</b>, press Ctrl+A and delete.</p>
 
   <div class="row tabs">
     {#each kinds as t (t.id)}
       <button class:on={kind === t.id} onclick={() => switchTab(t.id)}>{t.title} <span class="muted small">({(lists[t.id] ?? []).length})</span></button>
     {/each}
     <div class="grow"></div>
+    <label class="check small"><input type="checkbox" bind:checked={orphans} onchange={() => (picked = [])} /> Only what no setup uses</label>
     <input class="search" placeholder="Search name, mod, author, setup" bind:value={filter} />
   </div>
 
@@ -145,7 +148,7 @@
 
   <div class="list">
     {#if loading && !(lists[kind] ?? []).length}<p class="muted">Loading…</p>
-    {:else if !shown.length}<p class="muted">{filter ? 'Nothing matches.' : `No ${noun(kind, 2)} yet.`}</p>{/if}
+    {:else if !shown.length}<p class="muted">{filter ? 'Nothing matches.' : orphans ? `Every ${noun(kind, 1)} is used by a setup.` : `No ${noun(kind, 2)} yet.`}</p>{/if}
     {#each groups as [g, items] (g)}
       <div class="group">
         <div class="ghead">{g || OWN_GROUP} <span class="muted small">· {items.length}</span></div>

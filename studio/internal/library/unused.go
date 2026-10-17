@@ -39,6 +39,7 @@ type UnusedEntry struct {
 	Note      string `json:"note,omitempty"`
 	// Paths: for UnusedSetFiles, the files (relative to the set's shared folder, slash-separated) the entry deletes.
 	Paths []string `json:"paths,omitempty"`
+	Meta
 }
 
 // brokenSets are set ids with a project folder whose set.json can't be read (in any setup or the catalog). Their shared

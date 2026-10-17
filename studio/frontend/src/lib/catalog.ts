@@ -19,11 +19,11 @@ export function groupOf(e: any, g: Record<string, string>): string {
   return '';
 }
 
-/** Entries grouped (named groups A–Z, your own last). */
-export function grouped(list: any[], g: Record<string, string>): [string, any[]][] {
+/** Entries grouped (named groups A–Z, your own last); key overrides the group of some entries. */
+export function grouped(list: any[], g: Record<string, string>, key: (e: any) => string = (e) => groupOf(e, g)): [string, any[]][] {
   const m = new Map<string, any[]>();
   for (const e of list) {
-    const k = groupOf(e, g);
+    const k = key(e);
     if (!m.has(k)) m.set(k, []);
     m.get(k)!.push(e);
   }

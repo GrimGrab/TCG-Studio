@@ -69,8 +69,13 @@
       {kind === 'set' ? 'Added sets show up on the Sets page; Install them as usual.' : 'Added items go at the end of the list.'}</p>
     <div class="row pick">
       <label class="field grow">Search<input placeholder="Name, mod or author" bind:value={filter} /></label>
-      {#if kind !== 'set' && sub}<label class="check"><input type="checkbox" bind:checked={onlyKind} /> Only {sub}</label>{/if}
+      {#if kind !== 'set' && sub}
+        <span class="seg" title="Show only the kind of the tab you came from, or everything (e.g. a whole mod at once)">
+          <button class="small" class:on={onlyKind} onclick={() => (onlyKind = true)}>{sub}</button><button class="small" class:on={!onlyKind} onclick={() => (onlyKind = false)}>All kinds</button>
+        </span>
+      {/if}
       <label class="check"><input type="checkbox" bind:checked={showHere} /> Show what this setup already has</label>
+      {#if shown.some((e) => !e.here)}<button class="small" onclick={() => toggleGroup(shown, true)}>Select all shown</button>{/if}
     </div>
     {#if error}<p class="small err">{error}</p>{/if}
     <div class="list">
@@ -115,4 +120,9 @@
   .item.here { opacity: 0.55; }
   .small { font-size: 12px; margin: 0; }
   .err { color: var(--danger); }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; }
+  .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+  .seg button.on { border-color: var(--accent); background: #22304d; }
 </style>

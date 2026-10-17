@@ -47,6 +47,7 @@ type SetInfo struct {
 	PNG      int64    `json:"png"`      // PNG card art (importer file names), what Shrink would convert
 	PNGFiles int      `json:"pngFiles"` //
 	ShrinkTo int64    `json:"shrinkTo"` // estimated size of that art as JPEG
+	Meta
 }
 
 // ItemInfo is an accessory, furniture piece or decoration of a setup.
@@ -55,6 +56,7 @@ type ItemInfo struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`   // accessory kind (Playmat, …), "Furniture" or "Decoration"
 	Shared int64  `json:"shared"` // its files in the shared store
+	Meta
 }
 
 // SetupInfo is one setup: its own folder broken down, and the sets and items it uses.
@@ -261,6 +263,27 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 		}
 	}
 	r.Unused = unusedEntries(h, bySet, list)
+
+	// Where each listed set and item came from, for grouping by mod / source.
+	idx := metaIndex(h, list)
+	for i := range r.Sets {
+		r.Sets[i].Meta = idx["set"][r.Sets[i].ID]
+	}
+	for i := range r.Setups {
+		for j := range r.Setups[i].Items {
+			it := &r.Setups[i].Items[j]
+			it.Meta = itemMeta(idx, it.Kind, it.ID)
+		}
+	}
+	for i := range r.Unused {
+		u := &r.Unused[i]
+		switch u.Kind {
+		case UnusedSetFiles, UnusedCatalogSet:
+			u.Meta = idx["set"][u.ID]
+		case UnusedCatalogItem:
+			u.Meta = itemMeta(idx, "", u.ID)
+		}
+	}
 	r.PlainSaves = checkPlainSaves(h, r.GameFound)
 	r.KeptDir = workspace.Dir(h.Root).Kept()
 	r.Kept, _ = dirSize(r.KeptDir)

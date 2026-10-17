@@ -12,6 +12,7 @@
   import { Ev } from '../lib/events';
   import { App, EventsOn, errText, ask } from '../lib/api';
   import { accFile, projectFile } from '../lib/urls';
+  import { grouped, groupOf, sourceGames, OWN_GROUP } from '../lib/catalog';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
@@ -215,6 +216,17 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   };
   /** Shared storage as one number (on disk it is the library, assets and catalog folders). */
   const sharedBytes = $derived(report ? report.library + report.assets + report.catalog : 0);
+
+  // Lists grouped by mod / import source like the Catalog page, A–Z inside a group. Files no set or item names get
+  // their own groups (they have no origin).
+  let games = $state<Record<string, string>>({}); // import source id → game
+  const LOOSE: Record<string, string> = {
+    'shared-files': 'Loose files (no accessory, furniture piece or decoration uses them)',
+    'set-art': 'Folders of sets no setup or the catalog has',
+  };
+  const byName = (a: any, b: any) => (a.name || a.id).localeCompare(b.name || b.id);
+  const groupsOf = (list: any[]) => grouped([...list].sort(byName), games, (e) => LOOSE[e.kind] ?? groupOf(e, games));
+  const groupBytes = (list: any[], f: string) => list.reduce((n: number, x: any) => n + (x[f] ?? 0), 0);
   /** Workspace files outside shared storage, setups and the cache (e.g. old save backups). */
   const otherBytes = $derived(report ? Math.max(0, report.workspace - sharedBytes - report.setupsSize - report.cache) : 0);
   const unusedTotal = $derived((report?.unused ?? []).reduce((n: number, u: any) => n + u.size, 0));
@@ -228,8 +240,8 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   const unusedShown = $derived(unusedTab === 'sets' ? unusedSets : unusedItems);
   const bytesOf = (list: any[]) => list.reduce((n: number, u: any) => n + u.size, 0);
   const tabPicked = $derived(unusedShown.filter((u: any) => upick[ukey(u)]).length);
-  function pickTab(on: boolean) {
-    for (const u of unusedShown) upick[ukey(u)] = on;
+  function pickTab(on: boolean, list: any[] = unusedShown) {
+    for (const u of list) upick[ukey(u)] = on;
   }
   const isImage = (u: any) => u.kind === 'shared-files' && u.note === 'Image';
   const IMAGE = /\.(png|jpe?g|webp|gif|bmp|svg)$/i;
@@ -288,6 +300,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   }
 
   onMount(() => {
+    sourceGames().then((g) => (games = g));
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') zoom = false; };
     window.addEventListener('keydown', onKey);
     const offs = [
@@ -563,17 +576,22 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         <table>
           <thead><tr><th>{sharedTab === 'sets' ? 'Set' : 'Item'}</th><th>Used by</th><th class="num">Size</th></tr></thead>
           <tbody>
-            {#if sharedTab === 'sets'}
-              {#each sharedSets as x (x.id)}
-                <tr><td>{x.name} <span class="muted small">· {x.id}</span></td><td class="muted small">{setupsOf(x).join(', ')}</td>
-                  <td class="num">{size(x.shared)}</td></tr>
-              {/each}
-            {:else}
-              {#each sharedItems as it (it.id)}
-                <tr><td>{it.name} <span class="muted small">· {it.kind}</span></td><td class="muted small">{it.usedBy.join(', ')}</td>
-                  <td class="num">{size(it.shared)}</td></tr>
-              {/each}
-            {/if}
+            {#each groupsOf(sharedTab === 'sets' ? sharedSets : sharedItems) as [g, list] (g)}
+              <tr class="gh"><td colspan="3">{g || OWN_GROUP} <span class="muted small">· {list.length} · {size(groupBytes(list, 'shared'))}</span></td></tr>
+              {#if sharedTab === 'sets'}
+                {#each list as x (x.id)}
+                  <tr><td><div class="nm">{#if x.cover}<img class="thumb" src={projectFile(x.id, x.cover)} alt="" loading="lazy" />{:else}<span class="thumb"></span>{/if}
+                    {x.name} <span class="muted small">· {x.id}</span></div></td><td class="muted small">{setupsOf(x).join(', ')}</td>
+                    <td class="num">{size(x.shared)}</td></tr>
+                {/each}
+              {:else}
+                {#each list as it (it.id)}
+                  <tr><td><div class="nm">{#if it.icon}<img class="thumb" src={accFile(it.icon)} alt="" loading="lazy" />{:else}<span class="thumb"></span>{/if}
+                    {it.name} <span class="muted small">· {it.kind}</span></div></td><td class="muted small">{it.usedBy.join(', ')}</td>
+                    <td class="num">{size(it.shared)}</td></tr>
+                {/each}
+              {/if}
+            {/each}
           </tbody>
         </table>
       </div>
@@ -589,16 +607,25 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         {/if}</div>
       {#if report.unused.length}
         <p class="muted small">{size(unusedTotal)} in all. Sets and items here are only in the catalog: Add from catalog brings
-          them back into a setup; deleting them removes them from the catalog too.</p>
+          them back into a setup; deleting them removes them from the catalog too. With pictures: <b>Catalog</b> → tick
+          “Only what no setup uses”.</p>
         <div class="row tabs">
           <button class:on={unusedTab === 'sets'} onclick={() => (unusedTab = 'sets')}>Sets ({unusedSets.length}) · {size(bytesOf(unusedSets))}</button>
           <button class:on={unusedTab === 'items'} onclick={() => (unusedTab = 'items')}>Accessories &amp; furniture ({unusedItems.length}) · {size(bytesOf(unusedItems))}</button>
         </div>
         <div class="shared">
-          {#each unusedShown as u (ukey(u))}
+          {#each groupsOf(unusedShown) as [g, list] (g)}
+            <div class="row ghead small">
+              <b class="grow">{g || OWN_GROUP} <span class="muted">· {list.length} · {size(groupBytes(list, 'size'))}</span></b>
+              <button class="small link" onclick={() => pickTab(true, list)}>Select all</button>
+              <button class="small link" onclick={() => pickTab(false, list)}>None</button>
+            </div>
+          {#each list as u (ukey(u))}
             <label class="row pick">
               <input type="checkbox" bind:checked={upick[ukey(u)]} />
-              {#if isImage(u)}<img class="thumb" src={accFile(u.id)} alt="" loading="lazy" />{/if}
+              {#if isImage(u)}<img class="thumb" src={accFile(u.id)} alt="" loading="lazy" />
+              {:else if u.icon}<img class="thumb" src={accFile(u.icon)} alt="" loading="lazy" />
+              {:else if u.cover}<img class="thumb" src={projectFile(u.id, u.cover)} alt="" loading="lazy" />{/if}
               <span class="grow">{u.name} <span class="muted small">· {KIND[u.kind] ?? u.kind}{u.kind === 'shared-files' ? '' : ` · ${plural(u.files, 'file')}`}{u.note ? ` · ${u.note}` : ''}</span></span>
               <span class="num">{size(u.size)}</span>
               {#if u.paths?.length}
@@ -617,6 +644,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
                 {/each}
               </div>
             {/if}
+          {/each}
           {:else}
             <p class="small ok">✓ Nothing here that no setup uses.</p>
           {/each}
@@ -672,9 +700,12 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   .tabs { gap: 6px; }
   .flist { padding-left: 46px; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; }
   .flist .row { gap: 8px; align-items: center; }
-  .thumb { width: 28px; height: 28px; object-fit: contain; border-radius: 4px; background: var(--bg); }
+  .thumb { flex: none; display: inline-block; width: 28px; height: 28px; object-fit: contain; border-radius: 4px; background: var(--bg); }
   .shared { max-height: 420px; overflow: auto; }
   .shared th { position: sticky; top: 0; background: var(--panel); }
+  .shared tr.gh td { font-weight: 600; padding-top: 10px; border-bottom: 1px solid var(--line); }
+  .shared .nm { display: flex; gap: 8px; align-items: center; }
+  .ghead { gap: 8px; align-items: center; padding: 8px 0 2px; border-bottom: 1px solid var(--line); }
   .setup { border-top: 1px solid var(--line); padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
   .parts { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-left: 18px; }
   .choose { display: flex; gap: 14px; flex-wrap: wrap; }

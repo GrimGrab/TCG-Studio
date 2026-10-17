@@ -1144,6 +1144,12 @@ export namespace library {
 	    name: string;
 	    kind: string;
 	    shared: number;
+	    origin?: string;
+	    originKind?: string;
+	    author?: string;
+	    source?: string;
+	    cover?: string;
+	    icon?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ItemInfo(source);
@@ -1155,6 +1161,12 @@ export namespace library {
 	        this.name = source["name"];
 	        this.kind = source["kind"];
 	        this.shared = source["shared"];
+	        this.origin = source["origin"];
+	        this.originKind = source["originKind"];
+	        this.author = source["author"];
+	        this.source = source["source"];
+	        this.cover = source["cover"];
+	        this.icon = source["icon"];
 	    }
 	}
 	
@@ -1201,6 +1213,12 @@ export namespace library {
 	    inCatalog: boolean;
 	    note?: string;
 	    paths?: string[];
+	    origin?: string;
+	    originKind?: string;
+	    author?: string;
+	    source?: string;
+	    cover?: string;
+	    icon?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UnusedEntry(source);
@@ -1216,6 +1234,12 @@ export namespace library {
 	        this.inCatalog = source["inCatalog"];
 	        this.note = source["note"];
 	        this.paths = source["paths"];
+	        this.origin = source["origin"];
+	        this.originKind = source["originKind"];
+	        this.author = source["author"];
+	        this.source = source["source"];
+	        this.cover = source["cover"];
+	        this.icon = source["icon"];
 	    }
 	}
 	export class SetupInfo {
@@ -1274,6 +1298,12 @@ export namespace library {
 	    png: number;
 	    pngFiles: number;
 	    shrinkTo: number;
+	    origin?: string;
+	    originKind?: string;
+	    author?: string;
+	    source?: string;
+	    cover?: string;
+	    icon?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SetInfo(source);
@@ -1288,6 +1318,12 @@ export namespace library {
 	        this.png = source["png"];
 	        this.pngFiles = source["pngFiles"];
 	        this.shrinkTo = source["shrinkTo"];
+	        this.origin = source["origin"];
+	        this.originKind = source["originKind"];
+	        this.author = source["author"];
+	        this.source = source["source"];
+	        this.cover = source["cover"];
+	        this.icon = source["icon"];
 	    }
 	}
 	export class Report {

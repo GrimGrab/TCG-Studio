@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.11.1 - 2026-10-17
+
+Easier clean-up and a better furniture editor.
+
+- New: Catalog → "Only what no setup uses" shows just the leftovers; press Ctrl+A and Delete everywhere to clean them up.
+- New: Add from catalog… has an "All kinds" switch and "Select all shown", so a whole mod's furniture or accessories can be added in one go.
+- Changed: Storage now groups "Shared storage" and "Not used by any setup" by mod / import source (like the Catalog), A–Z, with pictures, sizes per group and Select all per group.
+- Changed: Furniture editor — the spot and position lists now sit next to the 3D view, which stays in sight while you scroll them.
+After updating: no mod change this time; Studio updates itself.
+
 ## v1.11.0 - 2026-10-17
 
 Game look: your own credit cards, loading screens and main menu.

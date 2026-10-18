@@ -39,6 +39,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<Runtime.Mtg.AiDeckPower> MtgAiDeckPower;
         internal static ConfigEntry<bool> MtgAiPowerFollowsShopLevel, MtgAiKeepDeckOnRematch, MtgAiRevealDeck;
         internal static ConfigEntry<Runtime.Mtg.AiPlayStyle> MtgAiPlayStyle;
+        internal static ConfigEntry<bool> MtgCasualBestOf3;
         internal static ConfigEntry<int> MtgYourStartingLife, MtgCustomerStartingLife, MtgYourCommanderLife, MtgCustomerCommanderLife;
         internal static ConfigEntry<int> MtgDraftPodSize, MtgDraftMinPicks;
         internal static ConfigEntry<float> MtgDraftStrengthWeight;
@@ -370,6 +371,10 @@ namespace TCGCustomCards
                 "On = a rematch against the same customer uses the same deck (learn it and beat it). Off = a new deck every game." + next);
             MtgAiRevealDeck = Config.Bind(aiOpp, "AiRevealDeckAfterMatch", true,
                 "On = after the game the customer shows their deck list (click Continue to close it). Off = straight to the result screen.");
+            MtgCasualBestOf3 = Config.Bind(match, "CasualBestOf3", false,
+                "On = MTG games at a table outside tournaments are a best of 3 (the first to win 2 games wins; Forge lets the loser " +
+                "of a game choose to play or draw next). Also switched in the deck picker when you sit down. Tournaments use the " +
+                "host's choice. Not in PlayInForgeWindow mode.");
             MtgYourStartingLife = Config.Bind(match, "YourStartingLife", 20, new ConfigDescription(
                 "Your life at the start of an MTG game (Magic's normal is 20)." + next, new AcceptableValueRange<int>(1, 100)));
             MtgCustomerStartingLife = Config.Bind(match, "CustomerStartingLife", 20, new ConfigDescription(

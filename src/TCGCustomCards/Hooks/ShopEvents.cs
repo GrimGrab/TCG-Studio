@@ -55,6 +55,8 @@ namespace TCGCustomCards.Hooks
         public int MaxPacksPerPlayer = 12;
         /// <summary>Packs per player when the format is picked on the host screen.</summary>
         public int DefaultPacksPerPlayer = 3;
+        /// <summary>The host can make every round of the player's matches a best of 3 (<see cref="ShopEventConfig.bestOf"/>).</summary>
+        public bool OffersBestOf;
         /// <summary>Format-specific reason the pending event can't be hosted yet (config, capacity), or null.</summary>
         public Func<ShopEventConfig, int, string> Problem;
         /// <summary>"How it works" text for the host panel (collapsible), or null.</summary>
@@ -74,6 +76,8 @@ namespace TCGCustomCards.Hooks
         public List<string> sets = new List<string>();
         /// <summary>Draft/sealed: packs each entrant opens.</summary>
         public int packsPerPlayer = 3;
+        /// <summary>Games per round of the player's matches: 1 or 3 (best of 3; formats with <see cref="ShopEventFormat.OffersBestOf"/>).</summary>
+        public int bestOf = 1;
     }
 
     /// <summary>
@@ -121,6 +125,7 @@ namespace TCGCustomCards.Hooks
             Config = saved;
             _registered.Clear();
             if (Config == null) return;
+            if (Config.bestOf != 3) Config.bestOf = 1;
             Config.sets = (Config.sets ?? new List<string>()).Where(id =>
             {
                 bool ok = Runtime.Registry.Sets.Any(s => s.Def.Id == id);
@@ -138,7 +143,7 @@ namespace TCGCustomCards.Hooks
                 UI.Toast.Show("Tournament: none of its sets are installed any more, it runs as a normal tournament");
                 Config = null;
             }
-            else Plugin.Log.LogInfo($"Shop event loaded: format {Config.format ?? "vanilla"}, sets {string.Join(", ", Config.sets)}, packs {Config.packsPerPlayer}");
+            else Plugin.Log.LogInfo($"Shop event loaded: format {Config.format ?? "vanilla"}, sets {string.Join(", ", Config.sets)}, packs {Config.packsPerPlayer}, best of {Config.bestOf}");
         }
 
         public static ShopEventConfig Export() => Config;
@@ -297,7 +302,7 @@ namespace TCGCustomCards.Hooks
                 if (!__runOriginal || !CPlayerData.m_TournamentData.m_IsHostingTournament || CPlayerData.m_TournamentData.m_IsTournamentDay) return;
                 Config = Pending.format == null ? null : Copy(Pending);
                 Plugin.Log.LogInfo($"Shop event hosted: format {Config?.format ?? "Tetramon"}" +
-                                   (Config == null ? "" : $", sets {string.Join(", ", Config.sets)}, packs {Config.packsPerPlayer}"));
+                                   (Config == null ? "" : $", sets {string.Join(", ", Config.sets)}, packs {Config.packsPerPlayer}, best of {Config.bestOf}"));
             }
         }
 
@@ -313,7 +318,7 @@ namespace TCGCustomCards.Hooks
         }
 
         private static ShopEventConfig Copy(ShopEventConfig c) =>
-            new ShopEventConfig { format = c.format, sets = new List<string>(c.sets), packsPerPlayer = c.packsPerPlayer };
+            new ShopEventConfig { format = c.format, sets = new List<string>(c.sets), packsPerPlayer = c.packsPerPlayer, bestOf = c.bestOf };
 
         /// <summary>Stable id of a tournament entrant for the day (vanilla's unsorted tournament index; sign-ups are anonymous).</summary>
         public static int EntrantId(Customer c) => c.GetCustomerTournamentData().m_TournamentCustomerIndex;

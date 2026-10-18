@@ -28,6 +28,18 @@ namespace TCGCustomCards.Runtime.Mtg
         public static float AiDeckAt;
         /// <summary>After the game: the customer's deck list is on screen until the player clicks Continue.</summary>
         public static bool RevealOpen;
+        /// <summary>Best-of match: a game ended, the match goes on (MtgTableUI shows "Next game"; clearing it starts the game).</summary>
+        public static bool BetweenGames;
+        /// <summary>Best-of match score for the table ("Best of 3 · Game 2 · You 1–0 Customer"); empty for one-game matches.</summary>
+        public static string MatchLine = "";
+
+        private static string ScoreLine(JObject over)
+        {
+            int game = (int?)over["game"] ?? 1, wins = (int?)over["wins"] ?? 0, losses = (int?)over["losses"] ?? 0, draws = (int?)over["draws"] ?? 0;
+            bool done = (bool?)over["matchOver"] ?? true;
+            return $"Best of {(int?)over["games"] ?? 3} · {(done ? "Final" : $"Game {game + 1}")} · You {wins}–{losses} Customer" +
+                   (draws > 0 ? $" ({draws} draw{(draws == 1 ? "" : "s")})" : "");
+        }
 
         private static MtgRunner _runner;
 
@@ -164,7 +176,8 @@ namespace TCGCustomCards.Runtime.Mtg
         {
             EnsureRunner();
             State = Prompt = Ask = GameOver = AiDeck = null;
-            RevealOpen = false;
+            RevealOpen = BetweenGames = false;
+            MatchLine = "";
             Messages.Clear();
             _leftMidGame = false;
             Playing = true;
@@ -200,6 +213,8 @@ namespace TCGCustomCards.Runtime.Mtg
             }
 
             Status = "";
+            int bestOf = MtgEvents.RoundBestOf;
+            MatchLine = bestOf > 1 ? $"Best of {bestOf} · Game 1" : "";
             CardFaces = pair?.Faces ?? MtgMode.Faces();
             if (pair?.OpponentInfo != null) { AiDeck = pair.OpponentInfo; AiDeckAt = Time.unscaledTime; }
             if (Plugin.MtgBoard3D.Value)
@@ -216,25 +231,59 @@ namespace TCGCustomCards.Runtime.Mtg
                 ["variant"] = player.IsCommander ? "commander" : null,
                 ["lifeYou"] = player.IsCommander ? Plugin.MtgYourCommanderLife?.Value ?? 40 : Plugin.MtgYourStartingLife?.Value ?? 20,
                 ["lifeCustomer"] = player.IsCommander ? Plugin.MtgCustomerCommanderLife?.Value ?? 40 : Plugin.MtgCustomerStartingLife?.Value ?? 20,
+                ["games"] = bestOf,
             });
             Traverse.Create(game).Field("m_CurrentInteractablePlayTable").GetValue<InteractablePlayTable>()?.StartPlayerCardGame();
             Traverse.Create(game).Field("m_CanExit").SetValue(true); // Esc → vanilla "quit battle?" → concede (TableSession QuitPatch)
 
-            while (GameOver == null)
+            // Best of N: Forge plays the match's games one after another (same decks; the loser of a game chooses play/draw)
+            // and says when the match is decided; vanilla only hears the match result.
+            while (true)
             {
-                if (_leftMidGame) yield break; // player left the table (vanilla quit screen); LeaveMidGame cleaned up
+                while (GameOver == null)
+                {
+                    if (_leftMidGame) yield break; // player left the table (vanilla quit screen); LeaveMidGame cleaned up
+                    if (!ForgeBridge.Running)
+                    {
+                        yield return Abort(game, "Forge stopped unexpectedly (see TCGForge\\userdata\\tcgcc-bridge.log)");
+                        yield break;
+                    }
+                    yield return null;
+                }
+                MatchLine = bestOf > 1 ? ScoreLine(GameOver) : "";
+                if ((bool?)GameOver["matchOver"] ?? true) break;
+
+                bool gameWon = (bool?)GameOver["won"] ?? false, gameDraw = (bool?)GameOver["draw"] ?? false;
+                Status = $"Game {(int?)GameOver["game"] ?? 1}: " + (gameDraw ? "draw" : gameWon ? "you win!" : "you lose!");
+                Plugin.Log.LogInfo($"MTG best of {bestOf}: {Status} ({MatchLine})");
+                BetweenGames = true; // MtgTableUI: "Next game" button; on by itself after a few seconds
+                float next = Time.unscaledTime + 8f;
+                while (BetweenGames && Time.unscaledTime < next && !_leftMidGame && ForgeBridge.Running) yield return null;
+                BetweenGames = false;
+                if (_leftMidGame) yield break;
                 if (!ForgeBridge.Running)
                 {
                     yield return Abort(game, "Forge stopped unexpectedly (see TCGForge\\userdata\\tcgcc-bridge.log)");
                     yield break;
                 }
-                yield return null;
+                State = Prompt = Ask = GameOver = null;
+                Messages.Clear();
+                Status = "";
+                MtgTableUI.Show(); // Forge card ids restart every game
+                MtgTable3d.End();
+                if (Plugin.MtgBoard3D.Value)
+                {
+                    try { MtgTable3d.Begin(game, CardFaces); }
+                    catch (System.Exception e) { Plugin.Log.LogError($"MTG 3D table failed, using the flat board: {e}"); MtgTable3d.End(); }
+                }
+                ForgeBridge.Send(new JObject { ["t"] = "next" });
             }
 
-            bool won = (bool?)GameOver["won"] ?? false;
-            bool draw = (bool?)GameOver["draw"] ?? false;
+            bool won = (bool?)GameOver["matchWon"] ?? (bool?)GameOver["won"] ?? false;
+            bool draw = (bool?)GameOver["matchDraw"] ?? (bool?)GameOver["draw"] ?? false;
             Traverse.Create(game).Field("m_CanExit").SetValue(false);
             Status = draw ? "Draw!" : won ? "You win!" : "You lose!";
+            if (bestOf > 1) Plugin.Log.LogInfo($"MTG best of {bestOf} over: {Status} ({MatchLine})");
             RestoreShopMusic(); // vanilla does this when a player's HP hits 0 (PlayCardSet.TakeDamage)
             if (Plugin.MtgAiRevealDeck?.Value != false && (AiDeck?["list"] as JArray)?.Count > 0)
             {
@@ -281,7 +330,8 @@ namespace TCGCustomCards.Runtime.Mtg
         {
             if (!Playing) return;
             _leftMidGame = true;
-            if (GameOver == null) ForgeBridge.Act("concede");
+            if (GameOver == null || BetweenGames) ForgeBridge.Act("concede"); // between a match's games: the bridge ends the match
+            BetweenGames = false;
             Playing = false;
             MtgTableUI.Hide();
             MtgTable3d.End();

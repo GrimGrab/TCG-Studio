@@ -24,6 +24,8 @@ namespace TCGCustomCards.Runtime.Mtg
                 Available = () => MtgMode.Enabled && MtgSession.CanPlayInGame,
                 Unavailable = "Needs MTG mode: TCG Studio > Setup > Install MTG mode, and [MTG] MtgMode on.",
                 SetEligible = IsMtgSet,
+                OffersBestOf = true,
+                Help = BestOfHelp,
             });
             ShopEvents.Register(new ShopEventFormat
             {
@@ -33,8 +35,22 @@ namespace TCGCustomCards.Runtime.Mtg
                 Available = () => MtgMode.Enabled && MtgSession.CanPlayInGame,
                 Unavailable = "Needs MTG mode: TCG Studio > Setup > Install MTG mode, and [MTG] MtgMode on.",
                 SetEligible = IsMtgSet,
+                OffersBestOf = true,
+                Help = BestOfHelp,
             });
         }
+
+        public const string BestOfHelp =
+            "• Your matches: Best of 1 = one game per round. Best of 3 = the first to win 2 games wins the round; Forge lets the loser of a game choose to play or draw next. Leaving the table mid-match loses the round.";
+
+        /// <summary>
+        /// Games in the player's current MTG table match: the hosted event's best-of for a tournament round, else
+        /// [MTG - Match] CasualBestOf3.
+        /// </summary>
+        public static int RoundBestOf =>
+            PlayerInMtgTournament || MtgDraftEvent.PlayerInEvent
+                ? (ShopEvents.Config?.bestOf == 3 ? 3 : 1)
+                : (Plugin.MtgCasualBestOf3?.Value == true ? 3 : 1);
 
         /// <summary>Installed set with MTG cards and a Forge set code.</summary>
         public static bool IsMtgSet(CustomSet s) => !string.IsNullOrWhiteSpace(s.Def.Mtg?.SetCode) && MtgMode.HasMtg(s);

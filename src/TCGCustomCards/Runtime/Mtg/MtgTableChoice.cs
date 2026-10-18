@@ -61,7 +61,7 @@ namespace TCGCustomCards.Runtime.Mtg
             var choices = MtgMode.DeckChoices();
             if (choices.Count == 0) return false;
             ChoicePopup.Show("Which game do you want to play?",
-                "Magic (Forge)", () => MtgDeckPickerUI.Open("Choose your deck", MtgMode.DeckChoices(), null, c => PlayMagic(table, c)),
+                "Magic (Forge)", () => MtgDeckPickerUI.Open("Choose your deck", MtgMode.DeckChoices(), null, c => PlayMagic(table, c), casual: true),
                 "Tetramon", () => TableSession.SitVanilla(table));
             return true;
         }

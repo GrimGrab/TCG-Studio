@@ -98,7 +98,8 @@ namespace TCGCustomCards.Runtime.Mtg
                 "• Before confirming, \"Take back\" returns the packs as delivered boxes. After confirming they're locked: you can add more until the tournament day, but not take any back.\n" +
                 "• Cancelling the tournament returns every pack as delivered boxes (one box per pack type, up to 32 each).\n" +
                 "• On the day each player gets their packs at random from the stock. Entrants pay the entry fee + their packs at your shelf price when they register.\n" +
-                "• Packs left over (extra stock, players who never showed up) come back as delivered boxes when the tournament ends.\n";
+                "• Packs left over (extra stock, players who never showed up) come back as delivered boxes when the tournament ends.\n" +
+                MtgEvents.BestOfHelp + "\n";
             foreach (var e in new[] { Draft, Sealed })
             {
                 ShopEvents.Register(new ShopEventFormat
@@ -114,6 +115,7 @@ namespace TCGCustomCards.Runtime.Mtg
                     UsesPacks = true,
                     SetsFromStock = true,
                     DefaultPacksPerPlayer = e.IsSealed ? 6 : 3,
+                    OffersBestOf = true,
                     Help = common + (e.IsSealed
                         ? "• Go to your table to open your packs and build your deck; your whole pool is yours to keep. Customers build theirs right away; matches start once you've built yours."
                         : "• Go to your table to draft with your table's players; the cards you pick are yours to keep. Customers' matches start once everyone has drafted."),
@@ -470,7 +472,8 @@ namespace TCGCustomCards.Runtime.Mtg
             if (!_state.Decks.TryGetValue(ShopEvents.EntrantId(seat0), out var a) || a.Deck.Count == 0) return null;
             if (!_state.Decks.TryGetValue(ShopEvents.EntrantId(seat1), out var b) || b.Deck.Count == 0) return null;
             float k = Plugin.MtgDraftStrengthWeight?.Value ?? 0.015f;
-            float p = Mathf.Clamp(0.5f + k * (float)(a.Rating - b.Rating), 0.2f, 0.8f);
+            float p = Mathf.Clamp(0.5f + k * (float)(a.Rating - b.Rating), 0.2f, 0.8f); // one game
+            if (ShopEvents.Config?.bestOf == 3) p = p * p * (3f - 2f * p); // first to win 2 of 3 such games
             return UnityEngine.Random.value < p;
         }
 

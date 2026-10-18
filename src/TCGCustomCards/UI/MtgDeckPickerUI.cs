@@ -29,6 +29,7 @@ namespace TCGCustomCards.UI
         private readonly List<Row> _rows = new List<Row>();
         private string _title;
         private List<string> _setCodes; // null = no tournament check
+        private bool _casual; // outside tournaments: Best of 1 / Best of 3 row ([MTG - Match] CasualBestOf3)
         private Action<MtgDeckChoice> _onPick;
         private int _sel;
         private Vector2 _scroll;
@@ -38,12 +39,15 @@ namespace TCGCustomCards.UI
         public static bool IsOpen => _inst != null && _inst.enabled;
 
         /// <param name="setCodes">Event's Forge set codes for a tournament legality check, or null.</param>
-        public static void Open(string title, List<MtgDeckChoice> choices, List<string> setCodes, Action<MtgDeckChoice> onPick)
+        /// <param name="casual">A game outside tournaments: offer Best of 1 / Best of 3.</param>
+        public static void Open(string title, List<MtgDeckChoice> choices, List<string> setCodes, Action<MtgDeckChoice> onPick,
+            bool casual = false)
         {
             MtgSession.EnsureRunner(); // pumps Forge's replies (MtgDeckCheck)
             var go = GameObject.Find("TCGCC_Mtg");
             _inst = go.GetComponent<MtgDeckPickerUI>() ?? go.AddComponent<MtgDeckPickerUI>();
             _inst.Init(title, choices, setCodes, onPick);
+            _inst._casual = casual;
             _inst.enabled = true;
             var ipc = CSingleton<InteractionPlayerController>.Instance;
             ipc?.m_WalkerCtrl?.SetStopMovement(isStop: true);
@@ -160,7 +164,7 @@ namespace TCGCustomCards.UI
                 y += 32;
             }
 
-            float listH = panel.yMax - y - 80;
+            float listH = panel.yMax - y - 80 - (_casual ? 46 : 0);
             float rw = w - 20;
             var labels = _rows.Select((r, i) => Label(r, i == _sel)).ToList();
             var heights = labels.Select((l, i) => Mathf.Max(86f, (i == _sel ? _rowSel : _row).CalcHeight(new GUIContent(l), rw))).ToList();
@@ -178,6 +182,17 @@ namespace TCGCustomCards.UI
                 ry += heights[i] + 6;
             }
             GUI.EndScrollView();
+
+            if (_casual && Plugin.MtgCasualBestOf3 != null)
+            {
+                float by = panel.yMax - 66 - 46;
+                bool bo3 = Plugin.MtgCasualBestOf3.Value;
+                GUI.Label(new Rect(x, by, 120, 38), "Games", _text);
+                if (GUI.Button(new Rect(x + 120, by, 160, 38), (bo3 ? "○ " : "● ") + "Best of 1", _button)) Plugin.MtgCasualBestOf3.Value = false;
+                if (GUI.Button(new Rect(x + 290, by, 160, 38), (bo3 ? "● " : "○ ") + "Best of 3", _button)) Plugin.MtgCasualBestOf3.Value = true;
+                GUI.Label(new Rect(x + 465, by, w - 465, 38),
+                    $"<color=#888888>{(bo3 ? "first to win 2 games" : "one game")}</color>", _small);
+            }
 
             var cur = _sel >= 0 && _sel < _rows.Count ? _rows[_sel] : null;
             GUI.enabled = cur != null && Playable(cur);

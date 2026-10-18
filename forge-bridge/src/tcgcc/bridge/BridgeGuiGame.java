@@ -5,6 +5,9 @@ import forge.deck.CardPool;
 import forge.game.GameEntityView;
 import forge.game.GameState;
 import forge.game.GameView;
+import forge.game.Match;
+import forge.game.player.RegisteredPlayer;
+import forge.player.LobbyPlayerHuman;
 import forge.game.card.CardView;
 import forge.game.event.GameEvent;
 import forge.game.phase.PhaseType;
@@ -85,8 +88,54 @@ public final class BridgeGuiGame extends AbstractGuiGame {
             String winner = gv.getWinningPlayerName();
             boolean draw = winner == null || winner.isEmpty();
             boolean won = !draw && me != null && winner.equals(me.getName());
-            Bridge.send(Bridge.msg("gameover", "won", won, "draw", draw, "winner", winner == null ? "" : winner));
+            Map<String, Object> over = Bridge.msg("gameover", "won", won, "draw", draw, "winner", winner == null ? "" : winner);
+            addMatchScore(over, won, draw);
+            Bridge.send(over);
         }
+    }
+
+    /**
+     * Score of a best-of-N match from Forge's Match (its outcome is recorded before the game view says "game over"):
+     * {@code games, game, wins, losses, draws, matchOver, matchWon, matchDraw}. One-game matches: matchOver, match = game.
+     */
+    private void addMatchScore(Map<String, Object> over, boolean won, boolean draw) {
+        Match mt = match == null ? null : match.getMatch();
+        int games = mt == null ? 1 : mt.getRules().getGamesPerMatch();
+        LobbyPlayer human = null, ai = null;
+        if (mt != null)
+            for (RegisteredPlayer rp : mt.getPlayers()) {
+                if (rp.getPlayer() instanceof LobbyPlayerHuman) human = rp.getPlayer();
+                else ai = rp.getPlayer();
+            }
+        boolean single = mt == null || games <= 1 || human == null || ai == null;
+        int played = single ? 1 : mt.getOutcomes().size();
+        int wins = single ? (won ? 1 : 0) : mt.getGamesWonBy(human);
+        int losses = single ? (won || draw ? 0 : 1) : mt.getGamesWonBy(ai);
+        matchOver = single || mt.isMatchOver();
+        boolean matchWon = single ? won : matchOver && mt.isWonBy(human);
+        boolean matchDraw = single ? draw : matchOver && !matchWon && !mt.isWonBy(ai);
+        over.put("games", games);
+        over.put("game", played);
+        over.put("wins", wins);
+        over.put("losses", losses);
+        over.put("draws", played - wins - losses);
+        over.put("matchOver", matchOver);
+        over.put("matchWon", matchWon);
+        over.put("matchDraw", matchDraw);
+        if (!single) Bridge.log("game " + played + " of best of " + games + ": " + wins + "-" + losses + (matchOver ? ", match over" : ""));
+    }
+
+    /** Set when a game ends: true = the match is decided (or one game only). */
+    private volatile boolean matchOver = true;
+    /** The finished game's controller while a best-of match waits for the game's {@code next} (or a concede). */
+    private IGameController betweenGames;
+
+    /** {@code next}: play the match's next game (Forge decides who starts: the loser of the last game chooses). */
+    void nextGame() {
+        IGameController c = betweenGames;
+        if (c == null) return;
+        betweenGames = null;
+        c.nextGameDecision(NextGameDecision.CONTINUE); // the new game's view resets gameOverSent (setGameView)
     }
 
     PlayerView humanView() {
@@ -186,6 +235,12 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     // ------------------------------------------------------------------ player actions (from the game, on our EDT thread)
 
     void act(Map<String, Object> m) {
+        if (betweenGames != null && "concede".equals(Json.s(m, "a"))) { // left between the games of a match: end it
+            IGameController b = betweenGames;
+            betweenGames = null;
+            b.nextGameDecision(NextGameDecision.QUIT);
+            return;
+        }
         IGameController c = getGameController();
         if (c == null) return;
         String a = Json.s(m, "a");
@@ -546,7 +601,9 @@ public final class BridgeGuiGame extends AbstractGuiGame {
         return r;
     }
 
-    @Override public List<PaperCard> sideboard(CardPool sideboard, CardPool main, String message) { return new ArrayList<>(); }
+    // Between the games of a best-of match: null = keep the main deck as it is (PlayerControllerHuman.sideboard falls back to
+    // main.toFlatList()). An empty list was taken as an empty deck and Forge re-asked "too few cards" thousands of times.
+    @Override public List<PaperCard> sideboard(CardPool sideboard, CardPool main, String message) { return null; }
 
     @Override public void message(String message, String title) {
         Bridge.send(Bridge.msg("message", "title", title, "text", message));
@@ -590,7 +647,11 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     // ------------------------------------------------------------------ view updates → state
 
     @Override protected void updateCurrentPlayer(PlayerView player) { markDirty(); }
-    @Override public void setGameView(GameView gameView) { super.setGameView(gameView); markDirty(); }
+    @Override public void setGameView(GameView gameView) {
+        super.setGameView(gameView);
+        if (gameView != null && !gameView.isGameOver()) gameOverSent = false; // next game of a best-of match
+        markDirty();
+    }
     @Override public void openView(forge.trackable.TrackableCollection<PlayerView> myPlayers) { markDirty(); }
     @Override public void afterGameEnd() { super.afterGameEnd(); sendState(); }
     @Override public void showCombat() { markDirty(); }
@@ -603,9 +664,11 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     @Override public void disableOverlay() {}
     @Override public void finishGame() {
         sendState();
-        // One game per match: tell Forge we're done so the match thread can end.
         IGameController c = getGameController();
-        if (c != null) c.nextGameDecision(NextGameDecision.QUIT);
+        if (c == null) return;
+        // Match decided: tell Forge we're done so the match thread can end. Otherwise wait for the game's "next" / concede.
+        if (matchOver) c.nextGameDecision(NextGameDecision.QUIT);
+        else betweenGames = c;
     }
     @Override public void showManaPool(PlayerView player) { markDirty(); }
     @Override public void hideManaPool(PlayerView player) { markDirty(); }

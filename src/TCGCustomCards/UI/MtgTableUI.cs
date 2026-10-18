@@ -273,8 +273,23 @@ namespace TCGCustomCards.UI
             }
             if ((MtgSession.Status.Length > 0 && !MtgSession.Playing || MtgSession.GameOver != null) && !MtgSession.RevealOpen)
                 GUI.Label(new Rect(0, H / 2 - 60, 1460, 120), $"<size=64><b>{MtgSession.Status}</b></size>", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
+            if (MtgSession.MatchLine.Length > 0) DrawMatchScore(board3d);
             if (MtgSession.RevealOpen) DrawReveal();
             else if (!modal) DrawDeckInfo(board3d);
+        }
+
+        /// <summary>Best-of score (top of the table; middle strip on the flat board) and, between games, the "Next game" button.</summary>
+        private void DrawMatchScore(bool board3d)
+        {
+            // 3D: right of the customer's deck chip.
+            var r = board3d ? new Rect(580, 8, 520, 34) : new Rect(10 + 1450 / 2f - 260, 356, 520, 30);
+            GUI.color = new Color(0f, 0f, 0f, 0.75f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(r, $"<b>{MtgSession.MatchLine}</b>", new GUIStyle(_text) { alignment = TextAnchor.MiddleCenter, richText = true });
+            if (MtgSession.BetweenGames && !MtgSession.RevealOpen &&
+                GUI.Button(new Rect(1460 / 2f - 150, H / 2 + 70, 300, 60), "Next game", _big))
+                MtgSession.BetweenGames = false;
         }
 
         // ------------------------------------------------------------------ the customer's deck

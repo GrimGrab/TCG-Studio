@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "8";
+    public static final String VERSION = "9";
 
     private static PrintStream proto;
     private static PrintStream logStream;
@@ -63,7 +63,7 @@ public final class Bridge {
             ForgePreferences prefs = FModel.getPreferences();
             prefs.setPref(FPref.UI_ENABLE_SOUNDS, false);
             prefs.setPref(FPref.UI_ENABLE_MUSIC, false);
-            prefs.setPref(FPref.UI_MATCHES_PER_GAME, "1"); // a table duel is one game
+            prefs.setPref(FPref.UI_MATCHES_PER_GAME, "1"); // a table duel is one game (start{games} sets it per match)
             // Forge's desktop picks cards in libraries, graveyards, exile, other hands... by clicking them in its pop-up zone
             // windows. The table has no such windows, so ask with a dialog instead (in memory only: never saved to the
             // player's preferences). On-board picking then stays for the battlefield and your own hand.
@@ -106,6 +106,7 @@ public final class Bridge {
                 if (f != null) f.complete(m);
             }
             case "act" -> { if (gui != null) platform.invokeInEdtLater(() -> gui.act(m)); }
+            case "next" -> { if (gui != null) platform.invokeInEdtLater(() -> gui.nextGame()); }
             case "state" -> { if (gui != null) gui.sendState(); }
             case "quit" -> quit();
             default -> log("unknown message " + t);
@@ -147,13 +148,17 @@ public final class Bridge {
             rpHuman.setStartingLife(Math.max(1, lifeYou));
             rpAi.setStartingLife(Math.max(1, lifeAi));
             List<RegisteredPlayer> players = new ArrayList<>(List.of(rpHuman, rpAi));
+            // Best of N (tournament rounds): Forge's own match plays the games, counts wins/draws and lets the loser of a game
+            // choose play/draw. HostedMatch reads the count from this preference (in memory only, never saved).
+            int games = Math.max(1, Math.min(5, Json.i(m, "games", 1)));
+            FModel.getPreferences().setPref(FPref.UI_MATCHES_PER_GAME, String.valueOf(games));
 
             gui = new BridgeGuiGame(null);
             HostedMatch match = new HostedMatch();
             gui.setMatch(match);
             if (commander) match.startMatch(GameType.Commander, java.util.EnumSet.of(GameType.Commander), players, rpHuman, gui);
             else match.startMatch(GameType.Constructed, null, players, rpHuman, gui);
-            log("match started: " + human.getName() + " vs " + ai.getName());
+            log("match started: " + human.getName() + " vs " + ai.getName() + (games > 1 ? ", best of " + games : ""));
         } catch (Throwable t) {
             log("start failed: " + t);
             t.printStackTrace();

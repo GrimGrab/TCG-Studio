@@ -22,7 +22,9 @@ namespace TCGCustomCards.UI
         private static bool _showHelp = true;
         /// <summary>Collapsed to one line (kept between openings).</summary>
         private static bool _minimized;
-        private Vector2 _scroll;
+        private Vector2 _scroll, _helpScroll;
+        /// <summary>Height of the content drawn last pass (the background's height).</summary>
+        private float _panelH = 300;
         private GUIStyle _text, _small, _title, _button, _selected;
 
         public static void Open()
@@ -67,7 +69,11 @@ namespace TCGCustomCards.UI
             float x = 30, y = 120, w = 460;
             string help = format?.Help;
             float helpH = _showHelp && help != null ? _small.CalcHeight(new GUIContent(help), w - 32) + 6 : 0;
-            float h = _minimized ? 62 : format == null ? 300 : (format.SetsFromStock ? 620 : 860) + helpH;
+            // Long help scrolls in its own box. The panel is as tall as what was drawn (measured by the Layout pass, which runs
+            // before Repaint in the same frame) and never goes below the screen: the set list takes what's left.
+            float helpBoxH = Mathf.Min(helpH, 200f);
+            float top = y, bottom = H - 10;
+            float h = _minimized ? 62 : Mathf.Min(_panelH, bottom - top);
 
             GUI.color = new Color(0.06f, 0.06f, 0.08f, 0.94f);
             GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);
@@ -80,7 +86,8 @@ namespace TCGCustomCards.UI
                 _minimized = !_minimized;
             if (_minimized)
             {
-                string summary = format == null ? "Tetramon" : $"{format.Name} · {p.sets.Count} set{(p.sets.Count == 1 ? "" : "s")}";
+                string summary = format == null ? "Tetramon" : $"{format.Name} · {p.sets.Count} set{(p.sets.Count == 1 ? "" : "s")}" +
+                                 (format.OffersBestOf && p.bestOf == 3 ? " · Best of 3" : "");
                 GUI.Label(new Rect(x, y, w - 50, 36), $"<b>Format:</b> {summary}", _text);
                 return;
             }
@@ -116,7 +123,7 @@ namespace TCGCustomCards.UI
                 }
             }
             GUI.enabled = true;
-            if (format == null) return;
+            if (format == null) { _panelH = y + 12 - top; return; }
 
             y += 6;
             if (format.UsesPacks)
@@ -129,14 +136,30 @@ namespace TCGCustomCards.UI
                 GUI.enabled = true;
                 y += 40;
             }
+            if (format.OffersBestOf)
+            {
+                GUI.Label(new Rect(x, y, 150, 34), "Your matches", _text);
+                GUI.enabled = !locked;
+                if (GUI.Button(new Rect(x + 150, y, 130, 34), (p.bestOf == 3 ? "○ " : "● ") + "Best of 1", p.bestOf == 3 ? _button : _selected)) p.bestOf = 1;
+                if (GUI.Button(new Rect(x + 290, y, 138, 34), (p.bestOf == 3 ? "● " : "○ ") + "Best of 3", p.bestOf == 3 ? _selected : _button)) p.bestOf = 3;
+                GUI.enabled = true;
+                y += 40;
+            }
             if (help != null)
             {
                 if (GUI.Button(new Rect(x, y, 200, 30), _showHelp ? "Hide how it works" : "Show how it works", _button)) _showHelp = !_showHelp;
                 y += 34;
                 if (_showHelp)
                 {
-                    GUI.Label(new Rect(x, y, w, helpH), $"<color=#cccccc>{help}</color>", _small);
-                    y += helpH;
+                    if (helpH > helpBoxH)
+                    {
+                        float inner = _small.CalcHeight(new GUIContent(help), w - 20) + 6; // narrower beside the scroll bar
+                        _helpScroll = GUI.BeginScrollView(new Rect(x, y, w, helpBoxH), _helpScroll, new Rect(0, 0, w - 20, inner));
+                        GUI.Label(new Rect(0, 0, w - 20, inner), $"<color=#cccccc>{help}</color>", _small);
+                        GUI.EndScrollView();
+                    }
+                    else GUI.Label(new Rect(x, y, w, helpH), $"<color=#cccccc>{help}</color>", _small);
+                    y += helpBoxH;
                 }
             }
             string info = format.Info?.Invoke(p, ShopEvents.Capacity);
@@ -160,10 +183,11 @@ namespace TCGCustomCards.UI
                     .Select(s => s.Def.Name ?? s.Def.Id).ToList();
                 string sets = names.Count == 0 ? "<color=#aaaaaa>none yet</color>" : string.Join(", ", names);
                 string text = $"Sets: {sets}  <color=#888888>(from the packs you put up)</color>";
-                GUI.Label(new Rect(x, y, w, _small.CalcHeight(new GUIContent(text), w)), text, _small);
-                string why = _note ?? (locked ? null : ShopEvents.PendingProblem());
-                if (why != null) GUI.Label(new Rect(x, 120 + h - 60, w, 56), $"<color=#ff8866>{why}</color>", _small);
-                if (_note != null && Event.current.type == EventType.MouseDown) _note = null;
+                float th = _small.CalcHeight(new GUIContent(text), w);
+                GUI.Label(new Rect(x, y, w, th), text, _small);
+                y += th + 6;
+                y = DrawProblem(x, y, w, _note ?? (locked ? null : ShopEvents.PendingProblem()));
+                _panelH = y + 12 - top;
                 return;
             }
 
@@ -178,8 +202,11 @@ namespace TCGCustomCards.UI
             y += 38;
 
             var shown = eligible.Where(Matches).ToList();
-            float listH = 120 + h - (y - 120) - 70;
+            string problem = _note ?? (locked ? null : ShopEvents.PendingProblem());
+            float problemH = problem == null ? 0 : _small.CalcHeight(new GUIContent(problem), w) + 6;
             const float rowH = 34;
+            float room = bottom - 12 - problemH - 6 - y; // the list fills what's left on screen, at least 3 rows
+            float listH = Mathf.Max(3 * rowH, Mathf.Min(room, Mathf.Max(1, shown.Count) * rowH));
             _scroll = GUI.BeginScrollView(new Rect(x, y, w, listH), _scroll, new Rect(0, 0, w - 20, Mathf.Max(listH, shown.Count * rowH)));
             for (int i = 0; i < shown.Count; i++)
             {
@@ -197,10 +224,19 @@ namespace TCGCustomCards.UI
             if (shown.Count == 0) GUI.Label(new Rect(0, 0, w - 20, 60), "<color=#aaaaaa>No installed set fits this format.</color>", _small);
             GUI.EndScrollView();
             GUI.enabled = true;
+            y += listH + 6;
+            y = DrawProblem(x, y, w, problem);
+            _panelH = y + 12 - top;
+        }
 
-            string problem = _note ?? (locked ? null : ShopEvents.PendingProblem());
-            if (problem != null) GUI.Label(new Rect(x, 120 + h - 60, w, 56), $"<color=#ff8866>{problem}</color>", _small);
+        /// <summary>Red reason under the content (why it can't be hosted yet); returns the y below it.</summary>
+        private float DrawProblem(float x, float y, float w, string problem)
+        {
             if (_note != null && Event.current.type == EventType.MouseDown) _note = null;
+            if (problem == null) return y;
+            float ph = _small.CalcHeight(new GUIContent(problem), w);
+            GUI.Label(new Rect(x, y, w, ph), $"<color=#ff8866>{problem}</color>", _small);
+            return y + ph + 6;
         }
 
         /// <summary>A set whose packs are in the tournament stock can't leave the event's set list.</summary>

@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.11.2 - 2026-10-18
+
+Best of 3 for Magic matches.
+
+- New: Magic tournaments can be Best of 3. On the Host Tournament screen, pick "Your matches: Best of 1 / Best of 3" (Constructed, Commander, Draft and Sealed). The first to win 2 games takes the round; Forge lets the loser of a game choose to play or draw next.
+- New: Best of 3 at normal tables too: choose Best of 1 / Best of 3 in the deck picker when you sit down to play Magic. It's remembered (MTG - Match → CasualBestOf3).
+- New: during a Best of 3 the table shows the score and a Next game button; the customer's deck is revealed when the match is over.
+- Fixed: the Host Tournament panel no longer runs off the bottom of the screen, text no longer spills below its background, and the red "can't host yet" messages no longer overlap other text.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.11.1 - 2026-10-17
 
 Easier clean-up and a better furniture editor.

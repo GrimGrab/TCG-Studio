@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.11.3 - 2026-10-19
+
+Fixes a save that wouldn't load when the Furniture Overhaul mod is installed.
+
+- Fixed: with Furniture Overhaul installed, loading a save that had one of its furniture pieces packed in a box stopped part-way: furniture was missing and the game went back to the title screen ("Shelf data not loaded properly"). TCG Custom Cards no longer overrides Furniture Overhaul's furniture lookup.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.11.2 - 2026-10-18
 
 Best of 3 for Magic matches.

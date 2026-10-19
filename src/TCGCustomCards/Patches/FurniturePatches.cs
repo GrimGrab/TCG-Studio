@@ -13,12 +13,15 @@ namespace TCGCustomCards.Patches
     /// <summary>
     /// Vanilla loops over the object list's count but indexes the purchase list (InventoryBase.cs:71), which only works while every
     /// searched type is found early. Search the purchase list itself.
+    /// Another mod's prefix may already have answered for its own types (Furniture Overhaul serves its pieces from outside the list
+    /// until its shop page is built): keep that answer, or boxed pieces of it get no icon and the save load stops.
     /// </summary>
     [HarmonyPatch(typeof(InventoryBase), nameof(InventoryBase.GetFurniturePurchaseData), typeof(EObjectType))]
     internal static class FurniturePurchaseLookupPatch
     {
-        private static bool Prefix(EObjectType objType, ref FurniturePurchaseData __result)
+        private static bool Prefix(EObjectType objType, ref FurniturePurchaseData __result, bool __runOriginal)
         {
+            if (!__runOriginal) return false;
             var list = CSingleton<InventoryBase>.Instance.m_ObjectData_SO?.m_FurniturePurchaseDataList;
             if (list == null) return true;
             __result = null;

@@ -8,6 +8,7 @@ import forge.game.GameView;
 import forge.game.Match;
 import forge.game.player.RegisteredPlayer;
 import forge.player.LobbyPlayerHuman;
+import forge.player.PlayerControllerHuman;
 import forge.game.card.CardView;
 import forge.game.event.GameEvent;
 import forge.game.phase.PhaseType;
@@ -20,6 +21,7 @@ import forge.game.zone.ZoneType;
 import forge.gamemodes.match.AbstractGuiGame;
 import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.NextGameDecision;
+import forge.gamemodes.match.input.InputPassPriority;
 import forge.interfaces.IGameController;
 import forge.item.PaperCard;
 import forge.localinstance.skin.FSkinProp;
@@ -256,7 +258,10 @@ public final class BridgeGuiGame extends AbstractGuiGame {
             }
             case "ok" -> c.selectButtonOk();
             case "cancel" -> c.selectButtonCancel();
-            case "pass" -> c.passPriority();
+            // Forge 2.0.15 dropped IGameController.passPriority(); same as it did: pass only while Forge waits for a priority pass
+            case "pass" -> {
+                if (c instanceof PlayerControllerHuman pch && pch.getInputProxy().getInput() instanceof InputPassPriority ipp) ipp.passPriority();
+            }
             case "mana" -> c.useMana((byte) Json.i(m, "color", 0));
             case "alphaStrike" -> c.alphaStrike();
             case "undo" -> c.undoLastAction();
@@ -674,8 +679,6 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     @Override public void hideManaPool(PlayerView player) { markDirty(); }
     @Override public void updateStack() { super.updateStack(); markDirty(); }
     @Override public void handleGameEvent(GameEvent event) { super.handleGameEvent(event); markDirty(); }
-    @Override public Iterable<PlayerZoneUpdate> tempShowZones(PlayerView controller, Iterable<PlayerZoneUpdate> zonesToUpdate) { markDirty(); return zonesToUpdate; }
-    @Override public void hideZones(PlayerView controller, Iterable<PlayerZoneUpdate> zonesToUpdate) { markDirty(); }
     @Override public void updateZones(Iterable<PlayerZoneUpdate> zonesToUpdate) { super.updateZones(zonesToUpdate); markDirty(); }
     @Override public void updateCards(Iterable<CardView> cards) { super.updateCards(cards); markDirty(); }
     @Override public void refreshField() { super.refreshField(); markDirty(); }
@@ -686,9 +689,6 @@ public final class BridgeGuiGame extends AbstractGuiGame {
     @Override public void setPanelSelection(CardView hostCard) {}
     @Override public void setCard(CardView card) {} // detail panel; the prompt that follows carries the card (cardInfo)
     @Override public void setPlayerAvatar(LobbyPlayer player, IHasIcon ihi) {}
-    @Override public PlayerZoneUpdates openZones(PlayerView controller, Collection<ZoneType> zones, Map<PlayerView, Object> players, boolean backupLastZones) {
-        markDirty();
-        return new PlayerZoneUpdates();
-    }
-    @Override public void restoreOldZones(PlayerView playerView, PlayerZoneUpdates playerZoneUpdates) { markDirty(); }
+    // Forge 2.0.15: openZones returns nothing; tempShowZones / hideZones / restoreOldZones are gone
+    @Override public void openZones(PlayerView controller, Collection<ZoneType> zones, Map<PlayerView, Object> players) { markDirty(); }
 }

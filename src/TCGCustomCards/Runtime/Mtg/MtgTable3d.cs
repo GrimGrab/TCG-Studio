@@ -111,10 +111,26 @@ namespace TCGCustomCards.Runtime.Mtg
             ipc.m_IsPlayingTopDownGameMode = true;
             ipc.m_CameraFOVController.StartLerpToFOV(40f);
             game.m_Grp.SetActive(true);
-            game.m_PlayCardSetPlayer.EvaluatePlaymatDeckboxMesh();
-            game.m_PlayCardSetEnemy.EvaluatePlaymatDeckboxMesh();
+            ShowPlaymatDeckbox(game.m_PlayCardSetPlayer);
+            ShowPlaymatDeckbox(game.m_PlayCardSetEnemy);
             Plugin.Log.LogInfo($"MTG table: lanes me {_me.Center} axis {_me.AxisX} spacing {_me.Spacing:F3} toOwner {_me.ToOwner}; " +
                                $"opp {_opp.Center} spacing {_opp.Spacing:F3}; hand slots {_me.HandSlots.Count}");
+        }
+
+        /// <summary>Vanilla's player side reads the selected Tetramon deck, which an MTG-only player may not have
+        /// (PlayCardSet.EvaluatePlaymatDeckboxMesh indexes m_DeckCompactCardDataList unchecked); then show neither.</summary>
+        private static void ShowPlaymatDeckbox(PlayCardSet set)
+        {
+            int deck = CPlayerData.m_CurrentSelectedDeckIndex;
+            if (!set.m_IsPlayer || (deck >= 0 && deck < CPlayerData.m_DeckCompactCardDataList.Count))
+            {
+                set.EvaluatePlaymatDeckboxMesh();
+                return;
+            }
+            Plugin.Log.LogWarning($"MTG table: selected vanilla deck {deck} doesn't exist ({CPlayerData.m_DeckCompactCardDataList.Count} deck(s)) - no playmat/deck box");
+            set.m_Mesh_Playmat.enabled = false;
+            set.m_PlayCardSetUI.m_DarkenPlaymatBG.SetActive(false);
+            set.m_Mesh_Deckbox.enabled = false;
         }
 
         private static Side Measure(PlayCardSet set)

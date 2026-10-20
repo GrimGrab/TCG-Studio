@@ -85,7 +85,7 @@ final class StateWriter {
             players.add(pm);
         }
         s.put("players", players);
-        s.put("usable", usable(me));
+        s.put("usable", usable(me, game));
 
         List<Object> stack = new ArrayList<>();
         for (StackItemView si : gv.getStack()) {
@@ -188,16 +188,33 @@ final class StateWriter {
      * the click itself still goes to Forge. Views only: running Forge's rules from this thread (getAllPossibleAbilities)
      * raced the game thread and crashed it (ConcurrentModificationException in StaticEffects, headless 2026-10-10).
      */
-    private static List<Integer> usable(PlayerView me) {
+    private static List<Integer> usable(PlayerView me, Game game) {
         List<Integer> ids = new ArrayList<>();
         if (me == null) return ids;
         for (CardView c : me.getCards(ZoneType.Flashback)) {
             if (c == null) continue;
-            boolean lookOnly = !c.getMayPlayPlayers(me) && c.mayPlayerLook(me)
-                && (c.getZone() == ZoneType.Library || c.getZone() == ZoneType.Hand || c.isFaceDown());
+            boolean lookOnly = c.mayPlayerLook(me)
+                && (c.getZone() == ZoneType.Library || c.getZone() == ZoneType.Hand || c.isFaceDown())
+                && !mayPlay(game, c, me);
             if (!lookOnly) ids.add(c.getId());
         }
         return ids;
+    }
+
+    /**
+     * Forge 2.0.15 dropped CardView's may-play players (Card.updateMayPlay set them from the play options that grant zone
+     * permissions): read those options from the card itself. A read only, no rules run; if it races the game thread the card
+     * just counts as usable (the tint is a hint, the click still goes to Forge).
+     */
+    private static boolean mayPlay(Game game, CardView v, PlayerView me) {
+        if (game == null) return true;
+        try {
+            Card card = game.findById(v.getId());
+            Player p = game.getPlayer(me);
+            return card == null || p == null || card.mayPlay(p).stream().anyMatch(o -> o.grantsZonePermissions());
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     /** The cards of a hidden zone that Forge's own rules let the viewer see ({@code CardView.canBeShownTo}), in zone order. */

@@ -48,10 +48,22 @@ func TestUntarRelease(t *testing.T) {
 	if !fileExists(filepath.Join(dst, forgeJar)) || !fileExists(filepath.Join(dst, "res", "cardsfolder", "cardsfolder.zip")) {
 		t.Fatal("desktop jar or card scripts missing")
 	}
-	if fileExists(filepath.Join(dst, "forge-gui-mobile-dev-2.0.14-jar-with-dependencies.jar")) {
+	if fileExists(filepath.Join(dst, mobileJar)) {
 		t.Fatal("skipped file was extracted")
 	}
 	if got := strings.Join(jvmArgs(filepath.Join(dst, "forge.cmd")), " "); !strings.Contains(got, "-Xmx") {
 		t.Fatalf("jvmArgs from release = %q", got)
+	}
+}
+
+// The mod refuses to start the bridge on any Forge but the one it is built for, so Studio must install exactly that one.
+func TestPinMatchesModBridge(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "src", "TCGCustomCards", "Runtime", "Mtg", "ForgeLauncher.cs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `BridgeForgeVersion = "` + Version + `"`
+	if !strings.Contains(string(b), want) {
+		t.Fatalf("ForgeLauncher.cs has no %s: the mod's bridge and Studio's pinned Forge differ", want)
 	}
 }

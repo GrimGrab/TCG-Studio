@@ -10,15 +10,16 @@ This is the source of `tcgcc-forge-bridge.jar`, which ships with TCG Custom Card
 
 ## Build
 
-Needs a JDK 17 or newer and Forge **2.0.14** (`forge-gui-desktop-2.0.14-jar-with-dependencies.jar`, from
-https://github.com/Card-Forge/forge/releases/tag/forge-2.0.14 — TCG Studio's Setup screen installs it into `<game>\TCGForge\forge`).
+Needs a JDK 17 or newer and Forge **2.0.15** (`forge-gui-desktop-2.0.15-jar-with-dependencies.jar`, from
+https://github.com/Card-Forge/forge/releases/tag/forge-2.0.15 — TCG Studio's Game & mod page installs it into `<game>\TCGForge\forge`).
+The bridge uses Forge internals that change between releases: build and run it against exactly this version.
 
 - Windows, with the TCG Custom Cards workspace: `tools\build-bridge.ps1` (included in the source download). Output:
   `src\TCGCustomCards\Assets\tcgcc-forge-bridge.jar`.
 - Anywhere, by hand:
 
   ```
-  javac --release 17 -encoding UTF-8 -cp forge-gui-desktop-2.0.14-jar-with-dependencies.jar -d out src/tcgcc/bridge/*.java
+  javac --release 17 -encoding UTF-8 -cp forge-gui-desktop-2.0.15-jar-with-dependencies.jar -d out src/tcgcc/bridge/*.java src/forge/gamemodes/limited/*.java
   jar --create --file tcgcc-forge-bridge.jar -C out .
   ```
 

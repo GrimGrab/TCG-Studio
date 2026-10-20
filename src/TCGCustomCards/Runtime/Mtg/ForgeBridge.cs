@@ -38,7 +38,13 @@ namespace TCGCustomCards.Runtime.Mtg
             Ready = false;
             while (Inbox.TryDequeue(out _)) { }
             string user = ForgeLauncher.UserDir;
-            if (user == null) return "MTG mode isn't installed - open TCG Studio > Setup > Install MTG mode";
+            if (user == null) return "MTG mode isn't installed - open TCG Studio > Game & mod > Install MTG mode";
+            string version = ForgeLauncher.BridgeVersionProblem();
+            if (version != null)
+            {
+                Plugin.Log.LogWarning(version);
+                return version;
+            }
             var psi = ForgeLauncher.BridgeStartInfo(Path.Combine(user, "tcgcc-bridge.log"));
             if (psi == null) return "Forge bridge missing (tcgcc-forge-bridge.jar) - reinstall the mod";
             try

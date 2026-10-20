@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.11.4 - 2026-10-20
+
+Reality Fracture cards now work in Magic games, and the Magic table no longer falls back to the flat board.
+
+- Fixed: cards from Reality Fracture (and other sets released after early August 2026) were removed from your Magic decks, because the Forge that MTG mode installs didn't know them yet. MTG mode now uses Forge 2.0.15, which knows every Reality Fracture card.
+- Fixed: Magic games use the 3D table again when your selected Tetramon deck no longer exists (for example when you only play with decks from the MTG deck builder).
+- Changed: if the installed Forge doesn't match the mod, Magic games now tell you to update Forge instead of breaking during a game.
+After updating: open Game & mod, click Install / Repair to update the mod, then click Update Forge in the MTG mode section (about 350 MB download). Do both: the new mod needs the new Forge.
+
 ## v1.11.3 - 2026-10-19
 
 Fixes a save that wouldn't load when the Furniture Overhaul mod is installed.

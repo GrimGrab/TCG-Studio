@@ -17,6 +17,13 @@ namespace TCGCustomCards.Runtime.Mtg
         public const string DeckPrefix = "TCG - ";
         public const string OpponentDeckName = DeckPrefix + "Opponent";
 
+        /// <summary>
+        /// The Forge release tcgcc-forge-bridge.jar is compiled against (tools\build-bridge.ps1); TCG Studio installs the same one
+        /// (studio/internal/forge Version, checked by a Studio test). Forge's internals change between releases, so the bridge on
+        /// another version fails in the middle of a game.
+        /// </summary>
+        public const string BridgeForgeVersion = "2.0.15";
+
 #pragma warning disable CS0649 // filled by Json.NET
         private class Manifest
         {
@@ -66,6 +73,14 @@ namespace TCGCustomCards.Runtime.Mtg
                 Plugin.Log.LogWarning($"Forge manifest unreadable: {e.Message}");
                 return null;
             }
+        }
+
+        /// <summary>Null when the installed Forge is the one the bridge is built for, else a message for the player.</summary>
+        public static string BridgeVersionProblem()
+        {
+            var m = Load();
+            if (m == null || m.ForgeVersion == BridgeForgeVersion) return null;
+            return $"Forge {m.ForgeVersion} is installed, but this mod needs Forge {BridgeForgeVersion} - open TCG Studio > Game & mod > Update Forge";
         }
 
         /// <summary>Writes both decks, selects them (player 1 = human, player 2 = AI) and starts Forge unless it's already open.</summary>

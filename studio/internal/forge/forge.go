@@ -27,10 +27,11 @@ import (
 
 // Pinned Forge release (the mod's deck export is tested against it). Digest from the GitHub release asset.
 const (
-	Version   = "2.0.14"
-	forgeURL  = "https://github.com/Card-Forge/forge/releases/download/forge-2.0.14/forge-installer-2.0.14.tar.bz2"
-	forgeSHA  = "e71749376945177d603d52a21a089bc1574330cf34599544b6bae1a04c83da41"
-	forgeJar  = "forge-gui-desktop-2.0.14-jar-with-dependencies.jar"
+	Version   = "2.0.15"
+	forgeURL  = "https://github.com/Card-Forge/forge/releases/download/forge-" + Version + "/forge-installer-" + Version + ".tar.bz2"
+	forgeSHA  = "4468f182b60f6ca62d89697baa208981085af744f116781af751c611826db600"
+	forgeJar  = "forge-gui-desktop-" + Version + "-jar-with-dependencies.jar"
+	mobileJar = "forge-gui-mobile-dev-" + Version + "-jar-with-dependencies.jar"
 	jreAPI    = "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse"
 	DirName   = "TCGForge"
 	Manifest  = "tcgforge.json"
@@ -40,7 +41,7 @@ const (
 // Release files the desktop game doesn't need (Adventure mode + editors, ~106 MB).
 var skipFiles = map[string]bool{
 	"adventure-editor-jar-with-dependencies.jar":            true,
-	"forge-gui-mobile-dev-2.0.14-jar-with-dependencies.jar": true,
+	mobileJar: true,
 	"gdx-particle-editor.jar":                               true,
 	"forge-adventure.exe":                                   true,
 	"forge-adventure.cmd":                                   true,

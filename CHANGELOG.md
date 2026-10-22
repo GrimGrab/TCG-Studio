@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.12.3 - 2026-10-22
+
+Card images you add to an existing set are now converted like an imported image folder.
+
+- Fixed: Add cards from images and Change image (Sets → Cards) now resize new pictures to the width the set was imported with (384 / 512 / Original) and save them in the set's format (PNG or JPEG), so you no longer need to resize them by hand first.
+- Changed: added card pictures are also turned upright when landscape and fitted to the card shape when they are close to it, the same as the image-folder import. WebP and AVIF pictures can now be picked too.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.12.2 - 2026-10-22
 
 Re-download a single card's image.

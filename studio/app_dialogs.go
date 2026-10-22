@@ -12,6 +12,9 @@ import (
 
 var imageFilters = []runtime.FileFilter{{DisplayName: "Images (*.png;*.jpg;*.jpeg)", Pattern: "*.png;*.jpg;*.jpeg"}}
 
+// cardImageFilters: card art is converted on the way in (importer.ConvertCardImage), so it takes what the folder import reads.
+var cardImageFilters = []runtime.FileFilter{{DisplayName: "Images (*.png;*.jpg;*.jpeg;*.webp;*.avif)", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.avif"}}
+
 // pickImageFile is the one image file dialog every "choose an image" button uses. Returns "" when cancelled.
 func (a *App) pickImageFile(title string) (string, error) {
 	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: title, Filters: imageFilters})

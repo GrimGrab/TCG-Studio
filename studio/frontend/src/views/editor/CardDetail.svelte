@@ -50,7 +50,7 @@
 
   async function changeImage() {
     try {
-      const rel = await App.PickImage(project.id, 'Choose the card image');
+      const rel = await App.PickCardImage(project.id);
       if (rel) card.image = rel;
     } catch (e) { notify(errText(e), 'error'); }
   }

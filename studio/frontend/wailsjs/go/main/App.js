@@ -398,6 +398,10 @@ export function PickAccessoryImage() {
   return window['go']['main']['App']['PickAccessoryImage']();
 }
 
+export function PickCardImage(arg1) {
+  return window['go']['main']['App']['PickCardImage'](arg1);
+}
+
 export function PickEPLFolder() {
   return window['go']['main']['App']['PickEPLFolder']();
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"image"
+	"image/png"
 	"io/fs"
 	"math"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tcgstudio/internal/art"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 )
@@ -407,14 +409,45 @@ func folderShape(path string) (fit float64, rotated, ok bool) {
 	if err != nil || cfg.Width == 0 || cfg.Height == 0 {
 		return 0, false, false
 	}
-	w, h := float64(cfg.Width), float64(cfg.Height)
+	fit, rotated = folderFit(cfg.Width, cfg.Height)
+	return fit, rotated, true
+}
+
+// folderFit is folderShape's rule for a w×h image.
+func folderFit(width, height int) (fit float64, rotated bool) {
+	w, h := float64(width), float64(height)
 	if w > h {
 		w, h, rotated = h, w, true
 	}
 	if math.Abs(w/h-CardAspect)/CardAspect <= 0.12 {
 		fit = CardAspect
 	}
-	return fit, rotated, true
+	return fit, rotated
+}
+
+// ConvertCardImage makes card art from a picture the player adds to an existing set, the way the image-folder import
+// does: upright (EXIF tag, then landscape turned), stretched to the card shape when within 12 % of it, shrunk to width
+// (> 0) and saved as format ("jpg", else PNG). Returns the file and its extension.
+func ConvertCardImage(b []byte, width int, format string) ([]byte, string, error) {
+	img, _, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, "", err
+	}
+	img = art.ApplyOrientation(img, art.ExifOrientation(b))
+	fit, rotated := folderFit(img.Bounds().Dx(), img.Bounds().Dy())
+	if rotated {
+		img = art.RotateQuarter(img, 1)
+	}
+	if fitted, ok := fitImage(img, fit, width); ok {
+		img = fitted
+	}
+	if format == "jpg" {
+		out, err := art.EncodeCardJPEG(img)
+		return out, ".jpg", err
+	}
+	var buf bytes.Buffer
+	err = png.Encode(&buf, img)
+	return buf.Bytes(), ".png", err
 }
 
 // money reads a price like "1.50", "$1.50", "1,50 €"; nil when empty or not positive.

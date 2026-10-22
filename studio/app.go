@@ -800,21 +800,54 @@ func (a *App) PickImage(id, title string) (string, error) {
 	return a.copyIntoProject(id, file)
 }
 
-// PickImages lets the user choose several images (e.g. one per new card) and copies them into the project.
+// PickCardImage lets the user choose a card's new image and adds it as card art (addCardImage). Returns the relative
+// path ("" if cancelled).
+func (a *App) PickCardImage(id string) (string, error) {
+	file, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose the card image", Filters: cardImageFilters})
+	if err != nil || file == "" {
+		return "", err
+	}
+	return a.addCardImage(id, file)
+}
+
+// PickImages lets the user choose several images (one per new card) and adds them as card art (addCardImage).
 func (a *App) PickImages(id string) ([]string, error) {
-	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose card images", Filters: imageFilters})
+	files, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose card images", Filters: cardImageFilters})
 	if err != nil {
 		return nil, err
 	}
 	out := []string{}
 	for _, f := range files {
-		rel, err := a.copyIntoProject(id, f)
+		rel, err := a.addCardImage(id, f)
 		if err != nil {
 			return out, err
 		}
 		out = append(out, rel)
 	}
 	return out, nil
+}
+
+// addCardImage converts file like the image-folder import does (importer.ConvertCardImage), at the width and format the
+// set's card art was imported with (512 px PNG for sets made in Studio), and stores it in the project.
+func (a *App) addCardImage(id, file string) (string, error) {
+	p, err := a.loadProject(id)
+	if err != nil {
+		return "", err
+	}
+	width, format := 512, "png"
+	if m := project.LoadLibMeta(p.LibFolder); m != nil {
+		width, format = m.Width, m.Format
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	out, ext, err := importer.ConvertCardImage(b, width, format)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", filepath.Base(file), err)
+	}
+	name := filepath.Base(file)
+	return a.writeIntoProject(id, strings.TrimSuffix(name, filepath.Ext(name))+ext, out)
 }
 
 func (a *App) copyIntoProject(id, file string) (string, error) {

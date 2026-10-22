@@ -218,6 +218,8 @@ export function PaintFurniture(arg1:string,arg2:string):Promise<setfmt.Furniture
 
 export function PickAccessoryImage():Promise<string>;
 
+export function PickCardImage(arg1:string):Promise<string>;
+
 export function PickEPLFolder():Promise<string>;
 
 export function PickEPLMod():Promise<string>;

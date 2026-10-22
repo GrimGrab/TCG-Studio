@@ -19,6 +19,17 @@ var loopBinds = map[string][]string{
 	`Config.Bind(aiCol, i == 0 ? "AiDeckWeight1Color"`: {"MTG - AI deck colours/AiDeckWeight1Color",
 		"MTG - AI deck colours/AiDeckWeight2Colors", "MTG - AI deck colours/AiDeckWeight3Colors",
 		"MTG - AI deck colours/AiDeckWeight4Colors", "MTG - AI deck colours/AiDeckWeight5Colors"},
+	`config.Bind(Section, key,`: bulkBoxLooks(),
+}
+
+// bulkBoxLooks: the mod's BoxLook binds one texture per bulk box item.
+func bulkBoxLooks() []string {
+	var out []string
+	for _, v := range []string{"Base", "Destiny", "BaseGradeHG", "BaseGradeMG", "BaseGradePG", "BaseGradeUG",
+		"DestinyGradeHG", "DestinyGradeMG", "DestinyGradePG", "DestinyGradeUG"} {
+		out = append(out, "Visuals - Game look - Boxes/BulkBox_Tetramon"+v+"Texture")
+	}
+	return out
 }
 
 func foilGrades() []string {

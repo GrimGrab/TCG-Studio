@@ -3,6 +3,20 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.12.0 - 2026-10-22
+
+Paint the shop's boxes, shopping bags and street billboards, and one Save button on every TCG Studio page.
+
+- New: Game look → Textures: paint the big and small restock boxes, the box furniture comes in, the box graded cards come back in, and all 10 bulk card boxes, using the same texture editor as accessories.
+- New: Textures also paints the paper shopping bag (one design for the bag customers carry out and the open bag on the counter) and the advertising billboards on the building across the street.
+- New: two testing hotkeys: Shift+F7 sets the shop to level 100 (no level-up popup, no Steam achievements) and Shift+F8 adds $1,000,000. Change the keys under Debug → SetShopLevel100 and Debug → AddMillion.
+- Changed: every editor page in TCG Studio has a Save bar at the top (Save, Revert, Ctrl+S). Nothing reaches the game until you click Save, and leaving a page with unsaved changes asks first. This covers adding, deleting and moving items on the Accessories, Furniture and Decorations pages, pack and box art, card backs, rotated card images, Mod settings and Settings.
+- Changed: the texture editor (accessories, packs and boxes, Textures) has one Texture view: you paint straight onto the texture with each face's outline as a guide. Designs made in the old Faces view are converted once and look the same.
+- Fixed: when the game fails to save, TCG Custom Cards' own save data stays matched to the game's last good save instead of getting out of step.
+- Fixed: putting custom content back into a save no longer overwrites a list entry that changed while that content was missing.
+- Fixed: switching setups no longer risks moving old leftover saves into the game if a switch has to be undone.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.11.4 - 2026-10-20
 
 Reality Fracture cards now work in Magic games, and the Magic table no longer falls back to the flat board.

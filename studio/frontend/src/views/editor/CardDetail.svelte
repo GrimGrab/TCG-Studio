@@ -1,9 +1,9 @@
 <script lang="ts">
   import { App, projectFile, money, setRarities, ELEMENTS, BORDERS, LANES, errText } from '../../lib/api';
 
-  let { project, card, imgBust, notify, onimages, ondelete, onzoom }: {
+  let { project, card, imgBust, notify, ondelete, onzoom }: {
     project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void;
-    onimages: (what: string) => Promise<void>; ondelete: () => void; onzoom: () => void;
+    ondelete: () => void; onzoom: () => void;
   } = $props();
 
   const meta = $derived(project.meta?.cards?.[card.id]);
@@ -59,8 +59,8 @@
   async function rotate(turns: number) {
     rotating = true;
     try {
-      await App.RotateCardImages(project.id, [card.image], turns, false);
-      await onimages('Rotated the card image.');
+      const turned = await App.RotateCardImages(project.id, [card.image], turns, false);
+      if (turned[card.image]) card.image = turned[card.image]; // a new file: the game sees it once the set is saved
     } catch (e) { notify(errText(e), 'error'); }
     rotating = false;
   }

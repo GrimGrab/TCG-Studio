@@ -58,6 +58,10 @@ export function BoxFromPack(arg1, arg2) {
   return window['go']['main']['App']['BoxFromPack'](arg1, arg2);
 }
 
+export function BoxLookModel(arg1) {
+  return window['go']['main']['App']['BoxLookModel'](arg1);
+}
+
 export function BrowseGameFolder() {
   return window['go']['main']['App']['BrowseGameFolder']();
 }
@@ -134,36 +138,12 @@ export function DefaultImportOptions(arg1) {
   return window['go']['main']['App']['DefaultImportOptions'](arg1);
 }
 
-export function DeleteAccessories(arg1) {
-  return window['go']['main']['App']['DeleteAccessories'](arg1);
-}
-
-export function DeleteAccessory(arg1) {
-  return window['go']['main']['App']['DeleteAccessory'](arg1);
-}
-
 export function DeleteBackups(arg1) {
   return window['go']['main']['App']['DeleteBackups'](arg1);
 }
 
-export function DeleteDecoration(arg1) {
-  return window['go']['main']['App']['DeleteDecoration'](arg1);
-}
-
-export function DeleteDecorationMany(arg1) {
-  return window['go']['main']['App']['DeleteDecorationMany'](arg1);
-}
-
 export function DeleteFromCatalog(arg1, arg2) {
   return window['go']['main']['App']['DeleteFromCatalog'](arg1, arg2);
-}
-
-export function DeleteFurniture(arg1) {
-  return window['go']['main']['App']['DeleteFurniture'](arg1);
-}
-
-export function DeleteFurnitureMany(arg1) {
-  return window['go']['main']['App']['DeleteFurnitureMany'](arg1);
 }
 
 export function DeleteKept() {
@@ -272,6 +252,10 @@ export function GetSettings() {
 
 export function GlobalCardBack() {
   return window['go']['main']['App']['GlobalCardBack']();
+}
+
+export function ImportBoxImage() {
+  return window['go']['main']['App']['ImportBoxImage']();
 }
 
 export function ImportCardBack() {
@@ -494,20 +478,12 @@ export function RemoveGameCopies() {
   return window['go']['main']['App']['RemoveGameCopies']();
 }
 
-export function RestoreModDefaults(arg1) {
-  return window['go']['main']['App']['RestoreModDefaults'](arg1);
-}
-
 export function RetrySetups() {
   return window['go']['main']['App']['RetrySetups']();
 }
 
 export function RotateCardImages(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['RotateCardImages'](arg1, arg2, arg3, arg4);
-}
-
-export function SaveAccessory(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['SaveAccessory'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveAccessorySourceImage(arg1, arg2) {
@@ -518,16 +494,20 @@ export function SaveAutoArt(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveAutoArt'](arg1, arg2, arg3, arg4);
 }
 
+export function SaveBoxImage(arg1, arg2) {
+  return window['go']['main']['App']['SaveBoxImage'](arg1, arg2);
+}
+
 export function SaveDebugReport() {
   return window['go']['main']['App']['SaveDebugReport']();
 }
 
-export function SaveDecoration(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveDecoration'](arg1, arg2, arg3);
+export function SaveLibraryDraft(arg1, arg2) {
+  return window['go']['main']['App']['SaveLibraryDraft'](arg1, arg2);
 }
 
-export function SaveFurniture(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveFurniture'](arg1, arg2, arg3);
+export function SaveModSettings(arg1) {
+  return window['go']['main']['App']['SaveModSettings'](arg1);
 }
 
 export function SavePackArt(arg1, arg2, arg3, arg4, arg5) {
@@ -560,10 +540,6 @@ export function SaveToCatalog(arg1, arg2) {
 
 export function SetAccessoryIcons(arg1) {
   return window['go']['main']['App']['SetAccessoryIcons'](arg1);
-}
-
-export function SetModSetting(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SetModSetting'](arg1, arg2, arg3);
 }
 
 export function SetPictureAspects() {

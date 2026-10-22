@@ -117,6 +117,7 @@ func (a *App) AccessoryModelFor(kind, base string) (uvmap.Model, error) {
 	return m, nil
 }
 
+// NewAccessory makes a draft with a fresh id; nothing is stored until the page's Save (SaveLibraryDraft).
 func (a *App) NewAccessory(kind, name, base string) (setfmt.Accessory, error) {
 	l, err := a.items()
 	if err != nil {
@@ -129,47 +130,7 @@ func (a *App) NewAccessory(kind, name, base string) (setfmt.Accessory, error) {
 	if strings.TrimSpace(name) == "" {
 		name = "Custom " + strings.Title(k.One) //nolint:staticcheck // ASCII names
 	}
-	acc := setfmt.NewAccessory(kind, l.NewID(), name, base)
-	l.Put(acc)
-	_, err = a.saveLibrary(l)
-	return acc, err
-}
-
-// SaveAccessory stores an accessory's fields and editor layout. texturePNG / iconPNG are data URLs (or raw base64) of the
-// composed images from the editor; empty keeps the current files.
-func (a *App) SaveAccessory(acc setfmt.Accessory, layout string, texturePNG, iconPNG string) (AccessoryView, error) {
-	l, err := a.items()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if !setfmt.SafeID(acc.ID) {
-		return AccessoryView{}, errors.New("bad accessory id")
-	}
-	if err := errors.Join(putEditorImage(l, acc.ID, "texture", texturePNG, &acc.Texture),
-		putEditorImage(l, acc.ID, "icon", iconPNG, &acc.Icon), putLayout(l, acc.ID, layout)); err != nil {
-		return AccessoryView{}, err
-	}
-	l.Put(acc)
-	return a.saveLibrary(l)
-}
-
-func (a *App) DeleteAccessory(id string) (AccessoryView, error) {
-	return a.DeleteAccessories([]string{id})
-}
-
-// DeleteAccessories removes several accessories at once (one save and install).
-func (a *App) DeleteAccessories(ids []string) (AccessoryView, error) {
-	l, err := a.items()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if err := a.keepInCatalog("", ids, l); err != nil {
-		return AccessoryView{}, err
-	}
-	for _, id := range ids {
-		l.Delete(id)
-	}
-	return a.saveLibrary(l)
+	return setfmt.NewAccessory(kind, l.NewID(), name, base), nil
 }
 
 func (a *App) MoveAccessory(id string, to int) (AccessoryView, error) {

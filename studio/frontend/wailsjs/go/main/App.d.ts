@@ -17,7 +17,6 @@ import {art} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
 import {share} from '../models';
-import {modconfig} from '../models';
 import {installer} from '../models';
 import {upgrade} from '../models';
 
@@ -48,6 +47,8 @@ export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figu
 export function BakePoster(arg1:string,arg2:decoart.Poster):Promise<main.ModelBake>;
 
 export function BoxFromPack(arg1:string,arg2:string):Promise<main.BoxArt>;
+
+export function BoxLookModel(arg1:string):Promise<uvmap.Model>;
 
 export function BrowseGameFolder():Promise<game.Status>;
 
@@ -87,21 +88,9 @@ export function DefaultArtColor(arg1:string):Promise<string>;
 
 export function DefaultImportOptions(arg1:string):Promise<importer.Options>;
 
-export function DeleteAccessories(arg1:Array<string>):Promise<main.AccessoryView>;
-
-export function DeleteAccessory(arg1:string):Promise<main.AccessoryView>;
-
 export function DeleteBackups(arg1:Array<string>):Promise<main.StorageResult>;
 
-export function DeleteDecoration(arg1:string):Promise<main.AccessoryView>;
-
-export function DeleteDecorationMany(arg1:Array<string>):Promise<main.AccessoryView>;
-
 export function DeleteFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.Deleted>;
-
-export function DeleteFurniture(arg1:string):Promise<main.AccessoryView>;
-
-export function DeleteFurnitureMany(arg1:Array<string>):Promise<main.AccessoryView>;
 
 export function DeleteKept():Promise<main.StorageResult>;
 
@@ -156,6 +145,8 @@ export function GenerateSetCardBack(arg1:string,arg2:string,arg3:string):Promise
 export function GetSettings():Promise<main.Settings>;
 
 export function GlobalCardBack():Promise<string>;
+
+export function ImportBoxImage():Promise<main.ShopFile>;
 
 export function ImportCardBack():Promise<main.CardBackSource>;
 
@@ -267,23 +258,21 @@ export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function RemoveGameCopies():Promise<main.StorageResult>;
 
-export function RestoreModDefaults(arg1:string):Promise<number>;
-
 export function RetrySetups():Promise<main.SetupsView>;
 
-export function RotateCardImages(arg1:string,arg2:Array<string>,arg3:number,arg4:boolean):Promise<number>;
-
-export function SaveAccessory(arg1:setfmt.Accessory,arg2:string,arg3:string,arg4:string):Promise<main.AccessoryView>;
+export function RotateCardImages(arg1:string,arg2:Array<string>,arg3:number,arg4:boolean):Promise<Record<string, string>>;
 
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
+export function SaveBoxImage(arg1:string,arg2:string):Promise<string>;
+
 export function SaveDebugReport():Promise<string>;
 
-export function SaveDecoration(arg1:setfmt.Decoration,arg2:string,arg3:string):Promise<main.AccessoryView>;
+export function SaveLibraryDraft(arg1:string,arg2:main.LibraryDraft):Promise<main.AccessoryView>;
 
-export function SaveFurniture(arg1:setfmt.Furniture,arg2:string,arg3:string):Promise<main.AccessoryView>;
+export function SaveModSettings(arg1:Array<main.ModSettingChange>):Promise<main.ModSettingsView>;
 
 export function SavePackArt(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.PackArtFiles>;
 
@@ -300,8 +289,6 @@ export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
 export function SaveToCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SetAccessoryIcons(arg1:Record<string, string>):Promise<void>;
-
-export function SetModSetting(arg1:string,arg2:string,arg3:string):Promise<modconfig.Entry>;
 
 export function SetPictureAspects():Promise<Record<string, number>>;
 

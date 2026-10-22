@@ -1,8 +1,8 @@
 <script lang="ts">
   // 3D pack / box art editor: the accessory face editor on the game's card pack and card box models. Layouts are kept in
-  // studio.json (project.meta.packArt[packId].pack|box); "Apply & save" writes the composed texture + icon into the project,
-  // points the pack at them and saves the set (which updates an installed set in the game). Unapplied edits are applied
-  // automatically before any save, and before closing the editor or switching pack/box/tab (flush), so nothing is lost.
+  // studio.json (project.meta.packArt[packId].pack|box), so every edit is part of the set's draft. The composed texture + icon
+  // are written under new names and the pack points at them (flush) before the set's Save and before closing the editor or
+  // switching pack/box/tab; there is no separate Apply. Nothing reaches the game before the set's Save.
   import { App, projectFile, errText, ask } from '../../lib/api';
   import { templateFile } from '../../lib/urls';
   import { applySmartArt, boxFromPackArt, hasOwnLayers, packIconFromTexture, type SmartSources } from '../../lib/smartArt';
@@ -11,9 +11,8 @@
   import AccessoryEditor from '../AccessoryEditor.svelte';
   import ProductPhotos from './ProductPhotos.svelte';
 
-  let { project, pack, notify, onapplied, save, hooks }: {
+  let { project, pack, notify, onapplied, hooks }: {
     project: any; pack: any; notify: (t: string, k?: string) => void; onapplied: () => void;
-    save: () => Promise<void>;                    // the set editor's save (also updates the game)
     hooks: Set<() => Promise<void>>;              // run by the set editor before saving / switching tabs
   } = $props();
 
@@ -21,7 +20,6 @@
   let open = $state(false);
   let models = $state<Record<string, Model>>({});
   let editor = $state<any>();
-  let applying = $state(false);
   let bust = $state(Date.now());
   let pending = $state(false);                    // edits not yet turned into the pack's texture/icon
   let photos = $state(false);                     // product photo picker open
@@ -115,14 +113,6 @@
     try { await applyImages(); } catch (e) { notify(errText(e), 'error'); }
   }
 
-  async function apply() {
-    applying = true;
-    try {
-      await applyImages();
-      await save();
-    } catch (e) { notify(errText(e), 'error'); }
-    applying = false;
-  }
 
   async function closeEditor() {
     await flush();
@@ -137,7 +127,7 @@
       if (which === 'pack') await editor?.addImageFile(rel, name, 'stretch', ['crimpTop', 'front', 'crimpBottom']);
       else await editor?.addImageFile(rel, name, 'cover');
       await tintFrom(rel);
-      notify('Photo added and the other faces tinted to match — adjust them, then Apply & save');
+      notify('Photo added and the other faces tinted to match — adjust them, then Save');
     } catch (e) { notify(errText(e), 'error'); }
   }
 
@@ -170,7 +160,7 @@
     smartOpen = true;
   }
 
-  /** Builds and applies the art from the dialog's choice, then saves. The editor is closed first; it opens on the new layers. */
+  /** Builds and applies the art from the dialog's choice (the set's Save puts it in the game). The editor is closed first; it opens on the new layers. */
   async function runSmart(src: SmartSources) {
     smartOpen = false;
     try {
@@ -179,9 +169,7 @@
       generating = 'Building the pack and box…';
       const notes = await applySmartArt(project, pack, src);
       onapplied();
-      generating = 'Saving…';
-      await save();
-      notify(['Pack' + (pack.hasBox ? ' and box' : '') + ' generated — open the 3D editor to adjust any part.', ...notes].join(' '));
+      notify(['Pack' + (pack.hasBox ? ' and box' : '') + ' generated — open the 3D editor to adjust any part, then Save.', ...notes].join(' '));
     } catch (e) { notify(errText(e), 'error'); }
     generating = '';
   }
@@ -193,7 +181,7 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
-  /** Classic generate: renders the pack and box textures + icons straight from the game templates, then saves. */
+  /** Classic generate: renders the pack and box textures + icons straight from the game templates (Save puts them in the game). */
   async function runClassic() {
     try {
       await flush();
@@ -204,16 +192,14 @@
       pack.packTexture = r.packTexture; pack.packIcon = r.packIcon; pack.boxTexture = r.boxTexture; pack.boxIcon = r.boxIcon;
       await packIconFromTexture(project.id, pack, models.Pack ?? (await App.AccessoryModel('Pack') as any));
       onapplied();
-      generating = 'Saving…';
-      await save();
       classicOpen = false;
-      notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated');
+      notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated — Save to put it in the game.');
     } catch (e) { notify(errText(e), 'error'); }
     generating = '';
   }
 
   /** A box for a pack that has its own art but none for a box (e.g. an EPL mod selling only packs): the game's box with
-   *  the pack's front on it. Turns the box on, keeps the pack's art, saves; the 3D editor starts from that box. */
+   *  the pack's front on it. Turns the box on and keeps the pack's art (Save stores it); the 3D editor starts from that box. */
   async function boxFromPack() {
     try {
       await flush();
@@ -221,9 +207,7 @@
       generating = 'Making the box…';
       await boxFromPackArt(project, pack, models.Box);
       onapplied();
-      generating = 'Saving…';
-      await save();
-      notify('Box made from the pack art — open “Edit box in 3D editor” to adjust it.');
+      notify('Box made from the pack art — open “Edit box in 3D editor” to adjust it, then Save.');
     } catch (e) { notify(errText(e), 'error'); }
     generating = '';
   }
@@ -249,7 +233,7 @@
   {/if}
   {#if open}
     <div class="grow"></div>
-    <button class="small" onclick={closeEditor} title={pending ? 'Your changes are applied to the ' + which + ' when you close' : ''}>Close editor</button>
+    <button class="small" onclick={closeEditor}>Close editor</button>
   {/if}
 </div>
 
@@ -293,9 +277,6 @@
     </label>
     <button onclick={() => (photos = true)} title="Photos of this set's real booster packs and boxes from TCGplayer">Find product photos…</button>
     <button onclick={matchColours} title="Colours the {which === 'pack' ? 'back and edges' : 'sides and top'} to match the top image layer's packaging">Match colours</button>
-    {#if pending}<span class="pending small" title="Applied automatically when you save, close the editor or switch">• unapplied changes</span>{/if}
-    <button class="primary" disabled={applying} onclick={apply} title="Puts this art on the {which}, saves the set and updates the game">
-      {applying ? 'Saving…' : `Apply & save`}</button>
   </div>
   <p class="muted small">
     {#if which === 'pack'}
@@ -316,7 +297,6 @@
 
 <style>
   .base { align-items: flex-end; }
-  .pending { color: var(--warn, #d9a400); align-self: center; white-space: nowrap; }
   button.on { border-color: var(--accent); background: #22304d; }
   .small { font-size: 12px; }
   .classic { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }

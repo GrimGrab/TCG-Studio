@@ -20,5 +20,7 @@
   },
   "elsewhere": ["ShopSignImage", "ShopSignCrop", "ShowShopNameOnSign", "ShopSignFont", "ShopSignTextColor", "ShopSignTextSize", "ShopSignOutline", "ShopSignOutlineColor",
     "PhoneWallpaperImage", "PhoneWallpaperCrop", "OpenSignImage", "OpenSignCrop", "ClosedSignImage", "ClosedSignCrop",
-    "CreditCardImages", "CreditCardCrops", "CreditCardKeepChip", "CreditCardKeepPrint", "LoadingScreenImages", "LoadingScreenCrops", "MainMenuImage", "MainMenuCrop", "LoadingScreenCard", "LoadingScreenCardImage", "LoadingScreenCardCrop"]
+    "CreditCardImages", "CreditCardCrops", "CreditCardKeepChip", "CreditCardKeepPrint", "LoadingScreenImages", "LoadingScreenCrops", "MainMenuImage", "MainMenuCrop", "LoadingScreenCard", "LoadingScreenCardImage", "LoadingScreenCardCrop",
+    "RestockBoxBigTexture", "RestockBoxSmallTexture", "FurnitureBoxTexture", "GradedBoxTexture", "BulkBox_TetramonBaseTexture", "BulkBox_TetramonDestinyTexture", "BulkBox_TetramonBaseGradeHGTexture", "BulkBox_TetramonBaseGradeMGTexture", "BulkBox_TetramonBaseGradePGTexture", "BulkBox_TetramonBaseGradeUGTexture", "BulkBox_TetramonDestinyGradeHGTexture", "BulkBox_TetramonDestinyGradeMGTexture", "BulkBox_TetramonDestinyGradePGTexture", "BulkBox_TetramonDestinyGradeUGTexture",
+    "ShoppingBagTexture", "ShoppingBagOpenTexture", "StreetBillboardTexture"]
 }

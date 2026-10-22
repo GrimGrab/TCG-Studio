@@ -1,12 +1,16 @@
 <script lang="ts">
   // The mod's settings (same as the in-game F1 menu), read from and written to <game>\BepInEx\config\tcgcustomcards.cfg.
-  // Rendered from the file's own descriptions, so new mod settings show up without studio changes.
+  // Rendered from the file's own descriptions, so new mod settings show up without studio changes. Edits stay in the page's
+  // draft until Save (one write, App.SaveModSettings).
   import { onMount } from 'svelte';
   import { App, errText, ask } from '../lib/api';
+  import { Draft } from '../lib/draft.svelte';
+  import SaveBar from './SaveBar.svelte';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
-  let sections = $state<any[]>([]);
+  const draft = new Draft<any[]>();
+  const sections = $derived<any[]>(draft.value ?? []);
   let showWhen = $state<Record<string, { setting: string; is: string[] }>>({});
   let elsewhere = $state<string[]>([]); // settings edited on another page (Game look)
   let gameRunning = $state(false);
@@ -14,38 +18,52 @@
   let error = $state('');
   let loading = $state(true);
 
+  function show(v: any) {
+    draft.reset(v.sections);
+    showWhen = v.showWhen ?? {};
+    elsewhere = v.elsewhere ?? [];
+    gameRunning = v.gameRunning;
+    setup = v.setup;
+  }
+
   async function load() {
+    if (draft.dirty && !(await ask('Reload the settings from the file? Your unsaved changes will be lost.'))) return;
     try {
-      const v = await App.ModSettings();
-      sections = v.sections;
-      showWhen = v.showWhen ?? {};
-      elsewhere = v.elsewhere ?? [];
-      gameRunning = v.gameRunning;
-      setup = v.setup;
+      show(await App.ModSettings());
       error = '';
     } catch (e) { error = errText(e); }
     loading = false;
   }
 
-  async function set(e: any, value: string) {
-    if (value === e.value) return;
+  let saving = $state(false);
+  async function save() {
+    const before = new Map<string, string>();
+    for (const s of draft.stored()) for (const e of s.entries) before.set(s.name + '|' + e.key, e.value);
+    const changes = sections.flatMap((s) => s.entries
+      .filter((e: any) => before.get(s.name + '|' + e.key) !== e.value)
+      .map((e: any) => ({ section: s.name, key: e.key, value: String(e.value) })));
+    saving = true;
     try {
-      const r = await App.SetModSetting(e.section, e.key, value);
-      e.value = r.value;
-    } catch (err) {
-      notify(errText(err), 'error');
-      await load(); // put the control back to the stored value
-    }
+      show(await App.SaveModSettings(changes));
+      notify(gameRunning ? 'Settings saved — live settings update in the game right away.' : 'Settings saved.', 'ok');
+    } catch (e) { notify(errText(e), 'error'); }
+    saving = false;
   }
 
-  async function restore(section: string) {
-    const what = section ? `every setting in "${section}"` : 'ALL mod settings';
-    if (!(await ask(`Restore ${what} to the mod's defaults?`))) return;
-    try {
-      const n = await App.RestoreModDefaults(section);
-      await load();
-      notify(n ? `Restored ${n} setting${n === 1 ? '' : 's'} to default.` : 'Everything was already at its default.', 'ok');
-    } catch (e) { notify(errText(e), 'error'); }
+  // Edits change the draft only; the file checks each value on Save.
+  function set(e: any, value: string) { e.value = value; }
+
+  /** Puts a section and its groups ('' = every setting) back to the mod's defaults in the draft (Save stores it). Settings
+   *  edited on another page (Game look) are left alone. */
+  function restore(section: string) {
+    let n = 0;
+    for (const s of sections) {
+      if (section && s.name !== section && !s.name.startsWith(section + ' - ')) continue;
+      for (const e of s.entries) {
+        if (!elsewhere.includes(e.key) && !isDefault(e)) { e.value = e.default; n++; }
+      }
+    }
+    notify(n ? `${n} setting${n === 1 ? '' : 's'} back at the default — Save to keep it.` : 'Everything was already at its default.', 'ok');
   }
 
   /** "ShowVanillaCards" → "Show vanilla cards" */
@@ -130,7 +148,7 @@
           </select>
         {:else if isNumber(e)}
           {#if e.min !== undefined && e.max !== undefined}
-            <input type="range" min={e.min} max={e.max} step={step(e)} value={e.value} oninput={(ev) => (e.value = ev.currentTarget.value)} onchange={(ev) => set({ ...e, value: '' }, round(ev.currentTarget.value))} />
+            <input type="range" min={e.min} max={e.max} step={step(e)} value={e.value} oninput={(ev) => (e.value = ev.currentTarget.value)} onchange={(ev) => set(e, round(ev.currentTarget.value))} />
           {/if}
           <input class="num" type="number" min={e.min} max={e.max} step={step(e)} value={round(e.value)} onchange={(ev) => set(e, round(ev.currentTarget.value))} />
         {:else if e.type === 'Color'}
@@ -150,18 +168,23 @@
   {#if n}<span class="badge changed" title="{n} setting{n === 1 ? '' : 's'} in this {where} differ{n === 1 ? 's' : ''} from the mod's defaults">{n} customised</span>{/if}
 {/snippet}
 
+<SaveBar dirty={draft.dirty} {saving} onsave={save} onrevert={() => draft.revert()}
+  leaveMessage="Leave Mod settings without saving? Your unsaved changes will be lost."
+  revertMessage="Throw away your unsaved mod setting changes?">
+  {#snippet title()}<h2>Mod settings</h2>{/snippet}
+</SaveBar>
 <div class="page">
   <header class="row">
-    <h2 class="grow">Mod settings</h2>
     <input class="search" type="search" placeholder="Search settings…" bind:value={query} />
+    <div class="grow"></div>
     <button onclick={() => setAll(true)} disabled={!sections.length}>Expand all</button>
     <button onclick={() => setAll(false)} disabled={!sections.length}>Collapse all</button>
     <button onclick={load}>Reload</button>
     <button class="danger" onclick={() => restore('')} disabled={!sections.length}>Restore all defaults</button>
   </header>
   <p class="muted intro">
-    The same settings as the in-game <b>F1</b> menu (TCG Custom Cards), saved straight into the mod's config file. Changes save as you make
-    them. {gameRunning ? 'The game is running: settings marked "Applies live" update right away, the rest on the next start.' : 'They take effect the next time the game starts.'}
+    The same settings as the in-game <b>F1</b> menu (TCG Custom Cards), stored in the mod's config file when you click
+    <b>Save</b>. {gameRunning ? 'The game is running: settings marked "Applies live" update right away, the rest on the next start.' : 'They take effect the next time the game starts.'}
   </p>
   {#if setup}
     <p class="intro">
@@ -214,7 +237,7 @@
 </div>
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; height: 100%; display: flex; flex-direction: column; gap: 14px; }
+  .page { padding: 20px 24px; overflow: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
   .intro { max-width: 900px; margin: 0; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; max-width: 980px; }
   .entry { padding: 8px 0; border-top: 1px solid var(--line); }
@@ -236,5 +259,6 @@
   .badge { font-size: 11px; margin-left: 6px; }
   button.tiny { padding: 2px 8px; }
   .small { font-size: 12px; }
+  .grow { flex: 1; }
   .warn { color: #d9a400; }
 </style>

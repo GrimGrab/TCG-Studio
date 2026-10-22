@@ -1,16 +1,18 @@
 <script lang="ts">
   import { App, setRarities, rarityName, ELEMENTS, LANES, money, errText } from '../../lib/api';
 
-  let { project, cards, notify, onimages, ondelete }: {
-    project: any; cards: any[]; notify: (t: string, k?: string) => void; onimages: (what: string) => Promise<void>; ondelete: () => void;
+  let { project, cards, notify, ondelete }: {
+    project: any; cards: any[]; notify: (t: string, k?: string) => void; ondelete: () => void;
   } = $props();
 
   let rotating = $state(false);
   async function rotate(turns: number, onlyLandscape: boolean) {
     rotating = true;
     try {
-      const n = await App.RotateCardImages(project.id, cards.map((c) => c.image).filter(Boolean), turns, onlyLandscape);
-      if (n) await onimages(`Rotated ${n} image(s).`);
+      const turned = await App.RotateCardImages(project.id, cards.map((c) => c.image).filter(Boolean), turns, onlyLandscape);
+      const n = Object.keys(turned).length;
+      for (const c of cards) if (turned[c.image]) c.image = turned[c.image]; // new files: the game sees them once the set is saved
+      if (n) notify(`Rotated ${n} image(s) — Save to put ${n === 1 ? 'it' : 'them'} in the game.`, 'ok');
       else notify(onlyLandscape ? 'No landscape images among the selected cards.' : 'Nothing to rotate.', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     rotating = false;

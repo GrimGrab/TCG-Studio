@@ -75,20 +75,28 @@ func (a *App) ModSettings() (ModSettingsView, error) {
 	return ModSettingsView{Sections: modconfig.WithDefaultsMeta(secs), GameRunning: game.IsRunning(), ShowWhen: meta.ShowWhen, Elsewhere: meta.Elsewhere, Setup: setup}, nil
 }
 
-// SetModSetting changes one value (validated against the setting's type/range). A running game reloads it right away.
-func (a *App) SetModSetting(section, key, value string) (modconfig.Entry, error) {
-	p, err := a.openModConfig()
-	if err != nil {
-		return modconfig.Entry{}, err
-	}
-	return modconfig.Set(p, section, key, value)
+// ModSettingChange is one edited value from the Mod settings page.
+type ModSettingChange struct {
+	Section string `json:"section"`
+	Key     string `json:"key"`
+	Value   string `json:"value"`
 }
 
-// RestoreModDefaults resets one section ("" = every setting) to the mod's defaults; returns how many values changed.
-func (a *App) RestoreModDefaults(section string) (int, error) {
+// SaveModSettings stores the page's edited values in one write (each validated against its type/range; nothing is written
+// when any is invalid) and returns the file as it now is. A running game reloads it right away.
+func (a *App) SaveModSettings(changes []ModSettingChange) (ModSettingsView, error) {
 	p, err := a.openModConfig()
 	if err != nil {
-		return 0, err
+		return ModSettingsView{}, err
 	}
-	return modconfig.RestoreDefaults(p, section)
+	if len(changes) > 0 {
+		kvs := make([][3]string, len(changes))
+		for i, c := range changes {
+			kvs[i] = [3]string{c.Section, c.Key, c.Value}
+		}
+		if _, err := modconfig.SetMany(p, kvs); err != nil {
+			return ModSettingsView{}, err
+		}
+	}
+	return a.ModSettings()
 }

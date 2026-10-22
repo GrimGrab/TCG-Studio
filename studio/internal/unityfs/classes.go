@@ -106,6 +106,10 @@ func ReadRenderer(o *Object) (m Renderer, err error) {
 	if err != nil {
 		return m, err
 	}
+	return readRenderer(r), nil
+}
+
+func readRenderer(r *reader) (m Renderer) {
 	m.GameObject = r.pptr()
 	m.Enabled = r.bool()
 	r.skip(9) // cast/receive shadows, dynamic occludee, static shadow caster, motion vectors, light/reflection probes, ray tracing ×2
@@ -117,7 +121,29 @@ func ReadRenderer(o *Object) (m Renderer, err error) {
 	m.Materials = r.pptrs()
 	m.StaticFirstSub = r.u16()
 	m.StaticSubCount = r.u16()
-	return m, nil
+	return m
+}
+
+// ReadSkinnedMesh returns a SkinnedMeshRenderer's renderer part and its mesh.
+func ReadSkinnedMesh(o *Object) (m Renderer, mesh PPtr, err error) {
+	defer catch(&err, "SkinnedMeshRenderer")
+	r, err := o.reader()
+	if err != nil {
+		return m, mesh, err
+	}
+	m = readRenderer(r)
+	r.pptr() // static batch root
+	r.pptr() // probe anchor
+	r.pptr() // light probe volume override
+	r.i32()  // sorting layer id
+	r.i16()  // sorting layer
+	r.i16()  // sorting order
+	r.align()
+	r.i32()  // quality
+	r.bool() // update when offscreen
+	r.bool() // skinned motion vectors
+	r.align()
+	return m, r.pptr(), nil
 }
 
 // MonoBehaviour header; Fields continues at the script's own serialized fields.

@@ -13,6 +13,9 @@ namespace TCGCustomCards.Patches
         // CSaveLoad.Save retries by calling itself; strip once at the outermost call and undo when it unwinds.
         private static int _depth;
         private static System.Action _undo;
+        // 0 after a save that went through; the game gives up after 10 invalid tries without resetting it.
+        private static readonly AccessTools.FieldRef<int> ValidateSaveCount =
+            AccessTools.StaticFieldRefAccess<int>(AccessTools.Field(typeof(CSaveLoad), "m_ValidateSaveCount"));
 
         [HarmonyPriority(Priority.First)]
         private static void Prefix()
@@ -23,7 +26,14 @@ namespace TCGCustomCards.Patches
 
         private static void Postfix(int saveSlotIndex)
         {
-            if (_depth == 1) SideCar.Write(saveSlotIndex);
+            if (_depth != 1) return;
+            // A save the game gave up on left its old files: keep the side-car that matches them.
+            if (ValidateSaveCount() != 0)
+            {
+                Plugin.Log.LogError($"The game couldn't save slot {saveSlotIndex}: the side-car keeps the previous save too");
+                return;
+            }
+            SideCar.Write(saveSlotIndex);
         }
 
         private static System.Exception Finalizer(System.Exception __exception)

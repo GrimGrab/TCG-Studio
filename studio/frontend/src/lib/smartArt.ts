@@ -1,15 +1,19 @@
 // Smart generate: builds a pack's and its box's editor layouts from TCGplayer product photos (App.SmartArtSources), or from
-// the set's own card art when there are none. Everything ends up as ordinary layers (named "Auto: …") that can be moved,
-// hidden or recoloured; box faces cut from the display photo keep their corners (layer.straighten) for Adjust straighten….
+// the set's own card art when there are none. Everything ends up as ordinary map layers (named "Auto: …") placed straight in
+// the texture's areas, that can be moved, hidden or recoloured; box faces cut from the display photo keep their corners
+// (layer.straighten) for Adjust straighten….
 import { App, projectFile } from './api';
 import { templateFile } from './urls';
-import { composeIcon, composeTexture, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderNet, shownArea, type Layer, type Layout, type Model } from './accessoryArt';
+import {
+  areaAspect, areaFills, composeIcon, faceArea, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, placeIn,
+  placeRect, placeStacked, renderTexture, loadIslands, leftoverIslands, type Layer, type Layout, type Model,
+} from './accessoryArt';
 import { rectify, type Pt } from './perspective';
 
 export const AUTO = 'Auto: ';
 
 type Picture = CanvasImageSource & { width: number; height: number };
-type Area = number[]; // x, y, w, h in net units
+type Part = number[]; // x, y, w, h as fractions of a face's area seen upright
 
 export interface SmartSources {
   packPhoto: string; packName: string; boxPhoto: string; boxName: string;
@@ -22,34 +26,52 @@ export interface SmartSources {
 
 interface Job { projectId: string; packId: string; title: string; src: SmartSources; packModel: Model; boxModel: Model }
 
-// ---------------------------------------------------------------- layers
-
-/** Where art goes on these faces: around the parts the item shows (shownArea). */
-const area = (m: Model, ids: string[]): Area => shownArea(m.faces.filter((f) => ids.includes(f.id))) as Area;
+// ---------------------------------------------------------------- layers (map layers in the faces' texture areas)
 
 const base = (name: string, kind: Layer['kind'], opacity = 1): Layer =>
   ({ id: layerId(), kind, name: AUTO + name, visible: true, opacity, blend: 'source-over', x: 0, y: 0, w: 0, h: 0, rot: 0 });
 
-function image(name: string, src: string, a: Area, opacity = 1, straighten?: Layer['straighten']): Layer {
-  return { ...base(name, 'image', opacity), src, x: a[0] + a[2] / 2, y: a[1] + a[3] / 2, w: a[2], h: a[3], straighten };
+/** A face's texture area (the model always has the faces Smart generate uses). */
+const areaOf = (m: Model, face: string) => faceArea(m, face)!;
+
+/** Width ÷ height of a face's area seen upright: pictures are cut to it. */
+const aspectOf = (m: Model, face: string) => areaAspect(m, areaOf(m, face));
+
+/** An image stretched over a face's area (or a part of it). */
+function image(m: Model, name: string, src: string, face: string, opacity = 1, straighten?: Layer['straighten'], part?: Part): Layer {
+  const l: Layer = { ...base(name, 'image', opacity), src, straighten };
+  if (part) placeRect(areaOf(m, face), l, part); else placeIn(m, areaOf(m, face), l, 'stretch');
+  return l;
 }
 
-/** An image layer keeping the picture's shape, as large as fits in a (scale ≤ 1), centred. */
-function contain(name: string, src: string, pic: Picture, a: Area, scale = 1, opacity = 1): Layer {
-  const asp = pic.width / Math.max(1, pic.height);
-  let w = a[2] * scale, h = w / asp;
-  if (h > a[3] * scale) { h = a[3] * scale; w = h * asp; }
-  return { ...base(name, 'image', opacity), src, x: a[0] + a[2] / 2, y: a[1] + a[3] / 2, w, h };
+/** An image keeping the picture's shape, as large as fits in a part of a face's area (scale ≤ 1), centred. */
+function contain(m: Model, name: string, src: string, pic: Picture, face: string, scale = 1, opacity = 1, part: Part = [0, 0, 1, 1]): Layer {
+  const t = areaOf(m, face), asp = pic.width / Math.max(1, pic.height), ar = areaAspect(m, t) * part[2] / part[3];
+  let w = scale, h = (w * ar) / asp;
+  if (h > scale) { h = scale; w = (h * asp) / ar; }
+  const l: Layer = { ...base(name, 'image', opacity), src };
+  placeRect(t, l, [part[0] + part[2] * (1 - w) / 2, part[1] + part[3] * (1 - h) / 2, part[2] * w, part[3] * h]);
+  return l;
 }
 
-function fill(name: string, face: string, color: string, color2 = ''): Layer {
-  return { ...base(name, 'fill'), face, color, color2 };
-}
+/** Colour (top → bottom gradient) over these faces' areas. */
+const fill = (m: Model, name: string, faces: string[], color: string, color2 = ''): Layer[] =>
+  areaFills(m, faces, { ...base(name, 'fill'), color, color2 });
 
-/** A text layer as large as fits in a (rough width estimate: 0.62 em per letter, bold). */
-function text(name: string, t: string, a: Area, maxH: number): Layer {
-  const h = Math.min(maxH, a[2] / Math.max(1, t.length * 0.62));
-  return { ...base(name, 'text'), text: t, color: '#ffffff', outline: '#000000', x: a[0] + a[2] / 2, y: a[1] + a[3] / 2, w: a[2], h };
+/** Colour over the mesh parts no face reaches (a pack's fin edges), so nothing keeps the vanilla print. */
+const otherParts = (m: Model, color: string): Layer[] => leftoverIslands(m).map((r) => ({
+  ...base('other parts', 'fill'), space: 'texture', color, color2: '',
+  x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2, w: Math.max(1, r[2] - r[0]), h: Math.max(1, r[3] - r[1]),
+}));
+
+/** A text layer as large as fits in a part of a face's area (rough width estimate: 0.62 em per letter, bold); maxH as a
+ *  fraction of the area's height. */
+function text(m: Model, name: string, t: string, face: string, part: Part, maxH: number): Layer {
+  const a = areaOf(m, face), ar = areaAspect(m, a);
+  const h = Math.min(maxH, (part[2] * ar) / Math.max(1, t.length * 0.62));
+  const l: Layer = { ...base(name, 'text'), text: t, color: '#ffffff', outline: '#000000' };
+  placeRect(a, l, [part[0], part[1] + part[3] / 2 - h / 2, part[2], h]);
+  return l;
 }
 
 // ---------------------------------------------------------------- pictures
@@ -213,81 +235,83 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     packPhoto = c;
   }
   if (!packPhoto && !arts.length) throw new NoSources();
+  // The meshes' islands: face areas take in their rims, and parts no face has get a colour too.
+  await Promise.all([loadIslands(job.packModel), loadIslands(job.boxModel)]);
 
   // ---- pack
   const P = job.packModel, pack = newLayout();
   pack.baseItem = 'BasicCardPack';
-  const back = area(P, ['back']), front = area(P, ['front']);
   const look: Picture = packPhoto ?? arts[0];
   const c = packPhoto ? edgeColors(packPhoto) : dominantColors(arts[0]);
   if (!packPhoto) {
     c.top = shade(c.top, 0.8); c.bottom = shade(c.bottom, 0.55); // card art colours are bright: darker packaging
-    pack.layers.push(fill('crimps', 'crimpTop', c.top), fill('crimps (bottom)', 'crimpBottom', c.bottom));
+    pack.layers.push(...fill(P, 'crimps', ['crimpTop'], c.top), ...fill(P, 'crimps (bottom)', ['crimpBottom'], c.bottom));
   }
-  pack.layers.push(fill('front', 'front', c.top, c.bottom), fill('back', 'back', c.top, c.bottom), fill('edges', 'edges', c.top, c.bottom),
-    fill('seam', 'seam', c.top, c.bottom));
+  pack.layers.push(...fill(P, 'front', ['front'], c.top, c.bottom), ...fill(P, 'back', ['back'], c.top, c.bottom),
+    ...fill(P, 'edges', ['edges'], c.top, c.bottom), ...fill(P, 'seam', ['seam'], c.top, c.bottom), ...otherParts(P, c.top));
   // Back: the art faded over the packaging colours and the set icon (no set name on packs: user choice 2026-10-03).
   const band = packPhoto ? crop(packPhoto, [0.05, 0.3, 0.95, 0.75]) : arts[0];
-  pack.layers.push(image('back art', await save('packback', cover(band, back[2] / back[3], 768, 'blur(5px) brightness(0.8)')), back, 0.45));
+  pack.layers.push(image(P, 'back art', await save('packback', cover(band, aspectOf(P, 'back'), 768, 'blur(5px) brightness(0.8)')), 'back', 0.45));
   const backIcon = await iconOn(c.top);
-  if (backIcon) pack.layers.push(contain('back icon', backIcon.rel, backIcon.pic, back, 0.45, 0.9));
+  if (backIcon) pack.layers.push(contain(P, 'back icon', backIcon.rel, backIcon.pic, 'back', 0.45, 0.9));
   if (packPhoto) {
-    // The photo includes its crimps and has nearly their shape: stretched over crimps + front.
-    pack.layers.push(image(src.packName || 'pack photo', packRel, area(P, ['crimpTop', 'front', 'crimpBottom']), 1, packStraight));
+    // The photo includes its crimps and has nearly their shape: stretched over crimps + front, a slice on each.
+    pack.layers.push(...placeStacked(P, ['crimpTop', 'front', 'crimpBottom'],
+      { ...base(src.packName || 'pack photo', 'image'), src: packRel, straighten: packStraight }));
   } else {
-    pack.layers.push(image(`art – ${src.cards[0]?.name ?? 'card'}`, await save('packfront', cover(arts[0], front[2] / front[3])), front));
+    pack.layers.push(image(P, `art – ${src.cards[0]?.name ?? 'card'}`, await save('packfront', cover(arts[0], aspectOf(P, 'front'))), 'front'));
     const frontIcon = await iconOn(dominantColors(arts[0]).bottom);
-    if (frontIcon) pack.layers.push(contain('icon', frontIcon.rel, frontIcon.pic, [front[0], front[1] + front[3] * 0.8, front[2], front[3] * 0.16], 1, 0.95));
+    if (frontIcon) pack.layers.push(contain(P, 'icon', frontIcon.rel, frontIcon.pic, 'front', 1, 0.95, [0, 0.8, 1, 0.16]));
   }
 
   // ---- box
   const B = job.boxModel, box = newLayout();
   box.baseItem = 'BasicCardBox';
-  const bf = area(B, ['front']), top = area(B, ['top']), side = area(B, ['right']);
   const boxPhoto = src.boxPhoto && src.box ? await loadImage(url(src.boxPhoto)) : null;
   if (boxPhoto && src.box) {
     // Like a real closed box (the user's hand-made Modern Horizons 3 box, 2026-10-03): the front panel — set name and logo —
     // fills front & back, the lid art goes on top and on the sides. Both are straightened out of the display photo with
     // their corners kept (Adjust straighten…); the dialog lets the user fix the corners before generating.
-    const pan = rectify(boxPhoto, quad(src.box.front), 1024, (1024 * bf[3]) / bf[2]);
-    const lid = rectify(boxPhoto, quad(src.box.lid), 1024, (1024 * top[3]) / top[2]);
+    const pan = rectify(boxPhoto, quad(src.box.front), 1024, 1024 / aspectOf(B, 'front'));
+    const lid = rectify(boxPhoto, quad(src.box.lid), 1024, 1024 / aspectOf(B, 'top'));
     clearBackground(pan);
     clearBackground(lid);
     const pc = edgeColors(pan), lc = edgeColors(lid);
-    box.layers.push(fill('front', 'front', pc.top, pc.bottom), fill('top', 'top', lc.top, lc.bottom), fill('sides', 'right', lc.top, pc.bottom));
-    box.layers.push(image('front panel', await save('boxpanel', pan), bf, 1, { src: src.boxPhoto, pts: src.box.front }));
+    box.layers.push(...fill(B, 'front', ['front'], pc.top, pc.bottom), ...fill(B, 'top', ['top'], lc.top, lc.bottom), ...fill(B, 'sides', ['right'], lc.top, pc.bottom));
+    box.layers.push(image(B, 'front panel', await save('boxpanel', pan), 'front', 1, { src: src.boxPhoto, pts: src.box.front }));
     // A lid cut that is mostly background (detection missed it: Welcome to Rathe 1st Ed.) → the pack photo's art on top and
     // sides instead of an empty lid; the dialog lets the user fix the lid corners instead.
     if (opaqueShare(lid) < 0.7 && packPhoto) {
       const art = crop(packPhoto, [0.06, 0.22, 0.94, 0.72]);
-      box.layers.push(image('top art', await save('boxtop', cover(art, top[2] / top[3])), top));
-      box.layers.push(image('side art', await save('boxside', cover(art, side[2] / side[3])), side));
+      box.layers.push(image(B, 'top art', await save('boxtop', cover(art, aspectOf(B, 'top'))), 'top'));
+      box.layers.push(image(B, 'side art', await save('boxside', cover(art, aspectOf(B, 'right'))), 'right'));
       notes.push('The lid in the box photo was hard to find — top and sides use the pack art (Smart generate… lets you mark the lid).');
     } else {
-      box.layers.push(image('lid art', await save('boxtop', lid), top, 1, { src: src.boxPhoto, pts: src.box.lid }));
+      box.layers.push(image(B, 'lid art', await save('boxtop', lid), 'top', 1, { src: src.boxPhoto, pts: src.box.lid }));
       // Sides: the middle of the lid's solid art (its main character), cut to the side's shape.
-      box.layers.push(image('side art', await save('boxside', cover(solidCore(lid), side[2] / side[3])), side));
+      box.layers.push(image(B, 'side art', await save('boxside', cover(solidCore(lid), aspectOf(B, 'right'))), 'right'));
     }
   } else {
     // No box photo: the second-best card art (or the pack photo's art) with the set name, and the pack photo stacked.
     const art = arts[1] ?? arts[0] ?? crop(look, [0.05, 0.3, 0.95, 0.75]);
     const ac = dominantColors(art);
-    box.layers.push(fill('top', 'top', shade(ac.top, 0.7), shade(ac.bottom, 0.5)), fill('sides', 'right', shade(ac.top, 0.7), shade(ac.bottom, 0.5)));
-    box.layers.push(image('front art', await save('boxfront', cover(art, bf[2] / bf[3])), bf));
-    box.layers.push(image('top art', await save('boxtop', cover(arts[2] ?? art, top[2] / top[3], 1024, 'brightness(0.85)')), top));
+    box.layers.push(...fill(B, 'top', ['top'], shade(ac.top, 0.7), shade(ac.bottom, 0.5)), ...fill(B, 'sides', ['right'], shade(ac.top, 0.7), shade(ac.bottom, 0.5)));
+    box.layers.push(image(B, 'front art', await save('boxfront', cover(art, aspectOf(B, 'front'))), 'front'));
+    box.layers.push(image(B, 'top art', await save('boxtop', cover(arts[2] ?? art, aspectOf(B, 'top'), 1024, 'brightness(0.85)')), 'top'));
     const textW = packPhoto ? 0.58 : 0.9;
-    box.layers.push(text('title', job.title.toUpperCase(), [bf[0] + bf[2] * 0.04, bf[1] + bf[3] * 0.06, bf[2] * textW, bf[3] * 0.22], bf[3] * 0.13));
+    box.layers.push(text(B, 'title', job.title.toUpperCase(), 'front', [0.04, 0.06, textW, 0.22], 0.13));
     // "BOOSTER BOX" centred under the title (narrower box = smaller text).
-    box.layers.push(text('booster box', 'BOOSTER BOX', [bf[0] + bf[2] * (0.04 + textW * 0.15), bf[1] + bf[3] * 0.3, bf[2] * textW * 0.7, bf[3] * 0.12], bf[3] * 0.08));
+    box.layers.push(text(B, 'booster box', 'BOOSTER BOX', 'front', [0.04 + textW * 0.15, 0.3, textW * 0.7, 0.12], 0.08));
     if (packPhoto) {
-      const h = bf[3] * 0.78, w = (h * packPhoto.width) / packPhoto.height;
+      // Three packs stacked at the right of the front (sizes as fractions of the front, seen upright).
+      const h = 0.78, w = (h * packPhoto.width) / packPhoto.height / aspectOf(B, 'front');
       for (let i = 0; i < 3; i++) {
-        const x = bf[0] + bf[2] - w * 0.55 - (2 - i) * w * 0.22, y = bf[1] + bf[3] * 0.55 + (2 - i) * bf[3] * 0.012;
-        box.layers.push({ ...image(`pack ${i + 1}`, packRel, [x - w / 2, y - h / 2, w, h]) });
+        const x = 1 - w * 0.55 - (2 - i) * w * 0.22, y = 0.55 + (2 - i) * 0.012;
+        box.layers.push(image(B, `pack ${i + 1}`, packRel, 'front', 1, undefined, [x - w / 2, y - h / 2, w, h]));
       }
     }
     const sideIcon = await iconOn(shade(ac.top, 0.7));
-    if (sideIcon) box.layers.push(contain('side icon', sideIcon.rel, sideIcon.pic, side, 0.6, 0.9));
+    if (sideIcon) box.layers.push(contain(B, 'side icon', sideIcon.rel, sideIcon.pic, 'right', 0.6, 0.9));
     if (src.cards.length) notes.push(`Box made from card art (${src.cards.slice(0, 3).map((c) => c.name).join(', ')}).`);
   }
   return { pack, box, notes };
@@ -302,8 +326,7 @@ export async function renderLayout(projectId: string, m: Model, layout: Layout):
   if (!b) throw new Error("the game templates aren't available yet (Settings → Game)");
   const vanilla = await loadImage(templateFile('game', b.texture));
   const S = netScale(m), net = document.createElement('canvas');
-  await renderNet(net, m, layout, vanilla, (rel) => projectFile(projectId, rel), S);
-  const tex = composeTexture(m, net, vanilla, S);
+  const tex = (await renderTexture(m, layout, vanilla, null, (rel) => projectFile(projectId, rel), S, net))();
   const icon = m.icon === 'pack' ? await meshIcon(m, tex) : composeIcon(m, net, S, 512, 512).toDataURL('image/png');
   return { texture: tex.toDataURL('image/png'), icon };
 }

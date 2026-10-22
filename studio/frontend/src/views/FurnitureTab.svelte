@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Layout } from '../lib/accessoryArt';
-  import { leaveGuard } from '../lib/leaveGuard';
+  import { LibraryDraft } from '../lib/libraryDraft.svelte';
   import { Ev } from '../lib/events';
   import { createHistory } from '../lib/history.svelte';
   import { accFile, templateFile } from '../lib/urls';
@@ -26,7 +26,8 @@
 <script lang="ts">
   // Custom furniture: new pieces built on a vanilla piece of the chosen type (its behaviour). Vanilla pieces (icons, merged models,
   // spots) come from the game files (game-templates\furniture). Spots are edited numerically with a live 3D view; the maths matches
-  // the mod's Runtime/FurnitureSpots (piece-local Unity space, rotation = Quaternion.Euler(x, y, z)).
+  // the mod's Runtime/FurnitureSpots (piece-local Unity space, rotation = Quaternion.Euler(x, y, z)). Every edit (new, changed and
+  // deleted pieces) stays in the page's draft until Save (lib/libraryDraft); the page's SaveBar (Furniture.svelte) runs save().
   import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
   import { App, EventsOn, errText, ask, originName } from '../lib/api';
@@ -39,7 +40,9 @@
   } from '../lib/figurineView';
   import { type Compartment, type ItemTpl, slotMatrices, grid as slotGrid, meshMatrix } from '../lib/figurineShelf';
 
-  let { notify }: { notify: (t: string, k?: string) => void } = $props();
+  let { notify, dirty = $bindable(false), saving = $bindable(false) }: {
+    notify: (t: string, k?: string) => void; dirty?: boolean; saving?: boolean;
+  } = $props();
 
   let types = $state<any[]>([]);
   let pieces = $state<any[]>([]);        // game templates: vanilla furniture
@@ -51,9 +54,11 @@
   let anchor = $state('');
   let f = $state<any>(null);             // working copy
   let layout = $state<FurLayout>(newFurLayout());
-  let dirty = $state(false);
-  $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this piece will be lost.'));
-  let saving = $state(false);
+  const draft = new LibraryDraft();
+  // The open piece's state when it was opened: it differs = unsaved edits (undoing them makes it clean again).
+  let start = $state('');
+  $effect(() => { draft.shownDirty = !!f && start !== '' && JSON.stringify({ f, layout }) !== start; });
+  $effect(() => { dirty = draft.dirty; });
   let busy = $state(false);
 
   // ---------------------------------------------------------------- paint (the pack/box face editor over the whole piece)
@@ -338,7 +343,7 @@
   const typeInfo = (t: string) => types.find((x) => x.type === t);
   const baseOf = (x: any) => x?.base || typeInfo(x?.type)?.defaultBase || '';
   const tplOf = (x: any) => pieces.find((p) => p.base === baseOf(x));
-  let list = $derived<any[]>(view?.furniture ?? []);
+  let list = $derived<any[]>(view ? draft.apply(view.furniture) : []);
   // Display order of the list (the library order itself stays the Gamify ladder order): library order, name, or source
   // (where it came from: converted mods grouped by mod, then things made in Studio).
   const SORT_LABELS: Record<string, string> = { order: 'List order', name: 'Name', source: 'Source' };
@@ -426,13 +431,14 @@
 
   async function addedFromCatalog(ids: string[]) {
     fromCatalog = false;
+    await leaveShown();
     await load();
     if (ids.length) notify(`Added ${ids.length} piece${ids.length === 1 ? '' : 's'} from the catalog.`, 'ok');
   }
 
   async function saveToCatalog() {
     if (!f) return;
-    if (dirty) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
+    if (draft.shownDirty || draft.parked[f.id]) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
     try { await App.SaveToCatalog('furniture', [f.id]); notify(`"${f.name}" is now the catalog's version.`, 'ok'); }
     catch (e) { notify(errText(e), 'error'); }
   }
@@ -446,48 +452,70 @@
 
   async function switchTab(tp: string) {
     if (tp === tab) return;
-    if (dirty && !(await ask('Discard unsaved changes to this piece?'))) return;
+    await leaveShown();
     tab = tp;
     select(list.find((x) => x.type === tp)?.id ?? '');
   }
 
+  /** Opens a piece: its parked draft if it has one, else the stored one. */
   function select(id: string) {
     selectedId = id;
     picked = id ? [id] : [];
     anchor = id;
-    const x = list.find((p) => p.id === id);
+    const p = draft.parked[id];
+    const x = p?.item ?? view?.furniture.find((q: any) => q.id === id);
     f = x ? JSON.parse(JSON.stringify(x)) : null;
     let l: any = null;
-    try { l = x && view.layouts[id] ? JSON.parse(view.layouts[id]) : null; } catch { l = null; }
+    const raw = p ? p.layout : view?.layouts[id];
+    try { l = x && raw ? JSON.parse(raw) : null; } catch { l = null; }
     layout = l && l.version === 'fur1' ? { ...newFurLayout(), ...l } : newFurLayout();
     mode = 'spots';
     paintChanged = false;
     // Prepare the piece for painting in the background (made once per vanilla piece), so Paint opens at once.
     if (f) paintTemplateFor().catch(() => { /* reported when Paint is opened */ });
     sel = 0;
-    dirty = false;
     framedFor = '';
     hist.reset();
+    start = f ? JSON.stringify({ f, layout }) : '';
+  }
+
+  /** Finishes the open piece before something else opens. One that can't be finished yet (a spot without a customer point…)
+   *  is parked as it is, with the reason (Save opens it and says so). */
+  async function leaveShown() {
+    try { await finishShown(); } catch (e) {
+      if (!f) return;
+      draft.park(f.id, { item: $state.snapshot(f), layout: JSON.stringify(layout), problem: errText(e) });
+      start = JSON.stringify({ f, layout });
+    }
   }
 
   async function trySelect(id: string) {
-    if (dirty && !(await ask('Discard unsaved changes to this piece?'))) return;
+    if (id === selectedId) return;
+    await leaveShown();
     select(id);
   }
 
   async function add() {
-    if (dirty && !(await ask('Discard unsaved changes to this piece?'))) return;
+    await leaveShown();
     try {
       const x = await App.NewFurniture(tab, '', '');
-      await load();
+      draft.add(x);
       select(x.id);
-      notify(`Added ${x.name}.`, 'ok');
     } catch (e) { notify(errText(e), 'error'); }
   }
 
-  async function remove() {
-    if (!f || !(await ask(`Delete "${f.name}"? Placed copies disappear from saves the next time they load.`))) return;
-    try { view = await App.DeleteFurniture(f.id); dirty = false; await load(false); } catch (e) { notify(errText(e), 'error'); }
+  /** Deletes pieces from the draft (Save deletes them in the game; Revert brings them back). */
+  function removeIds(ids: string[]) {
+    const names = list.filter((x) => ids.includes(x.id)).map((x) => x.name);
+    const next = shown.find((x) => !ids.includes(x.id))?.id ?? '';
+    draft.remove(ids);
+    select(ids.includes(selectedId) ? next : selectedId);
+    const one = names.length === 1;
+    notify(`Deleted ${one ? `"${names[0]}"` : `${names.length} pieces`} — Save to remove ${one ? 'it' : 'them'} (placed copies disappear from saves the next time they load), Revert to bring ${one ? 'it' : 'them'} back.`, 'ok');
+  }
+
+  function remove() {
+    if (f) removeIds([f.id]);
   }
 
   /** List click: plain = open it; Ctrl = add/remove it from the selection; Shift = select the range from the last click. */
@@ -505,20 +533,12 @@
     await trySelect(id);
   }
 
-  /** Delete key in the list: deletes the selected pieces after one confirmation (not the spot shortcut of the 3D view). */
-  async function listKey(e: KeyboardEvent) {
+  /** Delete key in the list: deletes the selected pieces from the draft (not the spot shortcut of the 3D view). */
+  function listKey(e: KeyboardEvent) {
     if (e.key !== 'Delete' || !picked.length) return;
     e.preventDefault();
     e.stopPropagation();
-    const names = list.filter((x) => picked.includes(x.id)).map((x) => x.name);
-    const what = names.length === 1 ? `"${names[0]}"` : `${names.length} pieces`;
-    if (!(await ask(`Delete ${what}? Placed copies disappear from saves the next time they load.`))) return;
-    try {
-      view = await App.DeleteFurnitureMany(picked);
-      dirty = false;
-      await load(false);
-      notify(`Deleted ${what}.`, 'ok');
-    } catch (err) { notify(errText(err), 'error'); }
+    removeIds([...picked]);
   }
 
   // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
@@ -530,14 +550,12 @@
     f = o.f;
     layout = o.layout;
     if (!f?.spots?.[sel]) sel = 0;
-    dirty = true;
     redraw++;
   }, () => !!dragging);
   const undo = () => hist.undo();
   const redo = () => hist.redo();
 
   function changed() {
-    dirty = true;
     if (!dragging) hist.edited();
     queueMicrotask(() => { if (!dragging) hist.base = snapshot(); });
   }
@@ -1354,42 +1372,62 @@
 
   // ---------------------------------------------------------------- save
 
-  async function save() {
-    if (!f) return;
+  /** Finishes the open piece's edits (own model baked, paint stored, icon rendered) and parks them in the draft. Runs before
+   *  another piece opens and on Save. */
+  async function finishShown() {
+    if (!f || !draft.shownDirty) return;
+    let icon = '';
+    if (layout.model) {
+      if (!t?.bounds) throw new Error(`No size known for ${baseOf(f)} — the game templates aren't available yet (Settings → Game).`);
+      const b = await App.BakeFurnitureModel(f.id, layout.model, layout.texture, modelPlacement() as any);
+      f.mesh = b.mesh; f.texture = b.texture;
+      if (!f.icon || layout.autoIcon) { icon = await renderIcon(t?.iconSize ?? [512, 512]); layout.autoIcon = true; }
+    } else {
+      // A texture that belonged to a removed model goes with it (older libraries: its fixed file name).
+      const hadModel = !!f.mesh;
+      f.mesh = '';
+      if (hadModel || f.texture === `images/${f.id}_texture.png`) f.texture = '';
+    }
+    // Every spot needs a customer point (customers can't take from a spot without one): refuse to save instead of guessing.
+    const missing = (f.spots ?? []).map((q: any, i: number) => (q.customer?.length === 2 ? 0 : i + 1)).filter((n: number) => n);
+    if (missing.length) {
+      sel = missing[0] - 1; part = 'spot'; redraw++;
+      throw new Error(`${f.name}: spot${missing.length > 1 ? 's' : ''} ${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no customer point (shown in red). Select the spot and press C to give it one, or share a nearby spot's point.`);
+    }
+    const paintIcon = await savePaint();
+    if (paintIcon) icon = paintIcon;
+    const clean = JSON.parse(JSON.stringify(f));
+    for (const k of ['description', 'icon', 'texture', 'tint', 'mesh', 'base', 'paint']) if (!clean[k]) delete clean[k];
+    draft.park(f.id, { item: clean, layout: JSON.stringify(layout), icon: icon || draft.parked[f.id]?.icon });
+    start = JSON.stringify({ f, layout });
+  }
+
+  /** The page's Save (Furniture.svelte's SaveBar): the open piece is finished, then the whole draft is stored. */
+  export async function save() {
     saving = true;
     try {
-      let icon = '';
-      if (layout.model) {
-        if (!t?.bounds) throw new Error(`No size known for ${baseOf(f)} — the game templates aren't available yet (Settings → Game).`);
-        const b = await App.BakeFurnitureModel(f.id, layout.model, layout.texture, modelPlacement() as any);
-        f.mesh = b.mesh; f.texture = b.texture;
-        if (!f.icon || layout.autoIcon) { icon = await renderIcon(t?.iconSize ?? [512, 512]); layout.autoIcon = true; }
-      } else {
-        // A texture that belonged to a removed model goes with it (older libraries: its fixed file name).
-        const hadModel = !!f.mesh;
-        f.mesh = '';
-        if (hadModel || f.texture === `images/${f.id}_texture.png`) f.texture = '';
+      await finishShown();
+      const bad = draft.firstProblem();
+      if (bad) {
+        const tp = list.find((x) => x.id === bad[0])?.type;
+        if (tp) tab = tp;
+        select(bad[0]);
+        throw new Error(bad[1]);
       }
-      // Every spot needs a customer point (customers can't take from a spot without one): refuse to save instead of guessing.
-      const missing = (f.spots ?? []).map((q: any, i: number) => (q.customer?.length === 2 ? 0 : i + 1)).filter((n: number) => n);
-      if (missing.length) {
-        sel = missing[0] - 1; part = 'spot'; redraw++;
-        throw new Error(`Spot${missing.length > 1 ? 's' : ''} ${missing.join(', ')} ${missing.length > 1 ? 'have' : 'has'} no customer point (shown in red). Select the spot and press C to give it one, or share a nearby spot's point.`);
-      }
-      const paintIcon = await savePaint();
-      if (paintIcon) icon = paintIcon;
-      const clean = JSON.parse(JSON.stringify(f));
-      for (const k of ['description', 'icon', 'texture', 'tint', 'mesh', 'base', 'paint']) if (!clean[k]) delete clean[k];
-      view = await App.SaveFurniture(clean, JSON.stringify(layout), icon);
+      view = await App.SaveLibraryDraft('furniture', draft.request() as any);
+      draft.clear();
       bust = Date.now();
-      dirty = false;
-      const id = f.id;
-      f = JSON.parse(JSON.stringify(list.find((x) => x.id === id)));
-      if (f.type !== tab) tab = f.type;
-      hist.base = snapshot();
-      notify(view.installed ? 'Saved and installed — restart the game to see it.' : 'Saved. Set the game folder in Settings to install it.', 'ok');
+      select(view.furniture.some((x: any) => x.id === selectedId) ? selectedId : (shown[0]?.id ?? ''));
+      if (f && f.type !== tab) tab = f.type;
+      notify(view.installed ? 'Saved — restart the game to see it.' : 'Saved. Set the game folder in Settings so the game reads it.', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     saving = false;
+  }
+
+  /** The page's Revert: every unsaved change is thrown away. */
+  export function revert() {
+    draft.clear();
+    select(view?.furniture.some((x: any) => x.id === selectedId) ? selectedId : (shown[0]?.id ?? ''));
   }
 
   /** Selects a part of the selected spot (B body, C customer point, T price tag); vanilla spots become editable. */
@@ -1510,7 +1548,8 @@
     {#each shown as x (x.id)}
       <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
         <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{:else if tplOf(x)?.icon}<img src={furnUrl(tplOf(x).icon)} alt="" />{/if}</span>
-        <span class="grow">{x.name}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originName(originOf(x))}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
+        <span class="grow">{x.id === selectedId && f ? f.name : x.name}
+          {#if draft.parked[x.id]?.problem}<span class="warn small" title={draft.parked[x.id].problem}>⚠</span>{/if}{#if draft.isNew(x.id)}<span class="tag small" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originName(originOf(x))}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
       </button>
     {/each}
     <button onclick={add}>+ New {typeInfo(tab)?.one ?? ''}</button>
@@ -1546,6 +1585,8 @@
             <button class:on={mode === 'spots'} onclick={() => (mode = 'spots')}>Spots & positions</button>
             <button class:on={mode === 'paint'} onclick={openPaint}>Paint{painted() ? ' ●' : ''}</button>
           </span>
+          <button class="small" onclick={undo} disabled={!hist.canUndo || saving} title="Undo (Ctrl+Z)">↶ Undo</button>
+          <button class="small" onclick={redo} disabled={!hist.canRedo || saving} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
           <span class="thumbs"><span class="small muted">Shop icon:</span>
             {#if f.icon}<img src={accUrl(f.icon)} alt="icon" />{:else if t?.icon}<img src={furnUrl(t.icon)} alt="vanilla icon" />{/if}
           </span>
@@ -1860,14 +1901,6 @@
         <p class="muted small">Empty = the "Start from" piece's vanilla values.</p>
       </section>
 
-      <div class="row savebar">
-        <div class="grow"></div>
-        {#if dirty}<span class="muted small">Unsaved changes</span>{/if}
-        <button onclick={undo} disabled={!hist.canUndo || saving} title="Undo (Ctrl+Z)">↶ Undo</button>
-        <button onclick={redo} disabled={!hist.canRedo || saving} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↷ Redo</button>
-        <button onclick={() => select(f.id)} disabled={!dirty || saving} title="Throw away every change since the last save.">Revert</button>
-        <button class="primary" onclick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save & install'}</button>
-      </div>
     </div>
   {:else if view}
     <p class="muted" style="padding:20px">No {typeInfo(tab)?.title.toLowerCase() ?? 'furniture'} yet — click “+ New {typeInfo(tab)?.one ?? ''}”.</p>
@@ -1882,6 +1915,8 @@
   .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
   .list button.active, .spotlist button.active { border-color: var(--accent); background: #22304d; }
   .list button.picked { border-color: var(--accent); background: #1c2740; }
+  .dot { color: var(--accent-2); margin-left: 4px; }
+  .tag { color: var(--accent); margin-left: 4px; }
   .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .sortby select { flex: 1; }
   .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
@@ -1940,7 +1975,6 @@
   .thumbs { display: flex; gap: 8px; align-items: center; }
   .thumbs img { height: 44px; border-radius: 4px; background: var(--bg); }
   .check { display: flex; align-items: center; gap: 6px; }
-  .savebar { position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; }
   .wrap.row, .row.wrap { flex-wrap: wrap; }
   button.tiny { padding: 2px 7px; font-size: 12px; }
   .small { font-size: 12px; }

@@ -101,6 +101,7 @@ type ShopLookView struct {
 	// URLs of the game's layouts for the previews by id (shopLayouts); missing = not read yet.
 	Layouts  map[string]string `json:"layouts"`
 	CardBack CardBackView      `json:"cardBack"`
+	Boxes    []BoxLookView     `json:"boxes"` // the Boxes tab (app_boxlook.go)
 }
 
 // CardBackView is the global card back: the picture it was cut from and the crop (to edit it again), and the result.
@@ -249,6 +250,7 @@ func (a *App) ShopLook() (ShopLookView, error) {
 			v.Layouts[id] = "/signtemplates/" + file
 		}
 	}
+	v.Boxes = a.boxLookViews(p)
 	return v, nil
 }
 
@@ -508,6 +510,7 @@ type ShopLookSave struct {
 	Text     *ShopSignText              `json:"text"`     // colour, size, outline, outline colour (the font: Font)
 	ShopName *string                    `json:"shopName"` // a new name for the shop: written into the game's saves (game closed)
 	CardBack *CardBackSave              `json:"cardBack"`
+	Boxes    map[string]BoxLookSave     `json:"boxes"` // by box id (boxLooks)
 }
 
 // CardBackSave is the card back of the draft: a source picture (ImportCardBack / GenerateCardBack) and its crop; File "" = none.
@@ -580,6 +583,11 @@ func (a *App) SaveShopLook(s ShopLookSave) (ShopLookView, error) {
 		kvs = append(kvs, [3]string{pic.section, pic.cropKey, strings.Join(crops, listSeparator)},
 			[3]string{pic.section, pic.imageKey, strings.Join(names, listSeparator)})
 	}
+	boxKVs, boxReplaced, err := a.saveBoxLooks(p, s.Boxes)
+	if err != nil {
+		return ShopLookView{}, err
+	}
+	kvs, replaced = append(kvs, boxKVs...), append(replaced, boxReplaced...)
 	for id, on := range s.Options {
 		o, ok := shopOptions[id]
 		if !ok {
@@ -701,10 +709,10 @@ func hexColor(s string) (string, error) {
 	return strings.ToUpper(s), nil
 }
 
-// shopFilesInUse are the setup's ShopSign folder files the settings name: every slot's picture and the shop name's
-// font, plus the card back's source picture.
+// shopFilesInUse are the setup's ShopSign folder files the settings name: every slot's picture, every box's texture and the
+// shop name's font, plus the card back's source picture.
 func (a *App) shopFilesInUse(p string) []string {
-	var out []string
+	out := boxFilesInUse(p)
 	if d, ok := a.loadCardBackDesign(); ok {
 		out = append(out, d.File)
 	}
@@ -720,8 +728,9 @@ func (a *App) shopFilesInUse(p string) []string {
 }
 
 // pruneFiles deletes the files the page copies (font_*; every picture slot's prefix*: pictures, door sign designs and their
-// backgrounds; back_*: card back pictures) from dir unless they're in use: named in inUse, the design of such a picture, or the
-// font/background that design names. Other files (e.g. a picture set by hand) stay.
+// backgrounds; back_*: card back pictures; box_* / boximg_*: box textures and the images their layouts place) from dir unless
+// they're in use: named in inUse, the design of such a picture, or a file that design names (a door side's font/background, a
+// box layout's images). Other files (e.g. a picture set by hand) stay.
 func pruneFiles(dir string, inUse []string) {
 	used := map[string]bool{}
 	for _, f := range inUse {
@@ -731,15 +740,11 @@ func pruneFiles(dir string, inUse []string) {
 			continue
 		}
 		used[designFile(f)] = true
-		var d struct {
-			Font       struct{ File string } `json:"font"`
-			Background struct{ File string } `json:"background"`
-		}
-		if json.Unmarshal(b, &d) == nil {
-			used[d.Font.File], used[d.Background.File] = true, true
+		for _, name := range fsutil.JSONStrings(b) {
+			used[name] = true
 		}
 	}
-	prefixes := []string{shopFontPrefix, cardBackPrefix}
+	prefixes := []string{shopFontPrefix, cardBackPrefix, boxPrefix, boxImagePrefix}
 	for _, pic := range shopPictures {
 		prefixes = append(prefixes, pic.prefix)
 	}

@@ -1499,6 +1499,50 @@ export namespace main {
 	        this.layout = source["layout"];
 	    }
 	}
+	export class BoxLookSave {
+	    png: string;
+	    twinPng: string;
+	    layout: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoxLookSave(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.png = source["png"];
+	        this.twinPng = source["twinPng"];
+	        this.layout = source["layout"];
+	    }
+	}
+	export class BoxLookView {
+	    id: string;
+	    title: string;
+	    group: string;
+	    model: string;
+	    vanilla: string;
+	    file: string;
+	    image: string;
+	    layout: string;
+	    twin: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BoxLookView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.group = source["group"];
+	        this.model = source["model"];
+	        this.vanilla = source["vanilla"];
+	        this.file = source["file"];
+	        this.image = source["image"];
+	        this.layout = source["layout"];
+	        this.twin = source["twin"];
+	    }
+	}
 	export class CardBackSave {
 	    file: string;
 	    crop: number[];
@@ -1743,6 +1787,59 @@ export namespace main {
 	        this.cards = source["cards"];
 	    }
 	}
+	export class LibraryDraftItem {
+	    item: number[];
+	    layout: string;
+	    texture: string;
+	    icon: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryDraftItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.item = source["item"];
+	        this.layout = source["layout"];
+	        this.texture = source["texture"];
+	        this.icon = source["icon"];
+	    }
+	}
+	export class LibraryDraft {
+	    order: string[];
+	    deleted: string[];
+	    items: LibraryDraftItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryDraft(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.order = source["order"];
+	        this.deleted = source["deleted"];
+	        this.items = this.convertValues(source["items"], LibraryDraftItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ModCheck {
 	    logFound: boolean;
 	    when: string;
@@ -1761,6 +1858,22 @@ export namespace main {
 	        this.loaded = source["loaded"];
 	        this.summary = source["summary"];
 	        this.errors = source["errors"];
+	    }
+	}
+	export class ModSettingChange {
+	    section: string;
+	    key: string;
+	    value: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModSettingChange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.section = source["section"];
+	        this.key = source["key"];
+	        this.value = source["value"];
 	    }
 	}
 	export class ModSettingsView {
@@ -2138,6 +2251,7 @@ export namespace main {
 	    text?: ShopSignText;
 	    shopName?: string;
 	    cardBack?: CardBackSave;
+	    boxes: Record<string, BoxLookSave>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ShopLookSave(source);
@@ -2153,6 +2267,7 @@ export namespace main {
 	        this.text = this.convertValues(source["text"], ShopSignText);
 	        this.shopName = source["shopName"];
 	        this.cardBack = this.convertValues(source["cardBack"], CardBackSave);
+	        this.boxes = this.convertValues(source["boxes"], BoxLookSave, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2254,6 +2369,7 @@ export namespace main {
 	    sign: ShopSignView;
 	    layouts: Record<string, string>;
 	    cardBack: CardBackView;
+	    boxes: BoxLookView[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ShopLookView(source);
@@ -2267,6 +2383,7 @@ export namespace main {
 	        this.sign = this.convertValues(source["sign"], ShopSignView);
 	        this.layouts = source["layouts"];
 	        this.cardBack = this.convertValues(source["cardBack"], CardBackView);
+	        this.boxes = this.convertValues(source["boxes"], BoxLookView);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

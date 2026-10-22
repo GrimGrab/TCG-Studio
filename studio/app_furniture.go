@@ -57,6 +57,7 @@ func (a *App) furnitureBases() map[string]string {
 	return m
 }
 
+// NewFurniture makes a draft with a fresh id; nothing is stored until the page's Save (SaveLibraryDraft).
 func (a *App) NewFurniture(typ, name, base string) (setfmt.Furniture, error) {
 	l, err := a.items()
 	if err != nil {
@@ -72,46 +73,7 @@ func (a *App) NewFurniture(typ, name, base string) (setfmt.Furniture, error) {
 	if base == k.DefaultBase {
 		base = ""
 	}
-	f := setfmt.Furniture{ID: l.NewID(), Type: typ, Name: name, Base: base}
-	l.PutFurniture(f)
-	_, err = a.saveLibrary(l)
-	return f, err
-}
-
-// SaveFurniture stores a piece and its editor state (layout JSON: imported model source, rotation, height; "" keeps it). iconPNG is
-// a data URL (or raw base64) of an icon made in the editor; empty keeps the current one.
-func (a *App) SaveFurniture(f setfmt.Furniture, layout, iconPNG string) (AccessoryView, error) {
-	l, err := a.items()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if !setfmt.SafeID(f.ID) {
-		return AccessoryView{}, errors.New("bad furniture id")
-	}
-	if err := errors.Join(putEditorImage(l, f.ID, "icon", iconPNG, &f.Icon), putLayout(l, f.ID, layout)); err != nil {
-		return AccessoryView{}, err
-	}
-	l.PutFurniture(f)
-	return a.saveLibrary(l)
-}
-
-func (a *App) DeleteFurniture(id string) (AccessoryView, error) {
-	return a.DeleteFurnitureMany([]string{id})
-}
-
-// DeleteFurnitureMany removes several pieces at once (one save and install).
-func (a *App) DeleteFurnitureMany(ids []string) (AccessoryView, error) {
-	l, err := a.items()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if err := a.keepInCatalog("", ids, l); err != nil {
-		return AccessoryView{}, err
-	}
-	for _, id := range ids {
-		l.DeleteFurniture(id)
-	}
-	return a.saveLibrary(l)
+	return setfmt.Furniture{ID: l.NewID(), Type: typ, Name: name, Base: base}, nil
 }
 
 // BakeFurnitureModel places an imported source model (ImportFigurineModel) in the piece's root space: rotated, scaled to the

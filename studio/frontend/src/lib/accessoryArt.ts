@@ -1,7 +1,7 @@
 // Accessory art: an editor "net" (the model unfolded, each face upright as seen from outside) with layers on top, mapped into
 // the game texture through the model's face → texture targets (internal/uvmap/models.go).
 
-import { renderMeshIcon } from './meshView';
+import { loadObjUV, renderMeshIcon } from './meshView';
 
 import { templateFile } from './urls';
 
@@ -50,10 +50,16 @@ export interface Layer {
   visible: boolean;
   opacity: number;              // 0..1
   blend: GlobalCompositeOperation;
-  // image / text placement in net units (centre, size) and rotation in degrees
+  // Placement (centre, size) and rotation in degrees: in net units, or for a map layer in texture pixels at the model's
+  // textureSize (a map fill is this rectangle).
   x: number; y: number; w: number; h: number; rot: number;
+  space?: 'texture';            // on the texture map (UV view) instead of the faces
+  mirror?: boolean;             // map layer: mirrored along its own x (with rot in 90° steps: any texture area's orientation)
+  crop?: number[];              // map image: the part drawn, u0, v0, u1, v1 as fractions of the picture
+  clip?: number[];              // map layer: drawn only inside this texture rect (x0, y0, x1, y1 px) — a piece of a converted face layer
+  skew?: number;                // map layer: x shifted by skew × y (after rot and mirror) — a turned face layer on a stretched area
   src?: string;                 // image: library-relative path
-  face?: string;                // fill: face id, '' = every face
+  face?: string;                // fill on the faces: face id, '' = every face
   color?: string; color2?: string; // fill: solid or top→bottom gradient; text colour
   text?: string; outline?: string; // text: outline colour ('' = none)
   straighten?: { src: string; pts: number[] }; // image made by Straighten: the original photo and its corners (re-editable)
@@ -182,9 +188,12 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
   for (const f of netFaces(m)) { const r = faceRect(m, f, S); ctx.rect(r.x, r.y, r.w, r.h); }
   ctx.clip();
   const imgs = await layerImages(layout, imageUrl);
-  for (const l of layout.layers) if (l.visible) drawLayer(ctx, m, l, S, imgs);
+  for (const l of layout.layers) if (l.visible && !isMapLayer(l)) drawLayer(ctx, m, l, S, imgs);
   ctx.restore();
 }
+
+/** A layer on the texture map (UV view) rather than on the faces. */
+export const isMapLayer = (l: Layer) => l.space === 'texture';
 
 /** The layers' images, loaded (missing ones left out). */
 async function layerImages(layout: Layout, imageUrl: (rel: string) => string): Promise<Map<string, HTMLImageElement>> {
@@ -216,23 +225,58 @@ function drawLayer(ctx: CanvasRenderingContext2D, m: Model, l: Layer, S: number,
   } else {
     ctx.translate((l.x - b.x0) * S, (l.y - b.y0) * S);
     ctx.rotate((l.rot * Math.PI) / 180);
-    const img = l.kind === 'image' && l.src ? imgs.get(l.src) : undefined;
-    if (img) ctx.drawImage(img, (-l.w / 2) * S, (-l.h / 2) * S, l.w * S, l.h * S);
-    else if (l.kind === 'text' && l.text) {
-      const px = l.h * S;
-      ctx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      if (l.outline) {
-        ctx.lineWidth = Math.max(2, px * 0.12);
-        ctx.strokeStyle = l.outline;
-        ctx.lineJoin = 'round';
-        ctx.strokeText(l.text, 0, 0);
-      }
-      ctx.fillStyle = l.color || '#fff';
-      ctx.fillText(l.text, 0, 0);
-    }
+    drawShape(ctx, l, S, imgs);
   }
+  ctx.restore();
+}
+
+/** Draws a layer's image or text centred on the origin, s canvas pixels per layer unit. */
+function drawShape(ctx: CanvasRenderingContext2D, l: Layer, s: number, imgs: Map<string, HTMLImageElement>) {
+  const img = l.kind === 'image' && l.src ? imgs.get(l.src) : undefined;
+  if (img) {
+    const [u0, v0, u1, v1] = l.crop ?? [0, 0, 1, 1];
+    ctx.drawImage(img, u0 * img.width, v0 * img.height, (u1 - u0) * img.width, (v1 - v0) * img.height, (-l.w / 2) * s, (-l.h / 2) * s, l.w * s, l.h * s);
+  } else if (l.kind === 'text' && l.text) {
+    const px = l.h * s;
+    ctx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (l.outline) {
+      ctx.lineWidth = Math.max(2, px * 0.12);
+      ctx.strokeStyle = l.outline;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(l.text, 0, 0);
+    }
+    ctx.fillStyle = l.color || '#fff';
+    ctx.fillText(l.text, 0, 0);
+  }
+}
+
+/** Draws a map layer onto the texture canvas (k = canvas pixels per textureSize pixel). A fill is its rectangle. */
+function drawMapLayer(ctx: CanvasRenderingContext2D, l: Layer, k: number, imgs: Map<string, HTMLImageElement>) {
+  ctx.save();
+  ctx.globalAlpha = l.opacity;
+  ctx.globalCompositeOperation = l.blend || 'source-over';
+  if (l.clip) {
+    const [x0, y0, x1, y1] = l.clip;
+    ctx.beginPath();
+    ctx.rect(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k);
+    ctx.clip();
+  }
+  ctx.translate(l.x * k, l.y * k);
+  ctx.rotate((l.rot * Math.PI) / 180);
+  if (l.mirror) ctx.scale(-1, 1);
+  if (l.skew) ctx.transform(1, 0, l.skew, 1, 0, 0);
+  if (l.kind === 'fill') {
+    const w = l.w * k, h = l.h * k;
+    if (l.color2) {
+      const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+      g.addColorStop(0, l.color || '#000');
+      g.addColorStop(1, l.color2);
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = l.color || '#000';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+  } else drawShape(ctx, l, k, imgs);
   ctx.restore();
 }
 
@@ -247,7 +291,7 @@ export async function layerTextures(m: Model, layout: Layout, imageUrl: (rel: st
   const imgs = await layerImages(layout, imageUrl);
   const groups: { layers: Layer[]; blend: GlobalCompositeOperation }[] = [];
   for (const l of layout.layers) {
-    if (!l.visible) continue;
+    if (!l.visible || isMapLayer(l)) continue;
     const blend = l.blend || 'source-over', last = groups.at(-1);
     if (last && ((blend === 'source-over' && last.blend === 'source-over') || groups.length >= max)) last.layers.push(l);
     else groups.push({ layers: [l], blend });
@@ -285,6 +329,386 @@ export function composeTexture(m: Model, net: HTMLCanvasElement, vanilla: HTMLIm
     }
   }
   return c;
+}
+
+/** A canvas copy of an image (or a plain one of `size` when there is none). */
+function canvasOf(img: HTMLImageElement | HTMLCanvasElement | null, size: number, color = '#3a3a3a'): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = img?.width || size; c.height = img?.height || size;
+  const ctx = c.getContext('2d')!;
+  if (img) ctx.drawImage(img, 0, 0);
+  else { ctx.fillStyle = color; ctx.fillRect(0, 0, c.width, c.height); }
+  return c;
+}
+
+/**
+ * Renders a layout: draws the net view into `net` (faces upright, as the editor shows them) and returns a function that makes
+ * the game texture. `vanilla` is the base item's texture, `painted` the layout's painted texture (textureFile), when used.
+ * Without map layers the texture is only composed when asked for (the editor's Faces view skips it). With them, the layers
+ * are applied in list order — each run of face layers mapped in over what's below it, map layers drawn straight onto the
+ * texture — and the net shows the finished texture.
+ */
+export async function renderTexture(m: Model, layout: Layout, vanilla: HTMLImageElement | HTMLCanvasElement | null,
+  painted: HTMLImageElement | HTMLCanvasElement | null, imageUrl: (rel: string) => string, S: number, net: HTMLCanvasElement): Promise<() => HTMLCanvasElement> {
+  if (!layout.layers.some((l) => l.visible && isMapLayer(l))) {
+    if (!painted) {
+      await renderNet(net, m, layout, vanilla, imageUrl, S);
+      return () => composeTexture(m, net, vanilla, S);
+    }
+    // The painted texture projected onto the faces (net view, icons) — always through the faces' own targets, it is in our
+    // layout, not the base's — while the texture keeps it at full size with only the layers mapped on top.
+    await renderNet(net, m, { ...layout, base: 'vanilla', baseItem: undefined }, painted, imageUrl, S);
+    const layers = document.createElement('canvas');
+    await renderNet(layers, m, layout, null, imageUrl, S, true);
+    return () => composeTexture(m, layers, painted, S);
+  }
+  const imgs = await layerImages(layout, imageUrl);
+  const scratch = document.createElement('canvas');
+  // The base: the painted texture, the base item's art moved into our faces (pack bases) or a plain colour, else vanilla.
+  let tex: HTMLCanvasElement;
+  if (painted) tex = canvasOf(painted, m.textureSize);
+  else if (layout.base === 'color' || layout.baseItem) {
+    await renderNet(scratch, m, { ...layout, layers: [] }, vanilla, imageUrl, S);
+    tex = composeTexture(m, scratch, vanilla, S);
+  } else tex = canvasOf(vanilla, m.textureSize);
+  const layers = layout.layers.filter((l) => l.visible);
+  for (let i = 0; i < layers.length;) {
+    const map = isMapLayer(layers[i]);
+    let j = i;
+    while (j < layers.length && isMapLayer(layers[j]) === map) j++;
+    const run = layers.slice(i, j);
+    i = j;
+    if (map) {
+      const ctx = tex.getContext('2d')!;
+      for (const l of run) drawMapLayer(ctx, l, tex.width / m.textureSize, imgs);
+      continue;
+    }
+    // Normal layers go over the texture as they are (no resampling); other blends need what's below them in the net.
+    const plain = run.every((l) => (l.blend || 'source-over') === 'source-over');
+    const runLayout = { ...layout, layers: run, base: 'vanilla' as const, baseItem: undefined };
+    await renderNet(scratch, m, runLayout, plain ? null : tex, imageUrl, S, plain);
+    tex = composeTexture(m, scratch, tex, S);
+  }
+  await renderNet(net, m, { ...layout, layers: [], base: 'vanilla', baseItem: undefined }, tex, imageUrl, S);
+  return () => tex;
+}
+
+// ---------------------------------------------------------------- placing map layers in texture areas
+
+// The mesh's UV islands (bounding boxes in textureSize px), loaded once per model (loadIslands): a face's area takes in the
+// islands that belong to it, so art reaches the rounded rims next to it (the pack's strips between front and crimps).
+const islandCache = new Map<string, number[][]>();
+const islandLoads = new Map<string, Promise<number[][]>>();
+const meshParts = (m: Model) => (m.preview ?? []).filter((p) => (p.texture ?? 'main') === 'main' && !p.glass).map(previewUrl);
+const meshKey = (m: Model) => meshParts(m).join('|') + '|' + m.textureSize;
+
+/** Loads the UV islands of a model's textured meshes (needed before placing art in its areas; missing meshes = no islands). */
+export function loadIslands(m: Model): Promise<number[][]> {
+  const key = meshKey(m);
+  if (!islandLoads.has(key)) islandLoads.set(key, (async () => {
+    const out: number[][] = [];
+    for (const url of meshParts(m)) {
+      const mesh = await loadObjUV(url).catch(() => null);
+      if (!mesh) continue;
+      const { uv, pos } = mesh;
+      // Triangles sharing a UV edge and facing the same way (one of six directions) are one island, as Go's uvmap Panels:
+      // a pack's rims between front and crimps are their own islands, not part of one big wrap.
+      const n = uv.length / 6, parent = Array.from({ length: n }, (_, i) => i);
+      const find = (x: number): number => { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; };
+      const facing: number[] = [];
+      for (let t = 0; t < n; t++) {
+        const p = (k: number, c: number) => pos[(t * 3 + k) * 3 + c];
+        const u = [p(1, 0) - p(0, 0), p(1, 1) - p(0, 1), p(1, 2) - p(0, 2)], w = [p(2, 0) - p(0, 0), p(2, 1) - p(0, 1), p(2, 2) - p(0, 2)];
+        const nn = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+        let ax = 0;
+        for (let q = 1; q < 3; q++) if (Math.abs(nn[q]) > Math.abs(nn[ax])) ax = q;
+        facing.push(ax * 2 + (nn[ax] < 0 ? 1 : 0));
+      }
+      const vk = (i: number) => `${Math.round(uv[i * 2] * 1e5)},${Math.round(uv[i * 2 + 1] * 1e5)}`;
+      const edges = new Map<string, number[]>();
+      for (let t = 0; t < n; t++) for (let k = 0; k < 3; k++) {
+        const a = vk(t * 3 + k), b = vk(t * 3 + ((k + 1) % 3)), key = a < b ? a + '|' + b : b + '|' + a;
+        const l = edges.get(key);
+        if (l) l.push(t); else edges.set(key, [t]);
+      }
+      for (const l of edges.values()) for (let j = 1; j < l.length; j++) if (facing[l[0]] === facing[l[j]]) parent[find(l[0])] = find(l[j]);
+      const boxes = new Map<number, number[]>();
+      for (let t = 0; t < n; t++) {
+        const b = boxes.get(find(t)) ?? [Infinity, Infinity, -Infinity, -Infinity];
+        for (let k = 0; k < 3; k++) {
+          const i = t * 3 + k, x = uv[i * 2] * m.textureSize, y = (1 - uv[i * 2 + 1]) * m.textureSize;
+          b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y);
+        }
+        boxes.set(find(t), b);
+      }
+      out.push(...boxes.values());
+    }
+    islandCache.set(key, out);
+    return out;
+  })());
+  return islandLoads.get(key)!;
+}
+
+/** A face's texture areas: its targets, without the margins drawn around another of its targets (a pack's or box's bleed),
+ *  the main one grown over its islands (faceArea). */
+function faceAreas(m: Model, f: Face): Target[] {
+  const main = mainTarget(f), grown = faceArea(m, f.id);
+  return ownTargets(f).map((t) => (t === main && grown ? grown : t));
+}
+
+/** A face's targets without the margins drawn around another of its targets. */
+function ownTargets(f: Face): Target[] {
+  const inside = (a: number[], b: number[]) => a !== b && a[0] <= b[0] && a[1] <= b[1] && a[2] >= b[2] && a[3] >= b[3];
+  return f.targets.filter((t) => !f.targets.some((o) => o !== t && inside(t.rect, o.rect)));
+}
+
+/** A face's largest target that isn't a bleed margin (a pack's shown front, a box front). */
+function mainTarget(f: Face): Target | undefined {
+  const size = (t: Target) => (t.rect[2] - t.rect[0]) * (t.rect[3] - t.rect[1]);
+  return f.targets.filter((t) => !t.bleed).sort((a, b) => size(b) - size(a))[0] ?? f.targets[0];
+}
+
+/** Areas grown from a target (areaAspect needs the target they were measured from). */
+const grownFrom = new WeakMap<Target, Target>();
+
+/**
+ * The texture area a face's art goes in: its main target, grown to the mesh islands that belong to it — the islands mostly
+ * inside it, and islands no face has that run along one of its edges (same span, touching), like a pack's thin rims between
+ * the front and the crimps. Without loaded islands (loadIslands) it is the target itself.
+ */
+export function faceArea(m: Model, faceId: string): Target | undefined {
+  const f = m.faces.find((x) => x.id === faceId);
+  const t = f && mainTarget(f);
+  const r = t && grownRects(m)?.get(faceId);
+  if (!t || !r) return t;
+  const out = { ...t, rect: r.map(Math.round) };
+  grownFrom.set(out, t);
+  return out;
+}
+
+/** Every face's main target grown over its islands (see faceArea); null without loaded islands. */
+function grownRects(m: Model): Map<string, number[]> | null {
+  const islands = islandCache.get(meshKey(m));
+  if (!islands?.length) return null;
+  const mains = new Map<string, number[]>(), rects = new Map<string, number[]>();
+  for (const f of m.faces) { const t = mainTarget(f); if (t) { mains.set(f.id, t.rect); rects.set(f.id, [...t.rect]); } }
+  const all = m.faces.flatMap((x) => ownTargets(x).map((g) => g.rect));
+  const share = (a: number[], b: number[]) => {
+    const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]), h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+    return w > 0 && h > 0 ? (w * h) / Math.max(1e-6, (a[2] - a[0]) * (a[3] - a[1])) : 0;
+  };
+  const add = (r: number[], i: number[]) => { r[0] = Math.min(r[0], i[0]); r[1] = Math.min(r[1], i[1]); r[2] = Math.max(r[2], i[2]); r[3] = Math.max(r[3], i[3]); };
+  const placed = new Set<number[]>();
+  // Islands mostly inside a face's main target are its own.
+  for (const i of islands) for (const [id, r] of rects) if (share(i, mains.get(id)!) >= 0.5) { add(r, i); placed.add(i); }
+  // Islands no target covers belong to the face whose edge they run along (span inside it, touching) — the closest span.
+  // A few passes: a rim next to a rim (the seam's two thin strips) joins once the first one did.
+  const tol = 3;
+  for (let pass = 0; pass < 3; pass++) {
+    for (const i of islands) {
+      if (placed.has(i) || all.some((g) => share(i, g) >= 0.5)) continue;
+      let best = '', diff = Infinity;
+      for (const [id, q] of rects) {
+        const alongX = i[0] >= q[0] - tol && i[2] <= q[2] + tol && (Math.abs(i[3] - q[1]) <= tol || Math.abs(i[1] - q[3]) <= tol);
+        const alongY = i[1] >= q[1] - tol && i[3] <= q[3] + tol && (Math.abs(i[2] - q[0]) <= tol || Math.abs(i[0] - q[2]) <= tol);
+        const d = alongX ? (q[2] - q[0]) - (i[2] - i[0]) : alongY ? (q[3] - q[1]) - (i[3] - i[1]) : Infinity;
+        if (d < diff) { diff = d; best = id; }
+      }
+      if (best) { add(rects.get(best)!, i); placed.add(i); }
+    }
+  }
+  return rects;
+}
+
+/** The mesh islands no face area reaches (small parts: a pack's fin edges): rects to colour so nothing keeps vanilla art. */
+export function leftoverIslands(m: Model): number[][] {
+  const islands = islandCache.get(meshKey(m)) ?? [];
+  const areas = m.faces.flatMap((f) => faceAreas(m, f).map((t) => t.rect));
+  const inside = (i: number[], a: number[]) => i[0] >= a[0] - 1 && i[1] >= a[1] - 1 && i[2] <= a[2] + 1 && i[3] <= a[3] + 1;
+  return islands.filter((i) => !areas.some((a) => inside(i, a)));
+}
+
+/** Width ÷ height of a texture area on the model (its face's real shape — the texture may stretch it; a grown area by how
+ *  much it grew). */
+export function areaAspect(m: Model, t: Target): number {
+  const from = grownFrom.get(t) ?? t;
+  const f = m.faces.find((x) => x.targets.includes(from));
+  const size = (q: Target) => { const w = q.rect[2] - q.rect[0], h = q.rect[3] - q.rect[1]; return q.transpose ? [h, w] : [w, h]; };
+  if (!f) { const [w, h] = size(t); return w / h; }
+  const [w0, h0] = size(from), [w1, h1] = size(t);
+  return ((f.net[2] * (from.src[2] - from.src[0])) / (f.net[3] * (from.src[3] - from.src[1]))) * (w1 / w0) / (h1 / h0);
+}
+
+/**
+ * Places a map layer on a part of a texture area: `part` = x, y, w, h as fractions of the area seen upright (top-left origin).
+ * The layer takes the area's orientation (rot in 90° steps + mirror), so it reads upright on the model.
+ */
+export function placeRect(t: Target, l: Layer, part: number[] = [0, 0, 1, 1]) {
+  const [x0, y0, x1, y1] = t.rect, W = x1 - x0, H = y1 - y0;
+  const T = !!t.transpose;
+  // The area's upright x and y as texture directions (labelTexture's mapping, inverted).
+  const ex = T ? [0, t.flipY ? -1 : 1] : [t.flipX ? -1 : 1, 0];
+  const ey = T ? [t.flipX ? -1 : 1, 0] : [0, t.flipY ? -1 : 1];
+  const fw = T ? H : W, fh = T ? W : H; // the area's size seen upright
+  // Centre of the part in texture pixels.
+  const a = part[0] + part[2] / 2, b = part[1] + part[3] / 2;
+  const ox = ex[0] < 0 || ey[0] < 0 ? x1 : x0, oy = ex[1] < 0 || ey[1] < 0 ? y1 : y0;
+  const cx = ox + (ex[0] * a * fw + ey[0] * b * fh), cy = oy + (ex[1] * a * fw + ey[1] * b * fh);
+  // Rotation that turns the layer's y into the area's y; then the layer's x either matches the area's x or is mirrored.
+  const rot = ey[1] === 1 ? 0 : ey[0] === -1 ? 90 : ey[1] === -1 ? 180 : -90;
+  const r = (rot * Math.PI) / 180, lx = [Math.round(Math.cos(r)), Math.round(Math.sin(r))];
+  Object.assign(l, { space: 'texture', x: cx, y: cy, w: part[2] * fw, h: part[3] * fh, rot, mirror: lx[0] !== ex[0] || lx[1] !== ex[1] });
+  delete l.clip;
+  delete l.skew;
+}
+
+/**
+ * Puts a picture (aspect = width ÷ height of the part of it used, `crop`) into a texture area: stretched over it, as large as
+ * fits (contain) or filling it with the overflow cropped off (cover) — nothing is drawn outside the area.
+ */
+export function placeIn(m: Model, t: Target, l: Layer, mode: 'stretch' | 'contain' | 'cover', aspect = 1, crop: number[] = [0, 0, 1, 1]) {
+  const area = areaAspect(m, t);
+  if (mode === 'stretch') { placeRect(t, l); l.crop = crop; return; }
+  if (mode === 'cover') {
+    // The middle of the picture cut to the area's shape.
+    const [u0, v0, u1, v1] = crop;
+    if (aspect > area) { const f = area / aspect, m = (u1 - u0) * (1 - f) / 2; l.crop = [u0 + m, v0, u1 - m, v1]; }
+    else { const f = aspect / area, m = (v1 - v0) * (1 - f) / 2; l.crop = [u0, v0 + m, u1, v1 - m]; }
+    placeRect(t, l);
+    return;
+  }
+  const w = aspect > area ? 1 : aspect / area, h = aspect > area ? area / aspect : 1;
+  placeRect(t, l, [(1 - w) / 2, (1 - h) / 2, w, h]);
+  l.crop = crop;
+}
+
+/** Colour rectangles over every texture area of these faces (all faces when empty), each upright like its face (gradients run down the face). */
+export function areaFills(m: Model, faceIds: string[], base: Omit<Layer, 'id' | 'x' | 'y' | 'w' | 'h' | 'rot'>): Layer[] {
+  const out: Layer[] = [];
+  for (const f of m.faces) {
+    if (faceIds.length && !faceIds.includes(f.id)) continue;
+    for (const t of faceAreas(m, f)) {
+      const l = { ...base, id: layerId(), kind: 'fill', x: 0, y: 0, w: 0, h: 0, rot: 0 } as Layer;
+      placeRect(t, l);
+      delete l.face;
+      out.push(l);
+    }
+  }
+  return out;
+}
+
+/**
+ * A picture over several faces stacked top to bottom (a pack's crimp, front and crimp): a slice per face, cut by the faces'
+ * heights, on every area of the face (the crimp's front and back, the seam's end) — each area shows its part of the face, the
+ * picture spanning the part the item shows.
+ */
+export function placeStacked(m: Model, faceIds: string[], base: Omit<Layer, 'id' | 'x' | 'y' | 'w' | 'h' | 'rot'>): Layer[] {
+  const faces = faceIds.map((id) => m.faces.find((f) => f.id === id)).filter((f): f is Face => !!f);
+  const total = faces.reduce((s, f) => s + f.net[3], 0);
+  let y = 0;
+  const out: Layer[] = [];
+  for (const f of faces) {
+    const v0 = y / total, v1 = (y + f.net[3]) / total;
+    y += f.net[3];
+    const [sx, sy, sw, sh] = f.shown ?? [0, 0, 1, 1];
+    for (const t of faceAreas(m, f)) {
+      // The area's part of the face, as fractions of the shown part (the picture covers that); parts past it get none.
+      const u0 = (t.src[0] - sx) / sw, u1 = (t.src[2] - sx) / sw, w0 = (t.src[1] - sy) / sh, w1 = (t.src[3] - sy) / sh;
+      if (u0 >= 1 || u1 <= 0 || w0 >= 1 || w1 <= 0) continue;
+      const l = { ...base, id: layerId(), x: 0, y: 0, w: 0, h: 0, rot: 0 } as Layer;
+      placeIn(m, t, l, 'stretch', 1, [Math.max(0, u0), v0 + Math.max(0, w0) * (v1 - v0), Math.min(1, u1), v0 + Math.min(1, w1) * (v1 - v0)]);
+      out.push(l);
+    }
+  }
+  return out;
+}
+
+/**
+ * Turns face layers (designs made on the old Faces view) into map layers that look the same: a layer becomes one piece per
+ * texture area of every face it reaches, drawn through that area's mapping (the one composeTexture blits) and clipped to the
+ * area (a turned layer on an area the texture stretches keeps that stretch as `skew`). Hidden layers convert too; map layers
+ * stay as they are.
+ */
+export function faceLayersToMap(m: Model, layers: Layer[]): Layer[] {
+  const out: Layer[] = [];
+  for (const l of layers) {
+    if (isMapLayer(l)) { out.push(l); continue; }
+    const pieces: { layer: Layer; label: string }[] = [];
+    for (const f of m.faces) {
+      if (l.kind === 'fill' && l.face && l.face !== f.id) continue;
+      // A fill covers its face: a rectangle of the face's size on its centre (its gradient runs down the face).
+      const shape = l.kind === 'fill' ? { ...l, x: f.net[0] + f.net[2] / 2, y: f.net[1] + f.net[3] / 2, w: f.net[2], h: f.net[3], rot: 0 } : l;
+      for (const t of [...f.targets].sort((a, b) => Number(!!b.bleed) - Number(!!a.bleed))) { // bleed first, as composeTexture
+        const p = throughTarget(f, t, shape);
+        if (p) pieces.push({ layer: p, label: targetLabel(f, t) + (t.bleed ? ' (edge)' : '') });
+      }
+    }
+    if (pieces.length === 1) out.push({ ...pieces[0].layer, id: l.id });
+    else for (const p of pieces) out.push({ ...p.layer, id: layerId(), name: `${l.name} – ${p.label}` });
+  }
+  return out;
+}
+
+/** A face layer seen through one of its face's targets as a map layer, or null when it doesn't reach that target. */
+function throughTarget(f: Face, t: Target, l: Layer): Layer | null {
+  // The part of the face (net units) the target shows, and where it goes in the texture (blit's mapping).
+  const rx = f.net[0] + t.src[0] * f.net[2], ry = f.net[1] + t.src[1] * f.net[3];
+  const rw = (t.src[2] - t.src[0]) * f.net[2], rh = (t.src[3] - t.src[1]) * f.net[3];
+  const [dx, dy, dx1, dy1] = t.rect, dw = dx1 - dx, dh = dy1 - dy;
+  if (rw <= 0 || rh <= 0 || dw <= 0 || dh <= 0) return null;
+  const at = (px: number, py: number) => {
+    const s = (px - rx) / rw, r = (py - ry) / rh;
+    const [a, b] = t.transpose ? [r, s] : [s, r];
+    return [dx + dw * (t.flipX ? 1 - a : a), dy + dh * (t.flipY ? 1 - b : b)];
+  };
+  // The layer's corners in the net: skip a target it doesn't reach; no clip when it lies inside.
+  const a = (l.rot * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
+  const ex = [cos, sin], ey = [-sin, cos];
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) =>
+    [l.x + (i * l.w * ex[0] + j * l.h * ey[0]) / 2, l.y + (i * l.w * ex[1] + j * l.h * ey[1]) / 2]);
+  const xs = corners.map((c) => c[0]), ys = corners.map((c) => c[1]), eps = 1e-6;
+  if (Math.max(...xs) <= rx + eps || Math.min(...xs) >= rx + rw - eps || Math.max(...ys) <= ry + eps || Math.min(...ys) >= ry + rh - eps) return null;
+  const inside = Math.min(...xs) >= rx - eps && Math.max(...xs) <= rx + rw + eps && Math.min(...ys) >= ry - eps && Math.max(...ys) <= ry + rh + eps;
+  // The layer's axes in the texture: rot from its y axis, mirror and width from its x axis (as placeRect).
+  // The layer's axes in the texture → rot from its x axis, mirror when the mapping flips it, skew for what a stretched area
+  // does to a turned layer.
+  const [cx, cy] = at(l.x, l.y);
+  const axis = (e: number[]) => { const q = at(l.x + e[0], l.y + e[1]); return [q[0] - cx, q[1] - cy]; };
+  const u = axis(ex), v = axis(ey), mirror = u[0] * v[1] - u[1] * v[0] < 0, m = mirror ? -1 : 1;
+  const rr = Math.atan2(m * u[1], m * u[0]), c = Math.cos(rr), s = Math.sin(rr);
+  const vx = (c * v[0] + s * v[1]) * l.h, vy = (-s * v[0] + c * v[1]) * l.h; // v in the turned frame
+  const skew = Math.round(((m * vx) / vy) * 1e9) / 1e9;
+  const out: Layer = { ...l, space: 'texture', x: cx, y: cy, w: Math.hypot(u[0], u[1]) * l.w, h: vy,
+    rot: Math.round(((rr * 180) / Math.PI) * 1e6) / 1e6, mirror };
+  if (skew) out.skew = skew;
+  delete out.face;
+  if (inside) delete out.clip; else out.clip = [dx, dy, dx1, dy1];
+  return out;
+}
+
+/** UV island outlines of a model's textured preview meshes: edges used by one triangle only, in textureSize pixels. */
+const outlineCache = new Map<string, Promise<number[][]>>();
+export function uvOutlines(m: Model): Promise<number[][]> {
+  const urls = meshParts(m), key = meshKey(m);
+  if (!outlineCache.has(key)) outlineCache.set(key, (async () => {
+    const out: number[][] = [];
+    for (const url of urls) {
+      const { uv } = await loadObjUV(url);
+      const q = (i: number) => `${Math.round(uv[i * 2] * 1e5)},${Math.round(uv[i * 2 + 1] * 1e5)}`;
+      const edges = new Map<string, { n: number; a: number; b: number }>();
+      for (let t = 0; t < uv.length / 6; t++) for (let k = 0; k < 3; k++) {
+        const a = t * 3 + k, b = t * 3 + ((k + 1) % 3);
+        const ka = q(a), kb = q(b), key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+        const e = edges.get(key);
+        if (e) e.n++; else edges.set(key, { n: 1, a, b });
+      }
+      const s = m.textureSize;
+      for (const e of edges.values()) if (e.n === 1)
+        out.push([uv[e.a * 2] * s, (1 - uv[e.a * 2 + 1]) * s, uv[e.b * 2] * s, (1 - uv[e.b * 2 + 1]) * s]);
+    }
+    return out;
+  })().catch((e) => { outlineCache.delete(key); throw e; }));
+  return outlineCache.get(key)!;
 }
 
 /** Name of one texture area of a face: a face split over several areas says which part (deck box back halves, front cover). */

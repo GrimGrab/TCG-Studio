@@ -10,7 +10,7 @@ import (
 // is stamped and a second run changes nothing. The shown part of the grown faces keeps the old net scale, so art on the pack
 // stays where it was.
 func TestMigratePackLayout(t *testing.T) {
-	old := `{"version":2,"layers":[{"kind":"image","x":0.3},{"kind":"image","x":1.0},{"kind":"text","x":1.6},{"kind":"fill","face":"back"}]}`
+	old := `{"version":2,"layers":[{"kind":"image","x":0.3},{"kind":"image","x":1.0},{"kind":"text","x":1.6},{"kind":"fill","face":"back"},{"kind":"fill","space":"texture","x":900}]}`
 	out, ok := MigrateLayout("Pack", json.RawMessage(old))
 	if !ok {
 		t.Fatal("not migrated")
@@ -30,6 +30,9 @@ func TestMigratePackLayout(t *testing.T) {
 	}
 	if _, has := l.Layers[3]["x"]; has || l.Net != NetVersion {
 		t.Errorf("fill got a place or net %d", l.Net)
+	}
+	if x := l.Layers[4]["x"].(float64); x != 900 {
+		t.Errorf("map layer moved to %v (it is in texture pixels)", x)
 	}
 	if _, again := MigrateLayout("Pack", out); again {
 		t.Error("migrated twice")

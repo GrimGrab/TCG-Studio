@@ -182,6 +182,28 @@ func TestRecoverUndoesCapture(t *testing.T) {
 	}
 }
 
+// A failed capture is undone without moving saves the active setup still had parked over the game's current ones.
+func TestFailedCaptureKeepsCurrentSaves(t *testing.T) {
+	e := newEnv(t)
+	a, err := e.h.Ensure("1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := e.h.Create("B", "", false, "1.0")
+	write(t, filepath.Join(e.saveDir, "savedGames_Release1.json"), "current")
+	write(t, filepath.Join(a, SavesDir, "savedGames_Release1.json"), "old")
+	write(t, filepath.Join(a, InfoFile), "{broken") // Snapshot fails
+	if _, err := e.h.Switch(b, e.gameDir, nil); err == nil {
+		t.Fatal("expected the switch to fail")
+	}
+	if got := read(t, filepath.Join(e.saveDir, "savedGames_Release1.json")); got != "current" {
+		t.Fatalf("game save = %q, want the current one", got)
+	}
+	if m, _ := filepath.Glob(filepath.Join(a, SavesDir+"-conflict-*", "savedGames_Release1.json")); len(m) != 1 {
+		t.Fatal("the leftover saves weren't kept aside")
+	}
+}
+
 func TestRecoverFinishesApply(t *testing.T) {
 	e := newEnv(t)
 	if _, err := e.h.Ensure("1.0"); err != nil {

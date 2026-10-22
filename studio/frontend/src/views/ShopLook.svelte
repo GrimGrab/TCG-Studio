@@ -1,13 +1,12 @@
 <script lang="ts">
   // Game look: the sign above the entrance, the open/closed sign at the door, the phone wallpaper, the global card back, the
-  // customers' credit card, the loading screen and the main menu. Every edit goes into the page's draft (the previews follow
+  // customers' credit card, the loading screen, the main menu and the textures (cardboard and bulk boxes, shopping bag, street billboards; painted in the face editor). Every edit goes into the page's draft (the previews follow
   // it); nothing reaches the game until Save, which stores the whole draft as mod settings in one go (App.SaveShopLook) — a
   // running game then applies it right away. No autosave (user's choice: overlapping saves lost edits and brought back older
   // door sign drafts).
   import { onMount } from 'svelte';
-  import { leaveGuard } from '../lib/leaveGuard';
   import { Ev } from '../lib/events';
-  import { App, EventsOn, ask, errText } from '../lib/api';
+  import { App, EventsOn, errText } from '../lib/api';
   import type { Picture, TextStyleValue } from '../lib/shopLook';
   import PictureSlot from './PictureSlot.svelte';
   import PictureList from './PictureList.svelte';
@@ -18,11 +17,12 @@
   import DoorSideEditor from './DoorSideEditor.svelte';
   import FontPicker from './FontPicker.svelte';
   import TextStyle from './TextStyle.svelte';
+  import BoxLookTab from './BoxLookTab.svelte';
+  import SaveBar from './SaveBar.svelte';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
-  let dirty = $state(false); // unsaved changes: leaving the page asks first
-  $effect(() => leaveGuard(() => dirty, 'Leave Game look without saving? Your unsaved changes will be lost.'));
+  let dirty = $state(false); // unsaved changes: SaveBar asks before leaving
 
   let look = $state<any>(null);
   let error = $state('');
@@ -71,9 +71,13 @@
   let doorRemoved = $state<Record<string, boolean>>({ open: false, closed: false });
   let editors = $state<Record<string, DoorSideEditor>>({});
 
+  // Boxes: the tab keeps its own draft (layouts + finished textures) and hands it to Save through `pending()`.
+  let boxTab = $state<BoxLookTab | null>(null);
+  let boxDirty = $state(false);
+
   const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
   $effect(() => {
-    dirty = !!draft && !!look && (!same(draft, stored(look)) || doorDirty.open || doorDirty.closed);
+    dirty = !!draft && !!look && (!same(draft, stored(look)) || doorDirty.open || doorDirty.closed || boxDirty);
   });
 
   // One tab per part of the game. Every tab stays mounted (only hidden), so switching keeps each tab's unsaved edits; Save
@@ -86,6 +90,7 @@
     { id: 'card', title: 'Credit card', fields: ['card', 'options'] },
     { id: 'loading', title: 'Loading screen', fields: ['loading', 'loadCard', 'choices'] },
     { id: 'menu', title: 'Main menu', fields: ['menu'] },
+    { id: 'boxes', title: 'Textures', fields: [] },
   ];
   let tab = $state<string>((() => { try { return localStorage.getItem('shoplook.tab') || 'sign'; } catch { return 'sign'; } })());
   function setTab(id: string) {
@@ -96,6 +101,7 @@
   function tabDirty(id: string): boolean {
     if (!draft || !look) return false;
     if (id === 'door') return doorDirty.open || doorDirty.closed;
+    if (id === 'boxes') return boxDirty;
     const st = stored(look), fields = TABS.find((t) => t.id === id)?.fields ?? [];
     return fields.some((f) => !same(draft![f], st[f]));
   }
@@ -129,17 +135,19 @@
     }
     saving = true;
     try {
+      if (boxDirty && boxTab) req.boxes = await boxTab.pending();
       look = await App.SaveShopLook(req);
       for (const side of sides) editors[side]?.discard(); // the editors now start from the stored designs
+      boxTab?.discard();
       notify('Game look saved.', 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     saving = false;
   }
 
-  async function discard() {
-    if (!(await ask('Throw away your unsaved Game look changes (in every tab)?'))) return;
+  function discard() {
     if (look) draft = stored(look);
     for (const side of sides) editors[side]?.discard();
+    boxTab?.discard();
   }
 
   async function pickFont(source: string, id: string) {
@@ -190,8 +198,12 @@
   });
 </script>
 
+<SaveBar {dirty} {saving} onsave={save} onrevert={discard}
+  leaveMessage="Leave Game look without saving? Your unsaved changes will be lost."
+  revertMessage="Throw away your unsaved Game look changes (in every tab)?">
+  {#snippet title()}<h2>Game look</h2>{/snippet}
+</SaveBar>
 <div class="page">
-  <header class="row"><h2 class="grow">Game look</h2></header>
   <p class="muted small">Your own pictures for the shop and the game's screens. Choose any image, then drag the box to pick the part
     that's shown (drag a corner to resize it). The previews follow your edits; click <b>Save</b> to put them in the game (a running
     game shows them right away). Save stores the changes of every tab.</p>
@@ -309,12 +321,12 @@
       <PictureSlot bind:value={draft.menu} aspect={pics.menu.aspect} pick={importPicture('menu')} {notify} />
       <ScreenPreview layoutUrl={lay.menu ?? ''} image={draft.menu.url} crop={draft.menu.crop} aspect={pics.menu.aspect} />
     </section>
-    <div class="row savebar">
-      <div class="grow"></div>
-      {#if dirty}<span class="muted small">Unsaved changes</span>{/if}
-      <button onclick={discard} disabled={!dirty || saving}>Revert</button>
-      <button class="primary" onclick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save'}</button>
-    </div>
+    <section class="wide" hidden={tab !== 'boxes'}>
+      <p class="muted">The cardboard boxes your stock and furniture arrive in, the box graded cards come back in, the bulk card
+        boxes from the workbench, the customers' shopping bag and the billboards on the street. Paint each one on its texture: add images, text and colours and drag them over the parts you
+        want (the outlines show every part, inside and edges included).</p>
+      <BoxLookTab bind:this={boxTab} boxes={look.boxes ?? []} {notify} bind:dirty={boxDirty} />
+    </section>
     </div>
   {:else}
     <p class="muted small">{error || 'Loading…'}</p>
@@ -322,7 +334,7 @@
 </div>
 
 <style>
-  .page { padding: 16px 20px; height: 100%; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
   .page > p { margin: 0; max-width: 900px; }
   .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
@@ -330,8 +342,8 @@
   .body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
   section[hidden] { display: none; }
+  section.wide { max-width: none; }
   h4 { margin: 0; }
-  .savebar { position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; max-width: 900px; }
   .grow { flex: 1; }
   .col { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
   .gen { display: inline-flex; gap: 6px; align-items: center; }

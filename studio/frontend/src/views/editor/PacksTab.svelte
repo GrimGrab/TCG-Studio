@@ -5,9 +5,9 @@
   import PackArtEditor from './PackArtEditor.svelte';
   import PackContents from './PackContents.svelte';
 
-  let { project, notify, imgBust, save, hooks }: {
+  let { project, notify, imgBust, hooks }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
-    save: () => Promise<void>; hooks: Set<() => Promise<void>>;
+    hooks: Set<() => Promise<void>>;
   } = $props();
   let artEditor = $state<any>();
 
@@ -165,7 +165,7 @@
 
       <section>
         <h3>Art</h3>
-        <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {save} {hooks} onapplied={() => (artBust = Date.now())} />
+        <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {hooks} onapplied={() => (artBust = Date.now())} />
         <p class="muted small">The finished images the pack uses (made by the editor above), or your own picture: textures in the
           vanilla layout (cut to 1024²), icons in the vanilla icon's shape. Drag the box to pick the part used; saving the set cuts it.
           Empty = vanilla art.</p>

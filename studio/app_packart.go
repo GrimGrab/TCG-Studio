@@ -13,7 +13,10 @@ import (
 	_ "image/png"
 	"os"
 	"path"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"tcgstudio/internal/art"
@@ -40,14 +43,26 @@ func packFilePrefix(packID string) (string, error) {
 	return packID + "_", nil
 }
 
+// freshName gives a file the editor writes for a set a new name each time ("images/x_texture.png" →
+// "images/x_texture.v<time>.png"; an earlier ".v…" mark is replaced): the game keeps reading the file set.json names until
+// the set is saved with the new one, so nothing changes in the game before Save. Older versions stay until the Storage
+// page deletes unused files.
+func freshName(rel string) string {
+	ext := path.Ext(rel)
+	base := freshMark.ReplaceAllString(strings.TrimSuffix(rel, ext), "")
+	return base + ".v" + strconv.FormatInt(time.Now().UnixMilli(), 36) + ext
+}
+
+var freshMark = regexp.MustCompile(`\.v[0-9a-z]+$`)
+
 // packArtPrefix is packFilePrefix inside the set's images folder.
 func packArtPrefix(packID string) (string, error) {
 	pre, err := packFilePrefix(packID)
 	return "images/" + pre, err
 }
 
-// SavePackArt writes the editor's composed texture and icon (data URLs) for which = "pack" | "box" of a pack and returns their
-// paths; the caller assigns them to the pack and saves the project.
+// SavePackArt writes the editor's composed texture and icon (data URLs) for which = "pack" | "box" of a pack under new names
+// (freshName) and returns their paths; the caller assigns them to the pack, and the set's Save puts them in the game.
 func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackArtFiles, error) {
 	if !setfmt.SafeID(id) {
 		return PackArtFiles{}, errBadID
@@ -63,7 +78,7 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 	if err != nil {
 		return PackArtFiles{}, err
 	}
-	out := PackArtFiles{Texture: pre + which + "_texture.png", Icon: pre + which + "_icon.png"}
+	out := PackArtFiles{Texture: freshName(pre + which + "_texture.png"), Icon: freshName(pre + which + "_icon.png")}
 	for _, f := range []struct {
 		data string
 		rel  *string
@@ -100,7 +115,7 @@ func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return p.WriteFile(pre+which+"_base.png", b)
+	return p.WriteFile(freshName(pre+which+"_base.png"), b)
 }
 
 // ---------------------------------------------------------------- product photos (TCGplayer)

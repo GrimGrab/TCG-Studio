@@ -38,7 +38,7 @@
     templates: any;            // mod export (accessories.json), null when missing
     layout: FigLayout;
     notify: (t: string, k?: string) => void;
-    onchange: () => void;
+    onchange?: () => void;
     onimported?: (name: string) => void;
   } = $props();
 
@@ -219,7 +219,7 @@
 
   // ---------------------------------------------------------------- actions
 
-  function changed() { onchange(); }
+  function changed() { onchange?.(); }
 
   async function importModel() {
     busy = true;

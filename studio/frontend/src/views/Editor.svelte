@@ -1,6 +1,8 @@
 <script lang="ts">
+  // The set editor: every edit (cards, packs, pack art, rotated images, set info) stays in the page's draft until Save, which
+  // stores the set; the game reads an installed set's saved files.
   import { onMount } from 'svelte';
-  import { leaveGuard } from '../lib/leaveGuard';
+  import SaveBar from './SaveBar.svelte';
   import { App, errText, ask, sourceName, sourceCode, BrowserOpenURL, originLabel } from '../lib/api';
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
@@ -23,13 +25,13 @@
   async function showTab(t: typeof tab) { if (t !== tab) { await flushAll(); tab = t; } }
 
   const dirty = $derived(project ? JSON.stringify(project) !== saved : false);
-  $effect(() => leaveGuard(() => dirty, 'Leave this set without saving? Your unsaved changes will be lost.'));
   const errors = $derived(issues.filter((i) => i.level === 'error').length);
   const warnings = $derived(issues.filter((i) => i.level === 'warning').length);
 
   async function load() {
     try {
       project = await App.LoadProject(id);
+      imgBust = Date.now();
       saved = JSON.stringify(project);
       issues = await App.ValidateProject(id);
       installState = (await App.ProjectInstallState(id)) as any;
@@ -74,15 +76,6 @@
     }
   }
 
-  /** Card image files changed on disk (e.g. rotated): reload them and bring the game up to date like a save would. */
-  async function imagesChanged(what: string) {
-    imgBust = Date.now();
-    try { installState = (await App.ProjectInstallState(id)) as any; } catch {}
-    if (dirty) notify(`${what} Save to update the game.`, 'ok');
-    else if (installState === 'stale' && !errors) await install();
-    else notify(what, 'ok');
-  }
-
   async function leave() {
     await flushAll();
     if (dirty && !(await ask('Discard unsaved changes?'))) return;
@@ -124,26 +117,23 @@
     }
   }
 
-  function onKey(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-      e.preventDefault();
-      if (dirty && !saving) save();
-    }
-  }
-
   onMount(load);
 </script>
 
-<svelte:window onkeydown={onKey} />
-
 {#if project}
   <div class="editor">
-    <header class="row">
+    <SaveBar {dirty} {saving} onsave={save} onrevert={load}
+      leaveMessage="Leave this set without saving? Your unsaved changes will be lost."
+      revertMessage="Throw away your unsaved changes to this set?"
+      saveTitle={installState === 'none' ? 'Save the set (Ctrl+S)' : 'Save the set and update it in the game (Ctrl+S)'}>
+      {#snippet title()}
       <button onclick={leave}>← Sets</button>
       <div class="grow title">
         <h2>{project.set.name}</h2>
         <span class="muted">{project.id}{project.meta?.origin?.mod ? ` · ${originLabel(project.meta.origin.kind, project.meta.origin.mod, project.meta.origin.author)}` : sourceCode(project.meta) ? ` · ${sourceName(project.meta.source)} ${sourceCode(project.meta).toUpperCase()}` : ''}</span>{#if project.meta?.origin?.link}<button class="link small" onclick={() => BrowserOpenURL(project.meta.origin.link)} title={project.meta.origin.link}>{project.meta.origin.kind === 'Shared file' ? 'Link' : 'Mod page'} ↗</button>{/if}
       </div>
+      {/snippet}
+      {#snippet extra()}
       <button class="issues" onclick={() => (showIssues = !showIssues)}>
         {#if errors}<span class="badge err">{errors} errors</span>{/if}
         {#if warnings}<span class="badge warn">{warnings} warnings</span>{/if}
@@ -165,10 +155,9 @@
       {:else if installState === 'none'}
         <span class="chip" title="This set isn't in the game yet">Not in game</span>
       {/if}
-      <button class="primary" disabled={!dirty || saving} onclick={save}
-        title={installState === 'none' ? 'Save the set' : 'Save the set and update it in the game'}>{saving ? 'Saving…' : dirty ? 'Save •' : 'Saved'}</button>
       {#if installState === 'none'}<button class="primary" onclick={install}>Install to game</button>{/if}
-    </header>
+      {/snippet}
+    </SaveBar>
 
     {#if showIssues && issues.length}
       <div class="issue-list">
@@ -184,9 +173,9 @@
 
     <div class="body">
       {#if tab === 'cards'}
-        <CardsTab {project} {notify} {imgBust} onimages={imagesChanged} />
+        <CardsTab {project} {notify} {imgBust} />
       {:else if tab === 'packs'}
-        <PacksTab {project} {notify} {imgBust} {save} {hooks} />
+        <PacksTab {project} {notify} {imgBust} {hooks} />
       {:else}
         <SetTab {project} {notify} {imgBust} />
       {/if}
@@ -198,8 +187,7 @@
 
 <style>
   .editor { display: flex; flex-direction: column; height: 100%; }
-  header { padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .title { display: flex; flex-direction: column; }
+  .title { display: flex; flex-direction: column; min-width: 0; }
   .issues { display: flex; gap: 4px; background: transparent; }
   .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .chip.ok { color: var(--ok, #3fb96b); border-color: var(--ok, #3fb96b); }

@@ -24,6 +24,17 @@ async function loadObj(url: string): Promise<Parsed> {
   return objCache.get(url)!;
 }
 
+/** A mesh's UVs (u, v per vertex; origin bottom-left) and positions (x, y, z), three vertices per triangle. */
+export async function loadObjUV(url: string): Promise<{ uv: Float32Array; pos: Float32Array }> {
+  const p = await loadObj(url);
+  const uv = new Float32Array(p.count * 2), pos = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    uv[i * 2] = p.data[i * 8 + 6]; uv[i * 2 + 1] = p.data[i * 8 + 7];
+    pos[i * 3] = p.data[i * 8]; pos[i * 3 + 1] = p.data[i * 8 + 1]; pos[i * 3 + 2] = p.data[i * 8 + 2];
+  }
+  return { uv, pos };
+}
+
 /** Interleaved position(3) normal(3) uv(2) per vertex, non-indexed. Unity → GL: z is negated (left- to right-handed). */
 function parseObj(text: string): Parsed {
   const v: number[][] = [], vt: number[][] = [], vn: number[][] = [];

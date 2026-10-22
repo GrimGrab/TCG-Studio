@@ -259,6 +259,7 @@ namespace TCGCustomCards
             CreditCard.Init();
             ScreenPictures.Init();
             LoadingScreenLook.Init();
+            BoxLook.Bind(Config);
             GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
                 "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");
             GradeLabelOffsetX = Config.Bind("Visuals - Grade label", "GradeLabelOffsetX", 0f, new ConfigDescription(

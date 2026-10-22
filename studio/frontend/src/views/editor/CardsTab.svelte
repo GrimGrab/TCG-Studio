@@ -4,8 +4,8 @@
   import BulkEdit from './BulkEdit.svelte';
   import CardViewer from './CardViewer.svelte';
 
-  let { project, notify, imgBust, onimages }: {
-    project: any; notify: (t: string, k?: string) => void; imgBust: number; onimages: (what: string) => Promise<void>;
+  let { project, notify, imgBust }: {
+    project: any; notify: (t: string, k?: string) => void; imgBust: number;
   } = $props();
 
   let query = $state('');
@@ -209,9 +209,9 @@
 
   <aside>
     {#if selectedCards.length === 1}
-      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {onimages} ondelete={deleteSelected} onzoom={() => view(selectedCards[0].id)} />
+      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} ondelete={deleteSelected} onzoom={() => view(selectedCards[0].id)} />
     {:else if selectedCards.length > 1}
-      <BulkEdit {project} cards={selectedCards} {notify} {onimages} ondelete={deleteSelected} />
+      <BulkEdit {project} cards={selectedCards} {notify} ondelete={deleteSelected} />
     {:else}
       <div class="summary">
         <h3>Set summary</h3>

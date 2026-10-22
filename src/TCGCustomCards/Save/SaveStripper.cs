@@ -30,6 +30,9 @@ namespace TCGCustomCards.Save
             public string mode;
             public string type;
             public string json;
+            /// <summary>replace: the cleaned entry as the vanilla save got it — restore replaces only that entry (found by it), never
+            /// whatever sits at <see cref="index"/> now. Null in stashes written before it existed (restored by index).</summary>
+            public string saved;
         }
 
         public class Stash
@@ -189,13 +192,18 @@ namespace TCGCustomCards.Save
                     if (!custom) continue;
                     if (copy == null) copy = (IList)Activator.CreateInstance(type, list);
                     string mode = piece ? "removeAt" : remove ? "remove" : "replace";
-                    stash.entries.Add(new StashEntry
+                    var entry = new StashEntry
                     {
                         field = name, index = i, mode = mode,
                         type = elemType.AssemblyQualifiedName,
                         json = elemType.IsEnum ? Convert.ToInt32(item).ToString() : JsonUtility.ToJson(item)
-                    });
-                    if (mode == "replace") copy[i] = Neutralized(item);
+                    };
+                    stash.entries.Add(entry);
+                    if (mode == "replace")
+                    {
+                        copy[i] = Neutralized(item);
+                        if (!elemType.IsEnum) entry.saved = JsonUtility.ToJson(copy[i]);
+                    }
                     else removed.Add(i);
                 }
                 if (copy == null) return value;
@@ -507,6 +515,23 @@ namespace TCGCustomCards.Save
             return left;
         }
 
+        /// <summary>
+        /// Where a replace entry goes: the entry the vanilla save got in its place (<see cref="StashEntry.saved"/>), at its saved index
+        /// or wherever it moved (a piece before it wasn't put back, or the player changed the list while the content was missing);
+        /// -1 when it's gone or was changed since. Stashes without <c>saved</c> go by index.
+        /// </summary>
+        private static int ReplaceIndex(IList list, StashEntry e)
+        {
+            if (list == null) return -1;
+            if (e.saved == null) return e.index >= 0 && e.index < list.Count ? e.index : -1;
+            bool Same(int i) => list[i] != null && JsonUtility.ToJson(list[i]) == e.saved;
+            if (e.index >= 0 && e.index < list.Count && Same(e.index)) return e.index;
+            for (int i = 0; i < list.Count; i++)
+                if (Same(i)) return i;
+            Plugin.Log.LogWarning($"Restore: {e.field}[{e.index}] was changed since it was saved; kept for later instead of overwriting it");
+            return -1;
+        }
+
         private static bool RestoreOne(StashEntry e, AllocationSnapshot alloc, List<int> shelves, HashSet<int> lostShelves)
         {
             if (e.mode == "spawn")
@@ -583,8 +608,9 @@ namespace TCGCustomCards.Save
                     return true;
                 case "replace":
                     var list = (IList)target.GetValue(null);
-                    if (list == null || e.index < 0 || e.index >= list.Count) return false;
-                    list[e.index] = obj;
+                    int at = ReplaceIndex(list, e);
+                    if (at < 0) return false;
+                    list[at] = obj;
                     return true;
                 case "remove":
                 case "warehouseBox":

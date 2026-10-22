@@ -419,7 +419,7 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 func (a *App) DefaultArtColor(id string) string { return art.DefaultColor(id) }
 
 // GeneratePackArt renders pack/box textures + icons for one pack from the game's templates and returns the file paths.
-// The caller assigns them to the pack (the files are written immediately; per-pack files avoid clobbering other packs).
+// The caller assigns them to the pack (new file names each time, freshName: the game sees them once the set is saved).
 func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Result, error) {
 	dir, err := a.requireTemplates()
 	if err != nil {
@@ -433,7 +433,7 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 		return art.Result{}, err
 	}
 	o.Resolve = p.ImagePath // the set icon / front image may live in the shared library
-	o.Target = p.WriteTarget
+	o.Target = func(rel string) (string, string) { return p.WriteTarget(freshName(rel)) }
 	return art.Generate(dir, p.LibFolder, p.ID, p.Set.Name, o)
 }
 
@@ -447,7 +447,7 @@ func (a *App) GenerateSetCardBack(id, color, title string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rel, out := p.WriteTarget("images/card_back.png")
+	rel, out := p.WriteTarget(freshName("images/card_back.png"))
 	return rel, art.GenerateCardBackFrom(p.ImagePath, "", color, title, out)
 }
 
@@ -847,15 +847,18 @@ func uprightJPEG(b []byte) ([]byte, error) {
 }
 
 // RotateCardImages turns card images of project id by turns quarter turns clockwise (negative = anticlockwise); with
-// onlyLandscape, only images wider than tall are turned. The result replaces the shared file (every setup using the set
-// shows the turned image). set.json does not change; the game shows the turned image at its next start.
-// Returns how many images were turned.
-func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscape bool) (int, error) {
+// onlyLandscape, only images wider than tall are turned. Each turned image is written under a new name (freshName) and
+// returned as old path → new path: the caller points the cards at it, and the game shows it once the set is saved.
+func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscape bool) (map[string]string, error) {
 	if !setfmt.SafeID(id) {
-		return 0, errBadID
+		return nil, errBadID
+	}
+	p, err := a.loadProject(id)
+	if err != nil {
+		return nil, err
 	}
 	done := map[string]bool{}
-	n := 0
+	n := map[string]string{}
 	for _, rel := range rels {
 		if rel == "" || done[rel] {
 			continue
@@ -889,10 +892,11 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 		if err != nil {
 			return n, err
 		}
-		if err := fsutil.WriteAtomic(dst, out); err != nil {
+		to, err := p.WriteFile(freshName(rel), out)
+		if err != nil {
 			return n, err
 		}
-		n++
+		n[rel] = to
 	}
 	return n, nil
 }

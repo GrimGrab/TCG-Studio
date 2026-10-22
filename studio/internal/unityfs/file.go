@@ -20,6 +20,7 @@ const (
 	ClassMesh          = 43
 	ClassMonoBehaviour = 114
 	ClassMonoScript    = 115
+	ClassSkinnedMesh   = 137 // SkinnedMeshRenderer
 	ClassSprite        = 213
 	ClassRectTransform = 224
 )

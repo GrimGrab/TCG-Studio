@@ -116,6 +116,11 @@ func (h Home) Switch(to, gameDir string, progress func(string)) ([]string, error
 	if !fsutil.Exists(filepath.Join(h.Dir(to), InfoFile)) {
 		return nil, errors.New("unknown setup")
 	}
+	// Saves already parked in the active setup (left over) are kept aside before the journal exists, so undoing a capture
+	// only ever moves back what the capture moved — never those older saves over the game's.
+	if err := parkLeftoverSaves(h.Dir(from)); err != nil {
+		return nil, err
+	}
 	// No copy of the saves first: the journal lets an interrupted switch be undone or finished, and nothing is overwritten.
 	j := &Journal{From: from, To: to, Phase: PhaseCapture, Started: time.Now()}
 	if err := writeJSON(h.journalPath(), j); err != nil {
@@ -138,20 +143,22 @@ func (h Home) Switch(to, gameDir string, progress func(string)) ([]string, error
 	return h.finish(j, gameDir, progress)
 }
 
-// capture snapshots the game state into setup from and moves the saves into its saves\ folder (an existing one is kept
-// aside as saves-conflict-<time>, so nothing is overwritten).
+// parkLeftoverSaves keeps a non-empty saves\ folder of setup dir aside as saves-conflict-<time>, so nothing is overwritten.
+func parkLeftoverSaves(dir string) error {
+	saves := filepath.Join(dir, SavesDir)
+	if dirEmpty(saves) {
+		return nil
+	}
+	return os.Rename(saves, saves+"-conflict-"+time.Now().Format("20060102-150405"))
+}
+
+// capture snapshots the game state into setup from and moves the saves into its (empty: parkLeftoverSaves) saves\ folder.
 func (h Home) capture(from, gameDir string) error {
 	dir := h.Dir(from)
 	if err := Snapshot(dir, gameDir); err != nil {
 		return err
 	}
-	saves := filepath.Join(dir, SavesDir)
-	if !dirEmpty(saves) {
-		if err := os.Rename(saves, saves+"-conflict-"+time.Now().Format("20060102-150405")); err != nil {
-			return err
-		}
-	}
-	return moveSaves(SaveDir(), saves)
+	return moveSaves(SaveDir(), filepath.Join(dir, SavesDir))
 }
 
 // undoCapture puts the saves moved by an interrupted capture back into the game.

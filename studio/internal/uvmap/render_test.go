@@ -27,11 +27,17 @@ func TestRenderOrientation(t *testing.T) {
 	kinds := []string{"Pack", "Box"}
 	if k := os.Getenv("RENDER_KIND"); k == "tabletop" {
 		kinds = TabletopBases()
+	} else if k == "boxes" {
+		kinds = BoxLooks()
 	} else if k != "" {
 		kinds = []string{k}
 	}
 	for _, kind := range kinds {
 		m, ok := ModelFor(kind)
+		meshDir := dir
+		if b, isBox := BoxLook(kind); isBox { // Game look boxes: templatesoxes
+			m, ok, meshDir = b, true, filepath.Join(filepath.Dir(dir), "boxes")
+		}
 		if !ok { // a tabletop base: its own model
 			m = tabletop[kind]
 		}
@@ -44,7 +50,7 @@ func TestRenderOrientation(t *testing.T) {
 			}
 			m.Faces, m.Mesh = faces, "CardBoxMesh_4"
 		}
-		mesh, err := LoadOBJ(filepath.Join(dir, m.Mesh+".obj"))
+		mesh, err := LoadOBJ(filepath.Join(meshDir, m.Mesh+".obj"))
 		if err != nil {
 			t.Fatal(err)
 		}

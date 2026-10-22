@@ -29,11 +29,13 @@
   // Decorations page: wall / floor / ceiling looks and placeable decorations (posters from an image, objects from a 3D model) for the
   // phone's "Buy Decoration" app. Stored in the accessory library (decorations list); the mod builds them on vanilla decorations
   // (Runtime/DecorationInjector). Vanilla names, prices and icons come from the game files (game-templates\decorations).
+  // Every edit (new, changed and deleted decorations) stays in the page's draft until Save (lib/libraryDraft).
   import { onMount, untrack } from 'svelte';
-  import { leaveGuard } from '../lib/leaveGuard';
   import { Ev } from '../lib/events';
+  import { LibraryDraft } from '../lib/libraryDraft.svelte';
+  import SaveBar from './SaveBar.svelte';
   import { accFile, templateFile } from '../lib/urls';
-  import { App, EventsOn, errText, ask, originName } from '../lib/api';
+  import { App, EventsOn, errText, originName } from '../lib/api';
   import { loadImage } from '../lib/accessoryArt';
   import CatalogPicker from './CatalogPicker.svelte';
   import { FigurineView, loadGeom, quadGeom, type Geom, type Mat, type Box, type SceneObj, mul, translate, scale, rotX, rotY, rotZ } from '../lib/figurineView';
@@ -49,10 +51,12 @@
   let picked = $state<string[]>([]);
   let anchor = $state('');
   let d = $state<any>(null);              // working copy
-  let isNew = $state(false);              // a draft from NewDecoration, not stored yet
   let layout = $state<DecoLayout>(newDecoLayout());
-  let dirty = $state(false);
-  $effect(() => leaveGuard(() => dirty, 'Leave without saving? Your unsaved changes to this decoration will be lost.'));
+  const draft = new LibraryDraft();
+  // The open decoration's state when it was opened: it differs = unsaved edits (undoing them makes it clean again).
+  let start = $state('');
+  const snap = () => JSON.stringify({ d, layout });
+  $effect(() => { draft.shownDirty = !!d && start !== '' && snap() !== start; });
   let saving = $state(false);
   let busy = $state('');
   let fromCatalog = $state(false);
@@ -60,7 +64,7 @@
 
   const kindInfo = (k: string) => kinds.find((x) => x.kind === k);
   const surface = (k: string) => !!kindInfo(k)?.surface;
-  const list = $derived<any[]>(view?.decorations ?? []);
+  const list = $derived<any[]>(view ? draft.apply(view.decorations) : []);
   const shown = $derived(list.filter((x) => x.kind === tab).slice().sort((a, b) => a.name.localeCompare(b.name)));
   const accUrl = (rel?: string) => accFile(rel, bust);
   const tplUrl = (f?: string) => templateFile('deco', f);
@@ -68,8 +72,6 @@
   const vanilla = $derived<any[]>(
     !tpl ? [] : surface(tab) ? tpl.surfaces?.[tab] ?? [] : (tpl.objects ?? []).filter((o: any) => (tab === 'Poster' ? o.tab === 'Poster' : o.tab === 'Other')));
   const problems = $derived(d ? [...(view?.errors ?? []), ...(view?.warnings ?? [])].filter((m: string) => m.includes(`"${d.id}"`)) : []);
-
-  function changed() { dirty = true; }
 
   async function loadTemplates() {
     const raw = await App.DecorationTemplates();
@@ -79,42 +81,52 @@
 
   async function load(keep = true) {
     view = await App.Accessories();
-    if (isNew && keep) return;
     if (!keep || !shown.some((x) => x.id === selectedId)) selectedId = shown[0]?.id ?? '';
     select(selectedId);
   }
 
+  /** Opens a decoration: its parked draft if it has one, else the stored one. */
   function select(id: string) {
     selectedId = id;
     picked = id ? [id] : [];
     anchor = id;
-    isNew = false;
-    const x = list.find((p) => p.id === id);
+    const p = draft.parked[id];
+    const x = p?.item ?? view?.decorations.find((q: any) => q.id === id);
     d = x ? JSON.parse(JSON.stringify(x)) : null;
     let l: any = null;
-    try { l = x && view.layouts[id] ? JSON.parse(view.layouts[id]) : null; } catch { l = null; }
+    const raw = p ? p.layout : view?.layouts[id];
+    try { l = x && raw ? JSON.parse(raw) : null; } catch { l = null; }
     layout = l && l.version === 'deco1' ? { ...newDecoLayout(), ...l } : newDecoLayout();
-    dirty = false;
+    start = d ? snap() : '';
   }
 
-  async function confirmDiscard() { return !dirty || (await ask('Discard unsaved changes to this decoration?')); }
+  /** Finishes the open decoration before something else opens. One that can't be finished yet (no picture, no model) is
+   *  parked as it is, with the reason (Save opens it and says so). */
+  async function leaveShown() {
+    try { await finishShown(); } catch (e) {
+      if (!d) return;
+      draft.park(d.id, { item: $state.snapshot(d), layout: JSON.stringify(layout), problem: errText(e) });
+      start = snap();
+    }
+    busy = '';
+  }
 
   async function setTab(k: string) {
-    if (k === tab || !(await confirmDiscard())) return;
+    if (k === tab) return;
+    await leaveShown();
     tab = k;
     selectedId = '';
     select(shown[0]?.id ?? '');
   }
 
   async function add() {
-    if (!(await confirmDiscard())) return;
+    await leaveShown();
     try {
-      d = await App.NewDecoration(tab, '');
-      layout = newDecoLayout();
-      selectedId = d.id;
-      picked = [];
-      isNew = true;
-      dirty = true;
+      const x = await App.NewDecoration(tab, '');
+      draft.add(x, JSON.stringify(newDecoLayout()));
+      // Not made until it has its picture or model (finishing it clears this).
+      draft.parked[x.id].problem = `${x.name}: pick its ${surface(tab) ? 'texture' : tab === 'Poster' ? 'picture' : 'model'} first.`;
+      select(x.id);
     } catch (e) { notify(errText(e), 'error'); }
   }
 
@@ -129,43 +141,41 @@
       const [i, j] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
       if (i >= 0) { picked = ids.slice(i, j + 1); return; }
     }
-    if (!(await confirmDiscard())) return;
+    if (id === selectedId) return;
+    await leaveShown();
     select(id);
   }
 
-  async function removeIds(ids: string[]) {
+  /** Deletes decorations from the draft (Save deletes them in the game; Revert brings them back). */
+  function removeIds(ids: string[]) {
     const names = list.filter((x) => ids.includes(x.id)).map((x) => x.name);
-    const what = names.length === 1 ? `"${names[0]}"` : `${names.length} decorations`;
-    if (!(await ask(`Delete ${what}? Placed or owned copies disappear from saves the next time they load (bought looks fall back to the default).`))) return;
-    try {
-      view = await App.DeleteDecorationMany(ids);
-      dirty = false;
-      await load(false);
-      notify(`Deleted ${what}.`, 'ok');
-    } catch (err) { notify(errText(err), 'error'); }
+    const next = shown.find((x) => !ids.includes(x.id))?.id ?? '';
+    draft.remove(ids);
+    select(ids.includes(selectedId) ? next : selectedId);
+    const one = names.length === 1;
+    notify(`Deleted ${one ? `"${names[0]}"` : `${names.length} decorations`} — Save to remove ${one ? 'it' : 'them'} (placed or owned copies disappear from saves; bought looks fall back to the default), Revert to bring ${one ? 'it' : 'them'} back.`, 'ok');
   }
 
-  async function remove() {
-    if (!d) return;
-    if (isNew) { isNew = false; dirty = false; select(shown[0]?.id ?? ''); return; }
-    await removeIds([d.id]);
+  function remove() {
+    if (d) removeIds([d.id]);
   }
 
-  async function listKey(e: KeyboardEvent) {
+  function listKey(e: KeyboardEvent) {
     if (e.key !== 'Delete' || !picked.length) return;
     e.preventDefault();
-    await removeIds(picked);
+    removeIds([...picked]);
   }
 
   async function addedFromCatalog(ids: string[]) {
     fromCatalog = false;
+    await leaveShown();
     await load();
     if (ids.length) notify(`Added ${ids.length} decoration${ids.length === 1 ? '' : 's'} from the catalog.`, 'ok');
   }
 
   async function saveToCatalog() {
-    if (!d || isNew) return;
-    if (dirty) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
+    if (!d || draft.isNew(d.id)) return;
+    if (draft.shownDirty || draft.parked[d.id]) { notify('Save your changes first — the catalog takes the saved version.', 'warn'); return; }
     try { await App.SaveToCatalog('decoration', [d.id]); notify(`"${d.name}" is now the catalog's version.`, 'ok'); }
     catch (e) { notify(errText(e), 'error'); }
   }
@@ -178,7 +188,6 @@
       if (!rel) return;
       if (field === 'image') layout.image = rel; else d[field] = rel;
       bust = Date.now();
-      changed();
     } catch (e) { notify(errText(e), 'error'); }
   }
 
@@ -197,7 +206,6 @@
         layout.mode = 'placed';
         layout.rotX = 0; layout.rotY = 0; layout.rotZ = 0;
         if (!layout.height) layout.height = d.mount === 'Wall' ? 0.6 : 1;
-        changed();
       }
     } catch (e) { notify(errText(e), 'error'); }
     busy = '';
@@ -245,7 +253,6 @@
       layout.warnings = src.warnings ?? [];
       layout.triangles = src.triangles;
       if (layout.mode === 'kept') layout.mode = 'placed';
-      changed();
     } catch (e) { notify(errText(e), 'error'); }
     busy = '';
   }
@@ -253,7 +260,6 @@
   /** Moving a converted model by hand: from now on it is placed like an imported one. */
   function placementEdited() {
     if (layout.mode === 'kept') layout.mode = 'placed';
-    changed();
   }
 
   // ---------------------------------------------------------------- 2D previews and icons (surfaces, posters)
@@ -415,44 +421,64 @@
 
   // ---------------------------------------------------------------- save
 
+  /** Finishes the open decoration's edits (poster board / placed model built, icon drawn) and parks them in the draft. Runs
+   *  before another decoration opens and on Save. */
+  async function finishShown() {
+    if (!d || !draft.shownDirty) return;
+    let icon = '';
+    const autoIcon = !d.icon || layout.autoIcon;
+    if (surface(d.kind)) {
+      if (!d.texture) throw new Error(`${d.name}: pick a texture first.`);
+      if (autoIcon) { const c = document.createElement('canvas'); c.width = c.height = 256; await drawSurface(c, 2); icon = c.toDataURL('image/png'); }
+    } else if (d.kind === 'Poster') {
+      if (!layout.image) throw new Error(`${d.name}: pick an image first.`);
+      busy = 'Building the poster…';
+      const b: any = await App.BakePoster(layout.image, { width: layout.width ?? 0.45, frame: layout.frame ?? 0, color: hex(layout.color, '#202020'), depth: 0 } as any);
+      d.mesh = b.mesh; d.texture = b.texture;
+      d.mount = undefined;
+      if (autoIcon) { const c = document.createElement('canvas'); c.width = c.height = 512; await drawPoster(c, 24); icon = c.toDataURL('image/png'); }
+    } else {
+      if (layout.mode !== 'kept' || !d.mesh) {
+        if (!layout.model) throw new Error(`${d.name}: import a model first.`);
+        busy = 'Placing the model…';
+        const b: any = await App.BakeDecorationModel(layout.model, layout.texture ?? '', d.mount ?? 'Floor',
+          { rotX: layout.rotX ?? 0, rotY: layout.rotY ?? 0, rotZ: layout.rotZ ?? 0, height: layout.height || 1, anchor: [0, 0, 0] } as any);
+        d.mesh = b.mesh; d.texture = b.texture;
+      }
+      if (autoIcon) icon = await renderObjectIcon([512, 512]);
+    }
+    if (icon) layout.autoIcon = true;
+    const clean = JSON.parse(JSON.stringify(d));
+    for (const k of Object.keys(clean)) if (clean[k] === '' || clean[k] === null || clean[k] === undefined) delete clean[k];
+    draft.park(d.id, { item: clean, layout: JSON.stringify(layout), icon: icon || draft.parked[d.id]?.icon });
+    start = snap();
+    busy = '';
+  }
+
   async function save() {
-    if (!d) return;
     saving = true;
     try {
-      let icon = '';
-      const autoIcon = !d.icon || layout.autoIcon;
-      if (surface(d.kind)) {
-        if (!d.texture) throw new Error('Pick a texture first.');
-        if (autoIcon) { const c = document.createElement('canvas'); c.width = c.height = 256; await drawSurface(c, 2); icon = c.toDataURL('image/png'); }
-      } else if (d.kind === 'Poster') {
-        if (!layout.image) throw new Error('Pick an image first.');
-        busy = 'Building the poster…';
-        const b: any = await App.BakePoster(layout.image, { width: layout.width ?? 0.45, frame: layout.frame ?? 0, color: hex(layout.color, '#202020'), depth: 0 } as any);
-        d.mesh = b.mesh; d.texture = b.texture;
-        d.mount = undefined;
-        if (autoIcon) { const c = document.createElement('canvas'); c.width = c.height = 512; await drawPoster(c, 24); icon = c.toDataURL('image/png'); }
-      } else {
-        if (layout.mode !== 'kept' || !d.mesh) {
-          if (!layout.model) throw new Error('Import a model first.');
-          busy = 'Placing the model…';
-          const b: any = await App.BakeDecorationModel(layout.model, layout.texture ?? '', d.mount ?? 'Floor',
-            { rotX: layout.rotX ?? 0, rotY: layout.rotY ?? 0, rotZ: layout.rotZ ?? 0, height: layout.height || 1, anchor: [0, 0, 0] } as any);
-          d.mesh = b.mesh; d.texture = b.texture;
-        }
-        if (autoIcon) icon = await renderObjectIcon([512, 512]);
+      await finishShown();
+      const bad = draft.firstProblem();
+      if (bad) {
+        const k = list.find((x) => x.id === bad[0])?.kind;
+        if (k) tab = k;
+        select(bad[0]);
+        throw new Error(bad[1]);
       }
-      if (icon) layout.autoIcon = true;
-      const clean = JSON.parse(JSON.stringify(d));
-      for (const k of Object.keys(clean)) if (clean[k] === '' || clean[k] === null || clean[k] === undefined) delete clean[k];
-      view = await App.SaveDecoration(clean, JSON.stringify(layout), icon);
-      isNew = false;
-      dirty = false;
+      view = await App.SaveLibraryDraft('decorations', draft.request() as any);
+      draft.clear();
       bust = Date.now();
-      await load();
-      notify(`Saved "${d.name}"${view.installed ? ' — restart the game to see it' : ''}.`, 'ok');
+      select(view.decorations.some((x: any) => x.id === selectedId) ? selectedId : (shown[0]?.id ?? ''));
+      notify(`Saved${view.installed ? ' — restart the game to see it' : ''}.`, 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     busy = '';
     saving = false;
+  }
+
+  function revert() {
+    draft.clear();
+    select(view?.decorations.some((x: any) => x.id === selectedId) ? selectedId : (shown[0]?.id ?? ''));
   }
 
   async function iconFromFile() {
@@ -462,7 +488,6 @@
       d.icon = rel;
       layout.autoIcon = false;
       bust = Date.now();
-      changed();
     } catch (e) { notify(errText(e), 'error'); }
   }
 
@@ -482,11 +507,13 @@
   });
 </script>
 
+<SaveBar dirty={draft.dirty} {saving} onsave={save} onrevert={revert}
+  leaveMessage="Leave Decorations without saving? Your unsaved changes will be lost."
+  revertMessage="Throw away every unsaved change on this page (edits, new and deleted decorations)?">
+  {#snippet title()}<h2>Decorations</h2>{#if busy}<span class="muted small">{busy}</span>{/if}{/snippet}
+  {#snippet extra()}<button onclick={() => App.OpenAccessoriesFolder()} title="Decorations are saved with the accessories (accessories.json).">Open folder</button>{/snippet}
+</SaveBar>
 <div class="page">
-  <header class="row">
-    <h2 class="grow">Decorations</h2>
-    <button onclick={() => App.OpenAccessoriesFolder()} title="Decorations are saved with the accessories (accessories.json).">Open folder</button>
-  </header>
   <p class="muted small intro">
     New things for the phone's <b>Buy Decoration</b> app: wall, floor and ceiling looks, posters made from your own pictures and decorations
     from your own 3D models. Bought looks are switched in the game's Decorate screen; posters and decorations are placed like vanilla ones.
@@ -507,12 +534,12 @@
   <div class="fwrap">
     <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
       {#each shown as x (x.id)}
-        <button class:active={x.id === selectedId && !isNew} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
+        <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
           <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{/if}</span>
-          <span class="grow">{x.name}<br /><span class="muted small">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · from ${originName(originOf(x))}` : ''}</span></span>
+          <span class="grow">{x.id === selectedId && d ? d.name : x.name}
+            {#if draft.parked[x.id]?.problem}<span class="warn small" title={draft.parked[x.id].problem}>⚠</span>{/if}{#if draft.isNew(x.id)}<span class="tag small" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}<br /><span class="muted small">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · from ${originName(originOf(x))}` : ''}</span></span>
         </button>
       {/each}
-      {#if isNew && d}<button class="active"><span class="ico"></span><span class="grow">{d.name}<br /><span class="muted small">new — not saved</span></span></button>{/if}
       <button onclick={add}>+ New {kindInfo(tab)?.one ?? ''}</button>
       <button onclick={() => (fromCatalog = true)} title="Decorations from your other setups and earlier imports — no re-import">Add from catalog…</button>
     </div>
@@ -521,8 +548,8 @@
       <div class="form">
         <section>
           <div class="row">
-            <label class="field grow" title="Name shown in the Buy Decoration app.">Name<input bind:value={d.name} oninput={changed} /></label>
-            <label class="field" style="width:120px" title="Price in the Buy Decoration app.">Price<input type="number" min="0" step="10" bind:value={d.price} oninput={changed} /></label>
+            <label class="field grow" title="Name shown in the Buy Decoration app.">Name<input bind:value={d.name} /></label>
+            <label class="field" style="width:120px" title="Price in the Buy Decoration app.">Price<input type="number" min="0" step="10" bind:value={d.price} /></label>
             <label class="field" style="width:170px" title="Fixed id that saves use to recognise this decoration. It never changes, so renaming is safe.">Id<input value={d.id} readonly /></label>
           </div>
           <div class="row thumbs">
@@ -531,11 +558,11 @@
             <span class="muted small">{layout.autoIcon || !d.icon ? 'made from the decoration when you save' : 'your own picture'}</span>
             <div class="grow"></div>
             <button class="small" onclick={iconFromFile}>Use a picture…</button>
-            {#if !layout.autoIcon && d.icon}<button class="small" onclick={() => { layout.autoIcon = true; changed(); }}>Make it from the decoration</button>{/if}
+            {#if !layout.autoIcon && d.icon}<button class="small" onclick={() => { layout.autoIcon = true; }}>Make it from the decoration</button>{/if}
           </div>
           <div class="row"><div class="grow"></div>
-            {#if !isNew}<button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog.">Update catalog</button>{/if}
-            <button class="danger small" onclick={remove}>{isNew ? 'Discard' : 'Delete'}</button></div>
+            {#if !draft.isNew(d.id)}<button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog.">Update catalog</button>{/if}
+            <button class="danger small" onclick={remove}>Delete</button></div>
         </section>
 
         {#if surface(d.kind)}
@@ -548,16 +575,16 @@
                   {d.kind.toLowerCase()} looks.</p>
                 <div class="row"><button onclick={() => pick('texture')}>{d.texture ? 'Change texture…' : 'Pick texture…'}</button></div>
                 <label class="field" title="Colour multiplied onto the texture (white = the texture as it is).">Colour
-                  <span class="row"><input type="color" value={hex(d.color, '#ffffff')} oninput={(e) => { d.color = e.currentTarget.value.toUpperCase() === '#FFFFFF' ? '' : e.currentTarget.value; changed(); }} />
-                  {#if d.color}<button class="small" onclick={() => { d.color = ''; changed(); }}>White</button>{/if}</span></label>
+                  <span class="row"><input type="color" value={hex(d.color, '#ffffff')} oninput={(e) => { d.color = e.currentTarget.value.toUpperCase() === '#FFFFFF' ? '' : e.currentTarget.value; }} />
+                  {#if d.color}<button class="small" onclick={() => { d.color = ''; }}>White</button>{/if}</span></label>
                 <label class="field" title="How glossy it looks: 0 = matt, 1 = mirror-like. The game's own looks are mostly 0.1–0.2 or use a map.">Smoothness {(d.smoothness ?? 0.2).toFixed(2)}
-                  <input type="range" min="0" max="1" step="0.01" value={d.smoothness ?? 0.2} oninput={(e) => { d.smoothness = +e.currentTarget.value; changed(); }} /></label>
+                  <input type="range" min="0" max="1" step="0.01" value={d.smoothness ?? 0.2} oninput={(e) => { d.smoothness = +e.currentTarget.value; }} /></label>
                 <details>
                   <summary class="small">Bump and shine maps (optional)</summary>
                   <div class="row small"><span class="grow">Normal map {d.normalMap ? '✓' : '—'}</span><button class="small" onclick={() => pick('normalMap')}>Pick…</button>
-                    {#if d.normalMap}<button class="small" onclick={() => { d.normalMap = ''; changed(); }}>Remove</button>{/if}</div>
+                    {#if d.normalMap}<button class="small" onclick={() => { d.normalMap = ''; }}>Remove</button>{/if}</div>
                   <div class="row small"><span class="grow">Metallic/smoothness map {d.roughnessMap ? '✓' : '—'}</span><button class="small" onclick={() => pick('roughnessMap')}>Pick…</button>
-                    {#if d.roughnessMap}<button class="small" onclick={() => { d.roughnessMap = ''; changed(); }}>Remove</button>{/if}</div>
+                    {#if d.roughnessMap}<button class="small" onclick={() => { d.roughnessMap = ''; }}>Remove</button>{/if}</div>
                   <p class="muted small">Unity Standard layout: metal in red, smoothness in alpha (scaled by Smoothness).</p>
                 </details>
               </div>
@@ -571,13 +598,13 @@
               <div class="side">
                 <div class="row"><button onclick={() => pick('image')}>{layout.image ? 'Change picture…' : 'Pick picture…'}</button></div>
                 <label class="field" title="Width of the whole board on the wall (frame included). The game's posters are 45 cm wide.">Width (cm)
-                  <input type="number" min="5" max="500" step="1" value={Math.round((layout.width ?? 0.45) * 100)} oninput={(e) => { layout.width = Math.max(0.05, +e.currentTarget.value / 100); changed(); }} /></label>
+                  <input type="number" min="5" max="500" step="1" value={Math.round((layout.width ?? 0.45) * 100)} oninput={(e) => { layout.width = Math.max(0.05, +e.currentTarget.value / 100); }} /></label>
                 {#if posterSize}<p class="muted small">Board: {posterSize.w} × {posterSize.h} cm (the game's posters: 45 × 61 cm).</p>{/if}
                 <label class="field" title="Frame around the picture, as a share of its shorter side.">Frame {Math.round((layout.frame ?? 0) * 100)} %
-                  <input type="range" min="0" max="0.2" step="0.005" value={layout.frame ?? 0} oninput={(e) => { layout.frame = +e.currentTarget.value; changed(); }} /></label>
-                <label class="field" title="Frame and edge colour.">Frame colour<input type="color" value={hex(layout.color, '#202020')} oninput={(e) => { layout.color = e.currentTarget.value; changed(); }} /></label>
+                  <input type="range" min="0" max="0.2" step="0.005" value={layout.frame ?? 0} oninput={(e) => { layout.frame = +e.currentTarget.value; }} /></label>
+                <label class="field" title="Frame and edge colour.">Frame colour<input type="color" value={hex(layout.color, '#202020')} oninput={(e) => { layout.color = e.currentTarget.value; }} /></label>
                 <label class="field" title="Shop tab it is listed on.">Shop tab
-                  <select value={d.tab ?? 'Poster'} onchange={(e) => { d.tab = e.currentTarget.value === 'Poster' ? '' : e.currentTarget.value; changed(); }}>
+                  <select value={d.tab ?? 'Poster'} onchange={(e) => { d.tab = e.currentTarget.value === 'Poster' ? '' : e.currentTarget.value; }}>
                     <option value="Poster">Posters</option><option value="Other">Other</option></select></label>
               </div>
             </div>
@@ -596,7 +623,7 @@
                   <select value={d.mount ?? 'Floor'} onchange={(e) => { d.mount = e.currentTarget.value; placementEdited(); }}>
                     <option value="Floor">on the floor</option><option value="Wall">on a wall</option></select></label>
                 <label class="field" title="Shop tab it is listed on.">Shop tab
-                  <select value={d.tab ?? 'Other'} onchange={(e) => { d.tab = e.currentTarget.value === 'Other' ? '' : e.currentTarget.value; changed(); }}>
+                  <select value={d.tab ?? 'Other'} onchange={(e) => { d.tab = e.currentTarget.value === 'Other' ? '' : e.currentTarget.value; }}>
                     <option value="Other">Other</option><option value="Poster">Posters</option></select></label>
                 {#if layout.model || layout.sourceFile}
                   <div class="texbox">
@@ -635,11 +662,6 @@
 
         {#if problems.length}<section>{#each problems as m}<p class="warn small">{m}</p>{/each}</section>{/if}
 
-        <div class="row savebar">
-          {#if busy}<span class="muted small">{busy}</span>{/if}
-          <div class="grow"></div>
-          <button class="primary" onclick={save} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save & install'}</button>
-        </div>
       </div>
     {:else}
       <div class="form">
@@ -660,7 +682,7 @@
 {#if fromCatalog}<CatalogPicker kind="decoration" sub={tab} onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
 
 <style>
-  .page { padding: 16px 20px; height: 100%; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
   .intro { max-width: 900px; line-height: 1.5; margin: 0; }
   .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
   .tabs button.active { border-color: var(--accent); background: #22304d; }
@@ -689,5 +711,6 @@
   .vico { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: var(--bg); border-radius: 4px; }
   .vico img { max-width: 100%; max-height: 100%; }
   .texbox { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
-  .savebar { position: sticky; bottom: 0; background: var(--bg); padding: 8px 0; }
+  .dot { color: var(--accent-2); margin-left: 4px; }
+  .tag { color: var(--accent); margin-left: 4px; }
 </style>

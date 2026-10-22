@@ -32,8 +32,8 @@ func MigrateLayout(kind string, raw json.RawMessage) (json.RawMessage, bool) {
 	}
 	for _, layer := range layers {
 		x, ok := layer["x"].(float64)
-		if !ok {
-			continue // fills have no place
+		if !ok || layer["space"] == "texture" {
+			continue // fills on the faces have no place; map layers are in texture pixels
 		}
 		nx := x
 		for _, mv := range m.NetMoves {

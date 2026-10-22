@@ -29,11 +29,12 @@ func TestModelsMatchMeshes(t *testing.T) {
 		kind, mesh string
 		faces      []Face
 		size       int
+		dir        string // "" = the accessory templates
 	}
 	var checks []check
 	for _, kind := range []string{"Deckbox", "Playmat", "Sleeve", "Comic", "Binder", "BattleDeck", "Pack", "Box"} { // Dice is a palette (swatches, not UV islands)
 		m, _ := ModelFor(kind)
-		checks = append(checks, check{kind, m.Mesh, m.Faces, m.TextureSize})
+		checks = append(checks, check{kind: kind, mesh: m.Mesh, faces: m.Faces, size: m.TextureSize})
 	}
 	// Box bases read other atlas areas through the Rare/Epic/Legendary box meshes.
 	for i, b := range box.Bases[1:4] {
@@ -41,7 +42,7 @@ func TestModelsMatchMeshes(t *testing.T) {
 		for _, f := range box.Faces {
 			faces = append(faces, Face{ID: f.ID, Targets: b.Targets[f.ID]})
 		}
-		checks = append(checks, check{b.ID, fmt.Sprintf("CardBoxMesh_%d", i+2), faces, 1024})
+		checks = append(checks, check{kind: b.ID, mesh: fmt.Sprintf("CardBoxMesh_%d", i+2), faces: faces, size: 1024})
 	}
 	// Tabletop items: one layout per base. The UP playmats' "mat" swatches are colour areas (not islands).
 	for _, b := range TabletopBases() {
@@ -52,12 +53,27 @@ func TestModelsMatchMeshes(t *testing.T) {
 				faces = append(faces, f)
 			}
 		}
-		checks = append(checks, check{b, m.Mesh, faces, m.TextureSize})
+		checks = append(checks, check{kind: b, mesh: m.Mesh, faces: faces, size: m.TextureSize})
+	}
+	// Game look boxes (templatesoxes). The bulk box's "rest" swatches are colour areas.
+	for _, id := range BoxLooks() {
+		m, _ := BoxLook(id)
+		var faces []Face
+		for _, f := range m.Faces {
+			if f.ID != "rest" && f.ID != "handles" {
+				faces = append(faces, f)
+			}
+		}
+		checks = append(checks, check{id, m.Mesh, faces, m.TextureSize, filepath.Join(filepath.Dir(dir), "boxes")})
 	}
 	for _, c := range checks {
 		kind := c.kind
 		m := Model{Faces: c.faces, TextureSize: c.size}
-		mesh, err := LoadOBJ(filepath.Join(dir, c.mesh+".obj"))
+		meshDir := dir
+		if c.dir != "" {
+			meshDir = c.dir
+		}
+		mesh, err := LoadOBJ(filepath.Join(meshDir, c.mesh+".obj"))
 		if err != nil {
 			t.Fatalf("%s: %v", kind, err)
 		}

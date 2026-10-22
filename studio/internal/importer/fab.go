@@ -214,12 +214,17 @@ func (s *fabSource) Import(ctx context.Context, ws project.Workspace, code strin
 		Slots: Fab.Slots, FoilChance: Fab.FoilChance}, opt, report)
 }
 
-func (s *fabSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+// setCards fetches the card list of the set p was imported from (prices, Re-download image).
+func (s *fabSource) setCards(ctx context.Context, p *project.Project) ([]cardIn, error) {
 	g, _, err := s.t.tcgFind(ctx, fabCategory, p.Meta.SetCode, "Flesh and Blood")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	cards, err := s.cards(ctx, g, true)
+	return s.cards(ctx, g, true)
+}
+
+func (s *fabSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+	cards, err := s.setCards(ctx, p)
 	if err != nil {
 		return 0, err
 	}

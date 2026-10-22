@@ -901,6 +901,27 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 	return n, nil
 }
 
+// RedownloadCardImages downloads the art of project id's cards again from the source the set was imported from (Re-download
+// image), each under a new name (freshName), and returns card id → new paths: the caller points the cards at them, and the
+// game shows them once the set is saved.
+func (a *App) RedownloadCardImages(id string, cardIDs []string) (map[string]importer.CardImages, error) {
+	if !setfmt.SafeID(id) {
+		return nil, errBadID
+	}
+	p, err := a.loadProject(id)
+	if err != nil {
+		return nil, err
+	}
+	got, missing, err := a.sources.RedownloadImages(a.ctx, p, cardIDs, freshName)
+	if err != nil {
+		return got, err
+	}
+	if len(got) == 0 && len(missing) > 0 {
+		return nil, fmt.Errorf("the source doesn't have this card any more (or it hasn't been saved yet) — use Change image…")
+	}
+	return got, nil
+}
+
 // writeIntoProject stores an image under images/ (in the set's shared folder, Project.WriteTarget) with a free name based
 // on name and returns its relative path.
 func (a *App) writeIntoProject(id, name string, b []byte) (string, error) {

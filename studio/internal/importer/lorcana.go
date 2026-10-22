@@ -214,11 +214,16 @@ func (s *lorcanaSource) Import(ctx context.Context, ws project.Workspace, code s
 		Slots: Lorcana.Slots, FoilChance: Lorcana.FoilChance}, opt, report)
 }
 
-func (s *lorcanaSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+// setCards fetches the card list of the set p was imported from (prices, Re-download image).
+func (s *lorcanaSource) setCards(ctx context.Context, p *project.Project) ([]cardIn, error) {
 	if p.Meta.SetCode == "" {
-		return 0, fmt.Errorf("%s was not imported from Lorcast", p.ID)
+		return nil, fmt.Errorf("%s was not imported from Lorcast", p.ID)
 	}
-	cards, err := s.cards(ctx, p.Meta.SetCode)
+	return s.cards(ctx, p.Meta.SetCode)
+}
+
+func (s *lorcanaSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+	cards, err := s.setCards(ctx, p)
 	if err != nil {
 		return 0, err
 	}

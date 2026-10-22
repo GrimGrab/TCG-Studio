@@ -290,16 +290,21 @@ func (s *ygoSource) Import(ctx context.Context, ws project.Workspace, code strin
 		Slots: YgoBooster(x.TCGDate).Slots, FoilChance: YgoBooster(x.TCGDate).FoilChance}, opt, report)
 }
 
-func (s *ygoSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+// setCards fetches the card list of the set p was imported from (prices, Re-download image).
+func (s *ygoSource) setCards(ctx context.Context, p *project.Project) ([]cardIn, error) {
 	sets, err := s.sets(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	x, ok := ygoKeys(sets)[p.Meta.SetCode]
 	if !ok {
-		return 0, fmt.Errorf("Yu-Gi-Oh! set %s not found", p.Meta.SetCode)
+		return nil, fmt.Errorf("Yu-Gi-Oh! set %s not found", p.Meta.SetCode)
 	}
-	cards, err := s.cards(ctx, x.Name)
+	return s.cards(ctx, x.Name)
+}
+
+func (s *ygoSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+	cards, err := s.setCards(ctx, p)
 	if err != nil {
 		return 0, err
 	}

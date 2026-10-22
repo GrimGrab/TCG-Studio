@@ -65,7 +65,23 @@
     rotating = false;
   }
 
-  const variantKeys = BORDERS.flatMap((b) => [b, b + '_foil']);
+  // Cards imported from a card database or image folder can fetch their art again (e.g. after it was overwritten).
+  const canRedownload = $derived(!!(meta?.scryfallId || meta?.sourceId) && project.meta?.source !== 'epl');
+  let redownloading = $state(false);
+  async function redownload() {
+    redownloading = true;
+    try {
+      const got = (await App.RedownloadCardImages(project.id, [card.id]))[card.id];
+      if (got) {
+        card.image = got.image; // new files: the game sees them once the set is saved
+        if (got.backImage) card.backImage = got.backImage;
+        notify('Downloaded the card image again — Save to use it in the game.');
+      }
+    } catch (e) { notify(errText(e), 'error'); }
+    redownloading = false;
+  }
+
+  const variantKeys =BORDERS.flatMap((b) => [b, b + '_foil']);
   const others = $derived(project.set.cards.filter((c: any) => c.id !== card.id));
   const preview = $derived(
     BORDERS.slice(0, 6).map((b, i) => {
@@ -95,6 +111,11 @@
   {/if}
   <div class="row">
     <button class="small" onclick={changeImage}>Change image…</button>
+    {#if canRedownload}
+      <button class="small" disabled={redownloading} onclick={redownload}
+        title="Download this card's original image again from where the set was imported">
+        {redownloading ? 'Downloading…' : 'Re-download image'}</button>
+    {/if}
     <button class="small" disabled={!card.image || rotating} onclick={() => rotate(-1)} title="Rotate left">⟲</button>
     <button class="small" disabled={!card.image || rotating} onclick={() => rotate(1)} title="Rotate right">⟳</button>
     <span class="muted small path">{card.image}</span>

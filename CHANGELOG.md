@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.12.2 - 2026-10-22
+
+Re-download a single card's image.
+
+- New: Re-download image button on a card (Sets → open a set → click a card, next to Change image…). It downloads that card's original image again from where the set was imported (Scryfall, TCGdex, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana, Flesh and Blood, Union Arena, or your image folder if it's still there) — handy if a card's art was replaced by mistake. Click Save to use it in the game. Sets converted from EPL mods can't re-download; use Change image… for those.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.12.1 - 2026-10-22
 
 A setting to stop stinky customers.

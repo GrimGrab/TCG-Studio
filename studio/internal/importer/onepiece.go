@@ -168,12 +168,17 @@ func (s *onePieceSource) Import(ctx context.Context, ws project.Workspace, code 
 }
 
 // RefreshMeta updates prices from TCGplayer.
-func (s *onePieceSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+// setCards fetches the card list of the set p was imported from (prices, Re-download image).
+func (s *onePieceSource) setCards(ctx context.Context, p *project.Project) ([]cardIn, error) {
 	g, _, err := s.t.tcgFind(ctx, opCategory, p.Meta.SetCode, "One Piece")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	cards, err := s.cards(ctx, g, true)
+	return s.cards(ctx, g, true)
+}
+
+func (s *onePieceSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+	cards, err := s.setCards(ctx, p)
 	if err != nil {
 		return 0, err
 	}

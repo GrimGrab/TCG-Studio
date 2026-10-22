@@ -232,11 +232,16 @@ func (s *swuSource) Import(ctx context.Context, ws project.Workspace, code strin
 		Slots: SwuBooster.Slots, FoilChance: SwuBooster.FoilChance}, opt, report)
 }
 
-func (s *swuSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+// setCards fetches the card list of the set p was imported from (prices, Re-download image).
+func (s *swuSource) setCards(ctx context.Context, p *project.Project) ([]cardIn, error) {
 	if p.Meta.SetCode == "" {
-		return 0, fmt.Errorf("%s was not imported from SWU-DB", p.ID)
+		return nil, fmt.Errorf("%s was not imported from SWU-DB", p.ID)
 	}
-	cards, err := s.cards(ctx, p.Meta.SetCode, true)
+	return s.cards(ctx, p.Meta.SetCode, true)
+}
+
+func (s *swuSource) RefreshMeta(ctx context.Context, p *project.Project) (int, error) {
+	cards, err := s.setCards(ctx, p)
 	if err != nil {
 		return 0, err
 	}

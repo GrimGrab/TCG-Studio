@@ -458,6 +458,10 @@ export function ProjectInstallState(arg1) {
   return window['go']['main']['App']['ProjectInstallState'](arg1);
 }
 
+export function RedownloadCardImages(arg1, arg2) {
+  return window['go']['main']['App']['RedownloadCardImages'](arg1, arg2);
+}
+
 export function RefreshPrices(arg1) {
   return window['go']['main']['App']['RefreshPrices'](arg1);
 }

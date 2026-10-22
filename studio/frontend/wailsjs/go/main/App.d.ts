@@ -248,6 +248,8 @@ export function ProductPhotos(arg1:number,arg2:number):Promise<Array<importer.Se
 
 export function ProjectInstallState(arg1:string):Promise<string>;
 
+export function RedownloadCardImages(arg1:string,arg2:Array<string>):Promise<Record<string, importer.CardImages>>;
+
 export function RefreshPrices(arg1:string):Promise<string>;
 
 export function RefreshTemplates(arg1:boolean):Promise<main.TemplatesStatus>;

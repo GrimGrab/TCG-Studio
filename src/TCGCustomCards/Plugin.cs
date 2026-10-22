@@ -21,6 +21,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> ShowVanillaCards;
         internal static ConfigEntry<bool> ShowVanillaPacks;
         internal static ConfigEntry<bool> ShowVanillaFurniture;
+        internal static ConfigEntry<bool> StinkyCustomers;
         internal static ConfigEntry<bool> ShowVanillaPosters, ShowVanillaDecoObjects, ShowVanillaSurfaces;
         /// <summary>[Content] ShowVanilla&lt;Kind&gt; per accessory kind.</summary>
         internal static readonly System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>> ShowVanillaAccessory =
@@ -144,6 +145,9 @@ namespace TCGCustomCards
             ShowVanillaFurniture = Config.Bind("Content", "ShowVanillaFurniture", true,
                 "Sell the vanilla furniture in the furniture shop. Off = only your custom furniture from TCG Studio (the cash counter, " +
                 "workbench, trash bin and empty box storage stay unless you have a custom one of that kind). Placed furniture stays.");
+            StinkyCustomers = Config.Bind("Gameplay", "StinkyCustomers", true,
+                "New customers can arrive stinky (vanilla). Off = no new stinky customers; ones already stinky stay until they leave " +
+                "or you spray them. Applies live.");
             const string decoSection = "Content - Decorations";
             ShowVanillaPosters = Config.Bind(decoSection, "ShowVanillaPosters", true,
                 "Sell the vanilla posters and fan art in the Buy Decoration app (Poster tab). Off = only your custom posters from TCG Studio. " +

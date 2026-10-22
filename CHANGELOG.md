@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.12.1 - 2026-10-22
+
+A setting to stop stinky customers.
+
+- New: Gameplay → StinkyCustomers. Switch it off and new customers no longer arrive stinky; customers who are already stinky stay that way until they leave or you spray them. On (the default) keeps the vanilla game. Applies live, in F1 or TCG Studio → Mod settings.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.12.0 - 2026-10-22
 
 Paint the shop's boxes, shopping bags and street billboards, and one Save button on every TCG Studio page.

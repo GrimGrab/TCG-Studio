@@ -106,6 +106,38 @@
 
   function selectAll() { selected = shown.map((c: any) => c.id); }
 
+  // Set order = the game's order (binder "Set order", price app); saves key cards by id, so moving them is safe.
+  // Drag works in Set order only; dragging a selected card moves the whole selection, filtered or not.
+  let dragIds = $state<string[]>([]);
+  let dropAt = $state<{ id: string; after: boolean } | null>(null);
+
+  function dragStart(e: DragEvent, id: string) {
+    dragIds = selected.includes(id) ? project.set.cards.filter((c: any) => selected.includes(c.id)).map((c: any) => c.id) : [id];
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', id);
+  }
+
+  function dragOver(e: DragEvent, id: string) {
+    if (!dragIds.length) return;
+    e.preventDefault();
+    if (dragIds.includes(id)) { dropAt = null; return; }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dropAt = { id, after: e.clientX > r.left + r.width / 2 };
+  }
+
+  function drop(e: DragEvent) {
+    e.preventDefault();
+    if (dropAt) {
+      const moving = project.set.cards.filter((c: any) => dragIds.includes(c.id));
+      const rest = project.set.cards.filter((c: any) => !dragIds.includes(c.id));
+      rest.splice(rest.findIndex((c: any) => c.id === dropAt!.id) + (dropAt.after ? 1 : 0), 0, ...moving);
+      project.set.cards = rest;
+    }
+    dragEnd();
+  }
+
+  function dragEnd() { dragIds = []; dropAt = null; }
+
   // Full-screen viewer over the shown cards (double-click a card, or click the picture in the card panel); browsing selects.
   let viewing = $state<number | null>(null);
   function view(id: string) { const i = shown.findIndex((c: any) => c.id === id); if (i >= 0) viewing = i; }
@@ -188,9 +220,14 @@
       <label class="check small" title="For files named with a card number first, like “001 Captain Marvel.png”: the number becomes the card's number and is left out of its name. Off: the whole file name is the name.">
         <input type="checkbox" bind:checked={stripNumbers} onchange={rememberStrip} /> Strip leading numbers</label>
     </div>
-    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))">
+    <!-- Drops land on the grid (the drop line sits in the gap between cards), at the last spot a card showed. -->
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))" role="list"
+      ondragover={(e) => { if (dragIds.length) e.preventDefault(); }} ondrop={drop}
+      ondragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropAt = null; }}>
       {#each shown as c, i (c.id)}
         <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)} ondblclick={() => view(c.id)}
+          draggable={sort === 'set'} ondragstart={(e) => dragStart(e, c.id)} ondragover={(e) => dragOver(e, c.id)} ondragend={dragEnd}
+          class:dragging={dragIds.includes(c.id)} class:before={dropAt?.id === c.id && !dropAt?.after} class:after={dropAt?.id === c.id && !!dropAt?.after}
           title={meta(c.id).srcRarity && !ownRarities ? `${rarityName(project.set, c.rarity)} · ${meta(c.id).srcRarity}` : rarityName(project.set, c.rarity)}>
           <div class="img" style="aspect-ratio: 63/88">
             {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt={c.name} loading="lazy" draggable="false" />{/if}
@@ -219,6 +256,7 @@
           <div class="row"><span class="dot" style="background:{rarityColor(project.set, r.id)}"></span><span class="grow">{r.name}</span><b>{n}</b></div>
         {/each}
         <p class="muted">Click a card to edit it, double-click to view it full screen. Ctrl/Shift-click or “Select all shown” to edit many at once.</p>
+        <p class="muted">Sorted by Set order, drag cards to move them (a selection moves together). The game's binder and price app show cards in this order.</p>
       </div>
     {/if}
   </aside>
@@ -236,6 +274,9 @@
   .grid { flex: 1; overflow: auto; display: grid; gap: 10px; padding: 4px 14px 20px; align-content: start; }
   .card { padding: 6px; display: flex; flex-direction: column; gap: 4px; background: var(--panel); text-align: left; user-select: none; }
   .card.sel { border-color: var(--accent); background: #22304d; }
+  .card.dragging { opacity: 0.4; }
+  .card.before { box-shadow: -6px 0 0 -1px var(--accent); }
+  .card.after { box-shadow: 6px 0 0 -1px var(--accent); }
   .img { position: relative; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .img img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .lock { position: absolute; top: 4px; right: 4px; font-size: 12px; }

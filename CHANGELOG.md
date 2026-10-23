@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.13.1 - 2026-10-23
+
+Reorder your cards by dragging them.
+
+- New: on a set's Cards tab, sorted by Set order, drag cards to change their order. Select several cards to move them together; this also works while searching or filtering. The game's binder (Set order) and the TCG price app show cards in this order. It's safe on existing saves.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.13.0 - 2026-10-23
 
 Texture editor overhaul from your feedback: a bigger work area, zoom, the Faces tab is back, and cleaner edges.

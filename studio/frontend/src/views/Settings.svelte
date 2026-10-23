@@ -4,6 +4,7 @@
   import { App, EventsOn, errText, ask } from '../lib/api';
   import { Draft } from '../lib/draft.svelte';
   import SaveBar from './SaveBar.svelte';
+  import { UI_SCALES } from '../lib/uiScale';
 
   let { notify, onchange }: { notify: (t: string, k?: string) => void; onchange: () => void } = $props();
 
@@ -12,10 +13,18 @@
   let tpl = $state<any>(null); // game templates (read from the game files, or the mod's in-game export)
   let libraryFolder = $state('');
   // The settings this page edits (Save stores them); the game folder is set by its own buttons straight away.
-  const draft = new Draft<{ workspace: string; imageFormat: string }>();
+  const draft = new Draft<{ workspace: string; imageFormat: string; uiScale: number }>();
+  const fromSettings = (s: any) => ({ workspace: s.workspace ?? '', imageFormat: s.imageFormat || 'png', uiScale: s.uiScale || 1 });
   async function readSettings() {
     settings = await App.GetSettings();
-    if (!draft.dirty) draft.reset({ workspace: settings.workspace ?? '', imageFormat: settings.imageFormat || 'png' });
+    if (!draft.dirty) draft.reset(fromSettings(settings));
+  }
+  // The interface size this run started with: a saved different one needs a restart (WebView2 takes it on start).
+  let startScale = $state(1);
+  App.UIScaleAtStart().then((v) => (startScale = v || 1)).catch(() => {});
+  let needsRestart = $derived(!!settings && Math.abs((settings.uiScale || 1) - startScale) > 0.001);
+  async function restart() {
+    try { await App.RestartStudio(); } catch (e) { notify(errText(e), 'error'); }
   }
 
   async function load() {
@@ -61,7 +70,7 @@ TCG Studio starts an empty one there and ` +
           `or move them there. Use this folder?`))) return;
       saving = true;
       settings = await App.SaveSettings({ ...(await App.GetSettings()), ...want });
-      draft.reset({ workspace: settings.workspace ?? '', imageFormat: settings.imageFormat || 'png' });
+      draft.reset(fromSettings(settings));
       libraryFolder = await App.LibraryFolder();
       notify('Saved', 'ok');
     } catch (e) {
@@ -100,6 +109,20 @@ TCG Studio starts an empty one there and ` +
           {#if status.found && !tpl?.busy}<button class="small" onclick={rereadTemplates} title="Read the vanilla art, models and prices from the game files again">Read again</button>{/if}
         </li>
       </ul>
+    </section>
+    <section>
+      <h3>Interface size</h3>
+      <label class="field">Size of text, buttons and panels in TCG Studio
+        <select bind:value={draft.value.uiScale}>
+          {#each UI_SCALES as v}<option value={v}>{Math.round(v * 100)} %{v === 1 ? ' (default)' : ''}</option>{/each}
+        </select>
+      </label>
+      {#if needsRestart}
+        <div class="row"><span class="grow">Saved. The new size shows after TCG Studio restarts.</span><button class="primary" onclick={restart} disabled={draft.dirty}
+          title={draft.dirty ? 'Save or revert your other changes on this page first' : 'Start TCG Studio again with the new size'}>Restart now</button></div>
+      {:else}
+        <p class="muted small">Takes effect when TCG Studio restarts (you can restart right after saving).</p>
+      {/if}
     </section>
     <section>
       <h3>Downloads</h3>

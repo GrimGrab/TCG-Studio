@@ -194,6 +194,9 @@ export async function renderNet(canvas: HTMLCanvasElement, m: Model, layout: Lay
 
 /** A layer on the texture map (UV view) rather than on the faces. */
 export const isMapLayer = (l: Layer) => l.space === 'texture';
+/** A colour over whole faces (its face, or every face; no size): the older kind, and dice swatches. A colour with a size is a
+ *  rectangle placed, moved and sized like an image. */
+export const wholeFaceFill = (l: Layer) => l.kind === 'fill' && !isMapLayer(l) && !(l.w > 0 && l.h > 0);
 
 /** The layers' images, loaded (missing ones left out). */
 async function layerImages(layout: Layout, imageUrl: (rel: string) => string): Promise<Map<string, HTMLImageElement>> {
@@ -210,7 +213,7 @@ function drawLayer(ctx: CanvasRenderingContext2D, m: Model, l: Layer, S: number,
   ctx.save();
   ctx.globalAlpha = l.opacity;
   ctx.globalCompositeOperation = blend ?? (l.blend || 'source-over');
-  if (l.kind === 'fill') {
+  if (wholeFaceFill(l)) {
     for (const f of l.face?.startsWith('view:') ? pickableFaces(m) : netFaces(m)) {
       if (l.face && l.face !== f.id) continue;
       const r = faceRect(m, f, S);
@@ -230,10 +233,19 @@ function drawLayer(ctx: CanvasRenderingContext2D, m: Model, l: Layer, S: number,
   ctx.restore();
 }
 
-/** Draws a layer's image or text centred on the origin, s canvas pixels per layer unit. */
+/** Draws a layer's image, text or colour rectangle centred on the origin, s canvas pixels per layer unit. */
 function drawShape(ctx: CanvasRenderingContext2D, l: Layer, s: number, imgs: Map<string, HTMLImageElement>) {
   const img = l.kind === 'image' && l.src ? imgs.get(l.src) : undefined;
-  if (img) {
+  if (l.kind === 'fill') {
+    const w = l.w * s, h = l.h * s;
+    if (l.color2) {
+      const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+      g.addColorStop(0, l.color || '#000');
+      g.addColorStop(1, l.color2);
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = l.color || '#000';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+  } else if (img) {
     const [u0, v0, u1, v1] = l.crop ?? [0, 0, 1, 1];
     ctx.drawImage(img, u0 * img.width, v0 * img.height, (u1 - u0) * img.width, (v1 - v0) * img.height, (-l.w / 2) * s, (-l.h / 2) * s, l.w * s, l.h * s);
   } else if (l.kind === 'text' && l.text) {
@@ -267,16 +279,7 @@ function drawMapLayer(ctx: CanvasRenderingContext2D, l: Layer, k: number, imgs: 
   ctx.rotate((l.rot * Math.PI) / 180);
   if (l.mirror) ctx.scale(-1, 1);
   if (l.skew) ctx.transform(1, 0, l.skew, 1, 0, 0);
-  if (l.kind === 'fill') {
-    const w = l.w * k, h = l.h * k;
-    if (l.color2) {
-      const g = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
-      g.addColorStop(0, l.color || '#000');
-      g.addColorStop(1, l.color2);
-      ctx.fillStyle = g;
-    } else ctx.fillStyle = l.color || '#000';
-    ctx.fillRect(-w / 2, -h / 2, w, h);
-  } else drawShape(ctx, l, k, imgs);
+  drawShape(ctx, l, k, imgs);
   ctx.restore();
 }
 
@@ -320,15 +323,49 @@ export function composeTexture(m: Model, net: HTMLCanvasElement, vanilla: HTMLIm
   if (vanilla) ctx.drawImage(vanilla, 0, 0);
   else { ctx.fillStyle = '#3a3a3a'; ctx.fillRect(0, 0, c.width, c.height); }
   ctx.imageSmoothingQuality = 'high';
+  // Each face part goes in through a copy of just its fully covered net pixels: smoothing then never mixes in what lies
+  // around the face in the net (empty or the next face), so the area's edge texels are wholly the face's (no faint vanilla
+  // seam along it).
+  const crop = document.createElement('canvas'), cctx = crop.getContext('2d')!;
   for (const f of m.faces) {
     const r = faceRect(m, f, S);
     const targets = [...f.targets].sort((a, b) => Number(!!b.bleed) - Number(!!a.bleed)); // bleed first
     for (const t of targets) {
-      blit(ctx, net, r.x + t.src[0] * r.w, r.y + t.src[1] * r.h, (t.src[2] - t.src[0]) * r.w, (t.src[3] - t.src[1]) * r.h,
-        t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k, t.flipX, t.flipY, t.transpose);
+      const sx = r.x + t.src[0] * r.w, sy = r.y + t.src[1] * r.h, sw = (t.src[2] - t.src[0]) * r.w, sh = (t.src[3] - t.src[1]) * r.h;
+      const x0 = Math.ceil(sx - 1e-6), y0 = Math.ceil(sy - 1e-6), x1 = Math.floor(sx + sw + 1e-6), y1 = Math.floor(sy + sh + 1e-6);
+      const dest = [t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k] as const;
+      if (x1 - x0 < 2 || y1 - y0 < 2) { blit(ctx, net, sx, sy, sw, sh, ...dest, t.flipX, t.flipY, t.transpose); continue; }
+      crop.width = x1 - x0; crop.height = y1 - y0;
+      cctx.drawImage(net, x0, y0, crop.width, crop.height, 0, 0, crop.width, crop.height);
+      blit(ctx, crop, 0, 0, crop.width, crop.height, ...dest, t.flipX, t.flipY, t.transpose);
     }
   }
   return c;
+}
+
+/** Most texture px a whole-texture image layer brings (an imported texture, e.g. an EPL mod's 2048² one): its picture's own
+ *  width over the texture's width, so the texture keeps that detail. Layers narrower than 90 % of the texture don't count
+ *  (a big photo shrunk onto one face must not blow the texture up). 0 = none. */
+function fullLayerWidth(m: Model, layout: Layout, imgs: Map<string, HTMLImageElement>): number {
+  let w = 0;
+  for (const l of layout.layers) {
+    const img = l.visible && l.kind === 'image' && isMapLayer(l) && l.src ? imgs.get(l.src) : undefined;
+    if (!img || Math.abs(l.w) < m.textureSize * 0.9) continue;
+    const crop = l.crop ? l.crop[2] - l.crop[0] : 1;
+    w = Math.max(w, (img.naturalWidth * crop * m.textureSize) / Math.abs(l.w));
+  }
+  return Math.min(4096, Math.round(w));
+}
+
+/** The canvas scaled up to `width` (keeping its shape) when that is wider; else the canvas itself. */
+function upsized(c: HTMLCanvasElement, width: number): HTMLCanvasElement {
+  if (width <= c.width) return c;
+  const out = document.createElement('canvas');
+  out.width = width; out.height = Math.round((c.height * width) / c.width);
+  const ctx = out.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c, 0, 0, out.width, out.height);
+  return out;
 }
 
 /** A canvas copy of an image (or a plain one of `size` when there is none). */
@@ -371,6 +408,7 @@ export async function renderTexture(m: Model, layout: Layout, vanilla: HTMLImage
     await renderNet(scratch, m, { ...layout, layers: [] }, vanilla, imageUrl, S);
     tex = composeTexture(m, scratch, vanilla, S);
   } else tex = canvasOf(vanilla, m.textureSize);
+  tex = upsized(tex, fullLayerWidth(m, layout, imgs));
   const layers = layout.layers.filter((l) => l.visible);
   for (let i = 0; i < layers.length;) {
     const map = isMapLayer(layers[i]);
@@ -517,7 +555,56 @@ function grownRects(m: Model): Map<string, number[]> | null {
       if (best) { add(rects.get(best)!, i); placed.add(i); }
     }
   }
+  // Island edges are UV positions: the GPU blends the texels on both sides of one, so a grown edge takes in one more whole
+  // texel, unless another face's area is there — as Go's uvmap.inclusive does for the targets.
+  for (const [id, r] of rects) {
+    const main = mains.get(id)!, others = m.faces.filter((f) => f.id !== id).flatMap((f) => ownTargets(f).map((g) => g.rect));
+    const free = (x0: number, y0: number, x1: number, y1: number) => !others.some((g) => g[0] < x1 && g[2] > x0 && g[1] < y1 && g[3] > y0);
+    const [x0, y0, x1, y1] = [Math.floor(r[0]), Math.floor(r[1]), Math.ceil(r[2]), Math.ceil(r[3])];
+    r[0] = r[0] < main[0] && x0 > 0 && free(x0 - 1, y0, x0, y1) ? x0 - 1 : x0;
+    r[1] = r[1] < main[1] && y0 > 0 && free(x0, y0 - 1, x1, y0) ? y0 - 1 : y0;
+    r[2] = r[2] > main[2] && x1 < m.textureSize && free(x1, y0, x1 + 1, y1) ? x1 + 1 : x1;
+    r[3] = r[3] > main[3] && y1 < m.textureSize && free(x0, y1, x1, y1 + 1) ? y1 + 1 : y1;
+  }
   return rects;
+}
+
+/** Texture layers placed on an area before areas changed (inclusive edges, the deck box's moved seams) end 1–2 px off its
+ *  edges: short of them (an unpainted seam) or past them (over the next face). A layer spanning an area (one edge on the
+ *  area's) whose opposite edge is that close is snapped to the area's edge, on every side, and so are clip edges. Only
+ *  unturned or quarter-turned, unskewed layers. null when nothing changes. */
+export function layersToInclusive(m: Model, layers: Layer[]): Layer[] | null {
+  const areas = m.faces.flatMap((f) => [...ownTargets(f).filter((t) => !t.bleed).map((t) => t.rect), faceArea(m, f.id)?.rect ?? []])
+    .filter((r) => r.length === 4);
+  const off = (edge: number, to: number) => Math.abs(to - edge) > 0.01 && Math.abs(to - edge) <= 2.01;
+  let changed = false;
+  const out = layers.map((l) => {
+    if (!isMapLayer(l) || l.skew) return l;
+    const turn = (((Math.round(l.rot) % 360) + 360) % 360);
+    if (turn % 90 || Math.abs(l.rot - Math.round(l.rot)) > 1e-6) return l;
+    const swap = turn === 90 || turn === 270;
+    const [w, h] = swap ? [l.h, l.w] : [l.w, l.h];
+    let [x0, y0, x1, y1] = [l.x - w / 2, l.y - h / 2, l.x + w / 2, l.y + h / 2];
+    let clip = l.clip ? [...l.clip] : undefined;
+    for (const a of areas) {
+      const spansY = y0 >= a[1] - 2 && y1 <= a[3] + 2, spansX = x0 >= a[0] - 2 && x1 <= a[2] + 2;
+      if (spansY && Math.abs(x0 - a[0]) <= 2 && off(x1, a[2])) x1 = a[2];
+      if (spansY && Math.abs(x1 - a[2]) <= 2 && off(a[0], x0)) x0 = a[0];
+      if (spansX && Math.abs(y0 - a[1]) <= 2 && off(y1, a[3])) y1 = a[3];
+      if (spansX && Math.abs(y1 - a[3]) <= 2 && off(a[1], y0)) y0 = a[1];
+      if (clip && Math.abs(clip[0] - a[0]) <= 2 && clip[1] >= a[1] - 2 && clip[3] <= a[3] + 2 && off(clip[2], a[2])) clip[2] = a[2];
+      if (clip && Math.abs(clip[1] - a[1]) <= 2 && clip[0] >= a[0] - 2 && clip[2] <= a[2] + 2 && off(clip[3], a[3])) clip[3] = a[3];
+      if (clip && Math.abs(clip[2] - a[2]) <= 2 && clip[1] >= a[1] - 2 && clip[3] <= a[3] + 2 && off(a[0], clip[0])) clip[0] = a[0];
+      if (clip && Math.abs(clip[3] - a[3]) <= 2 && clip[0] >= a[0] - 2 && clip[2] <= a[2] + 2 && off(a[1], clip[1])) clip[1] = a[1];
+    }
+    const nw = x1 - x0, nh = y1 - y0;
+    if (Math.abs(nw - w) < 1e-6 && Math.abs(nh - h) < 1e-6 && (!clip || clip.every((v, i) => v === l.clip![i]))) return l;
+    changed = true;
+    const n: Layer = { ...l, x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: swap ? nh : nw, h: swap ? nw : nh };
+    if (clip) n.clip = clip;
+    return n;
+  });
+  return changed ? out : null;
 }
 
 /** The mesh islands no face area reaches (small parts: a pack's fin edges): rects to colour so nothing keeps vanilla art. */
@@ -620,69 +707,6 @@ export function placeStacked(m: Model, faceIds: string[], base: Omit<Layer, 'id'
       out.push(l);
     }
   }
-  return out;
-}
-
-/**
- * Turns face layers (designs made on the old Faces view) into map layers that look the same: a layer becomes one piece per
- * texture area of every face it reaches, drawn through that area's mapping (the one composeTexture blits) and clipped to the
- * area (a turned layer on an area the texture stretches keeps that stretch as `skew`). Hidden layers convert too; map layers
- * stay as they are.
- */
-export function faceLayersToMap(m: Model, layers: Layer[]): Layer[] {
-  const out: Layer[] = [];
-  for (const l of layers) {
-    if (isMapLayer(l)) { out.push(l); continue; }
-    const pieces: { layer: Layer; label: string }[] = [];
-    for (const f of m.faces) {
-      if (l.kind === 'fill' && l.face && l.face !== f.id) continue;
-      // A fill covers its face: a rectangle of the face's size on its centre (its gradient runs down the face).
-      const shape = l.kind === 'fill' ? { ...l, x: f.net[0] + f.net[2] / 2, y: f.net[1] + f.net[3] / 2, w: f.net[2], h: f.net[3], rot: 0 } : l;
-      for (const t of [...f.targets].sort((a, b) => Number(!!b.bleed) - Number(!!a.bleed))) { // bleed first, as composeTexture
-        const p = throughTarget(f, t, shape);
-        if (p) pieces.push({ layer: p, label: targetLabel(f, t) + (t.bleed ? ' (edge)' : '') });
-      }
-    }
-    if (pieces.length === 1) out.push({ ...pieces[0].layer, id: l.id });
-    else for (const p of pieces) out.push({ ...p.layer, id: layerId(), name: `${l.name} – ${p.label}` });
-  }
-  return out;
-}
-
-/** A face layer seen through one of its face's targets as a map layer, or null when it doesn't reach that target. */
-function throughTarget(f: Face, t: Target, l: Layer): Layer | null {
-  // The part of the face (net units) the target shows, and where it goes in the texture (blit's mapping).
-  const rx = f.net[0] + t.src[0] * f.net[2], ry = f.net[1] + t.src[1] * f.net[3];
-  const rw = (t.src[2] - t.src[0]) * f.net[2], rh = (t.src[3] - t.src[1]) * f.net[3];
-  const [dx, dy, dx1, dy1] = t.rect, dw = dx1 - dx, dh = dy1 - dy;
-  if (rw <= 0 || rh <= 0 || dw <= 0 || dh <= 0) return null;
-  const at = (px: number, py: number) => {
-    const s = (px - rx) / rw, r = (py - ry) / rh;
-    const [a, b] = t.transpose ? [r, s] : [s, r];
-    return [dx + dw * (t.flipX ? 1 - a : a), dy + dh * (t.flipY ? 1 - b : b)];
-  };
-  // The layer's corners in the net: skip a target it doesn't reach; no clip when it lies inside.
-  const a = (l.rot * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
-  const ex = [cos, sin], ey = [-sin, cos];
-  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) =>
-    [l.x + (i * l.w * ex[0] + j * l.h * ey[0]) / 2, l.y + (i * l.w * ex[1] + j * l.h * ey[1]) / 2]);
-  const xs = corners.map((c) => c[0]), ys = corners.map((c) => c[1]), eps = 1e-6;
-  if (Math.max(...xs) <= rx + eps || Math.min(...xs) >= rx + rw - eps || Math.max(...ys) <= ry + eps || Math.min(...ys) >= ry + rh - eps) return null;
-  const inside = Math.min(...xs) >= rx - eps && Math.max(...xs) <= rx + rw + eps && Math.min(...ys) >= ry - eps && Math.max(...ys) <= ry + rh + eps;
-  // The layer's axes in the texture: rot from its y axis, mirror and width from its x axis (as placeRect).
-  // The layer's axes in the texture → rot from its x axis, mirror when the mapping flips it, skew for what a stretched area
-  // does to a turned layer.
-  const [cx, cy] = at(l.x, l.y);
-  const axis = (e: number[]) => { const q = at(l.x + e[0], l.y + e[1]); return [q[0] - cx, q[1] - cy]; };
-  const u = axis(ex), v = axis(ey), mirror = u[0] * v[1] - u[1] * v[0] < 0, m = mirror ? -1 : 1;
-  const rr = Math.atan2(m * u[1], m * u[0]), c = Math.cos(rr), s = Math.sin(rr);
-  const vx = (c * v[0] + s * v[1]) * l.h, vy = (-s * v[0] + c * v[1]) * l.h; // v in the turned frame
-  const skew = Math.round(((m * vx) / vy) * 1e9) / 1e9;
-  const out: Layer = { ...l, space: 'texture', x: cx, y: cy, w: Math.hypot(u[0], u[1]) * l.w, h: vy,
-    rot: Math.round(((rr * 180) / Math.PI) * 1e6) / 1e6, mirror };
-  if (skew) out.skew = skew;
-  delete out.face;
-  if (inside) delete out.clip; else out.clip = [dx, dy, dx1, dy1];
   return out;
 }
 
@@ -900,6 +924,20 @@ export function recolorIcon(m: Model, net: HTMLCanvasElement, S: number, vanilla
 }
 
 let seq = 0;
+/** Face-net models: whole-face colours as colour rectangles that look the same — one the size of each face they cover
+ *  (an all-faces colour: one per face, named after it); its gradient still runs down the face. null when there are none. */
+export function faceFillsToRects(m: Model, layers: Layer[]): Layer[] | null {
+  if (m.projected || !layers.some(wholeFaceFill)) return null;
+  return layers.flatMap((l) => {
+    if (!wholeFaceFill(l)) return [l];
+    const faces = m.faces.filter((f) => !l.face || f.id === l.face);
+    return faces.map((f): Layer => ({
+      ...l, id: faces.length === 1 ? l.id : layerId(), name: faces.length === 1 ? l.name : `${l.name} – ${f.label}`, face: undefined,
+      x: f.net[0] + f.net[2] / 2, y: f.net[1] + f.net[3] / 2, w: f.net[2], h: f.net[3], rot: 0,
+    }));
+  });
+}
+
 export const layerId = () => `l${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 type Picture = CanvasImageSource & { width: number; height: number };

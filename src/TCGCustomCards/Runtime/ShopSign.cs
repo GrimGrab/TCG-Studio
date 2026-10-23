@@ -81,7 +81,7 @@ namespace TCGCustomCards.Runtime
         /// <summary>The cropped banner's two halves written into a copy of the vanilla texture; null = vanilla.</summary>
         private static Texture2D TextureFor(string path, string crop) => Texture.Get(path + "|" + crop, () =>
         {
-            var vanilla = Renderers.Count > 0 && Renderers[0] != null ? Renderers[0].sharedMaterial.mainTexture : null;
+            var vanilla = Renderers.Count > 0 && Renderers[0] != null ? MaterialTex.Main(Renderers[0].sharedMaterial) : null;
             if (path == null || vanilla == null) return null;
             var src = ShopPicture.Load(path, "Shop sign");
             if (src == null) return null;

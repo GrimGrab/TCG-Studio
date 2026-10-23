@@ -25,6 +25,15 @@
   async function showTab(t: typeof tab) { if (t !== tab) { await flushAll(); tab = t; } }
 
   const dirty = $derived(project ? JSON.stringify(project) !== saved : false);
+  /** The pack art editor converted a pack's or box's design on opening (same look): that form counts as saved, so opening it
+   *  alone is no unsaved change (other unsaved edits stay unsaved). */
+  function rebaseArt(packId: string, which: string, layout: any) {
+    if (!saved) return;
+    const s = JSON.parse(saved);
+    ((s.meta ??= {}).packArt ??= {})[packId] ??= {};
+    s.meta.packArt[packId][which] = $state.snapshot(layout);
+    saved = JSON.stringify(s);
+  }
   const errors = $derived(issues.filter((i) => i.level === 'error').length);
   const warnings = $derived(issues.filter((i) => i.level === 'warning').length);
 
@@ -175,7 +184,7 @@
       {#if tab === 'cards'}
         <CardsTab {project} {notify} {imgBust} />
       {:else if tab === 'packs'}
-        <PacksTab {project} {notify} {imgBust} {hooks} />
+        <PacksTab {project} {notify} {imgBust} {hooks} {rebaseArt} />
       {:else}
         <SetTab {project} {notify} {imgBust} />
       {/if}

@@ -74,6 +74,56 @@ type Base struct {
 
 var full = [4]float64{0, 0, 1, 1}
 
+// inclusive returns a copy of m whose target rects take in one more texel on every side: at a UV edge the GPU blends the
+// texels on both sides of it (more at smaller mip levels), so a texel left unpainted next to an area showed as a 1 px seam
+// of vanilla colour. A side stays where another target covers that texel (a neighbouring area keeps its own first/last
+// column or row) or at the texture's edge. Palettes stay exact: their swatches touch. Bases (where vanilla art is read
+// from) are unchanged.
+func inclusive(m Model) Model {
+	if m.Palette || len(m.Faces) == 0 {
+		return m
+	}
+	var all [][4]float64
+	for _, f := range m.Faces {
+		for _, t := range f.Targets {
+			all = append(all, t.Rect)
+		}
+	}
+	// taken reports whether any other target covers part of the strip x0..x1 × y0..y1.
+	taken := func(self [4]float64, x0, y0, x1, y1 float64) bool {
+		for _, r := range all {
+			if r != self && r[0] < x1 && r[2] > x0 && r[1] < y1 && r[3] > y0 {
+				return true
+			}
+		}
+		return false
+	}
+	size := float64(m.TextureSize)
+	faces := make([]Face, len(m.Faces))
+	for i, f := range m.Faces {
+		f.Targets = append([]Target(nil), f.Targets...)
+		for j, t := range f.Targets {
+			r := t.Rect
+			if r[0] > 0 && !taken(r, r[0]-1, r[1], r[0], r[3]) {
+				t.Rect[0] = r[0] - 1
+			}
+			if r[1] > 0 && !taken(r, r[0], r[1]-1, r[2], r[1]) {
+				t.Rect[1] = r[1] - 1
+			}
+			if r[2] < size && !taken(r, r[2], r[1], r[2]+1, r[3]) {
+				t.Rect[2] = r[2] + 1
+			}
+			if r[3] < size && !taken(r, r[0], r[3], r[2], r[3]+1) {
+				t.Rect[3] = r[3] + 1
+			}
+			f.Targets[j] = t
+		}
+		faces[i] = f
+	}
+	m.Faces = faces
+	return m
+}
+
 // edgeSwatch: a thin strip at the middle of a face's left edge — the colour that small swatches of a part's card edges take.
 var edgeSwatch = [4]float64{0.01, 0.4, 0.05, 0.6}
 
@@ -95,17 +145,19 @@ var deckbox = Model{
 	Preview: mainPart("DeckBox"),
 	Size:    [3]float64{0.914, 1.225, 0.862},
 	Faces: []Face{
+		// Seams with the front: the sides' outer walls sample up to x 420.25 (left) and from x 649.5 (right), so the sides own
+		// columns 419–420 and 649–650 (the front tray gives them up); otherwise a line of front art showed on the sides' edges.
 		{ID: "left", Label: "Left side", Net: [4]float64{0, 0, 0.862, 1.225}, Targets: []Target{
-			{Rect: [4]float64{189, 42, 419, 486}, Src: full}}},
+			{Rect: [4]float64{189, 42, 421, 486}, Src: full}}},
 		{ID: "front", Label: "Front", Net: [4]float64{0.862, 0, 0.914, 1.225}, Targets: []Target{
 			// The tray's own front (under the cover; its top edge shows above the cover). The tray strip (y 44–484) reaches 2 px
 			// further up and down into unused texels, so mipmaps don't draw a red line along the top of the sides.
-			{Rect: [4]float64{419, 42, 651, 486}, Src: full},
+			{Rect: [4]float64{421, 42, 649, 486}, Src: full},
 			// The cover spans y −0.550…0.525 of the tray's −0.593…0.632. Its island is x 62–400 × y 538–968; the rect reaches 2 px
 			// further into the unused texels around it, so mipmaps don't pull the vanilla red into its edges.
 			{Rect: [4]float64{60, 536, 402, 970}, Src: [4]float64{0, 0.087, 1, 0.965}}}},
 		{ID: "right", Label: "Right side", Net: [4]float64{1.776, 0, 0.862, 1.225}, Targets: []Target{
-			{Rect: [4]float64{651, 42, 881, 486}, Src: full}}},
+			{Rect: [4]float64{649, 42, 881, 486}, Src: full}}},
 		{ID: "back", Label: "Back", Net: [4]float64{2.638, 0, 0.862, 1.225}, Targets: []Target{
 			{Rect: [4]float64{881, 42, 996, 486}, Src: [4]float64{0, 0, 0.5, 1}},
 			{Rect: [4]float64{74, 42, 189, 486}, Src: [4]float64{0.5, 0, 1, 1}}}},
@@ -353,8 +405,14 @@ func boxBases() []Base {
 	return out
 }
 
-// ModelFor returns the editable layout for an accessory kind (see setfmt.AccessoryKinds).
+// ModelFor returns the editable layout for an accessory kind (see setfmt.AccessoryKinds), its areas inclusive (see
+// inclusive).
 func ModelFor(kind string) (Model, bool) {
+	m, ok := modelFor(kind)
+	return inclusive(m), ok
+}
+
+func modelFor(kind string) (Model, bool) {
 	switch kind {
 	case "Deckbox":
 		return deckbox, true

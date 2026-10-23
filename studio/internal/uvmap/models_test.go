@@ -33,7 +33,7 @@ func TestModelsMatchMeshes(t *testing.T) {
 	}
 	var checks []check
 	for _, kind := range []string{"Deckbox", "Playmat", "Sleeve", "Comic", "Binder", "BattleDeck", "Pack", "Box"} { // Dice is a palette (swatches, not UV islands)
-		m, _ := ModelFor(kind)
+		m, _ := modelFor(kind) // the measured rects (ModelFor adds a one-texel margin, inclusive)
 		checks = append(checks, check{kind: kind, mesh: m.Mesh, faces: m.Faces, size: m.TextureSize})
 	}
 	// Box bases read other atlas areas through the Rare/Epic/Legendary box meshes.
@@ -57,7 +57,7 @@ func TestModelsMatchMeshes(t *testing.T) {
 	}
 	// Game look boxes (templatesoxes). The bulk box's "rest" swatches are colour areas.
 	for _, id := range BoxLooks() {
-		m, _ := BoxLook(id)
+		m := boxLooks[id] // the measured rects
 		var faces []Face
 		for _, f := range m.Faces {
 			if f.ID != "rest" && f.ID != "handles" {

@@ -8,7 +8,9 @@
   // view, with the mesh's UV outlines and the faces' areas as guides) and a 3D preview of the real game mesh. Projected models
   // (furniture paint) keep their Views: layers on views unfolded from the model, projected onto it by the GPU painter.
   // Dice (palette models) only pick one colour per swatch.
-  import { maximizable } from '../lib/maximize';
+  import { maximizable, fullWindow } from '../lib/maximize';
+  import { ZoomPan } from '../lib/zoomPan';
+  import { splitter } from '../lib/splitter';
   import { createHistory } from '../lib/history.svelte';
   import { accFile, templateFile } from '../lib/urls';
   import { onMount, untrack } from 'svelte';
@@ -16,7 +18,7 @@
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, renderTexture, composeIcon,
     recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon, pickableFaces, previewUrl, layerTextures,
-    shownArea, shownNet, isMapLayer, uvOutlines, faceArea, placeIn, placeRect, placeStacked, areaFills, loadIslands, faceLayersToMap,
+    shownArea, shownNet, isMapLayer, uvOutlines, faceArea, placeIn, placeRect, placeStacked, areaFills, loadIslands, wholeFaceFill, faceFillsToRects, layersToInclusive,
   } from '../lib/accessoryArt';
   import { ProjectPainter, MAX_LAYER_TEXTURES, renderPaintIcon, type LayerTexture } from '../lib/projectPaint';
   import { MeshView } from '../lib/meshView';
@@ -24,7 +26,7 @@
 
   let {
     kind, base = '', vanillaUrl, vanillaIconUrl = '', layout = $bindable(), iconSize = [512, 512], notify, onchange,
-    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true,
+    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true, onbaseline,
   }: {
     kind: string;
     givenModel?: Model;                 // a model made elsewhere (furniture paint templates); default: the accessory kind's
@@ -36,6 +38,8 @@
     iconSize?: number[];
     notify: (t: string, k?: string) => void;
     onchange?: () => void;              // any edit (pages that compare snapshots need not listen)
+    onbaseline?: () => void;            // the layout was converted on opening (same look): pages that compare snapshots take it as
+                                        // the saved state, so opening alone is no unsaved change
     imageUrl?: (rel: string) => string; // URL of a layer image (default: the accessory library)
     pickImage?: () => Promise<string>;  // lets the user add an image, returns its path for imageUrl (default: accessory library)
     saveImage?: (name: string, dataUrl: string) => Promise<string>; // stores a made image (straightened), returns its path
@@ -50,12 +54,37 @@
   let net: HTMLCanvasElement = document.createElement('canvas');
   let view = $state<'net' | 'texture' | '3d'>('net');
   let selected = $state('');
-  let showGuides = $state(true);
+  // Guides on the texture: off / on / only (the texture's base hidden: just the guides and your layers; display only).
+  type Guides = 'off' | 'on' | 'only';
+  const readPref = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+  const writePref = (key: string, v: string) => { try { localStorage.setItem(key, v); } catch { /* per-viewer only */ } };
+  let guides = $state<Guides>((['off', 'on', 'only'] as const).find((g) => g === readPref('texEditor.guides')) ?? 'on');
+  let showGuides = $derived(guides !== 'off');
 
   // Display canvases
   let netView = $state<HTMLCanvasElement>();
   let texView = $state<HTMLCanvasElement>();
   let textureCanvas: HTMLCanvasElement | null = null;
+  // Guides only: the texture rendered on a plain base (shown on the Texture view; the 3D view and saving keep the real one).
+  let onlyCanvas: HTMLCanvasElement | null = null;
+  const onlyNet: HTMLCanvasElement = document.createElement('canvas');
+  const guidesOnly = () => guides === 'only' && !!model && !model.projected && !model.palette;
+  const shownTexture = () => (guidesOnly() && onlyCanvas) || textureCanvas;
+
+  // Zoom and pan of the Texture and Views canvases (overlay = guides and handles in screen pixels).
+  let zpTex: ZoomPan | null = null, zpNet: ZoomPan | null = null;
+  let zoomPct = $state(100);
+  const zpMain = () => (view === 'net' ? zpNet : zpTex);
+  function zoomStage(node: HTMLElement, which: 'tex' | 'net') {
+    const zp: ZoomPan = new ZoomPan(node, () => (which === 'tex' ? texView : netView), () => {
+      if (zp === zpMain()) zoomPct = zp.percent();
+      if (which === 'tex') drawTexOverlay(); else drawNetOverlay();
+    }, () => active);
+    if (which === 'tex') zpTex = zp; else zpNet = zp;
+    return { destroy() { zp.destroy(); if (zpTex === zp) zpTex = null; if (zpNet === zp) zpNet = null; } };
+  }
+  /** Canvas px per screen px of the current view (handle sizes). */
+  const viewPx = () => zpMain()?.px() ?? 1;
   // The game texture is made only when something shows or needs it (texture view, 3D preview, export): on the Faces view an
   // edit redraws the net alone (renderTexture). makeTexture = what the last render left to make it.
   let makeTexture: (() => HTMLCanvasElement) | null = null;
@@ -106,8 +135,12 @@
           continue;
         }
         makeTexture = await renderTexture(model, layout, vanilla, await paintedImage(), accUrl, S, net);
+        onlyCanvas = guidesOnly()
+          ? (await renderTexture(model, { ...layout, base: 'color', baseColor: '#3a3a3a', baseItem: undefined, textureFile: undefined }, null, null, accUrl, S, onlyNet))()
+          : null;
         drawNetView();
-        if (view !== 'net') { ensureTexture(); drawTexView(); }
+        ensureTexture(); // the 3D preview beside either tab shows it
+        if (view !== 'net') drawTexView();
       } while (again);
     } catch (e) { notify(errText(e), 'error'); }
     rendering = false;
@@ -115,13 +148,21 @@
 
   function drawNetView() {
     if (!netView || !model) return;
-    netView.width = net.width; netView.height = net.height;
+    if (netView.width !== net.width || netView.height !== net.height) { netView.width = net.width; netView.height = net.height; }
     const ctx = netView.getContext('2d')!;
     ctx.clearRect(0, 0, net.width, net.height);
     ctx.drawImage(net, 0, 0);
-    const lw = Math.max(2, net.width / 500);
+    if (zpNet) zpNet.layout(); else drawNetOverlay(); // layout redraws the overlay
+  }
+
+  /** Frames, labels and the selection over the Views canvas (screen-sized lines at any zoom). */
+  function drawNetOverlay() {
+    const o = zpNet?.beginOverlay();
+    if (!o || !model) return;
+    const { ctx, px } = o;
+    const lw = 2 * px;
     if (showGuides) {
-      ctx.font = `bold ${Math.round(net.width / 45)}px Nunito, sans-serif`;
+      ctx.font = `bold ${13 * px}px Nunito, sans-serif`;
       // Projected models: their views are the frames (their faces are many and overlap).
       const b0 = netBounds(model);
       const frames = [
@@ -145,13 +186,27 @@
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         const label = f.label + (f.hidden ? ' (hidden)' : '');
         const tw = ctx.measureText(label).width;
-        ctx.fillRect(r.x + lw * 3, r.y + lw * 3, tw + lw * 6, net.width / 32);
+        ctx.fillRect(r.x + lw * 3, r.y + lw * 3, tw + lw * 6, 20 * px);
         ctx.fillStyle = '#fff';
-        ctx.fillText(label, r.x + lw * 6, r.y + lw * 3 + net.width / 45);
+        ctx.fillText(label, r.x + lw * 6, r.y + lw * 3 + 14 * px);
       }
     }
     const b = netBounds(model);
     if (sel && movable(sel)) drawSelection(ctx, sel, S, b.x0, b.y0, lw);
+    // A selected face colour fill: its face (or every face) outlined; while dragging it, the face it would move to.
+    if (sel && wholeFaceFill(sel)) {
+      const dragging = drag?.mode === 'face';
+      ctx.lineWidth = 3 * px;
+      for (const f of pickFaces) {
+        const target = dragging && f.id === fillOver && fillOver !== fillFrom;
+        if (!target && !(sel.face ? f.id === sel.face : !f.hidden)) continue;
+        const r = { x: (f.net[0] - b.x0) * S, y: (f.net[1] - b.y0) * S, w: f.net[2] * S, h: f.net[3] * S };
+        ctx.strokeStyle = target ? '#ffd24a' : '#4fa3ff';
+        ctx.setLineDash(target ? [8 * px, 5 * px] : []);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+      }
+      ctx.setLineDash([]);
+    }
   }
 
   /** The selected layer's frame and handles (s canvas px per layer unit, x0/y0 = the canvas origin in layer units). */
@@ -179,35 +234,46 @@
   let outlines: number[][] = [];
 
   function drawTexView() {
-    if (!texView || !textureCanvas || !model) return;
-    texView.width = textureCanvas.width; texView.height = textureCanvas.height;
+    const src = shownTexture();
+    if (!texView || !src || !model) return;
+    if (texView.width !== src.width || texView.height !== src.height) { texView.width = src.width; texView.height = src.height; }
     const ctx = texView.getContext('2d')!;
-    ctx.drawImage(textureCanvas, 0, 0);
-    const k = textureCanvas.width / model.textureSize;
+    ctx.clearRect(0, 0, texView.width, texView.height);
+    ctx.drawImage(src, 0, 0);
+    if (zpTex) zpTex.layout(); else drawTexOverlay(); // layout redraws the overlay
+  }
+
+  /** UV outlines, face areas and the selection over the Texture canvas (screen-sized lines at any zoom). */
+  function drawTexOverlay() {
+    const o = zpTex?.beginOverlay();
+    if (!o || !model || !texView) return;
+    const { ctx, px } = o;
+    const k = texView.width / model.textureSize;
     if (showGuides) {
       ctx.strokeStyle = 'rgba(120,220,255,0.85)';
-      ctx.lineWidth = Math.max(1, textureCanvas.width / 1024);
+      ctx.lineWidth = 1.25 * px;
       ctx.beginPath();
       for (const [ax, ay, bx, by] of outlines) { ctx.moveTo(ax * k, ay * k); ctx.lineTo(bx * k, by * k); }
       ctx.stroke();
-      ctx.font = `bold ${Math.round(18 * k)}px Nunito, sans-serif`;
+      ctx.font = `bold ${13 * px}px Nunito, sans-serif`;
       for (const f of model.faces) for (const t of f.targets) {
         if (t.bleed) continue;
         ctx.strokeStyle = f.hidden ? 'rgba(255,255,255,0.4)' : '#ffd24a';
-        ctx.lineWidth = 2 * k;
+        ctx.lineWidth = 2 * px;
         ctx.strokeRect(t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k);
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         const label = targetLabel(f, t);
         const tw = ctx.measureText(label).width;
-        ctx.fillRect(t.rect[0] * k + 4, t.rect[1] * k + 4, tw + 8, 24 * k);
+        ctx.fillRect(t.rect[0] * k + 4 * px, t.rect[1] * k + 4 * px, tw + 8 * px, 19 * px);
         ctx.fillStyle = '#fff';
-        ctx.fillText(label, t.rect[0] * k + 8, t.rect[1] * k + 22 * k);
+        ctx.fillText(label, t.rect[0] * k + 8 * px, t.rect[1] * k + 18 * px);
       }
     }
-    if (sel && mapView() && movable(sel)) drawSelection(ctx, sel, k, 0, 0, Math.max(2, textureCanvas.width / 500));
+    if (sel && mapView() && movable(sel)) drawSelection(ctx, sel, k, 0, 0, 2 * px);
   }
 
-  const drawView = () => (view === 'texture' ? drawTexView() : drawNetView());
+  /** Selection changes: only the overlay. */
+  const drawView = () => (view === 'texture' ? drawTexOverlay() : drawNetOverlay());
 
   /** PNG data URLs of the texture and the shop icon for saving. */
   export async function exportImages(): Promise<{ texture: string; icon: string }> {
@@ -250,11 +316,27 @@
   const snapshot = () => JSON.stringify(layout);
   const hist = createHistory(snapshot, (state) => {
     layout = JSON.parse(state);
+    ownLayout = layout;
     if (!layout.layers.some((l) => l.id === selected)) selected = '';
     onchange?.();
     redraw();
   }, () => !!drag);
   const undo = () => hist.undo();
+
+  // The page swaps the layout object itself (Revert reloads the saved one): start over from it — new history, nothing
+  // selected — and show it. The editor's own swaps (undo/redo, a new layout) set ownLayout first.
+  let ownLayout: Layout | null = null;
+  $effect(() => {
+    const l = layout;
+    if (!l || l === ownLayout || !ownLayout) return;
+    ownLayout = l;
+    untrack(() => {
+      if (!l.layers.some((x) => x.id === selected)) selected = '';
+      if (mapModel()) { paintedToLayer(); fillsToRects(); edgesToInclusive(); } // the reloaded design in the editor's form, as on opening
+      hist.reset();
+      redraw();
+    });
+  });
   const redo = () => hist.redo();
 
   // ---------------------------------------------------------------- layers
@@ -284,12 +366,15 @@
   async function addImage() {
     try {
       const rel = await (pickImage ? pickImage() : App.PickAccessoryImage());
-      if (rel) await addImageFile(rel);
+      if (rel) await addImageFile(rel, '', 'contain', [], onMap());
     } catch (e) { notify(errText(e), 'error'); }
   }
 
   /** Face-net models: every layer is a map layer (placed in the faces' texture areas). Projected models paint on views. */
   const mapModel = () => !!model && !model.projected;
+  /** New layers from the buttons go where you are: texture layers on the Texture tab, face layers on the Faces tab (one
+   *  picture over every area of a face, e.g. the deck box's tray front and cover). */
+  const onMap = () => mapModel() && view === 'texture';
   /** The main face's texture area (where new art goes). */
   const mainArea = () => faceArea(model!, mainFace().id)!;
 
@@ -377,6 +462,14 @@
       if (Math.abs(img.width / img.height - w / h) > 0.01
         && !(await ask(`This image is ${img.width}×${img.height}, but the texture is ${w}×${h} — it won't line up with the faces. Stretch it to fit anyway?`))) return;
       if (img.width < w && !(await ask(`This image (${img.width} px wide) is smaller than the game texture (${w} px) and will look blurrier. Use it anyway?`))) return;
+      if (mapModel()) {
+        const l = textureLayer(rel);
+        layout.layers = [l, ...layout.layers];
+        selected = l.id;
+        commit();
+        notify(`Your texture (${img.width}×${img.height}) is now the bottom layer — layers above it go on top.`);
+        return;
+      }
       layout.textureFile = rel;
       commit();
       notify(`Painted texture in use (${img.width}×${img.height}). Layers you add go on top of it.`);
@@ -390,11 +483,11 @@
 
   /** Adds an image (path for imageUrl) `fit`ted into the main face's area, or stretched over the areas of `faces` stacked top
    *  to bottom (a pack photo over crimp, front and crimp: a slice per face); `name` labels the layer. */
-  export async function addImageFile(rel: string, name = '', fit: 'cover' | 'contain' | 'stretch' = 'contain', faces: string[] = []) {
+  export async function addImageFile(rel: string, name = '', fit: 'cover' | 'contain' | 'stretch' = 'contain', faces: string[] = [], toMap = mapModel()) {
     const img = await loadImage(accUrl(rel));
     const l: Layer = { id: layerId(), kind: 'image', name: name || rel.split('/').pop() || 'Image', visible: true, opacity: 1, blend: 'source-over',
       x: 0, y: 0, w: 1, h: 1, rot: 0, src: rel };
-    if (mapModel()) {
+    if (toMap) {
       if (faces.length > 1) {
         const parts = placeStacked(model!, faces, l);
         layout.layers.push(...parts);
@@ -418,7 +511,13 @@
   function addFill() {
     const l: Layer = { id: layerId(), kind: 'fill', name: 'Colour', visible: true, opacity: 1, blend: 'source-over',
       x: 0, y: 0, w: 0, h: 0, rot: 0, face: '', color: '#2a6df4', color2: '' };
-    if (mapModel()) { placeRect(mainArea(), l); delete l.face; } // over the main face's area: drag or resize it from there
+    if (onMap()) { placeRect(mainArea(), l); delete l.face; } // over the main face's area: drag or resize it from there
+    else if (mapModel()) {
+      // Faces tab: a colour rectangle over the main face, moved and sized like an image (Stretch over a face to cover it).
+      const [x, y, w, h] = shownNet(mainFace());
+      Object.assign(l, { x: x + w / 2, y: y + h / 2, w, h });
+      delete l.face;
+    }
     layout.layers.push(l);
     selected = l.id;
     commit();
@@ -441,7 +540,7 @@
     const l: Layer = { id: layerId(), kind: 'text', name: 'Text', visible: true, opacity: 1, blend: 'source-over',
       x: fx + fw / 2, y: fy + fh * 0.15, w: fw * 0.8, h: fh * 0.08, rot: 0,
       text: defaultText, color: '#ffffff', outline: '#000000' };
-    if (mapModel()) placeRect(mainArea(), l, [0.1, 0.11, 0.8, 0.08]);
+    if (onMap()) placeRect(mainArea(), l, [0.1, 0.11, 0.8, 0.08]);
     layout.layers.push(l);
     selected = l.id;
     commit();
@@ -449,6 +548,8 @@
 
   function selectLayer(l: Layer) {
     selected = l.id;
+    // Face-net models: a layer is edited on its own tab (texture layers on Texture, face layers on Faces).
+    if (mapModel() && view !== '3d') view = isMapLayer(l) ? 'texture' : 'net';
     drawView();
   }
 
@@ -516,7 +617,7 @@
   /** The face opposite the selected layer's face (deck box: front ↔ back, left ↔ right, lid ↔ bottom), when the model shows it. */
   const OPPOSITE: Record<string, string> = { front: 'back', back: 'front', left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
   const oppositeFace = $derived.by(() => {
-    if (!sel || !model || sel.kind === 'fill' || isMapLayer(sel)) return undefined;
+    if (!sel || !model || wholeFaceFill(sel) || isMapLayer(sel)) return undefined;
     // Views of projected models are "view:Front" etc.
     const id = faceOf(sel).id, isView = id.startsWith('view:');
     const opp = OPPOSITE[(isView ? id.slice(5) : id).toLowerCase()] ?? '';
@@ -532,14 +633,14 @@
 
   function pasteLayer() {
     if (!clipboard || !model) return;
-    if (isMapLayer(clipboard.layer) !== mapModel()) { notify(`That layer can't go on this model (${mapModel() ? 'furniture views' : 'texture map'} layer).`, 'warn'); return; }
+    if (isMapLayer(clipboard.layer) && !mapModel()) { notify("A texture layer can't go on furniture views.", 'warn'); return; }
     const c = insertCopy(clipboard.layer as Layer, clipboard.layer.name, selected || undefined);
     // From another model (e.g. a deck box into a pack): same relative place on this model's main face, or of its texture map.
     if (isMapLayer(c)) {
       const k = model.textureSize / clipboard.textureSize;
       c.x *= k; c.y *= k; c.w *= k; c.h *= k;
       if (c.clip) c.clip = c.clip.map((v) => v * k);
-    } else if (clipboard.kind !== model.kind && c.kind !== 'fill') mapRect(c, clipboard.face, shownNet(mainFace()));
+    } else if (clipboard.kind !== model.kind && !wholeFaceFill(c)) mapRect(c, clipboard.face, shownNet(mainFace()));
     if (c.kind === 'fill' && c.face && !faceById(c.face)) c.face = '';
     commit();
   }
@@ -557,6 +658,53 @@
     else if (ctrl && k === 'v' && clipboard) act(pasteLayer);
     else if (ctrl && k === 'd' && sel) act(() => duplicateLayer(sel!.id));
     else if ((e.key === 'Delete') && sel) act(() => removeLayer(sel!.id));
+  }
+
+  // ---------------------------------------------------------------- layer list: drag a row to reorder (top of the list = on top)
+
+  let layersEl = $state<HTMLElement>();
+  let rowDrag: { id: string; y: number; on: boolean; pointer: number } | null = null;
+  let dropAt = $state(-1);           // insertion place in the shown (top-first) list while dragging; -1 = none
+  let noClick = false;               // the click that ends a drag doesn't select
+
+  function rowDown(e: PointerEvent, id: string) {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button, input, select')) return;
+    rowDrag = { id, y: e.clientY, on: false, pointer: e.pointerId };
+  }
+  function rowMove(e: PointerEvent) {
+    if (!rowDrag || e.pointerId !== rowDrag.pointer) return;
+    if (!rowDrag.on) {
+      if (Math.abs(e.clientY - rowDrag.y) < 5) return;
+      rowDrag.on = true;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
+    const rows = [...(layersEl?.querySelectorAll<HTMLElement>('.layer[data-id]') ?? [])];
+    const i = rows.findIndex((r) => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+    dropAt = i < 0 ? rows.length : i;
+    // Near the top or bottom edge of the scrolling list (or of the workspace dock): scroll it along.
+    const scroller = layersEl && layersEl.scrollHeight > layersEl.clientHeight ? layersEl : layersEl?.closest<HTMLElement>('.side');
+    if (scroller) {
+      const b = scroller.getBoundingClientRect();
+      if (e.clientY < b.top + 28) scroller.scrollTop -= 10;
+      else if (e.clientY > b.bottom - 28) scroller.scrollTop += 10;
+    }
+  }
+  function rowUp() {
+    const d = rowDrag;
+    rowDrag = null;
+    if (!d?.on) return;
+    noClick = true;
+    setTimeout(() => (noClick = false));
+    const at = dropAt;
+    dropAt = -1;
+    const shown = [...layout.layers].reverse(), from = shown.findIndex((l) => l.id === d.id);
+    if (from < 0 || at < 0) return;
+    const to = at > from ? at - 1 : at;
+    if (to === from) return;
+    const [l] = shown.splice(from, 1);
+    shown.splice(to, 0, l);
+    layout.layers = shown.reverse();
+    commit();
   }
 
   function moveLayer(id: string, delta: number) {
@@ -662,21 +810,23 @@
 
   // Handles in layer-local units of (w, h): the corner scales, edge midpoints stretch one side (the opposite side stays put).
   const HANDLES: [number, number, boolean][] = [[0.5, 0.5, true], [0.5, 0, false], [-0.5, 0, false], [0, 0.5, false], [0, -0.5, false]];
-  let drag: { mode: 'move' | 'scale' | 'edge'; hx: number; hy: number; sx: number; sy: number; x: number; y: number; w: number; h: number } | null = null;
+  let drag: { mode: 'move' | 'scale' | 'edge' | 'face'; hx: number; hy: number; sx: number; sy: number; x: number; y: number; w: number; h: number } | null = null;
+  // Dragging a face colour fill (Faces tab): the face it started on and the face under the pointer now.
+  let fillFrom = '', fillOver = '';
   let netCursor = $state('move');
 
   /** Map layers are placed on the Texture view, face layers on the Faces view (and the 3D view of projected models). */
   const mapView = () => view === 'texture' && !!model && !model.projected;
   const inView = (l: Layer) => isMapLayer(l) === mapView();
   /** Layers dragged in the current view: its own space's images and text, and map fills (rectangles). */
-  const movable = (l: Layer) => inView(l) && (l.kind !== 'fill' || isMapLayer(l));
+  const movable = (l: Layer) => inView(l) && !wholeFaceFill(l);
 
   /** The pointer acts on layers: the Faces view, or the Texture view of a face-net model once its texture is shown. */
   const canPoint = () => !!model && (view !== 'texture' || (mapView() && !!textureCanvas));
 
   /** The current view's canvas and units: canvas size, canvas px per layer unit, the canvas origin in layer units. */
   function space() {
-    if (mapView()) return { canvas: texView!, w: textureCanvas!.width, h: textureCanvas!.height, s: textureCanvas!.width / model!.textureSize, x0: 0, y0: 0 };
+    if (mapView()) return { canvas: texView!, w: texView!.width, h: texView!.height, s: texView!.width / model!.textureSize, x0: 0, y0: 0 };
     const b = netBounds(model!);
     return { canvas: netView!, w: net.width, h: net.height, s: S, x0: b.x0, y0: b.y0 };
   }
@@ -684,7 +834,7 @@
   /** The handle of the selected layer under p (index into HANDLES), or -1. */
   function handleAt(p: { x: number; y: number }): number {
     if (!sel || !movable(sel)) return -1;
-    const sp = space(), q = local(sel, p), hs = (Math.max(2, sp.w / 500) * 7) / sp.s;
+    const sp = space(), q = local(sel, p), hs = (2 * viewPx() * 7) / sp.s; // drawSelection's handle size, in layer units
     return HANDLES.findIndex(([hx, hy]) => Math.abs(q.x - hx * sel!.w) < hs * 1.5 && Math.abs(q.y - hy * sel!.h) < hs * 1.5);
   }
 
@@ -700,6 +850,19 @@
   function local(l: Layer, p: { x: number; y: number }) {
     const a = (-l.rot * Math.PI) / 180, dx = p.x - l.x, dy = p.y - l.y;
     return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
+  }
+
+  /** The visible face (or view) under a Faces-tab point. */
+  function faceAt(p: { x: number; y: number }) {
+    return pickFaces.find((f) => !f.hidden && p.x >= f.net[0] && p.x <= f.net[0] + f.net[2] && p.y >= f.net[1] && p.y <= f.net[1] + f.net[3]);
+  }
+
+  /** The top visible face colour fill on a face (its own, or one over all faces). */
+  function fillOn(faceId: string): Layer | undefined {
+    for (let i = layout.layers.length - 1; i >= 0; i--) {
+      const l = layout.layers[i];
+      if (l.visible && wholeFaceFill(l) && (!l.face || l.face === faceId)) return l;
+    }
   }
 
   function hit(p: { x: number; y: number }): Layer | undefined {
@@ -723,8 +886,20 @@
       return;
     }
     const l = hit(p);
+    // Faces tab, nothing else here: the colour fill on this face — drag it onto another face to move it there.
+    const f = !l && !mapView() ? faceAt(p) : undefined, fill = f && fillOn(f.id);
+    if (f && fill) {
+      selected = fill.id;
+      fillFrom = fillOver = f.id;
+      drag = { mode: 'face', hx: 0, hy: 0, sx: p.x, sy: p.y, x: 0, y: 0, w: 0, h: 0 };
+      hist.push(snapshot());
+      target.setPointerCapture(e.pointerId);
+      netCursor = 'grabbing';
+      drawView();
+      return;
+    }
     // Clicking empty space keeps a face fill selected (it has no frame to click).
-    selected = l?.id ?? (sel && sel.kind === 'fill' && !isMapLayer(sel) ? selected : '');
+    selected = l?.id ?? (sel && wholeFaceFill(sel) ? selected : '');
     if (l) {
       drag = { mode: 'move', hx: 0, hy: 0, sx: p.x, sy: p.y, x: l.x, y: l.y, w: l.w, h: l.h };
       hist.push(snapshot());
@@ -767,6 +942,11 @@
     }
     if (!sel) return;
     const p = toSpace(e);
+    if (drag.mode === 'face') {
+      const over = faceAt(p)?.id ?? '';
+      if (over !== fillOver) { fillOver = over; drawView(); }
+      return;
+    }
     if (drag.mode === 'move') {
       sel.x = drag.x + (p.x - drag.sx);
       sel.y = drag.y + (p.y - drag.sy);
@@ -803,12 +983,20 @@
   }
 
   function onUp() {
+    if (drag?.mode === 'face') {
+      // Dropped on another face: the fill moves there (an all-faces fill becomes that face's).
+      if (sel && fillOver && fillOver !== fillFrom) { sel.face = fillOver; onchange?.(); redraw(); }
+      fillFrom = fillOver = '';
+      netCursor = 'move';
+    }
     if (drag) hist.settle(); // a click without moving: no step
     drag = null;
+    drawView();
   }
 
+  /** Ctrl+wheel resizes the selected layer (the wheel alone zooms the view, lib/zoomPan). */
   function onWheel(e: WheelEvent) {
-    if (!sel || !canPoint() || !movable(sel)) return;
+    if (!(e.ctrlKey || e.metaKey) || !sel || !canPoint() || !movable(sel)) return;
     e.preventDefault();
     const f = e.deltaY < 0 ? 1.05 : 1 / 1.05;
     sel.w *= f; sel.h *= f;
@@ -914,27 +1102,62 @@
     try {
       model = givenModel ?? ((await App.AccessoryModelFor(kind, base)) as unknown as Model); // tabletop items: per base
       S = netScale(model);
-      view = model.palette || model.projected ? '3d' : 'texture';
+      // Face-net models: the Faces or the Texture tab, as last used (Faces by default).
+      view = model.palette || model.projected ? '3d' : readPref('texEditor.view') === 'texture' ? 'texture' : 'net';
       if (!layout || layout.version !== 2) layout = newLayout();
+      ownLayout = layout;
       hist.reset();
       if (!model.palette && !model.projected) {
         uvOutlines(model).then((o) => { outlines = o; drawTexView(); }).catch(() => {});
         await loadIslands(model).catch(() => []); // face areas take in their rims (placement buttons, new layers)
       }
       await loadVanilla();
-      if (!model.palette && !model.projected) convertFaceLayers();
+      if (!model.palette && !model.projected) { paintedToLayer(); fillsToRects(); edgesToInclusive(); }
     } catch (e) { notify(errText(e), 'error'); }
     markLoaded();
   });
 
-  /** A design made before the editor became one texture view still has layers on the faces: each becomes map layers that
-   *  look the same (faceLayersToMap), hidden ones too. The page then has unsaved changes. */
-  function convertFaceLayers() {
-    if (!model || !layout.layers.some((l) => !isMapLayer(l))) return;
-    layout.layers = faceLayersToMap(model, layout.layers);
-    selected = '';
-    commit();
-    notify('This design was made on the faces: its layers are now on the texture and look the same (Save to keep it). A layer that ran over several faces is now one piece per face.');
+  /** Face-net models: a painted texture (Import painted texture…, or an EPL mod's own texture) is an ordinary image layer at
+   *  the bottom, covering the whole texture — it shows in every guides mode and can be moved, hidden or covered like any
+   *  layer; the texture keeps its resolution (renderTexture sizes it to the layer). */
+  function paintedToLayer() {
+    if (!mapModel() || !layout.textureFile) return;
+    layout.layers = [textureLayer(layout.textureFile), ...layout.layers];
+    delete layout.textureFile;
+    converted();
+  }
+
+  /** After a conversion on opening: the new form is where this editor starts (no undo step, no unsaved change); it is
+   *  stored with the next save. */
+  function converted() {
+    ownLayout = layout;
+    hist.reset();
+    onbaseline?.();
+    redraw();
+  }
+
+  /** Face-net models: older whole-face colours become colour rectangles (moved and sized like an image), looking the same. */
+  function fillsToRects() {
+    const out = mapModel() ? faceFillsToRects(model!, layout.layers) : null;
+    if (!out) return;
+    layout.layers = out;
+    if (!layout.layers.some((l) => l.id === selected)) selected = '';
+    converted();
+  }
+
+  /** Face-net models: texture layers placed on an area before areas were inclusive reach its edge again (no 1 px seam). */
+  function edgesToInclusive() {
+    const out = mapModel() ? layersToInclusive(model!, layout.layers) : null;
+    if (!out) return;
+    layout.layers = out;
+    converted();
+  }
+
+  /** An image layer covering the whole game texture (texture px, the base texture's shape). */
+  function textureLayer(rel: string): Layer {
+    const T = model!.textureSize, [w, h] = textureSize(), th = (T * h) / w;
+    return { id: layerId(), kind: 'image', name: `Texture (${rel.split('/').pop()})`, visible: true, opacity: 1, blend: 'source-over',
+      space: 'texture', x: T / 2, y: th / 2, w: T, h: th, rot: 0, src: rel };
   }
 
   async function loadVanilla() {
@@ -956,8 +1179,53 @@
       if (model?.projected && view === 'texture' && !textureCanvas) textureCanvas = atlasNow();
       if (view !== 'net') ensureTexture();
       drawNetView(); drawTexView();
+      zoomPct = zpMain()?.percent() ?? 100;
     });
   });
+  $effect(() => { if (model && !model.projected && !model.palette && view !== '3d') writePref('texEditor.view', view); });
+  // Guides only needs its own render (and drops it when off).
+  let lastGuides = untrack(() => guides);
+  $effect(() => {
+    const g = guides;
+    writePref('texEditor.guides', g);
+    if ((g === 'only') !== (lastGuides === 'only')) untrack(() => { if (g !== 'only') onlyCanvas = null; redraw(); });
+    lastGuides = g;
+  });
+
+  // ---------------------------------------------------------------- workspace: the editor fills the window, panels docked right
+
+  let editorEl = $state<HTMLElement>();
+  let ws = $state(false);
+  let wsCtl: ReturnType<typeof fullWindow> | null = null;
+  $effect(() => {
+    const el = editorEl;
+    if (!el) return;
+    // The stage changes size: show the whole picture again once the new layout is in place.
+    const c = fullWindow(el, (on) => { ws = on; requestAnimationFrame(() => requestAnimationFrame(() => { zpTex?.fit(); zpNet?.fit(); })); });
+    wsCtl = c;
+    return () => { c.destroy(); if (wsCtl === c) wsCtl = null; ws = false; };
+  });
+  type Panels = { d3: boolean; layers: boolean; props: boolean };
+  let panels = $state<Panels>((() => {
+    try { return { d3: true, layers: true, props: true, ...JSON.parse(readPref('texEditor.panels') ?? '{}') }; } catch { return { d3: true, layers: true, props: true }; }
+  })());
+  function togglePanel(k: keyof Panels) { panels[k] = !panels[k]; writePref('texEditor.panels', JSON.stringify(panels)); }
+  let splitEl = $state<HTMLElement>();
+  let sceneEl = $state<HTMLElement>();
+  const splitOpts = {
+    container: () => splitEl, prop: '--split', key: 'texEditor.split', def: 50, unit: '%' as const,
+    measure: (e: PointerEvent, r: DOMRect) => ((e.clientX - r.left) / r.width) * 100, min: () => 20, max: () => 80,
+  };
+  const dockOpts = {
+    container: () => editorEl, prop: '--dock', key: 'texEditor.dock', def: 380, unit: 'px' as const,
+    measure: (e: PointerEvent, r: DOMRect) => r.right - e.clientX, min: () => 260, max: (r: DOMRect) => r.width * 0.5,
+  };
+  // The 3D preview opens at a third of the dock's height (whatever the window size); drag to change it while it's open.
+  const h3dOpts = {
+    container: () => editorEl, prop: '--h3d', def: 30, unit: '%' as const,
+    measure: (e: PointerEvent, r: DOMRect) => ((e.clientY - (sceneEl?.getBoundingClientRect().top ?? r.top)) / r.height) * 100,
+    min: (r: DOMRect) => (120 / r.height) * 100, max: (r: DOMRect) => ((r.height - 220) / r.height) * 100,
+  };
 
   const BLENDS: [GlobalCompositeOperation, string][] = [
     ['source-over', 'Normal'], ['multiply', 'Multiply (tint)'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['color', 'Colour'], ['soft-light', 'Soft light'],
@@ -1002,48 +1270,98 @@
     </div>
   </div>
 {:else if model && layout}
-  <div class="editor">
+  <div class="editor" class:ws class:proj={!!model.projected} class:no3d={!panels.d3} bind:this={editorEl}>
     <div class="stage">
+      <div class="row tabs bar">
+        {#if model.projected}
+          <button class:on={view === 'net'} onclick={() => (view = 'net')}>Views</button>
+          <button class:on={view === 'texture'} onclick={() => (view = 'texture')}>Texture (UV map)</button>
+          <button class:on={view === '3d'} onclick={() => (view = '3d')}>3D preview</button>
+          <div class="grow"></div>
+        {:else}
+          <span class="seg" title="Faces: one picture per face, drawn into every area of it (e.g. the deck box's tray front and cover). Texture: the game texture itself, for gaps and rims.">
+            <button class:on={view === 'net'} onclick={() => (view = 'net')}>Faces</button>
+            <button class:on={view === 'texture'} onclick={() => (view = 'texture')}>Texture</button>
+          </span>
+          <div class="grow"></div>
+        {/if}
+        {#if view !== '3d'}
+          <span class="zoombar" title="Wheel: zoom at the pointer · Space+drag or middle-drag: pan · Ctrl+0: fit · Ctrl+1: actual pixels">
+            <button class="tiny" onclick={() => zpMain()?.zoomOut()} title="Zoom out (Ctrl+−)">−</button>
+            <span class="small pct">{zoomPct}%</span>
+            <button class="tiny" onclick={() => zpMain()?.zoomIn()} title="Zoom in (Ctrl+=)">+</button>
+            <button class="tiny" onclick={() => zpMain()?.fit()} title="Show the whole picture (Ctrl+0)">Fit</button>
+            <button class="tiny" onclick={() => zpMain()?.oneToOne()} title="One texture pixel per screen pixel (Ctrl+1)">1:1</button>
+          </span>
+        {/if}
+        <label class="small guides" title="Guides only: hides the texture under your layers, so only the outlines, the face areas and your own layers show (the 3D view and the saved texture stay as they are)">Guides
+          <select bind:value={guides}>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+            {#if !model.projected}<option value="only">Guides only</option>{/if}
+          </select>
+        </label>
+        <button class="small" class:primary={ws} onclick={() => wsCtl?.toggle()}
+          title={ws ? 'Back to the page (Esc)' : 'Fill the whole window: the texture big in the middle, 3D preview, layers and properties docked on the right'}>{ws ? '✕ Close workspace' : '⛶ Workspace'}</button>
+      </div>
       {#if !model.projected}
         <!-- The texture you edit and the 3D model side by side: every edit shows on the model right away. -->
-        <div class="row tabs">
-          <span class="muted small grow">Texture (edit here) · 3D preview (drag to turn, scroll to zoom)</span>
-          <label class="check small"><input type="checkbox" bind:checked={showGuides} /> Guides</label>
-        </div>
-        <div class="split">
-          <canvas class="texview map" style:cursor={netCursor} bind:this={texView}
-            onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
-          <div class="scene" use:maximizable>
+        <div class="split" bind:this={splitEl}>
+          {#if view === 'net'}
+            <div class="texstage" use:zoomStage={'net'}>
+              <canvas class="netview" style:cursor={netCursor} bind:this={netView}
+                onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+            </div>
+          {:else}
+            <div class="texstage" use:zoomStage={'tex'}>
+              <canvas class="texview map" style:cursor={netCursor} bind:this={texView}
+                onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+            </div>
+          {/if}
+          <div class="divider v" use:splitter={splitOpts}></div>
+          <div class="scene" use:maximizable bind:this={sceneEl}>
             <canvas class="view3d" bind:this={canvas3d} onpointerdown={spinDown} onpointermove={spinMove} onpointerup={spinUp} onwheel={spinWheel}></canvas>
             {#if meshError}<p class="warn small overlay">{meshError}</p>{/if}
           </div>
         </div>
-        <p class="muted small">Blue lines outline every part of the model, yellow boxes are the faces' areas (guides only). Add images, colours
-          or text and drag them anywhere: the corner keeps proportions (Shift: freely), the side handles stretch, snapping to the yellow
-          boxes (Alt: free).</p>
-      {:else}
-      <div class="row tabs">
-        <button class:on={view === 'net'} onclick={() => (view = 'net')}>Views</button>
-        <button class:on={view === 'texture'} onclick={() => (view = 'texture')}>Texture (UV map)</button>
-        <button class:on={view === '3d'} onclick={() => (view = '3d')}>3D preview</button>
-        <div class="grow"></div>
-        <label class="check small"><input type="checkbox" bind:checked={showGuides} /> Guides</label>
-      </div>
-
-      {#if view === 'net'}
-        <canvas class="netview" style:cursor={netCursor} bind:this={netView} onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
-        <p class="muted small">Drag a layer to move it (snaps to face edges/centres; hold Alt for free), drag the blue corner or scroll to resize.
-          Every face is shown upright as seen from outside; an image across {wrapFaces().map((f) => f.label).join('–') || 'the faces'} wraps around.</p>
+        {#if view === 'net'}
+          <p class="muted small">Every face upright as seen from outside: a picture on a face shows in all of its areas on the texture (the
+            deck box's front goes on the tray front and the cover). The Fill / Stretch / Copy to buttons put the selected layer on a face;
+            an image across {wrapFaces().map((f) => f.label).join('–') || 'the faces'} wraps around. Drag a face's colour onto another face to move it there.
+            Drag to move (snaps to face edges, Alt: free),
+            corner keeps proportions (Shift: freely). Wheel zooms, Space+drag pans, Ctrl+wheel resizes the selected layer.</p>
+        {:else}
+          <p class="muted small">Blue lines outline every part of the model, yellow boxes are the faces' areas (guides only). Layers here sit on
+            the game texture itself — for gaps and rims the faces don't reach. The corner keeps proportions (Shift: freely), the side handles
+            stretch, snapping to the yellow boxes (Alt: free). Wheel zooms, Space+drag pans, Ctrl+wheel resizes the selected layer.</p>
+        {/if}
+      {:else if view === 'net'}
+        <div class="texstage" use:zoomStage={'net'}>
+          <canvas class="netview" style:cursor={netCursor} bind:this={netView} onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+        </div>
+        <p class="muted small">Drag a layer to move it (snaps to face edges/centres; hold Alt for free), drag the blue corner or Ctrl+scroll to resize;
+          scroll zooms, Space+drag pans. Every face is shown upright as seen from outside; an image across {wrapFaces().map((f) => f.label).join('–') || 'the faces'} wraps around.</p>
       {:else if view === 'texture'}
-        <canvas class="texview" bind:this={texView}></canvas>
+        <div class="texstage" use:zoomStage={'tex'}>
+          <canvas class="texview" bind:this={texView}></canvas>
+        </div>
         <p class="muted small">This is the texture the game gets.</p>
       {:else}
         {@render viewer()}
       {/if}
-      {/if}
     </div>
 
+    {#if ws}
+      <div class="divider dock" use:splitter={dockOpts}></div>
+      {#if !model.projected}
+        <button class="sect head3d" onclick={() => togglePanel('d3')}>{panels.d3 ? '▾' : '▸'} 3D preview</button>
+        {#if panels.d3}<div class="divider h" use:splitter={h3dOpts}></div>{/if}
+      {/if}
+    {/if}
+
     <div class="side">
+      {#if ws}<button class="sect" onclick={() => togglePanel('layers')}>{panels.layers ? '▾' : '▸'} Layers</button>{/if}
+      {#if !ws || panels.layers}
       <div class="row wrap">
         <button class="small primary" onclick={addImage}>+ Image</button>
         <button class="small" onclick={addFill}>+ Colour</button>
@@ -1052,12 +1370,16 @@
         <button class="small" onclick={undo} disabled={!hist.canUndo} title="Undo (Ctrl+Z)">↶</button>
         <button class="small" onclick={redo} disabled={!hist.canRedo} title="Redo (Ctrl+Y)">↷</button>
       </div>
-      <div class="layers">
-        {#each [...layout.layers].reverse() as l (l.id)}
-          <div class="layer" class:active={l.id === selected} role="button" tabindex="0" onclick={() => selectLayer(l)} onkeydown={() => {}}>
+      <div class="layers" bind:this={layersEl}>
+        {#each [...layout.layers].reverse() as l, i (l.id)}
+          <div class="layer" data-id={l.id} class:active={l.id === selected} class:drop-above={dropAt === i}
+            class:drop-below={dropAt === layout.layers.length && i === layout.layers.length - 1}
+            role="button" tabindex="0" title="Drag to change the order (top of the list = on top)"
+            onclick={() => { if (!noClick) selectLayer(l); }} onkeydown={() => {}}
+            onpointerdown={(e) => rowDown(e, l.id)} onpointermove={rowMove} onpointerup={rowUp} onpointercancel={rowUp}>
             <input type="checkbox" bind:checked={l.visible} onchange={changed} onclick={(e) => e.stopPropagation()} title="Visible" />
             <span class="grow name">{l.kind === 'image' ? '🖼' : l.kind === 'text' ? 'T' : '■'} {l.name}</span>
-            {#if isMapLayer(l)}<span class="tag" title="On the texture map (Texture view)">map</span>{/if}
+            {#if isMapLayer(l)}<span class="tag" title="On the game texture (Texture tab)">texture</span>{:else if mapModel()}<span class="tag face" title="On a face (Faces tab): shows in every area of the face">face</span>{/if}
             <button class="tiny" onclick={(e) => { e.stopPropagation(); moveLayer(l.id, 1); }} title="Move up">▲</button>
             <button class="tiny" onclick={(e) => { e.stopPropagation(); moveLayer(l.id, -1); }} title="Move down">▼</button>
             <button class="tiny" onclick={(e) => { e.stopPropagation(); duplicateLayer(l.id); }} title="Duplicate (Ctrl+D)">⧉</button>
@@ -1087,8 +1409,10 @@
         <button class="small" onclick={importPainted}
           title="Uses a texture you painted on an exported template as the whole texture, at full resolution">Import painted texture…</button>
       </div>
+      {/if}
 
-      {#if sel}
+      {#if ws}<button class="sect" onclick={() => togglePanel('props')}>{panels.props ? '▾' : '▸'} Properties{sel ? ` · ${sel.name}` : ''}</button>{/if}
+      {#if sel && (!ws || panels.props)}
         <div class="props">
           <label class="field">Name<input bind:value={sel.name} /></label>
           {#if sel.kind === 'text'}
@@ -1100,7 +1424,7 @@
             </div>
           {/if}
           {#if sel.kind === 'fill'}
-            {#if !isMapLayer(sel)}<label class="field">Face
+            {#if wholeFaceFill(sel)}<label class="field">Face
               <select bind:value={sel.face} onchange={changed}>
                 <option value="">All faces</option>
                 {#each pickFaces as f}<option value={f.id}>{f.label}</option>{/each}
@@ -1149,7 +1473,7 @@
             <div class="small muted">Stretch over (fills the area exactly):</div>
             <div class="row wrap">{#each model.faces as f}<button class="tiny" onclick={() => placeSelected(f.id, 'stretch')}>{f.label}</button>{/each}</div>
             <p class="muted small">Keys: Ctrl+C / Ctrl+V copy and paste a layer, Ctrl+D duplicate, Del delete, Ctrl+Z / Ctrl+Y undo and redo.</p>
-          {:else if sel.kind !== 'fill'}
+          {:else if !wholeFaceFill(sel)}
             <label class="field">Rotation {Math.round(sel.rot)}°<input type="range" min="-180" max="180" step="1" bind:value={sel.rot} oninput={changed} /></label>
             <div class="row size">
               <label class="field" title="% of the {mainFace().label.toLowerCase()} width">Width %<input type="number" min="1" step="1"
@@ -1181,7 +1505,7 @@
               Keys: Ctrl+C / Ctrl+V copy and paste a layer, Ctrl+D duplicate, Del delete, Ctrl+Z / Ctrl+Y undo and redo.</p>
           {/if}
         </div>
-      {:else}
+      {:else if !ws || panels.props}
         <p class="muted small">Add an image, colour or text. Tip: a colour layer with <b>Multiply</b> over the vanilla base tints the leather and keeps its grain.</p>
       {/if}
     </div>
@@ -1192,13 +1516,33 @@
 
 <style>
   .editor { display: flex; gap: 14px; align-items: flex-start; }
-  .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  /* A container: texture and 3D stack when the editor itself is narrow (a smaller window), not only below a window width. */
+  .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; container-type: inline-size; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; padding: 3px 12px; }
+  .seg button:first-child { border-radius: 4px 0 0 4px; }
+  .seg button:last-child { border-radius: 0 4px 4px 0; }
+  .tag { font-size: 11px; padding: 0 5px; border-radius: 4px; background: #2b3a55; color: #9cc4ff; }
+  .tag.face { background: #3a3352; color: #d2b8ff; }
   .texview.palette { image-rendering: pixelated; width: 128px; height: 128px; flex-shrink: 0; }
   .netview, .texview { width: 100%; max-height: 62vh; object-fit: contain; background: repeating-conic-gradient(#1b1f27 0 25%, #232834 0 50%) 0 0 / 24px 24px; border-radius: 6px; }
   .netview { cursor: move; touch-action: none; }
+  /* Zoom stage (lib/zoomPan places the canvas inside). */
+  .texstage { position: relative; overflow: hidden; height: 62vh; min-height: 320px; background: #12151b; border-radius: 6px; }
+  .texstage .netview, .texstage .texview { border-radius: 0; }
+  .zoombar { display: inline-flex; align-items: center; gap: 3px; }
+  .zoombar .pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+  .guides { display: inline-flex; align-items: center; gap: 4px; }
+  .guides select { padding: 1px 4px; font-size: 12px; }
+  .divider { background: transparent; border-radius: 3px; touch-action: none; }
+  .divider:hover, .divider:global(.dragging) { background: var(--accent); opacity: 0.6; }
+  .divider.v, .divider.dock { cursor: col-resize; }
+  .divider.h { cursor: row-resize; }
   .scene { position: relative; height: 440px; background: radial-gradient(circle at 50% 40%, #2a3140, var(--bg)); border-radius: 6px; }
-  .view3d { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  /* Out of the layout flow: MeshView sizes the canvas bitmap to its box × devicePixelRatio, and an in-flow canvas would
+     then grow its auto-height row on every resize (the model kept zooming in with Windows scaling > 100 %). */
+  .view3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .view3d:active { cursor: grabbing; }
   .overlay { position: absolute; left: 12px; bottom: 4px; margin: 0; }
   .warn { color: #d9a400; }
@@ -1206,13 +1550,41 @@
   .layers { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow: auto; }
   .layer { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; background: var(--panel); }
   .layer.active { border-color: var(--accent); background: #22304d; }
+  .layer { touch-action: none; }
+  .layer.drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
+  .layer.drop-below { box-shadow: 0 3px 0 0 var(--accent); }
   .layer.base { cursor: default; }
-  .tag { font-size: 11px; padding: 0 5px; border-radius: 4px; background: #2b3a55; color: #9cc4ff; }
   .texview.map { touch-action: none; }
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
-  .split .texview { max-height: 62vh; height: 100%; }
+  .split { display: grid; grid-template-columns: minmax(0, var(--split, 50%)) 8px minmax(0, 1fr); gap: 0; align-items: stretch; }
   .split .scene { height: auto; min-height: 320px; }
-  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } .split .scene { height: 360px; } }
+  @container (max-width: 760px) { .split { grid-template-columns: 1fr; gap: 8px; } .split > .divider { display: none; } .split .scene { height: 360px; } }
+  .bar { flex-wrap: wrap; row-gap: 6px; }
+  .bar > .grow { min-width: 120px; }
+
+  /* Workspace: the editor fills the window (lib/maximize fullWindow). The stage and split boxes step aside (display: contents)
+     so the texture, the 3D view and the side panel become cells of one grid; nothing is re-mounted. */
+  .editor.ws { display: grid; gap: 0; padding: 8px 10px 10px; background: var(--bg); align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) 8px var(--dock, 380px);
+    grid-template-rows: auto auto var(--h3d, 30%) 8px minmax(0, 1fr);
+    grid-template-areas: 'bar bar bar' 'main vdiv head3d' 'main vdiv scene' 'main vdiv hdiv' 'main vdiv side'; }
+  .editor.ws.no3d { grid-template-rows: auto auto 0 0 minmax(0, 1fr); }
+  .editor.ws.proj { grid-template-rows: auto minmax(0, 1fr); grid-template-areas: 'bar bar bar' 'main vdiv side'; }
+  .ws .stage, .ws .split { display: contents; }
+  .ws .bar { grid-area: bar; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .ws .texstage { grid-area: main; height: auto; min-height: 0; }
+  .ws .split > .divider, .ws .stage > p { display: none; }
+  .ws .scene { grid-area: scene; height: auto; min-height: 0; }
+  .ws.proj .scene { grid-area: main; }
+  .ws.no3d .scene { display: none; }
+  .ws > .divider.dock { grid-area: vdiv; margin: 0 2px; }
+  .ws > .divider.h { grid-area: hdiv; margin: 2px 0; }
+  .ws > .head3d { grid-area: head3d; }
+  .ws .side { grid-area: side; width: auto; min-height: 0; overflow: auto; padding-right: 2px; }
+  .ws.proj .side { padding-top: 0; }
+  .ws .layers { max-height: none; }
+  .ws .side > * { flex-shrink: 0; } /* the dock scrolls; the layer list must not shrink to nothing */
+  .sect { text-align: left; font-weight: 600; font-size: 13px; padding: 4px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .ws > .head3d { margin-bottom: 6px; }
   .layer input[type='color'] { width: 36px; height: 24px; padding: 1px; }
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
   .props { display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }

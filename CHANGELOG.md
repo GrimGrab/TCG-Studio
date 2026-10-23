@@ -3,6 +3,26 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.13.0 - 2026-10-23
+
+Texture editor overhaul from your feedback: a bigger work area, zoom, the Faces tab is back, and cleaner edges.
+
+- New: Workspace button in every texture editor (accessories, pack/box art, Game look → Textures, furniture Paint): the editor fills the window with the 3D preview, layers and properties docked on the right. Drag the dividers to resize, collapse any panel, Esc to leave.
+- New: Zoom and pan on the texture: the mouse wheel zooms at the pointer, Space+drag or middle-drag pans, Ctrl+0 fits, Ctrl+1 shows actual pixels. Ctrl+wheel now resizes the selected layer.
+- New: A drag divider between the texture and the 3D preview (remembered).
+- New: Guides menu with a "Guides only" view that hides the texture under your layers.
+- New: The Faces tab is back next to the Texture tab: one picture per face, drawn into every part of it (the deck box's tray front and cover, both halves of the back).
+- New: Drag layers in the list to reorder them.
+- New: Colours on faces are rectangles you move, resize and stretch like an image. Older colours are converted automatically.
+- New: Imported textures (EPL mods, Import painted texture…) are an ordinary bottom layer and keep their full resolution.
+- New: Furniture: in the full-screen 3D view, the selected spot, position, placement area or model shows its numbers along the bottom.
+- New: Settings → Interface size (90–200 %) makes all of TCG Studio bigger; it applies after a restart (Restart now button).
+- Fixed: Thin lines of vanilla colour along face edges on accessories, packs and boxes; deck box sides no longer show a line of the front's art.
+- Fixed: Opening a design no longer marks the page as changed, and Revert updates the texture and 3D view again.
+- Fixed: The 3D preview no longer gets squeezed into a thin strip in a smaller window.
+- Fixed: The game log no longer fills with "doesn't have a texture property '_MainTex'" errors.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.12.4 - 2026-10-23
 
 Channel and other "until end of turn" effects can now be used at the MTG table.

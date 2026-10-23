@@ -212,7 +212,7 @@ namespace TCGCustomCards.Runtime
                 md.material = baseMat == null ? null : new Material(baseMat) { name = $"TCGCC_{def.Id}", hideFlags = HideFlags.DontUnloadUnusedAsset };
                 if (md.material != null)
                 {
-                    var old = baseMat.mainTexture;
+                    var old = MaterialTex.Main(baseMat);
                     if (tex != null)
                         foreach (var prop in md.material.GetTexturePropertyNames())
                             if (md.material.GetTexture(prop) == old && old != null) md.material.SetTexture(prop, tex);
@@ -229,7 +229,7 @@ namespace TCGCustomCards.Runtime
             {
                 if (m == null) return null;
                 if (copies.TryGetValue(m, out var c)) return c;
-                var old = m.mainTexture;
+                var old = MaterialTex.Main(m);
                 if (old == null && m != vanilla.material) return copies[m] = m;
                 c = new Material(m) { name = $"TCGCC_{def.Id}_{m.name}", hideFlags = HideFlags.DontUnloadUnusedAsset };
                 foreach (var prop in c.GetTexturePropertyNames())
@@ -238,8 +238,8 @@ namespace TCGCustomCards.Runtime
                 return copies[m] = c;
             }
             // Other slots only switch when they share the base material's texture (e.g. a secondary material with a different print stays).
-            var mainTex = vanilla.material.mainTexture;
-            Material SwapIfSame(Material m) => m != null && (m == vanilla.material || (mainTex != null && m.mainTexture == mainTex)) ? Swap(m) : m;
+            var mainTex = MaterialTex.Main(vanilla.material);
+            Material SwapIfSame(Material m) => m != null && (m == vanilla.material || (mainTex != null && MaterialTex.Main(m) == mainTex)) ? Swap(m) : m;
             md.material = Swap(vanilla.material);
             md.materialSecondary = SwapIfSame(vanilla.materialSecondary);
             if (md.materialList != null)

@@ -131,7 +131,7 @@ func init() {
 // "streetBillboard".
 func BoxLook(id string) (Model, bool) {
 	m, ok := boxLooks[id]
-	return m, ok
+	return inclusive(m), ok
 }
 
 // BoxLooks lists the box layouts (tests).

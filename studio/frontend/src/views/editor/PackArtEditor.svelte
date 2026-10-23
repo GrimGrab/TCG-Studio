@@ -11,9 +11,10 @@
   import AccessoryEditor from '../AccessoryEditor.svelte';
   import ProductPhotos from './ProductPhotos.svelte';
 
-  let { project, pack, notify, onapplied, hooks }: {
+  let { project, pack, notify, onapplied, hooks, rebaseArt }: {
     project: any; pack: any; notify: (t: string, k?: string) => void; onapplied: () => void;
     hooks: Set<() => Promise<void>>;              // run by the set editor before saving / switching tabs
+    rebaseArt?: (packId: string, which: string, layout: any) => void; // a design converted on opening counts as saved
   } = $props();
 
   let which = $state<'pack' | 'box'>('pack');
@@ -288,7 +289,7 @@
   </p>
   {#key pack.id + which}
     <AccessoryEditor bind:this={editor} {kind} {vanillaUrl} bind:layout={project.meta.packArt[pack.id][which]}
-      {notify} onchange={() => (pending = true)} imageUrl={(rel) => projectFile(project.id, rel)} {pickImage}
+      {notify} onchange={() => (pending = true)} onbaseline={() => rebaseArt?.(pack.id, which, project.meta.packArt[pack.id][which])} imageUrl={(rel) => projectFile(project.id, rel)} {pickImage}
       saveImage={(name, png) => App.SaveProjectImage(project.id, name, png)}
       defaultText={which === 'pack' ? (project.set.name || 'BOOSTER').toUpperCase() : 'BOOSTER BOX'} />
   {/key}

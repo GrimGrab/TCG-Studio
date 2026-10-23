@@ -2091,6 +2091,7 @@ export namespace main {
 	    workspace: string;
 	    syncedVersion?: string;
 	    imageFormat?: string;
+	    uiScale?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -2102,6 +2103,7 @@ export namespace main {
 	        this.workspace = source["workspace"];
 	        this.syncedVersion = source["syncedVersion"];
 	        this.imageFormat = source["imageFormat"];
+	        this.uiScale = source["uiScale"];
 	    }
 	}
 	export class SetupImport {

@@ -87,7 +87,7 @@ namespace TCGCustomCards.Runtime
         {
             var mats = r.sharedMaterials;
             for (int i = 0; i < mats.Length; i++)
-                if (mats[i] != null && mats[i].mainTexture != null && mats[i].mainTexture.name == VanillaTexture) return i;
+                if (MaterialTex.Main(mats[i]) is Texture t && t != null && t.name == VanillaTexture) return i;
             return -1;
         }
 
@@ -100,7 +100,7 @@ namespace TCGCustomCards.Runtime
                 if (r == null) continue;
                 int slot = Slot(r);
                 if (slot < 0) continue;
-                if (_vanilla == null) _vanilla = r.sharedMaterials[slot].mainTexture; // Unity's null: also a destroyed texture
+                if (_vanilla == null) _vanilla = MaterialTex.Main(r.sharedMaterials[slot]); // Unity's null: also a destroyed texture
                 ShopPicture.SetTexture(r, key == null ? null : TextureFor(key), slot);
             }
         }

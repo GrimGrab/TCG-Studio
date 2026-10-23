@@ -140,7 +140,7 @@ func scaled(m Model, kind string, k float64) Model {
 // ModelForBase returns the layout of an accessory's model: per base for the tabletop kinds, per kind otherwise.
 func ModelForBase(kind, base string) (Model, bool) {
 	if m, ok := tabletop[base]; ok && m.Kind == kind {
-		return m, true
+		return inclusive(m), true
 	}
 	return ModelFor(kind)
 }

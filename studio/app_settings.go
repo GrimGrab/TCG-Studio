@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -22,6 +23,8 @@ type Settings struct {
 	// ImageFormat is the default card image format for imports: "png" (default) or "jpg" (about 6x smaller). The Import
 	// page starts from it and can still pick the other one for a single import.
 	ImageFormat string `json:"imageFormat,omitempty"`
+	// UIScale sizes the whole Studio window's text and controls (1 = 100 %, 0 = unset = 100 %); the frontend applies it.
+	UIScale float64 `json:"uiScale,omitempty"`
 }
 
 func settingsPath() string {
@@ -143,3 +146,36 @@ func (a *App) WorkspaceHasSetups(dir string) bool {
 
 // LibraryFolder is the workspace's shared library (every set's files): the game's mod reads set files from there.
 func (a *App) LibraryFolder() string { return a.wsDir().Library() }
+
+// startZoom is the WebView zoom factor for the interface size setting; 0 = the WebView's own (100 %). WebView2 takes it only
+// when it starts, so a change needs a restart (RestartStudio).
+func startZoom() float64 {
+	if z := loadSettings().UIScale; z > 0 && z != 1 {
+		return z
+	}
+	return 0
+}
+
+// UIScaleAtStart is the interface size this run started with (1 = 100 %): the Settings page offers a restart when the saved
+// one differs.
+func (a *App) UIScaleAtStart() float64 {
+	if a.startZoom > 0 {
+		return a.startZoom
+	}
+	return 1
+}
+
+// RestartStudio starts TCG Studio again and quits this one (the interface size applies on start).
+func (a *App) RestartStudio() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe)
+	cmd.Dir = filepath.Dir(exe)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	runtime.Quit(a.ctx)
+	return nil
+}

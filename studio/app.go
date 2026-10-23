@@ -44,6 +44,7 @@ type App struct {
 	sf         *scryfall.Client
 	sources    *importer.Registry
 	started    chan struct{} // closed when startup has picked the workspace/setup (see WaitReady)
+	startZoom  float64       // WebView zoom this run started with (interface size; 0 = 100 %)
 	task       taskSlot      // the running import or Forge install
 	syncMu     sync.Mutex    // SyncInstalledSets
 	catalogMu  sync.Mutex    // the shared catalog (app_catalog.go)

@@ -116,7 +116,7 @@ namespace TCGCustomCards.Runtime
             var mats = r.sharedMaterials;
             for (int i = 0; i < mats.Length; i++)
             {
-                var t = mats[i] == null ? null : mats[i].mainTexture;
+                var t = MaterialTex.Main(mats[i]);
                 if (t != null && textures(t.name)) { texture = t.name; return i; }
             }
             texture = null;
@@ -208,7 +208,8 @@ namespace TCGCustomCards.Runtime
                     return;
                 }
                 Prune();
-                string vanilla = material != null && material.mainTexture != null ? material.mainTexture.name : null;
+                var main = MaterialTex.Main(material);
+                string vanilla = main != null ? main.name : null;
                 int slot = Slot(r, n => n == vanilla, out _);
                 Show(r, slot < 0 ? 0 : slot, key);
             }

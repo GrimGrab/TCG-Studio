@@ -51,7 +51,7 @@ namespace TCGCustomCards.Runtime
                 if (sign == null) continue;
                 foreach (var r in Renderers(sign))
                 {
-                    _vanilla ??= r.sharedMaterial.mainTexture;
+                    _vanilla ??= MaterialTex.Main(r.sharedMaterial);
                     ShopPicture.SetTexture(r, TextureFor());
                 }
             }
@@ -64,7 +64,7 @@ namespace TCGCustomCards.Runtime
             {
                 if (model == null) continue;
                 foreach (var r in model.GetComponentsInChildren<MeshRenderer>(true))
-                    if (r.sharedMaterial != null && r.sharedMaterial.mainTexture != null && r.sharedMaterial.mainTexture.name == "T_OpenCloseSign")
+                    if (MaterialTex.Main(r.sharedMaterial) is Texture t && t != null && t.name == "T_OpenCloseSign")
                         yield return r;
             }
         }

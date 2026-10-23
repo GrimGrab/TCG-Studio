@@ -379,7 +379,7 @@
                 onimported={(n) => { if (/^Custom figurine( \d+)?$/i.test(acc.name)) { acc.name = n; } }} />
             {:else}
             <AccessoryEditor bind:this={editor} kind={acc.kind} base={baseOf(acc)} vanillaUrl={tplUrl(t?.texture)} vanillaIconUrl={tplUrl(t?.icon)} bind:layout
-              iconSize={t?.iconRect ?? [512, 512]} {notify} />
+              iconSize={t?.iconRect ?? [512, 512]} {notify} onbaseline={() => (start = snap())} />
             {/if}
           {/key}
         </section>

@@ -486,6 +486,10 @@ export function RemoveGameCopies() {
   return window['go']['main']['App']['RemoveGameCopies']();
 }
 
+export function RestartStudio() {
+  return window['go']['main']['App']['RestartStudio']();
+}
+
 export function RetrySetups() {
   return window['go']['main']['App']['RetrySetups']();
 }
@@ -616,6 +620,10 @@ export function SyncInstalledSets() {
 
 export function TemplatesStatus() {
   return window['go']['main']['App']['TemplatesStatus']();
+}
+
+export function UIScaleAtStart() {
+  return window['go']['main']['App']['UIScaleAtStart']();
 }
 
 export function UninstallProject(arg1) {

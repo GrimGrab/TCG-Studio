@@ -262,6 +262,8 @@ export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function RemoveGameCopies():Promise<main.StorageResult>;
 
+export function RestartStudio():Promise<void>;
+
 export function RetrySetups():Promise<main.SetupsView>;
 
 export function RotateCardImages(arg1:string,arg2:Array<string>,arg3:number,arg4:boolean):Promise<Record<string, string>>;
@@ -327,6 +329,8 @@ export function SwitchSetup(arg1:string):Promise<main.SwitchResult>;
 export function SyncInstalledSets():Promise<string>;
 
 export function TemplatesStatus():Promise<main.TemplatesStatus>;
+
+export function UIScaleAtStart():Promise<number>;
 
 export function UninstallProject(arg1:string):Promise<void>;
 

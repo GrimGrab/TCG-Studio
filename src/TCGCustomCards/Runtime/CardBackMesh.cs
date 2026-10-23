@@ -67,7 +67,7 @@ namespace TCGCustomCards.Runtime
         private static string[] TextureProps(Material mat)
         {
             if (_texProps != null) return _texProps;
-            var main = mat != null ? mat.mainTexture : null;
+            var main = MaterialTex.Main(mat);
             var props = new List<string>();
             if (mat != null)
                 foreach (var name in mat.GetTexturePropertyNames())
@@ -98,7 +98,7 @@ namespace TCGCustomCards.Runtime
         /// <summary>Cover-fits the back image into the art window of a copy of the vanilla back-mesh texture.</summary>
         private static Texture2D Compose(string path, Renderer renderer)
         {
-            var vanilla = renderer.sharedMaterial != null ? renderer.sharedMaterial.mainTexture : null;
+            var vanilla = MaterialTex.Main(renderer.sharedMaterial);
             if (vanilla == null) return null;
             var baseTex = TextureReadback.Read(vanilla, new RectInt(0, 0, vanilla.width, vanilla.height));
             if (baseTex == null) return null;

@@ -352,7 +352,7 @@
   .bar div { height: 100%; background: var(--accent); }
   main { flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
   .toast {
-    position: fixed; bottom: 18px; right: 18px; max-width: 520px; padding: 10px 14px; border-radius: var(--radius);
+    position: fixed; bottom: 18px; right: 18px; z-index: 2000; max-width: 520px; padding: 10px 14px; border-radius: var(--radius);
     background: var(--panel-2); border: 1px solid var(--line); box-shadow: 0 6px 24px #0008; white-space: pre-wrap;
   }
   .toast.error { border-color: var(--danger); }

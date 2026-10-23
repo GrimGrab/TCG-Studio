@@ -5,9 +5,10 @@
   import PackArtEditor from './PackArtEditor.svelte';
   import PackContents from './PackContents.svelte';
 
-  let { project, notify, imgBust, hooks }: {
+  let { project, notify, imgBust, hooks, rebaseArt }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
     hooks: Set<() => Promise<void>>;
+    rebaseArt?: (packId: string, which: string, layout: any) => void; // a design converted on opening counts as saved
   } = $props();
   let artEditor = $state<any>();
 
@@ -165,7 +166,7 @@
 
       <section>
         <h3>Art</h3>
-        <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {hooks} onapplied={() => (artBust = Date.now())} />
+        <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {hooks} {rebaseArt} onapplied={() => (artBust = Date.now())} />
         <p class="muted small">The finished images the pack uses (made by the editor above), or your own picture: textures in the
           vanilla layout (cut to 1024²), icons in the vanilla icon's shape. Drag the box to pick the part used; saving the set cuts it.
           Empty = vanilla art.</p>

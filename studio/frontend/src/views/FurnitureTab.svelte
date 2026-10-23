@@ -129,6 +129,12 @@
   let sel = $state(0);                   // selected spot
   let part = $state<'spot' | 'customer' | 'tag' | 'area' | 'point' | 'model'>('spot');
   let selPt = $state(0);                 // selected position point (seats, stand points…) when part === 'point' // what the 3D handles act on (a part of the selected spot, or the placement area)
+  // Full view of the 3D view: the selected part's numbers in a strip along the bottom (collapsible, remembered per viewer).
+  let full = $state(false);
+  let stripOpen = $state((() => { try { return localStorage.getItem('furniture.strip') !== 'closed'; } catch { return true; } })());
+  function toggleStrip() { stripOpen = !stripOpen; try { localStorage.setItem('furniture.strip', stripOpen ? 'open' : 'closed'); } catch { /* per-viewer only */ } }
+  const stripTitle = () => part === 'model' ? 'Your model' : part === 'area' ? 'Placement area' : part === 'point' ? pointLabel(selPt)
+    : f?.spots?.length ? `Spot ${sel + 1} of ${f.spots.length}` : 'Numbers';
   let redraw = $state(0);                // bumped while dragging (spot edits don't change f.spots itself)
   let showBase = $state(true);
   let tool = $state<'move' | 'rotate' | 'size'>('move');
@@ -1539,6 +1545,94 @@
   {/each}
 </div>
 
+<!-- Number fields of the selected part: in the side column, and in the strip under the 3D view in full view. -->
+{#snippet spotFields(spot: any)}
+  <div class="grid6">
+    {#each ['x', 'y', 'z'] as ax, k}
+      <label class="field" title={['Left/right of the piece\'s centre, in metres.', 'Height above the floor, in metres (for item spots: the middle of the spot box; with height 0 the items stand on it).', 'Front/back, in metres. Vanilla shop shelves face the aisle on the + side.'][k]}>Position {ax} (m)<input type="number" step="0.01" value={spot.pos[k]} onchange={(e) => setPos(k, +e.currentTarget.value)} /></label>
+    {/each}
+    {#each ['x', 'y', 'z'] as ax, k}
+      <label class="field" title={['Tilt forward/back in degrees (vanilla card shelves lean cards 15°).', 'Turn around the vertical in degrees — which way the spot faces (180 = the other side of the piece).', 'Roll sideways in degrees.'][k]}>Rotation {ax} (°)<input type="number" step="5" value={spot.rot[k]} onchange={(e) => { spot.rot[k] = +e.currentTarget.value; changed(); }} /></label>
+    {/each}
+    {#if spot.kind === 'items'}
+      {#each ['Width', 'Depth', 'Height'] as nm, k}
+        <label class="field" title={['Width of the spot in metres. Items are spread evenly across it (see Grid across).', 'Depth of the spot in metres, front to back (see Grid deep).', 'Height of the spot in metres. 0 = items stand in one layer on the spot (vanilla shop shelves); more = stacked layers (see Grid high).'][k]}>{nm} (m)<input type="number" step="0.01" min="0" value={spot.size[k]} onchange={(e) => { spot.size[k] = Math.max(0, +e.currentTarget.value); if (gridFollows) fitGrid(spot); changed(); }} /></label>
+      {/each}
+      {#each ['across', 'deep', 'high'] as nm, k}
+        <label class="field" title={['How many item units fit side by side — this, deep and high set how many items the spot holds. A pack is 1 unit; bigger items (boxes, figurines) take several. Vanilla: 4.', 'How many item units fit front to back. Vanilla: 8.', 'How many layers of item units fit on top of each other. Vanilla shop shelves: 1.'][k]}>Grid {nm}<input type="number" step="1" min="1" value={spot.grid?.[k] ?? [4, 8, 1][k]}
+          onchange={(e) => { spot.grid = spot.grid ?? [4, 8, 1]; spot.grid[k] = Math.max(1, Math.round(+e.currentTarget.value)); changed(); }} /></label>
+      {/each}
+      <div class="gridinfo">
+        <b>Holds {packsIn(spot)} packs</b> <span class="muted small">({capacity(spot)} grid units{fillItem && fillItem.key !== 'BasicCardPack' ? ` · ${fillCount(spot, true)} × ${fillItem.label}` : ''})</span>
+        <label class="check small" title="While on, changing the spot's width, depth or height (fields or Size handles) changes the grid too, keeping the vanilla spacing between items — a bigger spot holds more. Off = the same number of items, spread out."><input type="checkbox" bind:checked={gridFollows} /> Grid follows size</label>
+        <button class="small" onclick={() => { fitGrid(spot); changed(); }} title="Set the grid from the spot's size with the vanilla spacing between items.">Fit grid to size</button>
+      </div>
+    {/if}
+    <label class="field" title="Where customers stand to take from this spot: left/right on the floor, in metres. Every spot has one; clear the field to put it back in front of the spot.">Customer x<input type="number" step="0.05" value={spot.customer?.[0] ?? ''} placeholder="auto"
+      onchange={(e) => { const v = opt(e.currentTarget.value); spot.customer = v === undefined ? defaultCustomer(spot) : [v, (spot.customer ?? defaultCustomer(spot))[1]]; changed(); }} /></label>
+    <label class="field" title="Where customers stand to take from this spot: front/back on the floor, in metres. It should be in the aisle in front of the spot. Clear the field to put it back in front of the spot.">Customer z<input type="number" step="0.05" value={spot.customer?.[1] ?? ''} placeholder="auto"
+      onchange={(e) => { const v = opt(e.currentTarget.value); spot.customer = v === undefined ? defaultCustomer(spot) : [(spot.customer ?? defaultCustomer(spot))[0], v]; changed(); }} /></label>
+    {#each ['x', 'y', 'z'] as ax, k}
+      <label class="field" title="Position of this spot's price tag (the label players click to set a price and customers read), in metres. Empty = where the vanilla spot had it.">Price tag {ax}<input type="number" step="0.01" value={spot.priceTag?.[k] ?? ''} placeholder="auto"
+        onchange={(e) => { const v = opt(e.currentTarget.value); if (v === undefined) spot.priceTag = undefined; else { spot.priceTag = spot.priceTag ?? [...spot.pos]; spot.priceTag[k] = v; } changed(); }} /></label>
+    {/each}
+    {#if spot.kind === 'items'}
+      <label class="check small" title="Allow placing whole delivery boxes here (like warehouse shelves), not only loose items."><input type="checkbox" checked={!!spot.boxes} onchange={(e) => { spot.boxes = e.currentTarget.checked; changed(); }} /> Whole boxes fit here</label>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet areaFields(a: { pos: number[]; size: number[] })}
+  <div class="grid2">
+    <label class="field" title="Centre of the area, left/right of the piece's centre (m).">Centre x<input type="number" step="0.01" value={a.pos[0]}
+      onchange={(e) => { f.area = { pos: [+e.currentTarget.value, a.pos[1]], size: [...a.size] }; part = 'area'; changed(); }} /></label>
+    <label class="field" title="Centre of the area, front/back (m).">Centre z<input type="number" step="0.01" value={a.pos[1]}
+      onchange={(e) => { f.area = { pos: [a.pos[0], +e.currentTarget.value], size: [...a.size] }; part = 'area'; changed(); }} /></label>
+    <label class="field" title="Width of the area (m). Other furniture can't be placed inside it.">Width<input type="number" step="0.01" min="0.05" value={a.size[0]}
+      onchange={(e) => { f.area = { pos: [...a.pos], size: [Math.max(0.05, +e.currentTarget.value), a.size[1]] }; part = 'area'; changed(); }} /></label>
+    <label class="field" title="Depth of the area (m), front to back — include room for customers in front of shelves.">Depth<input type="number" step="0.01" min="0.05" value={a.size[1]}
+      onchange={(e) => { f.area = { pos: [...a.pos], size: [a.size[0], Math.max(0.05, +e.currentTarget.value)] }; part = 'area'; changed(); }} /></label>
+  </div>
+{/snippet}
+
+{#snippet pointFields(i: number)}
+  {@const q = pointsOf()[i]}
+  {#if q}
+    {@const person = roleKind(q.role) === 'person'}
+    <div class="grid6">
+      {#each ['x', 'y', 'z'] as ax, k}
+        <label class="field" title={["Left/right of the piece's centre, in metres.", 'Height above the floor, in metres.', 'Front/back, in metres.'][k]}>Position {ax} (m)<input type="number" step="0.01" value={q.pos[k]}
+          onchange={(e) => { const v = +e.currentTarget.value; if (isNaN(v)) return; pointsCustom(); f.points[i].pos[k] = v; changed(); redraw++; }} /></label>
+      {/each}
+      {#each ['x', 'y', 'z'] as ax, k}
+        {#if !person || k === 1}
+          <label class="field" title={k === 1 ? 'Turn around the vertical in degrees — which way it faces.' : ['Tilt forward/back in degrees.', '', 'Roll sideways in degrees.'][k]}>Rotation {ax} (°)<input type="number" step="5" value={Math.round((q.rot?.[k] ?? 0) * 10) / 10}
+            onchange={(e) => { const v = +e.currentTarget.value; if (isNaN(v)) return; pointsCustom(); const pt = f.points[i]; pt.rot = [...(pt.rot ?? [0, 0, 0])]; pt.rot[k] = v; changed(); redraw++; }} /></label>
+        {/if}
+      {/each}
+      {#if !person}
+        <label class="field" title="Size against the vanilla piece's (100 % = unchanged).">Size %<input type="number" min="10" max="2000" step="5" value={Math.round((q.scale || 1) * 100)}
+          onchange={(e) => { const v = +e.currentTarget.value; if (v > 0) { pointsCustom(); f.points[i].scale = v / 100; changed(); redraw++; } }} /></label>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet modelFields()}
+  <div class="grid6">
+    {#each ['x', 'y', 'z'] as ax, k}
+      <label class="field" title={["Left/right of the vanilla piece's footprint centre, in metres.", 'Up from the floor, in metres.', 'Front/back of the footprint centre, in metres.'][k]}>Offset {ax} (m)<input type="number" step="0.01" value={Math.round((layout.offset?.[k] ?? 0) * 1000) / 1000}
+        onchange={(e) => { const v = +e.currentTarget.value; if (isNaN(v)) return; const o = [...(layout.offset ?? [0, 0, 0])]; o[k] = v; layout.offset = o; changed(); redraw++; }} /></label>
+    {/each}
+    {#each ['rotX', 'rotY', 'rotZ'] as const as ax, k}
+      <label class="field" title="Turn of your model in degrees (Rotate tool, key 2).">Rotation {['x', 'y', 'z'][k]} (°)<input type="number" step="5" value={Math.round((layout[ax] ?? 0) * 10) / 10}
+        onchange={(e) => { const v = +e.currentTarget.value; if (isNaN(v)) return; layout[ax] = v; changed(); redraw++; }} /></label>
+    {/each}
+    <label class="field" title="Height of your model in the game, in centimetres.">Height (cm)<input type="number" min="1" step="1" value={Math.round((layout.height || baseHeight) * 100)}
+      onchange={(e) => { const v = +e.currentTarget.value; if (v > 0) { layout.height = v / 100; changed(); redraw++; } }} /></label>
+  </div>
+{/snippet}
+
 <div class="fwrap">
   <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
     <label class="sortby small">Sort
@@ -1593,7 +1687,7 @@
         </div>
         <div class="editor" class:hidden={mode === 'paint'}>
           <div class="stage">
-            <div class="scene" use:maximizable>
+            <div class="scene" class:full use:maximizable={{ onchange: (v) => (full = v) }}>
               <canvas bind:this={canvas} class="view3d"></canvas>
               {#if busy}<p class="overlay muted small">Loading…</p>{/if}
               {#if part === 'model'}
@@ -1699,7 +1793,33 @@
                   </table>
                 </div>
               {/if}
-              <p class="hint muted small">Click to select · drag the handles to edit · <b>?</b> for all controls</p>
+              {#if full}
+                <!-- Full view: the selected part's numbers along the bottom (the same fields as the side column). -->
+                <div class="strip">
+                  <div class="row">
+                    <button class="tiny" onclick={toggleStrip} title={stripOpen ? 'Hide the numbers' : 'Show the numbers'}>{stripOpen ? '▾' : '▸'}</button>
+                    <b class="small">{stripTitle()}</b>
+                    <span class="muted small grow">Click to select · drag the handles to edit · <b>?</b> for all controls · Esc: back</span>
+                  </div>
+                  {#if stripOpen}
+                    {#if part === 'model' && layout.model}
+                      {@render modelFields()}
+                    {:else if part === 'area' && areaOf()}
+                      {@render areaFields(areaOf()!)}
+                    {:else if part === 'point' && pointsOf()[selPt]}
+                      {@render pointFields(selPt)}
+                    {:else if spotKind && spot}
+                      {@render spotFields(spot)}
+                    {:else if spotKind && !f.spots}
+                      <p class="muted small">Vanilla spots — <button class="tiny" onclick={spotsFromBase} disabled={!t}>Customise spots</button> to edit their numbers.</p>
+                    {:else}
+                      <p class="muted small">Click a spot, a position ring, the placement area or your model to see its numbers.</p>
+                    {/if}
+                  {/if}
+                </div>
+              {:else}
+                <p class="hint muted small">Click to select · drag the handles to edit · <b>?</b> for all controls</p>
+              {/if}
             </div>
           </div>
           <div class="side">
@@ -1756,16 +1876,7 @@
               <h4>Placement area {#if !f.area}<span class="muted small">(vanilla)</span>{/if}</h4>
               {#if areaOf()}
                 {@const a = areaOf()!}
-                <div class="grid2">
-                  <label class="field" title="Centre of the area, left/right of the piece's centre (m).">Centre x<input type="number" step="0.01" value={a.pos[0]}
-                    onchange={(e) => { f.area = { pos: [+e.currentTarget.value, a.pos[1]], size: [...a.size] }; part = 'area'; changed(); }} /></label>
-                  <label class="field" title="Centre of the area, front/back (m).">Centre z<input type="number" step="0.01" value={a.pos[1]}
-                    onchange={(e) => { f.area = { pos: [a.pos[0], +e.currentTarget.value], size: [...a.size] }; part = 'area'; changed(); }} /></label>
-                  <label class="field" title="Width of the area (m). Other furniture can't be placed inside it.">Width<input type="number" step="0.01" min="0.05" value={a.size[0]}
-                    onchange={(e) => { f.area = { pos: [...a.pos], size: [Math.max(0.05, +e.currentTarget.value), a.size[1]] }; part = 'area'; changed(); }} /></label>
-                  <label class="field" title="Depth of the area (m), front to back — include room for customers in front of shelves.">Depth<input type="number" step="0.01" min="0.05" value={a.size[1]}
-                    onchange={(e) => { f.area = { pos: [...a.pos], size: [a.size[0], Math.max(0.05, +e.currentTarget.value)] }; part = 'area'; changed(); }} /></label>
-                </div>
+                {@render areaFields(a)}
                 <div class="row wrap">
                   <button class="small" onclick={() => { part = 'area'; redraw++; }} title="Select the area in the 3D view to drag it.">Edit in view</button>
                   {#if layout.model}<button class="small" onclick={fitAreaToModel} title="Size the area to your model, keeping the vanilla piece's room around it.">Fit to model</button>{/if}
@@ -1824,39 +1935,7 @@
                   {/each}
                 </div>
                 {#if spot}
-                  <div class="grid6">
-                    {#each ['x', 'y', 'z'] as ax, k}
-                      <label class="field" title={['Left/right of the piece\'s centre, in metres.', 'Height above the floor, in metres (for item spots: the middle of the spot box; with height 0 the items stand on it).', 'Front/back, in metres. Vanilla shop shelves face the aisle on the + side.'][k]}>Position {ax} (m)<input type="number" step="0.01" value={spot.pos[k]} onchange={(e) => setPos(k, +e.currentTarget.value)} /></label>
-                    {/each}
-                    {#each ['x', 'y', 'z'] as ax, k}
-                      <label class="field" title={['Tilt forward/back in degrees (vanilla card shelves lean cards 15°).', 'Turn around the vertical in degrees — which way the spot faces (180 = the other side of the piece).', 'Roll sideways in degrees.'][k]}>Rotation {ax} (°)<input type="number" step="5" value={spot.rot[k]} onchange={(e) => { spot.rot[k] = +e.currentTarget.value; changed(); }} /></label>
-                    {/each}
-                    {#if spot.kind === 'items'}
-                      {#each ['Width', 'Depth', 'Height'] as nm, k}
-                        <label class="field" title={['Width of the spot in metres. Items are spread evenly across it (see Grid across).', 'Depth of the spot in metres, front to back (see Grid deep).', 'Height of the spot in metres. 0 = items stand in one layer on the spot (vanilla shop shelves); more = stacked layers (see Grid high).'][k]}>{nm} (m)<input type="number" step="0.01" min="0" value={spot.size[k]} onchange={(e) => { spot.size[k] = Math.max(0, +e.currentTarget.value); if (gridFollows) fitGrid(spot); changed(); }} /></label>
-                      {/each}
-                      {#each ['across', 'deep', 'high'] as nm, k}
-                        <label class="field" title={['How many item units fit side by side — this, deep and high set how many items the spot holds. A pack is 1 unit; bigger items (boxes, figurines) take several. Vanilla: 4.', 'How many item units fit front to back. Vanilla: 8.', 'How many layers of item units fit on top of each other. Vanilla shop shelves: 1.'][k]}>Grid {nm}<input type="number" step="1" min="1" value={spot.grid?.[k] ?? [4, 8, 1][k]}
-                          onchange={(e) => { spot.grid = spot.grid ?? [4, 8, 1]; spot.grid[k] = Math.max(1, Math.round(+e.currentTarget.value)); changed(); }} /></label>
-                      {/each}
-                      <div class="gridinfo">
-                        <b>Holds {packsIn(spot)} packs</b> <span class="muted small">({capacity(spot)} grid units{fillItem && fillItem.key !== 'BasicCardPack' ? ` · ${fillCount(spot, true)} × ${fillItem.label}` : ''})</span>
-                        <label class="check small" title="While on, changing the spot's width, depth or height (fields or Size handles) changes the grid too, keeping the vanilla spacing between items — a bigger spot holds more. Off = the same number of items, spread out."><input type="checkbox" bind:checked={gridFollows} /> Grid follows size</label>
-                        <button class="small" onclick={() => { fitGrid(spot); changed(); }} title="Set the grid from the spot's size with the vanilla spacing between items.">Fit grid to size</button>
-                      </div>
-                    {/if}
-                    <label class="field" title="Where customers stand to take from this spot: left/right on the floor, in metres. Every spot has one; clear the field to put it back in front of the spot.">Customer x<input type="number" step="0.05" value={spot.customer?.[0] ?? ''} placeholder="auto"
-                      onchange={(e) => { const v = opt(e.currentTarget.value); spot.customer = v === undefined ? defaultCustomer(spot) : [v, (spot.customer ?? defaultCustomer(spot))[1]]; changed(); }} /></label>
-                    <label class="field" title="Where customers stand to take from this spot: front/back on the floor, in metres. It should be in the aisle in front of the spot. Clear the field to put it back in front of the spot.">Customer z<input type="number" step="0.05" value={spot.customer?.[1] ?? ''} placeholder="auto"
-                      onchange={(e) => { const v = opt(e.currentTarget.value); spot.customer = v === undefined ? defaultCustomer(spot) : [(spot.customer ?? defaultCustomer(spot))[0], v]; changed(); }} /></label>
-                    {#each ['x', 'y', 'z'] as ax, k}
-                      <label class="field" title="Position of this spot's price tag (the label players click to set a price and customers read), in metres. Empty = where the vanilla spot had it.">Price tag {ax}<input type="number" step="0.01" value={spot.priceTag?.[k] ?? ''} placeholder="auto"
-                        onchange={(e) => { const v = opt(e.currentTarget.value); if (v === undefined) spot.priceTag = undefined; else { spot.priceTag = spot.priceTag ?? [...spot.pos]; spot.priceTag[k] = v; } changed(); }} /></label>
-                    {/each}
-                    {#if spot.kind === 'items'}
-                      <label class="check small" title="Allow placing whole delivery boxes here (like warehouse shelves), not only loose items."><input type="checkbox" checked={!!spot.boxes} onchange={(e) => { spot.boxes = e.currentTarget.checked; changed(); }} /> Whole boxes fit here</label>
-                    {/if}
-                  </div>
+                  {@render spotFields(spot)}
                   <p class="muted small">
                     {#if spot.kind === 'items'}Items fill the box in a grid of item units (a pack is 1×1×1: 4 across × 8 deep × 1 high = 32 packs). Height 0 = one layer standing on that plane, like vanilla shop shelves.{:else}The card sits at this point, facing along the spot's forward direction (vanilla: tilted 15°, facing the aisle).{/if}
                     Moving a spot moves its customer point and price tag with it.
@@ -1933,6 +2012,11 @@
   .view3d { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .overlay { position: absolute; left: 84px; top: 10px; margin: 0; }
   .hint { position: absolute; left: 12px; right: 12px; bottom: 4px; margin: 0; pointer-events: none; }
+  /* Full view: the canvas shrinks above the numbers strip. */
+  .scene.full { display: flex; flex-direction: column; }
+  .scene.full .view3d { flex: 1; min-height: 0; height: auto; }
+  .strip { flex-shrink: 0; max-height: 45%; overflow: auto; padding: 8px 12px 10px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .strip .grid6 { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
   .intro { max-width: 900px; line-height: 1.5; }
   .helpbtn { position: absolute; left: 44px; top: 8px; z-index: 5; padding: 2px 9px; font-weight: bold; }
   .helpcard { position: absolute; left: 8px; top: 40px; z-index: 6; max-height: calc(100% - 60px); overflow: auto; background: rgba(14, 18, 26, 0.94);
@@ -1970,6 +2054,8 @@
   .grid6 { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
   .grid4 { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
   .grid6 input, .grid4 input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .grid6 input[type='checkbox'] { width: auto; }
+  .grid6 > .check { grid-column: span 2; }
   section > .row { flex-wrap: wrap; }
   section > .row .field { min-width: 120px; }
   .thumbs { display: flex; gap: 8px; align-items: center; }

@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"tcgstudio/internal/updater"
 )
@@ -33,6 +34,12 @@ func main() {
 		updater.Cleanup(exe) // remove the previous version left behind by an update
 	}
 	clearWebViewExperiments() // before the WebView starts: an Edge experiment seed broke the colour pickers
+	// Interface size (Settings): only set when not 100 %, so the default window keeps Wails' own defaults.
+	var win *windows.Options
+	if z := startZoom(); z > 0 {
+		win = &windows.Options{ZoomFactor: z}
+		app.startZoom = z
+	}
 	err := wails.Run(&options.App{
 		Title:     "TCG Studio",
 		Width:     1400,
@@ -48,6 +55,7 @@ func main() {
 		Bind:             []interface{}{app},
 		// Dropped files/folders reach the page as paths (Import → EPL mod); the webview never opens a dropped file itself.
 		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true},
+		Windows:     win,
 	})
 	if err != nil {
 		println("Error:", err.Error())

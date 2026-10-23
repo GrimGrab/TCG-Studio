@@ -145,9 +145,10 @@ namespace TCGCustomCards.Runtime
             _block ??= new MaterialPropertyBlock();
             _block.Clear(); // an empty block = no overrides
             var mat = materialIndex < 0 ? r.sharedMaterial : r.sharedMaterials[materialIndex];
-            if (tex != null && mat != null)
+            var main = tex != null ? MaterialTex.Main(mat) : null;
+            if (main != null)
                 foreach (var prop in mat.GetTexturePropertyNames())
-                    if (mat.GetTexture(prop) == mat.mainTexture) _block.SetTexture(prop, tex);
+                    if (mat.GetTexture(prop) == main) _block.SetTexture(prop, tex);
             if (materialIndex < 0) r.SetPropertyBlock(tex == null ? null : _block);
             else r.SetPropertyBlock(_block, materialIndex);
         }

@@ -244,7 +244,8 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  /* Above a full-window editor (z 1000), which opens it. */
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1100; }
   .dialog { width: min(1200px, 94vw); height: min(820px, 90vh); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .head h3 { margin: 0; }

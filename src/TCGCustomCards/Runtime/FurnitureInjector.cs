@@ -205,7 +205,7 @@ namespace TCGCustomCards.Runtime
 
             var mainRenderer = tpl.m_Mesh;
             Material mainMat = mainRenderer != null ? mainRenderer.sharedMaterial : body.Select(r => r.sharedMaterial).FirstOrDefault(m => m != null);
-            Texture baseTex = mainMat != null ? mainMat.mainTexture : null;
+            Texture baseTex = MaterialTex.Main(mainMat);
 
             if (mesh != null)
             {
@@ -222,7 +222,7 @@ namespace TCGCustomCards.Runtime
             {
                 if (m == null) return null;
                 if (copies.TryGetValue(m, out var copy)) return copy;
-                bool usesBaseTex = baseTex != null && m.mainTexture == baseTex;
+                bool usesBaseTex = baseTex != null && MaterialTex.Main(m) == baseTex;
                 if (!usesBaseTex && !tint.HasValue) return copies[m] = m;
                 copy = new Material(m) { name = $"TCGCC_{def.Id}_{m.name}", hideFlags = HideFlags.DontUnloadUnusedAsset };
                 if (tex != null && usesBaseTex)

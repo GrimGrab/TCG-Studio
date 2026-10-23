@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * folder as working directory (its forge.profile.properties points Forge at our user dir).
  */
 public final class Bridge {
-    public static final String VERSION = "10";
+    public static final String VERSION = "11";
 
     private static PrintStream proto;
     private static PrintStream logStream;

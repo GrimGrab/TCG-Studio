@@ -477,7 +477,7 @@ namespace TCGCustomCards.UI
             // Players: Forge's highlight (e.g. the current attack target) comes in pickedPlayers (ids overlap card ids)
             if (Ids(MtgSession.Prompt, "pickedPlayers").Contains(id)) GUI.backgroundColor = Picked;
             else if (_tgtPlayers.Contains(id)) GUI.backgroundColor = Targeted;
-            var zones = Zones(p);
+            var zones = Zones(p, withCommand: true);
             float labelW = 760 - 180 * (zones.Count - 2); // extra zone buttons (library top, revealed hand) take from the name bar
             if (GUI.Button(new Rect(r.x, r.y, labelW, r.height), label, new GUIStyle(_button) { richText = true, alignment = TextAnchor.MiddleLeft }))
                 ForgeBridge.Act("player", id);
@@ -505,12 +505,19 @@ namespace TCGCustomCards.UI
         /// <summary>
         /// A player's zone buttons: graveyard and exile always; the library cards and opponent's hand cards Forge lets you
         /// see (bridge libraryShown / handShown: Future Sight, Courser, Bolas's Citadel, Telepathy...) only while there are any.
+        /// withCommand (2D table, where the board doesn't show it): the command zone while it holds more than commanders
+        /// (effects, emblems — e.g. Channel's pay-life mana ability, clicked there while paying).
         /// </summary>
-        private static List<string> Zones(JObject p)
+        private static List<string> Zones(JObject p, bool withCommand = false)
         {
             var z = new List<string> { "graveyard", "exile" };
             if (Arr(p, "libraryShown").Any()) z.Add("libraryShown");
             if (Arr(p, "handShown").Any()) z.Add("handShown");
+            if (withCommand)
+            {
+                var commanders = new HashSet<int>(Arr(p, "commanders").Select(c => I(c, "id")));
+                if (Arr(p, "command").Any(c => !commanders.Contains(I(c, "id")))) z.Add("command");
+            }
             return z;
         }
 
@@ -522,6 +529,7 @@ namespace TCGCustomCards.UI
                 case "libraryShown":
                     return cards.Count == 1 ? "Top of library" : $"Library ({cards.Count} seen, top first)";
                 case "handShown": return $"Hand ({cards.Count} of {I(p, "handSize")} seen)";
+                case "command": return $"Command zone ({cards.Count})";
                 default: return $"{char.ToUpper(zone[0])}{zone.Substring(1)} ({cards.Count})";
             }
         }
@@ -538,7 +546,8 @@ namespace TCGCustomCards.UI
             string key = (B(p, "ai") ? "opp:" : "me:") + zone;
             string text = zone == "libraryShown" && cards.Count == 1 ? $"Top: {S(Peek(cards[0]), "name")}" : ZoneTitle(p, zone);
             var oldZ = GUI.backgroundColor;
-            if (cards.Any(c => selectable.Contains(I(c, "id")) || usable.Contains(I(c, "id")))) GUI.backgroundColor = Selectable;
+            if (cards.Any(c => selectable.Contains(I(c, "id")) || usable.Contains(I(c, "id")) || (!B(p, "ai") && B(c, "manaAbility"))))
+                GUI.backgroundColor = Selectable;
             if (GUI.Button(r, text, new GUIStyle(_button) { clipping = TextClipping.Clip, wordWrap = false }))
                 _zoneView = _zoneView == key ? null : key;
             GUI.backgroundColor = oldZ;
@@ -759,11 +768,13 @@ namespace TCGCustomCards.UI
                 if (S(c, "loyalty") != null) lines.Add($"Loyalty {S(c, "loyalty")}");
                 if (c["counters"] is JObject cnt) foreach (var p in cnt.Properties()) lines.Add($"{p.Value}× {p.Name}");
                 if (B(c, "attacking") && _attackTo.TryGetValue(id, out var at)) lines.Add($"<color=#ffb0b0>{at.label}</color>");
+                bool command = S(c, "zone") == "Command";
                 if (MtgTable3d.IsUnknown(e)) lines.Insert(0, $"<b>{S(c, "name")}</b>");
+                if (command) lines.Insert(0, B(c, "emblem") ? "<i>Emblem</i>" : "<i>Effect</i>"); // shown with its source card's art
                 if (B(c, "faceDown")) lines.Insert(0, "<i>Face-down</i>");
-                // Tags only for permanents (battlefield): not when hidden behind a nearer card, not in the hand or on the stack
-                // (the popped-up card being played) — their printed stats are enough.
-                if (lines.Count > 0 && !e.Covered && S(c, "zone") == "Battlefield")
+                // Tags only for permanents (battlefield) and command-zone effects: not when hidden behind a nearer card, not in
+                // the hand or on the stack (the popped-up card being played) — their printed stats are enough.
+                if (lines.Count > 0 && !e.Covered && (S(c, "zone") == "Battlefield" || command))
                 {
                     float lh = 16 * lines.Count + 4;
                     // About half the card's real width (its short side on screen), centred near the bottom of the card.
@@ -1428,10 +1439,11 @@ namespace TCGCustomCards.UI
             GUI.Label(new Rect(r.x + 12, r.y + 8, 800, 30), $"<b>{S(p, "name")} — {ZoneTitle(p, parts[1])}</b>", _title);
             if (GUI.Button(new Rect(r.xMax - 130, r.y + 8, 120, 36), "Close", _button)) _zoneView = null;
             // A click goes to Forge like any card click (play it, pick it...). The view then closes: it is modal, and
-            // Forge's next prompt (pay the cost, choose targets) needs the table and its buttons.
+            // Forge's next prompt (pay the cost, choose targets) needs the table and its buttons. The command zone stays open:
+            // its effects are mostly mana abilities clicked while paying, often several times (Channel: 1 life per {C}).
             _zoneClicked = false;
             DrawRow(new Rect(r.x + 12, r.y + 52, r.width - 24, r.height - 64), cards, selectable, picked, combat, 150);
-            if (_zoneClicked) _zoneView = null;
+            if (_zoneClicked && parts[1] != "command") _zoneView = null;
         }
 
         /// <summary>Where the off-table choice strip goes (just its tab while collapsed): over the opponent's side of the board.</summary>

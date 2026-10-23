@@ -64,7 +64,11 @@ final class StateWriter {
             else pm.put("handShown", cards(shownTo(p.getHand(), me), me)); // opponent's hand cards Forge lets me see (Telepathy)
             // Library cards Forge lets me see (Future Sight / Courser reveal the top, Bolas's Citadel lets me look), top first
             pm.put("libraryShown", cards(shownTo(p.getLibrary(), me), me));
-            for (ZoneType z : PUBLIC_ZONES) pm.put(z.name().toLowerCase(), cards(visible(p.getCards(z), z), me));
+            for (ZoneType z : PUBLIC_ZONES) {
+                List<Object> zl = cards(visible(p.getCards(z), z), me);
+                if (z == ZoneType.Command) addEffectSources(zl, game);
+                pm.put(z.name().toLowerCase(), zl);
+            }
             List<CardView> cmds = p.getCommanders();
             if (cmds != null && !cmds.isEmpty()) {
                 List<Object> cl = new ArrayList<>();
@@ -305,6 +309,34 @@ final class StateWriter {
         List<CardView> out = new ArrayList<>();
         for (CardView c : cards) if (c != null && !"Commander Effect".equals(c.getName())) out.add(c);
         return out;
+    }
+
+    /**
+     * Command-zone effects and emblems have no picture of their own: adds the card that made them ({@code source}: Channel
+     * for "Channel Effect", the planeswalker for its emblem) so the table can show that card's art, {@code emblem}, and
+     * {@code manaAbility} (a mana ability to click while paying: Forge's mana payment marks no card selectable).
+     * A read only; if it races the game thread the card just goes without.
+     */
+    @SuppressWarnings("unchecked")
+    private static void addEffectSources(List<Object> cards, Game game) {
+        if (game == null) return;
+        for (Object o : cards) {
+            Map<String, Object> m = (Map<String, Object>) o;
+            try {
+                Card card = game.findById((Integer) m.get("id"));
+                if (card == null) continue;
+                if (card.isEmblem()) m.put("emblem", true);
+                if (!card.getManaAbilities().isEmpty()) m.put("manaAbility", true);
+                Card src = card.getEffectSource();
+                if (src == null || src == card) continue;
+                Map<String, Object> sm = new LinkedHashMap<>();
+                sm.put("name", src.getName());
+                sm.put("set", src.getSetCode());
+                m.put("source", sm);
+            } catch (RuntimeException ignored) {
+                // changed while reading it: no source this time
+            }
+        }
     }
 
     /** {@code me} = the viewer (the human player), whose view of face-down cards Forge decides. */

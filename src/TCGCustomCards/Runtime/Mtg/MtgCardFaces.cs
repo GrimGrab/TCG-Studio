@@ -138,6 +138,15 @@ namespace TCGCustomCards.Runtime.Mtg
             int id = card["id"]?.Type == JTokenType.Integer ? (int)card["id"] : -1;
             if (_byForgeId.TryGetValue(id, out var known)) return Face(id, known, (string)card["name"]);
 
+            // A command-zone effect/emblem shows the card that made it (bridge "source"), never one of the player's own copies.
+            if (card["source"] is JObject src)
+            {
+                if (!Find((string)src["set"], (string)src["name"], out var ss, out int sp)) return null;
+                var sd = new CardData { expansionType = ss.Expansion, monsterType = ss.Monsters[sp].MonsterType, borderType = ECardBorderType.Base, isFoil = false };
+                if (id >= 0) _byForgeId[id] = sd;
+                return sd;
+            }
+
             string name = (string)card["oracleName"] ?? (string)card["name"];
             string set = (string)card["set"];
             int owner = card["owner"]?.Type == JTokenType.Integer ? (int)card["owner"] : -1;

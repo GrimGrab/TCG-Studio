@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.12.4 - 2026-10-23
+
+Channel and other "until end of turn" effects can now be used at the MTG table.
+
+- Fixed: effects that live in the command zone, such as Channel's "pay 1 life: add {C}", had nothing to click, so you couldn't pay with life. These effects and emblems now sit at the right end of your back row, showing the art of the card that made them. Click it while paying a cost, once per mana (Channel + Fireball works).
+- New: on the 2D table (3D board off), a "Command zone" button on your player bar shows these effects. It lights up when one of them can make mana, and stays open so you can click it several times.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.12.3 - 2026-10-22
 
 Card images you add to an existing set are now converted like an imported image folder.

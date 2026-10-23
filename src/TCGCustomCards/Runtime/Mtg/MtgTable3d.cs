@@ -10,7 +10,8 @@ namespace TCGCustomCards.Runtime.Mtg
     /// InteractableCard3d, like PlayCardSet.GetNewCard3d) and moved with its LerpToTransform. Layout is derived from each side's
     /// vanilla PlayCardSet lane lines, measured from the table midline between the two players (Arena-style): an open combat zone
     /// in the middle (attackers and their blockers slide into it), creatures in the front row, and a back row with lands on the
-    /// left and other permanents (artifacts, unattached enchantments, planeswalkers) on the right; my hand at the bottom of the
+    /// left and other permanents (artifacts, unattached enchantments, planeswalkers) on the right, command-zone effects/emblems
+    /// smaller at its right end; my hand at the bottom of the
     /// view. Row depths shrink (<see cref="_fit"/>) when the camera can't show them all. The stack top pops up on the centre show
     /// spot. Clicks/hover come from each card's projected screen rect (<see cref="Visible"/>, drawn by MtgTableUI).
     /// </summary>
@@ -63,6 +64,7 @@ namespace TCGCustomCards.Runtime.Mtg
         // Row depths from the table midline toward each owner, in lane spacings (lane lines are ~1.6 spacings apart).
         private const float CombatDepth = 0.65f, FrontDepth = 2.0f, BackDepth = 3.25f, HandGap = 1.15f;
         private const float FrontWidth = 5.2f, BackWidth = 5.8f, BackGap = 0.5f;
+        private const float CommandScale = 0.75f, CommandMaxShare = 0.3f; // command-zone cards at the back row's right end
         private float _fit = 1f;        // row-depth factor so everything stays on screen (0.7..1)
         private float _cardScale = 1f;  // board card scale that goes with it (0.85..1)
         private float _fitLogged = -1f;
@@ -246,8 +248,11 @@ namespace TCGCustomCards.Runtime.Mtg
             var creatures = bf.Where(c => B(c, "creature") && !_blockerOf.ContainsKey((int?)c["id"] ?? -1)).ToList();
             var lands = bf.Where(c => B(c, "land") && !B(c, "creature")).ToList();
             var support = bf.Where(c => !B(c, "land") && !B(c, "creature")).ToList(); // artifacts, enchantments, planeswalkers…
+            // Command zone: effects and emblems (Channel's pay-life mana ability is clicked there). Commanders stay in the HUD row.
+            var commanders = new HashSet<int>((p["commanders"] as JArray)?.OfType<JObject>().Select(c => (int?)c["id"] ?? -1) ?? Enumerable.Empty<int>());
+            var command = (p["command"] as JArray)?.OfType<JObject>().Where(c => !commanders.Contains((int?)c["id"] ?? -1)).ToList() ?? new List<JObject>();
             Row(creatures, side, meId, side.Front, side.Spacing * FrontWidth);
-            BackRow(lands, support, side, meId);
+            BackRow(lands, support, command, side, meId);
 
             // My hand: a row on the table at my edge of the camera view. (Vanilla's hand slots follow its on-screen hand buttons,
             // which we don't use.) The opponent's hand and both libraries aren't put on the table — counts are in the HUD.
@@ -285,19 +290,33 @@ namespace TCGCustomCards.Runtime.Mtg
         /// <summary>
         /// Back row: lands packed from the camera-left end, other permanents from the camera-right end with a gap between
         /// (Arena-style), so a first artifact doesn't shuffle the lands. When crowded the width is shared by card count.
+        /// Command-zone cards take a smaller group at the very camera-right end (up to <see cref="CommandMaxShare"/> of the row),
+        /// a gap apart from the permanents, which share what is left.
         /// </summary>
-        private void BackRow(List<JObject> lands, List<JObject> support, Side side, int meId)
+        private void BackRow(List<JObject> lands, List<JObject> support, List<JObject> command, Side side, int meId)
         {
             int nl = lands.Count, ns = support.Count;
-            if (nl + ns == 0) return;
             float s = side.Spacing, width = s * BackWidth, gap = s * BackGap, natural = s * _cardScale;
+            var leftEdge = side.Back - side.AxisX * (width / 2f);
+            var rightEdge = side.Back + side.AxisX * (width / 2f);
+            if (command.Count > 0)
+            {
+                float cw = Mathf.Min(command.Count * natural * CommandScale, s * BackWidth * CommandMaxShare);
+                float cp = cw / command.Count;
+                float cs = Mathf.Clamp(cp / s, 0.45f, CommandScale);
+                for (int i = 0; i < command.Count; i++)
+                    Place(command[i], meId, side, side.LaneRef, rightEdge - side.AxisX * ((command.Count - 1 - i + 0.5f) * cp), cs, tapped: false, faceDown: false);
+                rightEdge -= side.AxisX * (cw + gap);
+                width -= cw + gap;
+            }
+            if (nl + ns == 0) return;
             float wl, ws;
             if (ns == 0) { wl = width; ws = 0f; }
             else if (nl == 0) { wl = 0f; ws = width; }
             else if ((nl + ns) * natural + gap <= width) { wl = nl * natural; ws = ns * natural; }
             else { wl = (width - gap) * nl / (nl + ns); ws = width - gap - wl; }
-            PackFromEdge(lands, side, meId, side.Back - side.AxisX * (width / 2f), +1, wl);
-            PackFromEdge(support, side, meId, side.Back + side.AxisX * (width / 2f), -1, ws);
+            PackFromEdge(lands, side, meId, leftEdge, +1, wl);
+            PackFromEdge(support, side, meId, rightEdge, -1, ws);
         }
 
         /// <summary>Lays cards side by side inward from <paramref name="edge"/> (dir +1 = toward +AxisX), keeping their order

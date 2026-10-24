@@ -195,23 +195,32 @@ func (s *fabSource) cards(ctx context.Context, g *tcgGroup, variants bool) ([]ca
 }
 
 func (s *fabSource) Import(ctx context.Context, ws project.Workspace, code string, opt Options, report func(Progress)) (*project.Project, error) {
-	g, _, err := s.t.tcgFind(ctx, fabCategory, code, "Flesh and Blood")
+	in, err := s.prepare(ctx, code, &opt, report)
 	if err != nil {
 		return nil, err
+	}
+	return buildProject(ctx, ws, in, opt, report)
+}
+
+// prepare finds the set and reads its card list (Import and the set preview).
+func (s *fabSource) prepare(ctx context.Context, code string, opt *Options, report func(Progress)) (setIn, error) {
+	g, _, err := s.t.tcgFind(ctx, fabCategory, code, "Flesh and Blood")
+	if err != nil {
+		return setIn{}, err
 	}
 	report(Progress{Stage: "cards", Message: "Fetching card list…"})
 	cards, err := s.cards(ctx, g, opt.IncludeVariants)
 	if err != nil {
-		return nil, err
+		return setIn{}, err
 	}
 	if opt.RarityMap == nil {
 		opt.RarityMap = DefaultFabRarityMap()
 	}
-	return buildProject(ctx, ws, setIn{ID: s.ProjectID(code, ""), Source: "fab", Code: code, Name: g.Name,
+	return setIn{ID: s.ProjectID(code, ""), Source: "fab", Code: code, Name: g.Name,
 		ReleasedAt: date10(g.PublishedOn), Cards: cards, Get: s.t.c.Download, Aspect: CardAspect,
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Rare" }),
 		// Flesh and Blood boosters: commons, rares, then a majestic or better (plus a rainbow foil in every pack).
-		Slots: Fab.Slots, FoilChance: Fab.FoilChance}, opt, report)
+		Slots: Fab.Slots, FoilChance: Fab.FoilChance}, nil
 }
 
 // setCards fetches the card list of the set p was imported from (prices, Re-download image).

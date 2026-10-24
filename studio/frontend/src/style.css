@@ -73,3 +73,105 @@ h3 { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spa
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #3a3f4c; border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Detail panes (Import page: set preview, file imports): blocks, stat cards, notices. */
+.pane { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 28px; min-width: 0; }
+.pane-hero { display: flex; gap: 18px; align-items: center; }
+.pane-hero h1 { font-size: 24px; line-height: 1.2; margin-bottom: 4px; }
+.block { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.bhead { display: flex; align-items: baseline; gap: 12px; }
+.bhead h2 { font-size: 15px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-height: 84px; }
+.stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat b { font-size: 24px; font-weight: 600; }
+.stat .sub { font-size: 12px; color: var(--muted); }
+.notice { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
+.notice.err { border-left-color: var(--danger); color: #ffb4ba; }
+.notice.info { border-left-color: var(--accent); }
+.notice.ok { border-left-color: var(--ok); }
+
+/* Item pages (Accessories, Furniture, Decorations, a set's packs; the page lists of Mod settings, Game look, Storage): the
+   list on the left inside .sidelist, the selected item's header (.pane-hero) on the right. */
+.sidelist .list { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.sidelist .list .empty { padding: 8px; }
+.sidelist .sidefoot { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--panel); }
+.sidelist .item { display: flex; gap: 10px; align-items: center; text-align: left; padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; background: none; }
+.sidelist .item:hover:not(:disabled) { background: var(--panel); border-color: transparent; }
+.sidelist .item.active { background: var(--panel-2); border-color: var(--accent-2); }
+.sidelist .item.picked { background: #1c2740; border-color: var(--accent); }
+.sidelist .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sidelist .info .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidelist .info .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidelist .sidetools { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); }
+.sidelist .sidetools input { flex: 1; min-width: 0; }
+.sidelist .ico { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; background: var(--bg); border-radius: 6px; }
+.sidelist .ico img { width: 40px; height: 40px; object-fit: contain; }
+.sidelist .dot { color: var(--accent-2); margin-left: 4px; } /* unsaved changes */
+.sidelist .tag { color: var(--accent); margin-left: 4px; font-size: 11px; font-weight: 500; } /* new, not saved yet */
+.pane-hero .art { width: 96px; height: 96px; flex: none; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.pane-hero .art img { width: 84px; height: 84px; object-fit: contain; }
+.pane-hero .titlebox { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* The name, edited in place. */
+.pane-hero .title { font-size: 22px; font-weight: 600; background: transparent; border: 1px solid transparent; padding: 2px 6px; margin-left: -6px; }
+.pane-hero .title:hover { border-color: var(--line); }
+.pane-hero .title:focus { border-color: var(--accent); background: var(--bg); }
+.pane-hero .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 13px; }
+.pane-hero .heroactions { display: flex; gap: 6px; align-self: flex-start; }
+/* An id or set code in a header's fact line. */
+.meta .code { font-family: Consolas, monospace; background: var(--panel-2); color: var(--text); padding: 0 6px; border-radius: 4px; }
+
+/* A ⋯ button with its menu (.more > .dots + .menu); pages place the menu above or below. */
+.more { position: relative; }
+.more .dots { padding: 6px 10px; }
+.more .menu { position: absolute; right: 0; z-index: 30; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  display: flex; flex-direction: column; gap: 4px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45); }
+.more .menu button { text-align: left; }
+
+/* ---- Shared building blocks: one definition here; a page keeps only the lines where it really differs. ---- */
+.small { font-size: 12px; }
+.warn { color: var(--warn); }
+.err { color: var(--danger); }
+button.tiny { padding: 2px 7px; font-size: 12px; }
+/* A button that reads as a text link. */
+button.link { background: none; border: none; padding: 0 4px; color: var(--accent); }
+button.link:hover:not(:disabled) { text-decoration: underline; }
+
+/* Underline tabs: <nav class="tabbar"> of buttons, the shown one .on, an optional count <span class="n">. */
+.tabbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.tabbar button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 10px 12px 9px; color: var(--muted); }
+.tabbar button:hover:not(:disabled) { color: var(--text); }
+.tabbar button.on { color: var(--text); border-bottom-color: var(--accent); }
+.tabbar .n { font-size: 11px; color: var(--muted); background: var(--panel-2); border-radius: 8px; padding: 0 6px; margin-left: 6px; }
+
+/* Segmented buttons: <div class="seg"> of buttons joined into one control, the chosen one .on. */
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; font-size: 13px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.seg button.on { border-color: var(--accent); background: #22304d; position: relative; }
+
+/* The dark layer behind a dialog. */
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+
+/* A list page's header: title with a line of facts under it (Sets, Catalog, Setups, Storage). */
+.page-head { display: flex; align-items: center; gap: 10px; padding: 16px 24px 14px; border-bottom: 1px solid var(--line); }
+.page-head h2 { font-size: 20px; }
+.page-summary { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.page-summary b { color: var(--text); font-weight: 600; }
+
+/* Library pages (Accessories, Furniture, Decorations): the bar under the tabs, notices, the editing form. */
+.libpage .intro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 20px; font-size: 12px; background: var(--panel);
+  border-bottom: 1px solid var(--line); }
+.libpage .notice.bar { margin: 8px 20px 0; }
+.libpage .form { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px 28px; display: flex; flex-direction: column; gap: 14px; }
+
+/* "Nothing here yet" in a page's middle, with its buttons centred. */
+.emptypane { margin: 16vh auto 0; max-width: 440px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.emptypane h1 { font-size: 20px; }
+.emptypane p { margin: 0; }
+.emptypane .row { justify-content: center; }
+
+/* Small stat tiles (.mini > .label + b), pages lay them out. */
+.mini .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.mini b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

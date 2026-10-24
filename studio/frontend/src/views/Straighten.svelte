@@ -245,7 +245,7 @@
 
 <style>
   /* Above a full-window editor (z 1000), which opens it. */
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1100; }
+  .backdrop { z-index: 1100; }
   .dialog { width: min(1200px, 94vw); height: min(820px, 90vh); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .head h3 { margin: 0; }
@@ -255,6 +255,5 @@
   .side { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
   .pv { background: repeating-conic-gradient(#1b1f27 0 25%, #232834 0 50%) 0 0 / 16px 16px; border-radius: 6px; padding: 8px; display: flex; justify-content: center; }
   .pv canvas { max-width: 100%; max-height: 260px; }
-  .small { font-size: 12px; margin: 0; }
-  .err { color: var(--danger); }
+  .small { margin: 0; }
 </style>

@@ -152,23 +152,32 @@ func (s *unionArenaSource) cards(ctx context.Context, g *tcgGroup, variants bool
 }
 
 func (s *unionArenaSource) Import(ctx context.Context, ws project.Workspace, code string, opt Options, report func(Progress)) (*project.Project, error) {
-	g, _, err := s.t.tcgFind(ctx, uaCategory, code, "Union Arena")
+	in, err := s.prepare(ctx, code, &opt, report)
 	if err != nil {
 		return nil, err
+	}
+	return buildProject(ctx, ws, in, opt, report)
+}
+
+// prepare finds the set and reads its card list (Import and the set preview).
+func (s *unionArenaSource) prepare(ctx context.Context, code string, opt *Options, report func(Progress)) (setIn, error) {
+	g, _, err := s.t.tcgFind(ctx, uaCategory, code, "Union Arena")
+	if err != nil {
+		return setIn{}, err
 	}
 	report(Progress{Stage: "cards", Message: "Fetching card list…"})
 	cards, err := s.cards(ctx, g, opt.IncludeVariants)
 	if err != nil {
-		return nil, err
+		return setIn{}, err
 	}
 	if opt.RarityMap == nil {
 		opt.RarityMap = DefaultUnionArenaRarityMap()
 	}
-	return buildProject(ctx, ws, setIn{ID: s.ProjectID(code, ""), Source: "unionarena", Code: code, Name: g.Name,
+	return setIn{ID: s.ProjectID(code, ""), Source: "unionarena", Code: code, Name: g.Name,
 		ReleasedAt: date10(g.PublishedOn), Cards: cards, Get: s.t.c.Download, Aspect: CardAspect,
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Legendary" }),
 		// Union Arena boosters: commons, uncommons, then a rare-or-better (super rares and star parallels).
-		Slots: UnionArenaBooster(date10(g.PublishedOn)).Slots, FoilChance: UnionArenaBooster(date10(g.PublishedOn)).FoilChance}, opt, report)
+		Slots: UnionArenaBooster(date10(g.PublishedOn)).Slots, FoilChance: UnionArenaBooster(date10(g.PublishedOn)).FoilChance}, nil
 }
 
 // RefreshMeta updates prices from TCGplayer.

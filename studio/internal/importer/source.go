@@ -65,8 +65,10 @@ type Source interface {
 type Registry struct{ list []Source }
 
 func NewRegistry(sf *scryfall.Client, tc *tcgdex.Client) *Registry {
-	return &Registry{list: []Source{&scryfallSource{sf}, &tcgdexSource{tc}, newYGOSource(), newOnePieceSource(),
-		newSWUSource(), newLorcanaSource(), newFabSource(), newUnionArenaSource(), folderSource{}, eplSource{}, sharedSource{}}}
+	list := []Source{&scryfallSource{sf}, &tcgdexSource{tc}, newYGOSource(), newOnePieceSource(),
+		newSWUSource(), newLorcanaSource(), newFabSource(), newUnionArenaSource()}
+	list = append(list, newTCGGameSources()...)
+	return &Registry{list: append(list, folderSource{}, eplSource{}, sharedSource{})}
 }
 
 func (r *Registry) All() []Source { return r.list }

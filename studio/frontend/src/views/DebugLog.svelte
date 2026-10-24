@@ -31,8 +31,8 @@
   onMount(refresh);
 </script>
 
-<section>
-  <h3>Debug log</h3>
+<section class="block">
+  <div class="bhead"><h2>Debug log</h2></div>
   <p class="small muted intro">Something doesn't work in game? Close the game, then copy this and send it to us on Discord. It's the game's log from its last session with a short summary; your Windows user name is replaced with %USERPROFILE%.</p>
   <div class="row">
     <button class="primary" onclick={copy} disabled={!r}>Copy to clipboard</button>
@@ -52,11 +52,8 @@
 </section>
 
 <style>
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  h3 { margin: 0; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; }
   .intro { margin: 0; max-width: 820px; }
-  .small { font-size: 12px; }
   .linkish { cursor: pointer; }
   .note { margin: 0; padding: 6px 10px; border-radius: 6px; background: var(--panel-2); border-left: 3px solid var(--line); font-size: 13px; }
   .note.ok { border-left-color: var(--ok); }

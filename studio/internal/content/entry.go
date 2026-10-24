@@ -33,6 +33,7 @@ type entryFields struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Icon string `json:"icon"`
+	Base string `json:"base"` // the vanilla item it is built on (accessories, furniture)
 }
 
 func (e Entry) open(ws workspace.Dir, root string) (*accessories.Library, []json.RawMessage, error) {
@@ -67,7 +68,7 @@ func (e Entry) List(ws workspace.Dir, root string) ([]Item, error) {
 		if json.Unmarshal(raw, &f) != nil || f.ID == "" {
 			continue
 		}
-		it := Item{ID: f.ID, Name: f.Name, Icon: f.Icon, Converted: accessories.IsConverted(f.ID)}
+		it := Item{ID: f.ID, Name: f.Name, Icon: f.Icon, Base: f.Base, Converted: accessories.IsConverted(f.ID)}
 		if e.Sub != "" {
 			var m map[string]any
 			_ = json.Unmarshal(raw, &m)

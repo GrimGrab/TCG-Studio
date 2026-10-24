@@ -147,8 +147,8 @@
 
 <style>
   .frame { position: relative; flex: none; line-height: 0; overflow: hidden; background: #111; }
-  .phone { width: 240px; border: 8px solid #111; border-radius: 22px; }
-  .screen { width: 100%; max-width: 560px; border: 6px solid #111; border-radius: 8px; }
+  .phone { width: clamp(240px, 22vw, 340px); border: 8px solid #111; border-radius: 22px; }
+  .screen { width: 100%; max-width: 1100px; border: 6px solid #111; border-radius: 8px; }
   canvas { display: block; }
   .note { position: absolute; left: 8px; top: 8px; right: 8px; line-height: 1.2; color: #fff; }
 </style>

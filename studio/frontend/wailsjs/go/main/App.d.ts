@@ -204,8 +204,6 @@ export function NewDecoration(arg1:string,arg2:string):Promise<setfmt.Decoration
 
 export function NewFurniture(arg1:string,arg2:string,arg3:string):Promise<setfmt.Furniture>;
 
-export function OpenAccessoriesFolder():Promise<void>;
-
 export function OpenFolder(arg1:string):Promise<void>;
 
 export function OpenProjectFolder(arg1:string):Promise<void>;
@@ -241,6 +239,8 @@ export function PickShareFile():Promise<string>;
 export function PreviewEPL(arg1:string,arg2:boolean):Promise<importer.EPLPreview>;
 
 export function PreviewImportFolder(arg1:string,arg2:importer.Options):Promise<importer.FolderPreview>;
+
+export function PreviewSet(arg1:string,arg2:string,arg3:importer.Options):Promise<importer.SetPreview>;
 
 export function PreviewShare(arg1:string):Promise<share.Preview>;
 

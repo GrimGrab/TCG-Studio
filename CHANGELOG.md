@@ -3,6 +3,22 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v1.14.0 - 2026-10-24
+
+TCG Studio 1.14.0: 45 more card games to import, a preview before you import, and a fresh look across Studio.
+
+- New: Import sets from 45 more card games through TCGplayer, among them the Gundam Card Game, Digimon, Dragon Ball Super (Masters and Fusion World), Cardfight!! Vanguard, Weiß Schwarz, Grand Archive, Sorcery, Riftbound, hololive and Shadowverse: Evolve. The Import page has two tabs now: Card game sets (one searchable game list for every game) and From files.
+- New: Click a set on the Import page to preview it first: card count, rarities, real prices, the most valuable cards, its booster and every card's picture.
+- New: Search ignores accents and punctuation ("pokemon", "yugioh") and knows common game nicknames (mtg, ygo, ptcg, swu, fab, op…); several words work in any order.
+- New: Search boxes on the Accessories, Furniture and Decorations lists.
+- Changed: A redesigned Studio. New sidebar with icons and a setup switcher that shows what each setup holds; the Sets page groups sets by game; the set editor has new Cards, Packs and Set details tabs (rarity filters, a set summary, packs listed with their icons, card versions as on/off buttons, price previews). Catalog, Import, Gamify, Mod settings, Settings, Game & mod, Setups, Game look and Storage got the same new look.
+- Changed: TCG Studio has its own app icon.
+- Changed: Gamify lists only installed sets unless you choose to show the others.
+- Changed: The Catalog shows the vanilla item's icon for accessories and furniture without their own.
+- Changed: Finished imports no longer open the set by themselves; a notice tells you when they're done.
+- Fixed: Pressing Delete in the Accessories, Furniture or Decorations list no longer removes selected items the search is hiding.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.13.1 - 2026-10-23
 
 Reorder your cards by dragging them.

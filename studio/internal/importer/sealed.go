@@ -25,8 +25,14 @@ type SealedGame struct {
 }
 
 // SealedGames are the games Studio imports, in the import page's order.
-var SealedGames = []SealedGame{{1, "Magic: The Gathering"}, {3, "Pokémon TCG"}, {2, "Yu-Gi-Oh!"}, {68, "One Piece Card Game"},
-	{79, "Star Wars: Unlimited"}, {71, "Disney Lorcana"}, {62, "Flesh and Blood"}}
+var SealedGames = func() []SealedGame {
+	gs := []SealedGame{{1, "Magic: The Gathering"}, {3, "Pokémon TCG"}, {2, "Yu-Gi-Oh!"}, {68, "One Piece Card Game"},
+		{79, "Star Wars: Unlimited"}, {71, "Disney Lorcana"}, {62, "Flesh and Blood"}, {uaCategory, "Union Arena"}}
+	for _, g := range tcgGames {
+		gs = append(gs, SealedGame{g.Category, g.Game})
+	}
+	return gs
+}()
 
 // SealedCategory is the TCGplayer category of an import source (0 = unknown, e.g. hand-made sets).
 func SealedCategory(source string) int {
@@ -47,6 +53,9 @@ func SealedCategory(source string) int {
 		return fabCategory
 	case "unionarena":
 		return uaCategory
+	}
+	if g, ok := tcgGameOf(source); ok {
+		return g.Category
 	}
 	return 0
 }

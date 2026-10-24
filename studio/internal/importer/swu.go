@@ -204,9 +204,18 @@ func dedupe(list []string) []string {
 }
 
 func (s *swuSource) Import(ctx context.Context, ws project.Workspace, code string, opt Options, report func(Progress)) (*project.Project, error) {
-	sets, err := s.sets(ctx)
+	in, err := s.prepare(ctx, code, &opt, report)
 	if err != nil {
 		return nil, err
+	}
+	return buildProject(ctx, ws, in, opt, report)
+}
+
+// prepare finds the set and reads its card list (Import and the set preview).
+func (s *swuSource) prepare(ctx context.Context, code string, opt *Options, report func(Progress)) (setIn, error) {
+	sets, err := s.sets(ctx)
+	if err != nil {
+		return setIn{}, err
 	}
 	var set *swuSet
 	for i := range sets {
@@ -215,21 +224,21 @@ func (s *swuSource) Import(ctx context.Context, ws project.Workspace, code strin
 		}
 	}
 	if set == nil {
-		return nil, fmt.Errorf("Star Wars: Unlimited set %s not found", code)
+		return setIn{}, fmt.Errorf("Star Wars: Unlimited set %s not found", code)
 	}
 	report(Progress{Stage: "cards", Message: "Fetching card list…"})
 	cards, err := s.cards(ctx, code, opt.IncludeVariants)
 	if err != nil {
-		return nil, err
+		return setIn{}, err
 	}
 	if opt.RarityMap == nil {
 		opt.RarityMap = DefaultSWURarityMap()
 	}
-	return buildProject(ctx, ws, setIn{ID: s.ProjectID(code, ""), Source: "swudb", Code: code, Name: set.Name,
+	return setIn{ID: s.ProjectID(code, ""), Source: "swudb", Code: code, Name: set.Name,
 		ReleasedAt: swuDate(set.Released), Cards: cards, Get: s.c.Download, Rotate: true, // leaders and bases are landscape
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Rare" }),
 		// Star Wars: Unlimited boosters: commons, an uncommon, then a rare or legendary (plus a foil in every pack).
-		Slots: SwuBooster.Slots, FoilChance: SwuBooster.FoilChance}, opt, report)
+		Slots: SwuBooster.Slots, FoilChance: SwuBooster.FoilChance}, nil
 }
 
 // setCards fetches the card list of the set p was imported from (prices, Re-download image).

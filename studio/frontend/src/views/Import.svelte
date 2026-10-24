@@ -5,6 +5,9 @@
   import { boxesFromPacks } from '../lib/smartArt';
   import { queue, enqueue, unqueue, cancel, listen, jobKey, isQueued, type ImportJob } from '../lib/importQueue.svelte';
   import { renderAccessoryIcon } from '../lib/accessoryArt';
+  import GamePicker from './GamePicker.svelte';
+  import { matchSearch } from '../lib/search';
+  import SetPreview from './SetPreview.svelte';
 
   let { open, notify }: { open: (id: string) => void; notify: (t: string, k?: string) => void } = $props();
 
@@ -25,6 +28,13 @@
   let query = $state('');
   let group = $state('main');
   let options = $state<any>(null);
+  let pickedCode = $state(''); // the set shown in the preview panel (its row follows list reloads)
+  const picked = $derived(pickedCode ? sets.find((x) => x.code === pickedCode) ?? null : null);
+  const importedCount = $derived(sets.filter((x) => x.imported).length);
+  const monthYear = (d: string) => {
+    const t = d ? new Date(d + 'T00:00:00') : null;
+    return t && !isNaN(+t) ? t.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '';
+  };
   const importing = $derived(queue.current);
   let eplImporting = $state(false);
   // Sets the shared catalog has but this setup doesn't: added instantly instead of imported again.
@@ -41,6 +51,34 @@
   }
   const progress = $derived(queue.progress);
 
+  // Two tabs: a card game's sets (one picker for every game, whatever database it comes from) and imports from files
+  // (image folder, EPL mod, TCG Studio file). Each tab remembers what was picked last.
+  const gameSources = $derived(sources.filter((s) => !s.local));
+  const fileSources = $derived(sources.filter((s) => s.local));
+  const FILE_TITLES: Record<string, string> = { folder: 'My own card images', epl: 'EPL mod', tcgitems: 'TCG Studio file' };
+  const FILE_GLYPHS: Record<string, string> = { folder: '🖼', epl: '🧩', tcgitems: '📦' };
+  const FILE_HINTS: Record<string, string> = {
+    folder: 'Card images on your computer, one folder per set (optional cards.csv for names and prices).',
+    epl: 'Convert an Enhanced Prefab Loader mod (folder or .zip) into sets and items.',
+    tcgitems: 'A .tcgitems or .tcgsetup file someone shared from TCG Studio.',
+  };
+  let recentGames = $state<string[]>(remembered('recentGames', '').split(',').filter(Boolean));
+  function pickGame(id: string) {
+    recentGames = [id, ...recentGames.filter((g) => g !== id)].slice(0, 5);
+    remember('recentGames', recentGames.join(','));
+    remember('gameSource', id);
+    pickSource(id);
+  }
+  function pickFiles(id: string) {
+    remember('fileSource', id);
+    pickSource(id);
+  }
+  function showTab(files: boolean) {
+    if (files === !!source?.local) return;
+    if (files) pickFiles(remembered('fileSource', 'folder'));
+    else pickGame(remembered('gameSource', recentGames[0] ?? 'scryfall'));
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const source = $derived(sources.find((s) => s.id === sourceId));
   const langs = $derived<string[]>(source?.languages ?? []);
@@ -49,8 +87,7 @@
     sets.filter((s) => {
       if (group === 'main' && !s.main) return false;
       if (group !== 'main' && group !== 'all' && s.group !== group) return false;
-      const q = query.trim().toLowerCase();
-      return !q || s.name.toLowerCase().includes(q) || s.code.toLowerCase() === q;
+      return matchSearch(query, s.name) || s.code.toLowerCase() === query.trim().toLowerCase();
     })
   );
 
@@ -79,6 +116,7 @@
     else if (sourceId === SHARED) clearShare();
     sourceId = id;
     remember('source', id);
+    pickedCode = '';
     sets = [];
     group = 'main';
     options = await App.DefaultImportOptions(id);
@@ -239,7 +277,6 @@
           if (await boxesFromPacks(p)) await App.SaveProject(p);
         } catch (e) { notify(`Box art for ${id}: ${errText(e)}`, 'error'); }
       }
-      if (r.sets.length === 1 && !r.items) open(r.sets[0]);
       ok = true;
     } catch (e) {
       notify(errText(e), 'error');
@@ -315,7 +352,6 @@
       notify(`Imported ${r.items.length} item${r.items.length === 1 ? '' : 's'} into the catalog` +
         (shareAddHere ? ` and this setup${sets ? ' — install the sets on the Sets page to play' : ''}` : ' — add them to a setup with Add from catalog') +
         (renamed ? ` (${renamed} got a new id: this PC already had one with theirs)` : '') + '.', 'ok');
-      if (r.items.length === 1 && sets === 1 && shareAddHere) open(r.items[0].id);
       ok = true;
     } catch (e) {
       notify(errText(e), 'error');
@@ -341,11 +377,11 @@
   }
 
   // One queue job for set s of the current source, with the page's options as they are now.
-  function job(s: any, useLibrary: boolean, openWhenDone: boolean): ImportJob {
+  function job(s: any, useLibrary: boolean): ImportJob {
     const l = langs.length ? lang : '';
     const folder = source?.id === 'folder';
     return { key: jobKey(sourceId, s.code, l), source: sourceId, code: s.code, name: source?.local ? s.name : s.code.toUpperCase(),
-      cards: s.cards ?? 0, ownArt: !!source?.ownArt, open: openWhenDone,
+      cards: s.cards ?? 0, ownArt: !!source?.ownArt,
       opt: { ...$state.snapshot(options), lang: l, useLibrary, setName: folder ? folderName.trim() : '', stripNumbers: folder && stripNumbers } };
   }
   const keyOf = (s: any) => jobKey(sourceId, s.code, langs.length ? lang : '');
@@ -361,7 +397,7 @@
       if (!v) return;
       useLibrary = v === 'use';
     }
-    enqueue([job(s, useLibrary, !importing)], notify, open);
+    enqueue([job(s, useLibrary)], notify);
   }
 
   // Import all: every set in the list as filtered now (source, group, search) that isn't imported or queued yet.
@@ -384,7 +420,7 @@
         await loadCatalog();
       } catch (e) { notify(errText(e), 'error'); }
     }
-    if (fresh.length) enqueue(fresh.map((s) => job(s, true, false)), notify, open);
+    if (fresh.length) enqueue(fresh.map((s) => job(s, true)), notify);
     else load();
   }
 
@@ -403,58 +439,71 @@
     listen();
     sources = await App.ImportSources();
     if (!sources.some((s) => s.id === sourceId)) sourceId = sources[0]?.id;
-    await pickSource(sourceId);
+    if (sources.find((s) => s.id === sourceId)?.local) await pickSource(sourceId);
+    else pickGame(sourceId); // also puts it on the picker's recent list
   });
   onMount(() => OnFileDrop((_x: number, _y: number, paths: string[]) => dropped(paths), false));
   onDestroy(() => OnFileDropOff());
 </script>
 
 <div class="page">
-  <header class="row">
-    <h2 class="grow">Import</h2>
-    {#if !source?.local}<button onclick={() => load(true)} disabled={loading}>Refresh list</button>{/if}
+  <header class="head">
+    <h2>Import</h2>
+    <nav class="tabbar">
+      <button class:on={source && !source.local} disabled={eplImporting} onclick={() => showTab(false)}>Card game sets</button>
+      <button class:on={!!source?.local} disabled={eplImporting} onclick={() => showTab(true)}>From files</button>
+    </nav>
+    <span class="grow"></span>
+    {#if !source?.local}<button onclick={() => load(true)} disabled={loading} title="Ask {source?.name ?? 'the source'} for its set list again">Refresh list</button>{/if}
   </header>
 
-  <div class="sources row">
-    {#each sources as s (s.id)}
-      <button class="source" class:active={s.id === sourceId} disabled={eplImporting || (s.id === 'epl' && !!importing)} onclick={() => pickSource(s.id)}
-        title={s.id === 'epl' && importing && !eplImporting ? 'Wait for the import queue to finish' : ''}>
-        <b>{s.game}</b><span class="muted small">from {s.name}</span>
-      </button>
-    {/each}
-  </div>
-
-  <div class="filters row">
-    {#if !source?.local}
-      <input class="grow" placeholder="Search sets by name or code…" bind:value={query} />
-      <select bind:value={group}>
+  <div class="toolbar">
+    {#if source && !source.local}
+      <GamePicker games={gameSources} value={sourceId} recent={recentGames} disabled={eplImporting} onpick={pickGame} />
+      <input class="search" placeholder="Search sets by name or code…" bind:value={query} />
+      <select bind:value={group} title="Which sets to list">
         <option value="main">Main sets</option>
         <option value="all">All sets</option>
         {#each groups as g}<option value={g}>{g}</option>{/each}
       </select>
+    {:else if source}
+      <span class="muted">Import from a folder or file on this PC</span>
     {/if}
     {#if langs.length}
       <select bind:value={lang} onchange={pickLang} title="Card language">
         {#each langs as l}<option value={l}>{LANG_NAMES[l] ?? l}</option>{/each}
       </select>
     {/if}
+    <span class="grow"></span>
     {#if options && source?.id !== SHARED}
-      {#if source?.variants}
-        <label class="check"><input type="checkbox" bind:checked={options.includeVariants} /> Include variant printings</label>
-      {/if}
-      <label class="check">Image width
-        <select bind:value={options.imageWidth}>
-          <option value={384}>384</option><option value={512}>512</option><option value={0}>Original</option>
-        </select>
-      </label>
-      <label class="check" title="JPEG card art is about 6× smaller; card scans lose a little detail. Pack art always stays PNG. The default is set in Settings → Downloads.">Card image format
-        <select bind:value={options.imageFormat}>
-          <option value="png">PNG (best quality)</option><option value="jpg">JPEG (about 6× smaller)</option>
-        </select>
-      </label>
-      <label class="check" title="On: the set keeps the source's own rarities (Secret Rare, SR, Mythic…, or a mod's tiers) as rarities of its own in game — their names on the cards, in the binder and in Check Price, and pack odds per rarity. Off: every card gets one of the game's 4 rarities.">
-        <input type="checkbox" bind:checked={options.keepRarities} onchange={() => remember('keepRarities.' + sourceId, options.keepRarities ? '1' : '')} />
-        Keep the set's own rarities</label>
+      <!-- The 4 import options, summed up on the button. -->
+      <details class="settings">
+        <summary title="Import settings">⚙ {[widthName(options.imageWidth), fmtName(options.imageFormat || 'png'),
+          options.keepRarities ? 'own rarities' : '4 game rarities', source?.variants ? (options.includeVariants ? 'with variants' : 'no variants') : '']
+          .filter(Boolean).join(' · ')}</summary>
+        <div class="menu">
+          {#if source?.variants}
+            <label class="check"><input type="checkbox" bind:checked={options.includeVariants} /> Include variant printings</label>
+          {/if}
+          <label class="check" title="On: the set keeps the source's own rarities (Secret Rare, SR, Mythic…, or a mod's tiers) as rarities of its own in game — their names on the cards, in the binder and in Check Price, and pack odds per rarity. Off: every card gets one of the game's 4 rarities.">
+            <input type="checkbox" bind:checked={options.keepRarities} onchange={() => remember('keepRarities.' + sourceId, options.keepRarities ? '1' : '')} />
+            Keep the set's own rarities</label>
+          <label class="field">Card image width
+            <select bind:value={options.imageWidth}>
+              <option value={384}>384 px</option><option value={512}>512 px</option><option value={0}>Original size</option>
+            </select>
+          </label>
+          <label class="field" title="JPEG card art is about 6× smaller; card scans lose a little detail. Pack art always stays PNG. The default is set in Settings → Downloads.">Card image format
+            <select bind:value={options.imageFormat}>
+              <option value="png">PNG (best quality)</option><option value="jpg">JPEG (about 6× smaller)</option>
+            </select>
+          </label>
+        </div>
+      </details>
+    {/if}
+    {#if source && !source.local && !loading && notYet.length}
+      <button disabled={eplImporting} onclick={importAll}
+        title="Imports every set in this list (as filtered by the menu and search) that isn't imported yet, one after another">Import all ({notYet.length})</button>
     {/if}
   </div>
 
@@ -479,287 +528,361 @@
     </div>
   {/if}
 
+  <div class="main" class:md={!!source && (source.local || !loading)}>
+  {#if source?.local}
+    <!-- Files: the three kinds on the left, the chosen one's pane on the right (drop zone → what's inside → import). -->
+    <nav class="list">
+      <div class="listhead muted small">Import from</div>
+      {#each fileSources as s (s.id)}
+        <button class="kind" class:picked={s.id === sourceId} disabled={eplImporting || (s.id === 'epl' && !!importing)} onclick={() => pickFiles(s.id)}
+          title={s.id === 'epl' && importing && !eplImporting ? 'Wait for the import queue to finish' : ''}>
+          <span class="glyph">{FILE_GLYPHS[s.id] ?? '📄'}</span>
+          <span class="info"><span class="name">{FILE_TITLES[s.id] ?? s.name}</span><span class="sub">{FILE_HINTS[s.id] ?? s.game}</span></span>
+        </button>
+      {/each}
+    </nav>
+    <div class="detail">
+      <section class="pane">
+        <header class="pane-hero">
+          <span class="bigglyph">{FILE_GLYPHS[sourceId] ?? '📄'}</span>
+          <div class="grow">
+            <h1>{FILE_TITLES[sourceId] ?? source.name}</h1>
+            <div class="muted">{FILE_HINTS[sourceId] ?? source.game}</div>
+          </div>
+          {#if sourceId === 'epl'}<span class="badge warn">experimental</span>{/if}
+        </header>
+
   {#if source?.id === SHARED}
-    <div class="folder">
-      <p class="note">Sets, accessories, furniture and decorations another player exported from their <b>Catalog</b> page (Export…).
-        They go into your catalog and, ticked below, into this setup. Nothing you have is replaced: anything whose id you already
-        use gets a new one.</p>
-      <div class="row">
-        <button class="primary" disabled={!!importing || shareBusy} onclick={chooseShare} title="Pick a .tcgitems file — or drop it on this page">Choose file…</button>
-        <span class="grow path" title={sharePath}>{sharePath || 'No file chosen'}</span>
-        {#if sharePath}<button class="small" disabled={!!importing || shareBusy} onclick={previewShare}>Re-read</button>{/if}
-      </div>
-      {#if shareBusy && !share}<p class="muted">Reading the file…</p>{/if}
-      {#if shareErr}<p class="err">{shareErr}</p>{/if}
-      {#if share}
-        <div class="eplset">
-          <b>Source</b>
-          <p class="muted small">Where these came from: saved with everything this import adds (shown as “shared: …”, used by the
-            Source sort and the catalog's groups). Leave the name empty to list them as your own.</p>
-          <div class="row origin">
-            <label class="field grow">Name<input bind:value={shareSource.name} placeholder="e.g. Bob's playmats" disabled={!!importing} /></label>
-            <label class="field">Made by<input bind:value={shareSource.author} placeholder="optional" disabled={!!importing} /></label>
+        {#if !sharePath}
+          <button class="drop" disabled={!!importing || shareBusy} onclick={chooseShare}>
+            <b>Drop a .tcgitems or .tcgsetup file here</b><span class="muted">or click to choose one</span>
+          </button>
+        {:else}
+          <div class="filebar">
+            <span class="path" title={sharePath}>{sharePath}</span>
+            <button class="small" disabled={!!importing || shareBusy} onclick={previewShare}>Re-read</button>
+            <button class="small" disabled={!!importing || shareBusy} onclick={chooseShare}>Choose another…</button>
           </div>
-          <label class="field">Link<input bind:value={shareSource.link} placeholder="optional, e.g. where it was posted" disabled={!!importing} /></label>
-        </div>
-        {#each shareGroups as [k, list] (k.id)}
-          <div class="eplset">
-            <div class="row"><b class="grow">{k.title} ({list.length})</b>
-              <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, true)}>Select all</button>
-              <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, false)}>Deselect all</button></div>
-            {#each list as it (shareKey(it))}
-              <label class="check"><input type="checkbox" bind:checked={sharePick[shareKey(it)]} disabled={!!importing} />
-                {it.name || it.id} <span class="muted small">{it.sub ? `— ${it.sub}` : ''}{it.newId !== it.id ? ` · gets a new id (you already have one with id “${it.id}”)` : ''}</span></label>
+        {/if}
+        <div class="notice info">Sets, accessories, furniture and decorations another player exported from their <b>Catalog</b> page
+          (Export…). They go into your catalog and, ticked below, into this setup. Nothing you have is replaced: anything whose id you
+          already use gets a new one.</div>
+        {#if shareBusy && !share}<p class="muted">Reading the file…</p>{/if}
+        {#if shareErr}<div class="notice err">{shareErr}</div>{/if}
+        {#if share}
+          <div class="stats">
+            {#each shareGroups.slice(0, 4) as [k, list] (k.id)}
+              <div class="stat"><span class="label">{k.title}</span><b>{list.length}</b></div>
             {/each}
           </div>
-        {/each}
-        <label class="check"><input type="checkbox" bind:checked={shareAddHere} disabled={!!importing} /> Add to this setup
-          <span class="muted small">(sets are added, not installed; untick to only put them in the catalog)</span></label>
-        <div class="row">
-          <span class="grow muted">{shareCount} selected{share.studio ? ` · made with TCG Studio ${share.studio}` : ''}</span>
-          <button class="primary" disabled={!!importing || shareBusy || !shareCount} onclick={importShare}>Import selected</button>
-        </div>
-      {/if}
-    </div>
-  {:else if source?.id === 'epl'}
-    <div class="folder">
-      <p class="note"><b>Experimental.</b> Converts the card sets of a mod made for Enhanced Prefab Loader into Studio sets, once:
-        cards, the mod's pack &amp; box art and card back with its pack odds turned into ours, plus its accessories, figurines and
-        furniture. EPL isn't needed in the game.
-        The art belongs to the mod's authors, so converted sets stay on this PC (they're left out of setup exports).</p>
-      <div class="row">
-        <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(false)}
-          title="Pick the mod's download: .zip, .rar or .7z — or drop it on this page">Choose zipped folder…</button>
-        <button class="primary" disabled={!!importing || eplBusy} onclick={() => chooseEPL(true)}
-          title="Pick the mod's folder after unpacking it (the one with BepInEx or plugins in it, or the mod's own folder) — or drop it on this page">Choose folder…</button>
-        <span class="grow path" title={eplPath}>{eplPath || 'No mod chosen'}</span>
-        {#if eplPath}<button class="small" disabled={!!importing || eplBusy} onclick={previewEPL}>Re-read</button>{/if}
-      </div>
-      <p class="muted small">Pick the mod's download (<b>.zip</b>, <b>.rar</b> or <b>.7z</b>) or, if you unpacked it, its folder — or just drag either onto this page.</p>
-      <label class="check opt">
-        <input type="checkbox" bind:checked={stripNumbers} onchange={() => { remember('stripNumbers', stripNumbers ? '1' : ''); if (eplPath) previewEPL(); }} disabled={!!importing || eplBusy} />
-        <span><b>Strip leading numbers</b><br />
-          <span class="muted small">Leaves out the number many mods put before their names (“001 - 2019 Base Playmat” → “2019 Base Playmat”)
-            for the sets, packs, boxes, accessories, figurines and furniture. Only a number followed by a separator (- : . ) |) counts,
-            so names like “2019 Base” stay whole. Card names are never changed.</span></span>
-      </label>
-      {#if eplBusy}<p class="muted">Reading the mod… {progress?.stage === 'unpack' && progress.total ? `(${progress.done} / ${progress.total} MB unpacked)` : ''}</p>{/if}
-      {#if eplErr}<p class="err">{eplErr}</p>{/if}
-      {#if epl}
-        <div class="eplset">
-          <b>About this mod</b>
-          <p class="muted small">Saved with everything this import makes, so you can tell later where it came from (shown as “from …”,
-            used by the Source sort). The name starts as the one inside the mod.</p>
-          <div class="row origin">
-            <label class="field grow">Mod name<input bind:value={originMod} placeholder={epl.modName} disabled={!!importing} /></label>
-            <label class="field">Author<input bind:value={originAuthor} placeholder="optional" disabled={!!importing} /></label>
-          </div>
-          <label class="field">Link<input bind:value={originLink} placeholder="optional, e.g. the mod's Nexus page" disabled={!!importing} /></label>
-        </div>
-        {#each epl.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
-        {#if !(epl.sets ?? []).length}<p class="muted">This mod has no card sets.</p>{/if}
-        {#each epl.sets ?? [] as set (set.code)}
-          <div class="eplset">
-            <div class="row">
-              <label class="check grow"><input type="checkbox" bind:checked={pickSets[set.code]} disabled={!!importing || set.imported} /> <b>{set.name}</b></label>
-              <span class="muted small">{set.cards} cards · {set.renderMode === 'FullImage' ? 'full card images' : 'art in the game frame'} · project {set.projectId}</span>
+          <div class="block">
+            <div class="bhead"><h2>Source</h2><span class="muted small">Saved with everything this import adds (shown as “shared: …”).
+              Leave the name empty to list them as your own.</span></div>
+            <div class="row origin">
+              <label class="field grow">Name<input bind:value={shareSource.name} placeholder="e.g. Bob's playmats" disabled={!!importing} /></label>
+              <label class="field">Made by<input bind:value={shareSource.author} placeholder="optional" disabled={!!importing} /></label>
             </div>
-            {#each set.packs ?? [] as pk}
-              <div class="muted small">Pack <b>{pk.name}</b>{pk.box ? ` + box ${pk.box}` : ''} · {pk.strategy} odds · foil {pk.foilChance}% per card</div>
-            {/each}
-            {#each set.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
-            {#if set.problemCount}
-              <p class="warn">⚠ {set.problemCount} card(s) can't be read and will be left out: {(set.problems ?? []).join('; ')}{set.problemCount > (set.problems ?? []).length ? ' …' : ''}</p>
-            {/if}
-            <details>
-              {#if options?.keepRarities}
-                <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod, each kept as a rarity of its own)</summary>
-                <p class="muted small">Every tier becomes a rarity of the set with the mod's own name, pack odds and card prices.
-                  Per pack = cards of that tier in an average pack.</p>
-                <table class="rar">
-                  <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th></tr></thead>
-                  <tbody>{#each set.tiers ?? [] as t}<tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td></tr>{/each}</tbody>
-                </table>
-              {:else}
-                <summary>Rarities ({(set.tiers ?? []).length} tiers in the mod → our 4)</summary>
-                <p class="muted small">Picked by how often the mod's packs give a card of each tier; change any of them. Per pack = cards of that tier in an average pack.
-                  Tick “Keep the set's own rarities” above to keep every tier instead.</p>
-                <table class="rar">
-                  <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th><th>Game rarity</th></tr></thead>
-                  <tbody>
-                    {#each set.tiers ?? [] as t}
-                      <tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td>
-                        <td><select bind:value={rarityChoice[set.code][t.name]} disabled={!!importing}>
-                          {#each GAME_RARITIES as r}<option value={r}>{r}</option>{/each}
-                        </select></td></tr>
-                    {/each}
-                  </tbody>
-                </table>
-              {/if}
-            </details>
-            {#if set.imported}
-              <div class="row">
-                <span class="muted grow">Already imported — open it, or delete it first to import it again.</span>
-                <button onclick={() => open(set.projectId)}>Open</button>
-              </div>
-            {:else if inCatalog[set.projectId]}
-              <div class="row">
-                <span class="muted grow">In the catalog already (imported in another setup or earlier) — add it instantly instead of converting again.</span>
-                <button onclick={() => addFromCatalog(set)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
-              </div>
-            {/if}
+            <label class="field">Link<input bind:value={shareSource.link} placeholder="optional, e.g. where it was posted" disabled={!!importing} /></label>
           </div>
-        {/each}
-        {#if (epl.items ?? []).length}
-          <div class="eplset">
-            <div class="row"><b class="grow">Accessories, figurines, furniture &amp; decorations ({epl.items.length})</b>
-              <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, true])))}>Select all</button>
-              <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, false])))}>Deselect all</button></div>
-            <p class="muted small">Go to the Accessories, Furniture and Decorations pages with the mod's own textures and models; fine-tune
-              them there (figurine size on the shelf, furniture item spots, decoration price).</p>
-            {#each epl.items as it (it.key)}
-              <label class="check"><input type="checkbox" bind:checked={pickItems[it.key]} disabled={!!importing} />
-                {it.name} <span class="muted small">— {it.kind === 'Decoration' ? `${it.base} decoration` : it.kind}{it.note ? ` (${it.note})` : ''}{it.exists ? ' · already converted (replaced)' : ''}</span></label>
-            {/each}
+          {#each shareGroups as [k, list] (k.id)}
+            <div class="block">
+              <div class="bhead"><h2>{k.title}</h2><span class="count">{list.length}</span><span class="grow"></span>
+                <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, true)}>Select all</button>
+                <button class="small" disabled={!!importing} onclick={() => pickShareGroup(k.id, false)}>Deselect all</button></div>
+              <div class="picklist">
+                {#each list as it (shareKey(it))}
+                  <label class="check"><input type="checkbox" bind:checked={sharePick[shareKey(it)]} disabled={!!importing} />
+                    <span>{it.name || it.id} <span class="muted small">{it.sub ? `— ${it.sub}` : ''}{it.newId !== it.id ? ` · gets a new id (you already have one with id “${it.id}”)` : ''}</span></span></label>
+                {/each}
+              </div>
+            </div>
+          {/each}
+          <div class="actionbar">
+            <label class="check"><input type="checkbox" bind:checked={shareAddHere} disabled={!!importing} /> Add to this setup
+              <span class="muted small">(sets are added, not installed)</span></label>
+            <span class="grow muted">{shareCount} selected{share.studio ? ` · made with TCG Studio ${share.studio}` : ''}</span>
+            <button class="primary big" disabled={!!importing || shareBusy || !shareCount} onclick={importShare}>Import selected</button>
           </div>
         {/if}
-        <div class="row">
-          <span class="grow muted">{eplCount} selected</span>
-          <button class="primary" disabled={!!importing || eplBusy || !eplCount} onclick={importEPL}>Import EPL mod</button>
-        </div>
-        {#if (epl.skipped ?? []).length}
-          <details>
-            <summary>Not imported ({epl.skipped.length})</summary>
-            <ul>{#each epl.skipped as k}<li>{k.kind}: {k.name} <span class="muted">— {k.reason}</span></li>{/each}</ul>
-          </details>
+  {:else if source?.id === 'epl'}
+        {#if !eplPath}
+          <div class="droprow">
+            <button class="drop" disabled={!!importing || eplBusy} onclick={() => chooseEPL(false)} title="Pick the mod's download: .zip, .rar or .7z">
+              <b>Drop the mod's .zip, .rar or .7z here</b><span class="muted">or click to choose the download</span>
+            </button>
+            <button class="drop" disabled={!!importing || eplBusy} onclick={() => chooseEPL(true)}
+              title="The mod's folder after unpacking it (the one with BepInEx or plugins in it, or the mod's own folder)">
+              <b>…or an unpacked mod folder</b><span class="muted">click to choose the folder</span>
+            </button>
+          </div>
+        {:else}
+          <div class="filebar">
+            <span class="path" title={eplPath}>{eplPath}</span>
+            <button class="small" disabled={!!importing || eplBusy} onclick={previewEPL}>Re-read</button>
+            <button class="small" disabled={!!importing || eplBusy} onclick={() => chooseEPL(false)}>Choose another…</button>
+          </div>
         {/if}
-      {/if}
-    </div>
-  {:else if source?.id === 'folder'}
-    <div class="folder">
-      <div class="row">
-        <button class="primary" disabled={!!importing} onclick={chooseFolder}>Choose folder…</button>
-        <span class="grow path" title={folderPath}>{folderPath || 'No folder chosen'}</span>
-        {#if folderPath}<button class="small" disabled={!!importing} onclick={previewFolder} title="Read the folder again">Re-read</button>{/if}
-      </div>
-      <label class="check opt">
-        <input type="checkbox" bind:checked={stripNumbers} onchange={toggleStrip} disabled={!!importing} />
-        <span><b>Strip leading numbers</b><br />
-          <span class="muted small">For files named with a card number first, like <code>001 Captain Marvel.png</code>: that number
-            becomes the card's number and is left out of its name (“Captain Marvel”, card 001). Leave it off when the file names are
-            just the card names: names that start with a number then stay whole (<code>2099 Spider-Man.png</code> stays
-            “2099 Spider-Man”) and cards are numbered 1, 2, 3… in file-name order.</span></span>
-      </label>
-      {#if previewErr}<p class="err">{previewErr}</p>{/if}
-      {#if preview}
-        <div class="row">
-          <label class="check grow">Set name <input class="grow" bind:value={folderName} disabled={!!importing} /></label>
-          <span class="muted small">project {preview.projectId}</span>
-        </div>
-        <div class="muted">
-          <b>{preview.cards}</b> card images{preview.logo ? ' · set logo' : ''}{preview.csv ? ` · cards.csv: ${preview.csvMatched} of ${preview.csvRows} rows matched` : ''}{preview.rotated ? ` · ${preview.rotated} landscape (turned upright)` : ''}
-        </div>
-        {#if preview.samples?.length}
-          <table class="rar">
-            <thead><tr><th>File</th><th>Card #</th><th>Name</th></tr></thead>
-            <tbody>{#each preview.samples as c}<tr><td class="muted">{c.file}</td><td>{c.number}</td><td>{c.name}</td></tr>{/each}
-              {#if preview.cards > preview.samples.length}<tr><td class="muted" colspan="3">… {preview.cards - preview.samples.length} more</td></tr>{/if}</tbody>
-          </table>
-        {/if}
-        <table class="rar">
-          <thead><tr><th>Rarity</th><th>Cards</th><th>{options?.keepRarities ? "Counts as" : "In game"}</th></tr></thead>
-          <tbody>{#each preview.rarities as r}<tr><td>{r.name}</td><td>{r.cards}</td><td>{r.game}</td></tr>{/each}</tbody>
-        </table>
-        {#each preview.warnings ?? [] as w}<p class="warn">⚠ {w}</p>{/each}
-        {#if preview.unmatched?.length}<p class="muted small">Not found: {preview.unmatched.slice(0, 8).join(', ')}{preview.unmatched.length > 8 ? '…' : ''}</p>{/if}
-        {#if preview.skipped?.length}<p class="muted small">Skipped: {preview.skipped.slice(0, 8).join(', ')}{preview.skipped.length > 8 ? '…' : ''}</p>{/if}
-        <div class="row">
-          {#if preview.imported}
-            <span class="muted grow">Already imported — open it, or delete it first to import again.</span>
-            <button onclick={() => open(preview.projectId)}>Open</button>
-          {:else}
-            <span class="grow"></span>
-            <div class="btnstack">
-              {#if inCatalog[preview.projectId]}
-                <button class="primary" onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
-              {:else}
-                <button class="primary" disabled={eplImporting || !preview.cards || waiting({ code: preview.dir }) || queue.key === keyOf({ code: preview.dir })}
-                  onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>{importing ? 'Queue' : 'Import'}</button>
+        <div class="notice info">Converts the card sets of an Enhanced Prefab Loader mod into Studio sets, once: cards, the mod's pack
+          &amp; box art and card back with its pack odds, plus its accessories, figurines and furniture. EPL isn't needed in the game.
+          The art belongs to the mod's authors, so converted sets stay on this PC (left out of setup exports).</div>
+        <label class="check opt">
+          <input type="checkbox" bind:checked={stripNumbers} onchange={() => { remember('stripNumbers', stripNumbers ? '1' : ''); if (eplPath) previewEPL(); }} disabled={!!importing || eplBusy} />
+          <span><b>Strip leading numbers</b><br />
+            <span class="muted small">Leaves out the number many mods put before their names (“001 - 2019 Base Playmat” → “2019 Base Playmat”)
+              for sets, packs, boxes, accessories, figurines and furniture. Only a number followed by a separator (- : . ) |) counts,
+              so names like “2019 Base” stay whole. Card names are never changed.</span></span>
+        </label>
+        {#if eplBusy}<p class="muted">Reading the mod… {progress?.stage === 'unpack' && progress.total ? `(${progress.done} / ${progress.total} MB unpacked)` : ''}</p>{/if}
+        {#if eplErr}<div class="notice err">{eplErr}</div>{/if}
+        {#if epl}
+          <div class="stats">
+            <div class="stat"><span class="label">Card sets</span><b>{(epl.sets ?? []).length}</b></div>
+            <div class="stat"><span class="label">Cards</span><b>{(epl.sets ?? []).reduce((n: number, x: any) => n + (x.cards ?? 0), 0)}</b></div>
+            <div class="stat"><span class="label">Items</span><b>{(epl.items ?? []).length}</b><span class="sub">accessories, furniture…</span></div>
+            <div class="stat"><span class="label">Not imported</span><b>{(epl.skipped ?? []).length}</b></div>
+          </div>
+          {#each epl.warnings ?? [] as w}<div class="notice">{w}</div>{/each}
+          <div class="block">
+            <div class="bhead"><h2>About this mod</h2><span class="muted small">Saved with everything this import makes (shown as “from …”).</span></div>
+            <div class="row origin">
+              <label class="field grow">Mod name<input bind:value={originMod} placeholder={epl.modName} disabled={!!importing} /></label>
+              <label class="field">Author<input bind:value={originAuthor} placeholder="optional" disabled={!!importing} /></label>
+            </div>
+            <label class="field">Link<input bind:value={originLink} placeholder="optional, e.g. the mod's Nexus page" disabled={!!importing} /></label>
+          </div>
+          {#if !(epl.sets ?? []).length}<p class="muted">This mod has no card sets.</p>{/if}
+          {#each epl.sets ?? [] as set (set.code)}
+            <div class="block">
+              <div class="bhead">
+                <label class="check grow"><input type="checkbox" bind:checked={pickSets[set.code]} disabled={!!importing || set.imported} /> <h2>{set.name}</h2></label>
+                {#if set.imported}<span class="badge ok">imported</span>{:else if inCatalog[set.projectId]}<span class="badge">in catalog</span>{/if}
+              </div>
+              <div class="muted small">{set.cards} cards · {set.renderMode === 'FullImage' ? 'full card images' : 'art in the game frame'} · project {set.projectId}</div>
+              {#each set.packs ?? [] as pk}
+                <div class="small">Pack <b>{pk.name}</b>{pk.box ? ` + box ${pk.box}` : ''} <span class="muted">· {pk.strategy} odds · foil {pk.foilChance}% per card</span></div>
+              {/each}
+              {#each set.warnings ?? [] as w}<div class="notice">{w}</div>{/each}
+              {#if set.problemCount}
+                <div class="notice">{set.problemCount} card(s) can't be read and will be left out: {(set.problems ?? []).join('; ')}{set.problemCount > (set.problems ?? []).length ? ' …' : ''}</div>
               {/if}
+              <details>
+                {#if options?.keepRarities}
+                  <summary>Rarities — {(set.tiers ?? []).length} tiers in the mod, each kept as a rarity of its own</summary>
+                  <p class="muted small">Every tier becomes a rarity of the set with the mod's own name, pack odds and card prices.
+                    Per pack = cards of that tier in an average pack.</p>
+                  <table class="rar">
+                    <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th></tr></thead>
+                    <tbody>{#each set.tiers ?? [] as t}<tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td></tr>{/each}</tbody>
+                  </table>
+                {:else}
+                  <summary>Rarities — {(set.tiers ?? []).length} tiers in the mod → our 4</summary>
+                  <p class="muted small">Picked by how often the mod's packs give a card of each tier; change any of them. Per pack = cards of that tier in an average pack.
+                    Tick “Keep the set's own rarities” in ⚙ to keep every tier instead.</p>
+                  <table class="rar">
+                    <thead><tr><th>Mod tier</th><th>Cards</th><th>Per pack</th><th>Game rarity</th></tr></thead>
+                    <tbody>
+                      {#each set.tiers ?? [] as t}
+                        <tr><td>{t.name}</td><td>{t.cards}</td><td>{pct(t.perPack)}</td>
+                          <td><select bind:value={rarityChoice[set.code][t.name]} disabled={!!importing}>
+                            {#each GAME_RARITIES as r}<option value={r}>{r}</option>{/each}
+                          </select></td></tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                {/if}
+              </details>
+              {#if set.imported}
+                <div class="row"><span class="muted grow">Already imported — open it, or delete it first to import it again.</span>
+                  <button onclick={() => open(set.projectId)}>Open</button></div>
+              {:else if inCatalog[set.projectId]}
+                <div class="row"><span class="muted grow">In the catalog already (imported in another setup or earlier) — add it instantly instead of converting again.</span>
+                  <button onclick={() => addFromCatalog(set)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button></div>
+              {/if}
+            </div>
+          {/each}
+          {#if (epl.items ?? []).length}
+            <div class="block">
+              <div class="bhead"><h2>Accessories, figurines, furniture &amp; decorations</h2><span class="count">{epl.items.length}</span><span class="grow"></span>
+                <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, true])))}>Select all</button>
+                <button class="small" disabled={!!importing} onclick={() => (pickItems = Object.fromEntries(epl.items.map((x: any) => [x.key, false])))}>Deselect all</button></div>
+              <p class="muted small">They go to the Accessories, Furniture and Decorations pages with the mod's own textures and models;
+                fine-tune them there (figurine size on the shelf, furniture item spots, decoration price).</p>
+              <div class="picklist">
+                {#each epl.items as it (it.key)}
+                  <label class="check"><input type="checkbox" bind:checked={pickItems[it.key]} disabled={!!importing} />
+                    <span>{it.name} <span class="muted small">— {it.kind === 'Decoration' ? `${it.base} decoration` : it.kind}{it.note ? ` (${it.note})` : ''}{it.exists ? ' · already converted (replaced)' : ''}</span></span></label>
+                {/each}
+              </div>
             </div>
           {/if}
-        </div>
-      {/if}
-      <details open={!folderPath}>
-        <summary>How to set up the folder</summary>
-        <p>Use card images you own (scans or screenshots). Studio copies them into a new set; your folder isn't changed.</p>
-        <pre>My Set\                  ← set name = folder name
+          {#if (epl.skipped ?? []).length}
+            <details class="block">
+              <summary>Not imported ({epl.skipped.length})</summary>
+              <ul>{#each epl.skipped as k}<li>{k.kind}: {k.name} <span class="muted">— {k.reason}</span></li>{/each}</ul>
+            </details>
+          {/if}
+          <div class="actionbar">
+            <span class="grow muted">{eplCount} selected</span>
+            <button class="primary big" disabled={!!importing || eplBusy || !eplCount} onclick={importEPL}>Import EPL mod</button>
+          </div>
+        {/if}
+  {:else}
+        {#if !folderPath}
+          <button class="drop" disabled={!!importing} onclick={chooseFolder}>
+            <b>Drop a folder of card images here</b><span class="muted">or click to choose one</span>
+          </button>
+        {:else}
+          <div class="filebar">
+            <span class="path" title={folderPath}>{folderPath}</span>
+            <button class="small" disabled={!!importing} onclick={previewFolder} title="Read the folder again">Re-read</button>
+            <button class="small" disabled={!!importing} onclick={chooseFolder}>Choose another…</button>
+          </div>
+        {/if}
+        <label class="check opt">
+          <input type="checkbox" bind:checked={stripNumbers} onchange={toggleStrip} disabled={!!importing} />
+          <span><b>Strip leading numbers</b><br />
+            <span class="muted small">For files named with a card number first, like <code>001 Captain Marvel.png</code>: that number
+              becomes the card's number and is left out of its name (“Captain Marvel”, card 001). Leave it off when the file names are
+              just the card names: names that start with a number then stay whole (<code>2099 Spider-Man.png</code> stays
+              “2099 Spider-Man”) and cards are numbered 1, 2, 3… in file-name order.</span></span>
+        </label>
+        {#if previewErr}<div class="notice err">{previewErr}</div>{/if}
+        {#if preview}
+          <div class="stats">
+            <div class="stat"><span class="label">Card images</span><b>{preview.cards}</b>
+              <span class="sub">{preview.rotated ? `${preview.rotated} landscape, turned upright` : 'all portrait'}</span></div>
+            <div class="stat"><span class="label">Rarities</span><b>{preview.rarities.length}</b><span class="sub">from the subfolders</span></div>
+            <div class="stat"><span class="label">cards.csv</span><b>{preview.csv ? `${preview.csvMatched}/${preview.csvRows}` : '—'}</b>
+              <span class="sub">{preview.csv ? 'rows matched' : 'none in the folder'}</span></div>
+            <div class="stat"><span class="label">Set logo</span><b>{preview.logo ? 'Yes' : '—'}</b><span class="sub">{preview.logo ? 'for the pack art' : 'logo.png / set.png'}</span></div>
+          </div>
+          {#each preview.warnings ?? [] as w}<div class="notice">{w}</div>{/each}
+          <div class="block">
+            <div class="bhead"><h2>Set</h2><span class="muted small">project {preview.projectId}</span></div>
+            <label class="field">Set name<input bind:value={folderName} disabled={!!importing} /></label>
+          </div>
+          <div class="twocol">
+            {#if preview.samples?.length}
+              <div class="block">
+                <div class="bhead"><h2>First cards</h2></div>
+                <table class="rar">
+                  <thead><tr><th>File</th><th>#</th><th>Name</th></tr></thead>
+                  <tbody>{#each preview.samples as c}<tr><td class="muted">{c.file}</td><td>{c.number}</td><td>{c.name}</td></tr>{/each}
+                    {#if preview.cards > preview.samples.length}<tr><td class="muted" colspan="3">… {preview.cards - preview.samples.length} more</td></tr>{/if}</tbody>
+                </table>
+              </div>
+            {/if}
+            <div class="block">
+              <div class="bhead"><h2>Rarities</h2></div>
+              <table class="rar">
+                <thead><tr><th>Rarity</th><th>Cards</th><th>{options?.keepRarities ? 'Pack slots' : 'In game'}</th></tr></thead>
+                <tbody>{#each preview.rarities as r}<tr><td>{r.name}</td><td>{r.cards}</td><td>{r.game}</td></tr>{/each}</tbody>
+              </table>
+            </div>
+          </div>
+          {#if preview.unmatched?.length}<p class="muted small">Not found: {preview.unmatched.slice(0, 8).join(', ')}{preview.unmatched.length > 8 ? '…' : ''}</p>{/if}
+          {#if preview.skipped?.length}<p class="muted small">Skipped: {preview.skipped.slice(0, 8).join(', ')}{preview.skipped.length > 8 ? '…' : ''}</p>{/if}
+          <div class="actionbar">
+            {#if preview.imported}
+              <span class="muted grow">Already imported — open it, or delete it first to import again.</span>
+              <button class="big" onclick={() => open(preview.projectId)}>Open</button>
+            {:else if inCatalog[preview.projectId]}
+              <span class="grow"></span>
+              <button class="primary big" onclick={() => addFromCatalog(preview)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
+            {:else}
+              <span class="grow muted">{preview.cards} cards</span>
+              <button class="primary big" disabled={eplImporting || !preview.cards || waiting({ code: preview.dir }) || queue.key === keyOf({ code: preview.dir })}
+                onclick={() => doImport({ code: preview.dir, name: folderName.trim() || preview.name, cards: preview.cards })}>{importing ? 'Queue' : 'Import'}</button>
+            {/if}
+          </div>
+        {/if}
+        <details class="block" open={!folderPath}>
+          <summary><b>How to set up the folder</b></summary>
+          <p>Use card images you own (scans or screenshots). Studio copies them into a new set; your folder isn't changed.</p>
+          <pre>My Set\                  ← set name = folder name
   logo.png               ← optional: set logo for the pack art
   cards.csv              ← optional, see below
   1 Common\  Captain Marvel.png …
   2 Rare\    …
   3 Legendary\ …</pre>
-        <ul>
-          <li><b>Rarity</b> = the subfolder, lowest first by name (a leading number like “1 ” only sets the order and is
-            dropped from the name). Images not in a subfolder are Common. With <b>Keep the set's own rarities</b> ticked, each
-            subfolder becomes a rarity of the set with that name (“Secret Rare”, “Gold Foil”…), in that order; unticked, they're
-            put on the game's Common / Rare / Epic / Legendary (known names like Uncommon, Mythic, Secret by meaning, others
-            by folder order).</li>
-          <li><b>Name</b> = the file name (<code>Captain Marvel.png</code> → “Captain Marvel”; underscores become spaces).
-            Cards are numbered 1, 2, 3… in file-name order — or tick <b>Strip leading numbers</b> when the files start with
-            the card number. Adding or renaming other images later never changes which card is which in saves.</li>
-          <li><b>cards.csv</b> (comma or semicolon separated): a <code>file</code> column plus any of <code>name, number,
-            rarity, price, foilPrice, artist, text, type</code>. Its values beat the folder and file name; <code>price</code>
-            (USD) is the real price Gamify uses, read again by Refresh prices.</li>
-          <li>Card-shaped images (5:7, like 63×88 mm) fill the card; landscape ones are turned upright.</li>
-        </ul>
-      </details>
+          <ul>
+            <li><b>Rarity</b> = the subfolder, lowest first by name (a leading number like “1 ” only sets the order and is
+              dropped from the name). Images not in a subfolder are Common. With <b>Keep the set's own rarities</b> ticked, each
+              subfolder becomes a rarity of the set with that name (“Secret Rare”, “Gold Foil”…), in that order; unticked, they're
+              put on the game's Common / Rare / Epic / Legendary (known names like Uncommon, Mythic, Secret by meaning, others
+              by folder order).</li>
+            <li><b>Name</b> = the file name (<code>Captain Marvel.png</code> → “Captain Marvel”; underscores become spaces).
+              Cards are numbered 1, 2, 3… in file-name order — or tick <b>Strip leading numbers</b> when the files start with
+              the card number. Adding or renaming other images later never changes which card is which in saves.</li>
+            <li><b>cards.csv</b> (comma or semicolon separated): a <code>file</code> column plus any of <code>name, number,
+              rarity, price, foilPrice, artist, text, type</code>. Its values beat the folder and file name; <code>price</code>
+              (USD) is the real price Gamify uses, read again by Refresh prices.</li>
+            <li>Card-shaped images (5:7, like 63×88 mm) fill the card; landscape ones are turned upright.</li>
+          </ul>
+        </details>
+  {/if}
+      </section>
     </div>
   {:else if loading}
     <p class="muted">Loading sets from {source?.name ?? '…'}…</p>
   {:else}
-    <div class="row listhead">
-      <span class="muted grow">{shown.length} sets</span>
-      {#if notYet.length}
-        <button disabled={eplImporting} onclick={importAll}
-          title="Imports every set in this list (as filtered by the menu and search) that isn't imported yet, one after another">Import all ({notYet.length})</button>
-      {/if}
-    </div>
-    <div class="grid">
+    <!-- Master–detail: the set list on the left, the picked set's preview on the right; each scrolls on its own. -->
+    <div class="list">
+      <div class="listhead muted small">{shown.length} set{shown.length === 1 ? '' : 's'}{importedCount ? ` · ${importedCount} imported` : ''}</div>
       {#each shown as s (s.code)}
-        <div class="set">
-          {#if s.icon}
-            <img class:mono={s.iconMono} class:logo={!s.iconMono} src={s.icon} alt="" />
-          {:else}
-            <div class="noicon">{s.code.slice(0, 4).toUpperCase()}</div>
-          {/if}
-          <div class="grow">
-            <div class="name">{s.name}{#if s.releasedAt && s.releasedAt > today}<span class="upcoming" title="Not released yet — card images may be missing">upcoming</span>{/if}</div>
-            <div class="muted small">{[s.code.toUpperCase(), s.releasedAt, s.cards ? `${s.cards} cards` : ''].filter(Boolean).join(' · ')}{s.group ? ` · ${s.group}` : ''}</div>
+        <div class="set" class:picked={picked?.code === s.code} role="button" tabindex="0"
+          onclick={(e) => { if (!(e.target as HTMLElement).closest('button')) pickedCode = s.code; }}
+          onkeydown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) pickedCode = s.code; }}>
+          <div class="icon">
+            {#if s.icon}<img class:mono={s.iconMono} src={s.icon} alt="" />{:else}<span>{s.code.slice(0, 4).toUpperCase()}</span>{/if}
           </div>
-          {#if s.imported}
-            <button onclick={() => open(s.projectId)}>Open</button>
-          {:else}
-            <div class="btnstack">
-              {#if inCatalog[s.projectId]}
-                <button class="primary" onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">Add from catalog</button>
-              {:else}
-                {#if queue.key === keyOf(s)}
-                  <button class="primary" disabled>Importing…</button>
-                {:else if waiting(s)}
-                  <button onclick={() => unqueue(keyOf(s))} title="Waiting for the imports before it — click to take it out of the queue">Queued</button>
-                {:else}
-                  <button class="primary" disabled={eplImporting} onclick={() => doImport(s)}
-                    title={importing ? 'Imported after the sets already running or queued' : ''}>{importing ? 'Queue' : 'Import'}</button>
-                {/if}
-              {/if}
-            </div>
-          {/if}
+          <div class="info">
+            <div class="name">{s.name}</div>
+            <div class="sub">{[s.code.toUpperCase(), monthYear(s.releasedAt), s.cards ? `${s.cards} cards` : '', group === 'main' ? '' : s.group].filter(Boolean).join(' · ')}</div>
+          </div>
+          <div class="state">
+            {#if s.releasedAt && s.releasedAt > today}<span class="badge" title="Not released yet — card images may be missing">upcoming</span>{/if}
+            {#if s.imported}<span class="badge ok">imported</span>
+            {:else if queue.key === keyOf(s)}<span class="badge warn">importing</span>
+            {:else if waiting(s)}<span class="badge">queued</span>
+            {:else if inCatalog[s.projectId]}<span class="badge" title="Already on this PC — added instantly">in catalog</span>{/if}
+            {@render setActions(s, true)}
+          </div>
         </div>
+      {:else}
+        <p class="muted empty">No set matches.</p>
       {/each}
     </div>
+    <div class="detail">
+      {#if picked}
+        <SetPreview {source} set={picked} {options} lang={langs.length ? lang : ''} keepRarities={!!options?.keepRarities}
+          actions={setActions} />
+      {:else}
+        <div class="placeholder">
+          <h1>{source?.game}</h1>
+          <p class="muted">{sets.length} sets from {source?.name}{importedCount ? `, ${importedCount} imported in this setup` : ''}.</p>
+          <p>Pick a set on the left to see its cards, rarities, value and booster pack before you import it.</p>
+        </div>
+      {/if}
+    </div>
   {/if}
+  </div>
 </div>
+
+{#snippet setActions(s: any, small: boolean)}
+  {#if s.imported}
+    <button class:small onclick={() => open(s.projectId)}>Open</button>
+  {:else if inCatalog[s.projectId]}
+    <button class="primary" class:small onclick={() => addFromCatalog(s)} title="Already imported in another setup or earlier — added instantly, no download">{small ? 'Add' : 'Add from catalog'}</button>
+  {:else if queue.key === keyOf(s)}
+    <button class="primary" class:small disabled>Importing…</button>
+  {:else if waiting(s)}
+    <button class:small onclick={() => unqueue(keyOf(s))} title="Waiting for the imports before it — click to take it out of the queue">{small ? 'Unqueue' : 'Queued — take out'}</button>
+  {:else}
+    <button class="primary" class:small disabled={eplImporting} onclick={() => doImport(s)}
+      title={importing ? 'Imported after the sets already running or queued' : ''}>{importing ? 'Queue' : 'Import'}</button>
+  {/if}
+{/snippet}
 
 
 {#if choice}
@@ -779,46 +902,84 @@
 {/if}
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .dialog { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; max-width: 520px; display: flex; flex-direction: column; gap: 10px; }
   .dialog h3 { margin: 0; }
   .dialog p { margin: 0; }
   .col { display: flex; flex-direction: column; gap: 6px; }
   .col button { text-align: left; }
-  .page { padding: 20px 24px; overflow: auto; height: 100%; }
-  header { margin-bottom: 12px; }
-  .sources { margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
-  .source { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 14px; }
-  .source.active { border-color: var(--accent); background: var(--panel); }
-  .filters { margin-bottom: 12px; flex-wrap: wrap; }
-  .progress { background: var(--panel); border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+  /* Page = fixed header + toolbar; the body below fills the rest. Sets: list and preview scroll on their own. */
+  .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .head { display: flex; align-items: center; gap: 24px; padding: 16px 24px 0; border-bottom: 1px solid var(--line); }
+  .head h2 { font-size: 20px; padding-bottom: 10px; }
+  .tabbar { align-self: flex-end; padding: 0; border-bottom: none; }
+  .head > button { margin-bottom: 8px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .toolbar .search { width: 260px; }
+  .settings { position: relative; }
+  .settings summary { list-style: none; cursor: pointer; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); font-size: 13px; }
+  .settings summary::-webkit-details-marker { display: none; }
+  .settings[open] summary { border-color: var(--accent); }
+  .settings .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 300px; display: flex; flex-direction: column; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
+  .progress { background: var(--panel); border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 12px; margin: 12px 24px 0; display: flex; flex-direction: column; gap: 8px; }
   .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .bar div { height: 100%; background: var(--accent); transition: width 0.2s; }
-  .listhead { margin-bottom: 8px; }
   .queue { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
   .chip .x { padding: 0 5px; border: none; background: none; line-height: 1; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }
-  .btnstack { display: flex; flex-direction: column; gap: 6px; }
-  .set { display: flex; gap: 12px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
-  .set img.mono { width: 32px; height: 32px; filter: invert(1) opacity(0.85); }
-  .set img.logo { width: 64px; height: 32px; object-fit: contain; }
-  .noicon { width: 64px; height: 32px; display: grid; place-items: center; font-size: 11px; color: var(--muted, #888); border: 1px dashed var(--line); border-radius: 4px; }
-  .name { font-weight: 600; }
-  .upcoming { margin-left: 8px; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--accent-2); color: var(--muted, #aaa); }
-  .small { font-size: 12px; }
-  .folder { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 820px; }
-  .folder .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .folder .err { color: var(--danger, #e66); }
-  .folder p { margin: 0; }
-  .folder .note { color: var(--muted, #aaa); }
+  .main { flex: 1; min-height: 0; overflow: auto; padding: 16px 24px; }
+  .main.md { display: grid; grid-template-columns: 380px minmax(0, 1fr); padding: 0; overflow: hidden; }
+  .list { overflow: auto; border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .listhead { padding: 4px 8px 6px; }
+  .empty { padding: 8px; }
+  .set { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .set:hover { background: var(--panel); }
+  .set.picked { background: var(--panel-2); border-color: var(--accent-2); }
+  .set .icon { width: 48px; height: 28px; flex: none; display: grid; place-items: center; }
+  .set .icon img { width: 48px; height: 28px; object-fit: contain; } /* fixed box: tall pack pictures (Yu-Gi-Oh!) fit inside */
+  .set .icon img.mono { filter: invert(1) opacity(0.85); }
+  .set .icon span { font-size: 10px; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 3px 4px; }
+  .set .info { flex: 1; min-width: 0; }
+  .set .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .set .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .set .state { display: flex; align-items: center; gap: 6px; flex: none; }
+  .detail { overflow: auto; min-width: 0; }
+  .placeholder { margin: 18vh auto 0; max-width: 420px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+  .placeholder h1 { font-size: 22px; }
+  .placeholder p { margin: 0; }
+  /* From files: kind nav + pane (drop zone, file bar, blocks, action bar). */
+  .kind { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 8px; border: 1px solid transparent; background: none; text-align: left; }
+  .kind:hover:not(:disabled) { background: var(--panel); border-color: transparent; }
+  .kind.picked { background: var(--panel-2); border-color: var(--accent-2); }
+  .kind .glyph { font-size: 22px; width: 32px; text-align: center; flex: none; }
+  .kind .info { display: flex; flex-direction: column; min-width: 0; }
+  .kind .name { font-weight: 600; }
+  .kind .sub { font-size: 12px; color: var(--muted); white-space: normal; }
+  .bigglyph { font-size: 34px; width: 64px; height: 64px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; flex: none; }
+  .pane-hero .grow > div { margin-top: 2px; }
+  .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 150px; width: 100%;
+    border: 2px dashed var(--line); border-radius: 12px; background: var(--panel); font-size: 15px; }
+  .drop:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-2); }
+  .droprow { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .filebar { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .filebar .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, monospace; font-size: 12px; }
+  .pane p { margin: 0; }
+  .pane .opt { align-items: flex-start; gap: 10px; }
+  .pane .opt input { margin-top: 2px; width: 18px; height: 18px; }
   .origin .field:last-child { width: 220px; }
-  .eplset { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .folder .opt { align-items: flex-start; gap: 8px; max-width: 720px; }
-  .folder .opt input { margin-top: 2px; width: 18px; height: 18px; }
-  .rar { border-collapse: collapse; width: max-content; }
-  .rar th, .rar td { text-align: left; padding: 2px 14px 2px 0; }
-  .rar th { font-weight: 500; color: var(--muted, #aaa); }
-  .folder pre { margin: 6px 0; padding: 8px; background: var(--bg); border-radius: 4px; }
-  .folder ul { margin: 6px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  .picklist { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow: auto; }
+  .picklist .check { align-items: flex-start; }
+  .twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .count { font-size: 11px; color: var(--muted); background: var(--panel-2); border-radius: 8px; padding: 0 6px; }
+  .bhead h2 { margin: 0; }
+  .bhead .check h2 { font-size: 15px; }
+  .actionbar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35); }
+  button.big { padding: 9px 22px; font-size: 15px; }
+  .rar { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .rar th, .rar td { text-align: left; padding: 4px 12px 4px 0; border-top: 1px solid var(--line); }
+  .rar thead th { font-weight: 500; color: var(--muted, #aaa); border-top: none; }
+  .pane pre { margin: 6px 0; padding: 10px; background: var(--bg); border-radius: 6px; }
+  .pane ul { margin: 6px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  details.block summary { cursor: pointer; }
 </style>

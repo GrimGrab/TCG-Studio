@@ -186,9 +186,18 @@ func (s *lorcanaSource) cards(ctx context.Context, code string) ([]cardIn, error
 }
 
 func (s *lorcanaSource) Import(ctx context.Context, ws project.Workspace, code string, opt Options, report func(Progress)) (*project.Project, error) {
-	sets, err := s.sets(ctx)
+	in, err := s.prepare(ctx, code, &opt, report)
 	if err != nil {
 		return nil, err
+	}
+	return buildProject(ctx, ws, in, opt, report)
+}
+
+// prepare finds the set and reads its card list (Import and the set preview).
+func (s *lorcanaSource) prepare(ctx context.Context, code string, opt *Options, report func(Progress)) (setIn, error) {
+	sets, err := s.sets(ctx)
+	if err != nil {
+		return setIn{}, err
 	}
 	var set *lorcastSet
 	for i := range sets {
@@ -197,21 +206,21 @@ func (s *lorcanaSource) Import(ctx context.Context, ws project.Workspace, code s
 		}
 	}
 	if set == nil {
-		return nil, fmt.Errorf("Lorcana set %s not found", code)
+		return setIn{}, fmt.Errorf("Lorcana set %s not found", code)
 	}
 	report(Progress{Stage: "cards", Message: "Fetching card list…"})
 	cards, err := s.cards(ctx, code)
 	if err != nil {
-		return nil, err
+		return setIn{}, err
 	}
 	if opt.RarityMap == nil {
 		opt.RarityMap = DefaultLorcanaRarityMap()
 	}
-	return buildProject(ctx, ws, setIn{ID: s.ProjectID(code, ""), Source: "lorcast", Code: code, Name: set.Name,
+	return setIn{ID: s.ProjectID(code, ""), Source: "lorcast", Code: code, Name: set.Name,
 		ReleasedAt: set.Released, Cards: cards, Get: s.cdn.Download, Rotate: true, // locations are landscape
 		Rarity: rarityMapper(opt.RarityMap, func(string) string { return "Legendary" }),
 		// Lorcana boosters: commons, uncommons, then rares and up (plus a foil in every pack).
-		Slots: Lorcana.Slots, FoilChance: Lorcana.FoilChance}, opt, report)
+		Slots: Lorcana.Slots, FoilChance: Lorcana.FoilChance}, nil
 }
 
 // setCards fetches the card list of the set p was imported from (prices, Re-download image).

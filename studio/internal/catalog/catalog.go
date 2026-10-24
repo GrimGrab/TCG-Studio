@@ -109,6 +109,7 @@ type Entry struct {
 	UsedBy     []SetupRef `json:"usedBy"` // the setups that have it
 	Cover      string     `json:"cover"`  // sets: a card image path (relative to the set) for the thumbnail
 	Icon       string     `json:"icon"`   // library entries: shop icon path (accessories.Library relative)
+	Base       string     `json:"base"`   // library entries: the vanilla item it is built on ("" = the kind's default)
 }
 
 // FromRoot is the folder the entry is read from (the catalog, or the setup that has it).
@@ -165,7 +166,7 @@ func (c Catalog) collect(h setups.Home, activeRoot, kindID string, withActive bo
 			sources = append(sources, source{s.Folder, s.Name, false})
 		}
 	}
-	seen := map[string]bool{}
+	seen := map[string]int{} // id → index in out
 	var out []Entry
 	for _, src := range sources {
 		items, err := k.Store.List(c.ws(), src.root)
@@ -173,13 +174,20 @@ func (c Catalog) collect(h setups.Home, activeRoot, kindID string, withActive bo
 			continue
 		}
 		for _, it := range items {
-			if seen[it.ID] {
+			if i, ok := seen[it.ID]; ok {
+				// A template saved before its picture was made (a furniture icon is rendered on save): show a setup's.
+				if out[i].Icon == "" {
+					out[i].Icon = it.Icon
+				}
+				if out[i].Cover == "" {
+					out[i].Cover = it.Cover
+				}
 				continue
 			}
-			seen[it.ID] = true
+			seen[it.ID] = len(out)
 			e := Entry{Kind: kindID, Key: it.ID, ID: it.ID, Name: it.Name, Sub: it.Sub, Detail: it.Detail, Source: it.Source,
 				Converted: it.Converted, Saved: src.saved, From: src.name, fromRoot: src.root, Cover: it.Cover, Icon: it.Icon,
-				Here: have[it.ID], UsedBy: usedBy[it.ID]}
+				Base: it.Base, Here: have[it.ID], UsedBy: usedBy[it.ID]}
 			if o := it.Origin; o != nil {
 				e.Origin, e.OriginKind, e.Author = o.Name(), o.Kind, o.Author
 			}

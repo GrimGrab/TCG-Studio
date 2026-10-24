@@ -156,6 +156,5 @@
   .edit { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
   .dot { color: var(--accent-2); }
   .tag { color: var(--accent); }
-  .grow { flex: 1; }
-  .small { font-size: 12px; margin: 0; }
+  .small { margin: 0; }
 </style>

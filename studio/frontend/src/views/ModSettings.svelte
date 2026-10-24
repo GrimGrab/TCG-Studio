@@ -115,17 +115,11 @@
   });
   const allOf = (t: Top) => [...t.entries, ...t.groups.flatMap((g) => g.entries)];
 
-  // Collapsible sections and groups (closed by default, remembered); a search opens everything that matches.
-  const OPEN_KEY = 'modsettings.open';
-  let open = $state<Record<string, boolean>>((() => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); } catch { return {}; } })());
-  $effect(() => { try { localStorage.setItem(OPEN_KEY, JSON.stringify(open)); } catch {} });
-  const isOpen = (id: string) => !!q || !!open[id];
-  const toggle = (id: string) => (open[id] = !open[id]);
-  function setAll(v: boolean) {
-    const next: Record<string, boolean> = {};
-    for (const s of sections) { next[s.name] = v; const i = s.name.indexOf(' - '); if (i > 0) next[s.name.slice(0, i)] = v; }
-    open = next;
-  }
+  // Master–detail: the sections on the left, the chosen one on the right (remembered); a search shows matches from every section.
+  const CUR_KEY = 'modsettings.section';
+  let current = $state((() => { try { return localStorage.getItem(CUR_KEY) || ''; } catch { return ''; } })());
+  $effect(() => { try { localStorage.setItem(CUR_KEY, current); } catch {} });
+  const shownTops = $derived(q ? tree : tree.filter((t) => t.name === (tree.some((x) => x.name === current) ? current : tree[0]?.name)));
   const isDefault = (e: any) => e.value === e.default || round(e.value) === round(e.default);
   const changed = (entries: any[]) => entries.filter((e) => !isDefault(e)).length;
 
@@ -174,91 +168,86 @@
   {#snippet title()}<h2>Mod settings</h2>{/snippet}
 </SaveBar>
 <div class="page">
-  <header class="row">
-    <input class="search" type="search" placeholder="Search settings…" bind:value={query} />
-    <div class="grow"></div>
-    <button onclick={() => setAll(true)} disabled={!sections.length}>Expand all</button>
-    <button onclick={() => setAll(false)} disabled={!sections.length}>Collapse all</button>
-    <button onclick={load}>Reload</button>
-    <button class="danger" onclick={() => restore('')} disabled={!sections.length}>Restore all defaults</button>
-  </header>
-  <p class="muted intro">
-    The same settings as the in-game <b>F1</b> menu (TCG Custom Cards), stored in the mod's config file when you click
-    <b>Save</b>. {gameRunning ? 'The game is running: settings marked "Applies live" update right away, the rest on the next start.' : 'They take effect the next time the game starts.'}
-  </p>
-  {#if setup}
-    <p class="intro">
-      Settings for setup <b>{setup}</b>. Each setup keeps its own copy: switching setups swaps them, so a change here doesn't carry over to
-      your other setups.
-    </p>
-  {/if}
+  <nav class="nav sidelist">
+    <div class="navtools"><input type="search" placeholder="Search every setting…" bind:value={query} /></div>
+    <div class="navlist">
+      {#each tree as t (t.name)}
+        <button class="item" class:active={!q && shownTops[0]?.name === t.name} onclick={() => { query = ''; current = t.name; }}>
+          <span class="info"><span class="name">{t.name}</span>
+            <span class="sub">{allOf(t).length} setting{allOf(t).length === 1 ? '' : 's'}{t.groups.length ? ` · ${t.groups.length} group${t.groups.length === 1 ? '' : 's'}` : ''}</span></span>
+          {#if changed(allOf(t))}<span class="badge changed" title="{changed(allOf(t))} differ from the mod's defaults">{changed(allOf(t))}</span>{/if}
+        </button>
+      {/each}
+    </div>
+    <div class="navfoot">
+      <button onclick={load} title="Read the config file again">Reload</button>
+      <button class="danger" onclick={() => restore('')} disabled={!sections.length}>Restore all defaults</button>
+    </div>
+  </nav>
 
-  {#if loading}
-    <p class="muted">Loading…</p>
-  {:else if error}
-    <p class="warn">{error}</p>
-  {:else}
-    {#if q && !tree.length}<p class="muted">No setting matches "{query}".</p>{/if}
-    {#each tree as t (t.name)}
-      <section>
-        <div class="row">
-          <button class="fold grow" onclick={() => toggle(t.name)} aria-expanded={isOpen(t.name)}>
-            <span class="caret">{isOpen(t.name) ? '▾' : '▸'}</span>
-            <h3>{t.name}</h3>
-            <span class="muted small">{allOf(t).length} setting{allOf(t).length === 1 ? '' : 's'}</span>
-            {@render changedBadge(changed(allOf(t)), 'section')}
-          </button>
-          {#if isOpen(t.name) && !q}<button class="small" onclick={() => restore(t.name)}>Restore section defaults</button>{/if}
-        </div>
-        {#if isOpen(t.name)}
-          {#each t.entries as e (e.key)}{@render entry(e)}{/each}
+  <div class="body">
+    <div class="intro">
+      <span class="muted">The in-game <b>F1</b> menu's settings (TCG Custom Cards), stored when you click <b>Save</b>.
+        {gameRunning ? 'The game is running: "live" settings update right away, the rest on the next start.' : 'They take effect the next time the game starts.'}
+        {#if setup} Setup <b>{setup}</b> keeps its own copy.{/if}</span>
+    </div>
+    {#if loading}
+      <p class="muted pad">Loading…</p>
+    {:else if error}
+      <div class="notice err pad">{error}</div>
+    {:else}
+      {#if q && !tree.length}<p class="muted pad">No setting matches "{query}".</p>{/if}
+      {#each shownTops as t (t.name)}
+        <section class="pane">
+          <header class="pane-hero">
+            <div class="grow">
+              <h1>{t.name}</h1>
+              <div class="muted">{allOf(t).length} setting{allOf(t).length === 1 ? '' : 's'}{q ? ` matching “${query}”` : ''}
+                {@render changedBadge(changed(allOf(t)), 'section')}</div>
+            </div>
+            {#if !q}<button onclick={() => restore(t.name)}>Restore section defaults</button>{/if}
+          </header>
+          {#if t.entries.length}
+            <div class="block">{#each t.entries as e (e.key)}{@render entry(e)}{/each}</div>
+          {/if}
           {#each t.groups as g (g.id)}
-            <div class="group">
-              <div class="row">
-                <button class="fold grow" onclick={() => toggle(g.id)} aria-expanded={isOpen(g.id)}>
-                  <span class="caret">{isOpen(g.id) ? '▾' : '▸'}</span>
-                  <span class="name">{g.title}</span>
-                  <span class="muted small">{g.entries.length} setting{g.entries.length === 1 ? '' : 's'}</span>
-                  {@render changedBadge(changed(g.entries), 'group')}
-                </button>
-                {#if isOpen(g.id) && !q}<button class="small" onclick={() => restore(g.id)}>Restore group defaults</button>{/if}
-              </div>
-              {#if isOpen(g.id)}
-                <div class="group-body">
-                  {#each g.entries as e (e.key)}{@render entry(e)}{/each}
-                </div>
-              {/if}
+            <div class="block">
+              <div class="bhead"><h2>{g.title}</h2><span class="muted small">{g.entries.length} setting{g.entries.length === 1 ? '' : 's'}</span>
+                {@render changedBadge(changed(g.entries), 'group')}<span class="grow"></span>
+                {#if !q}<button class="small" onclick={() => restore(g.id)}>Restore group defaults</button>{/if}</div>
+              {#each g.entries as e (e.key)}{@render entry(e)}{/each}
             </div>
           {/each}
-        {/if}
-      </section>
-    {/each}
-  {/if}
+        </section>
+      {/each}
+    {/if}
+  </div>
 </div>
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
-  .intro { max-width: 900px; margin: 0; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; max-width: 980px; }
-  .entry { padding: 8px 0; border-top: 1px solid var(--line); }
-  .entry:first-of-type { border-top: none; }
-  .fold { display: flex; align-items: center; gap: 8px; background: none; border: none; padding: 2px 0; text-align: left; cursor: pointer; color: inherit; }
-  .fold h3 { margin: 0; }
-  .caret { width: 12px; display: inline-block; opacity: 0.7; }
-  .group { border-top: 1px solid var(--line); padding: 6px 0; }
-  .group-body { margin: 4px 0 0 20px; padding-left: 12px; border-left: 2px solid var(--line); }
-  .group-body .entry:first-child { border-top: none; }
-  .search { width: 220px; }
+  .page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .nav { width: 260px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .navtools { padding: 10px; border-bottom: 1px solid var(--line); }
+  .navtools input { width: 100%; }
+  .navlist { flex: 1; min-height: 0; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+  .navfoot { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--panel); }
+  .info .sub { white-space: normal; }
+  .body { flex: 1; min-width: 0; overflow: auto; }
+  .intro { padding: 8px 24px; font-size: 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .pad { margin: 20px 24px; }
+  .pane { max-width: none; }
+  .pane-hero h1 { margin-bottom: 4px; }
+  .block { gap: 0; }
+  .block .bhead { padding-bottom: 6px; }
+  .entry { padding: 10px 0; border-top: 1px solid var(--line); }
+  .block > .entry:first-child, .bhead + .entry { border-top: none; }
   .badge.changed { font-size: 11px; color: #d9a400; }
   .name { font-weight: 600; }
   .control { display: flex; align-items: center; gap: 8px; }
   .control input[type='range'] { width: 180px; }
   .num { width: 80px; }
   .control input[type='color'] { width: 44px; height: 28px; padding: 2px; }
-  .desc { margin-top: 2px; max-width: 760px; }
+  .desc { margin-top: 3px; max-width: 760px; }
   .badge { font-size: 11px; margin-left: 6px; }
   button.tiny { padding: 2px 8px; }
-  .small { font-size: 12px; }
-  .grow { flex: 1; }
-  .warn { color: #d9a400; }
 </style>

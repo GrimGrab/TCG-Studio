@@ -7,6 +7,7 @@
   import SaveBar from './SaveBar.svelte';
   import { accFile, templateFile } from '../lib/urls';
   import { App, EventsOn, errText, originName } from '../lib/api';
+  import { matchSearch } from '../lib/search';
   import { newLayout, type Layout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
   import CatalogPicker from './CatalogPicker.svelte';
@@ -38,7 +39,8 @@
     return list;
   }
   let sortBy = $state((() => { try { return localStorage.getItem('accessories.sort') || 'order'; } catch { return 'order'; } })());
-  let shown = $derived(sortShown(items, sortBy));
+  let query = $state(''); // list search (name or id)
+  let shown = $derived(sortShown(items.filter((a: any) => matchSearch(query, a.name, a.id)), sortBy));
   let acc = $state<any>(null);           // working copy of the selected accessory
   let layout = $state<Layout>(newLayout());
   let figLayout = $state<FigLayout>(newFigLayout()); // figurines: own model instead of a texture design
@@ -184,7 +186,8 @@
   function listKey(e: KeyboardEvent) {
     if (e.key !== 'Delete' || !picked.length) return;
     e.preventDefault(); // the texture editor's Delete (remove layer) must not run too
-    removeIds([...picked]);
+    const ids = picked.filter((id) => shown.some((x: any) => x.id === id)); // not the ones a search hides
+    if (ids.length) removeIds(ids);
   }
 
   /** Swap with the previous/next accessory of the same kind (both kinds share one library order). */
@@ -269,56 +272,83 @@
   leaveMessage="Leave Accessories without saving? Your unsaved changes will be lost."
   revertMessage="Throw away every unsaved change on this page (edits, new, deleted and moved accessories)?">
   {#snippet title()}<h2>Accessories</h2>{/snippet}
-  {#snippet extra()}<button onclick={() => App.OpenAccessoriesFolder()}>Open folder</button>{/snippet}
 </SaveBar>
-<div class="page">
-  <p class="muted small">
-    Your own deck boxes, playmats, sleeves, dice, comics, collection books, battle decks (on the booster-pack tab), figurines
-    (your own 3D models), and board games and card supplies for the Tabletop Geek shop (paint one of the game's
-    models, or bring your own), sold next to the vanilla ones. They are
-    global (not part of a set) and read by the game when you click <b>Save</b> — restart the game to see changes. To sell only yours, turn
-    off <b>Mod settings → Content → {kindInfo(kind)?.toggle ?? 'ShowVanilla…'}</b> (one switch per type).
-    {#if view && !view.installed && view.accessories.length}<span class="warn">The game doesn't read this setup yet — set the game folder in Settings.</span>{/if}
-  </p>
-  {#if !templates}
-    {#if tplStatus?.busy}
-      <p class="muted small">Reading the game's models and art… {tplStatus.message ?? ''}</p>
-    {:else}
-      <p class="warn small">The game's models and art aren't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</p>
-    {/if}
-  {/if}
-  {#if view?.errors?.length}<div class="err small">{#each view.errors as e}<div>{e}</div>{/each}</div>{/if}
-
-  <div class="row tabs">
+<div class="page libpage">
+  <!-- Kind tabs with counts; one short line about where these show up, the per-kind vanilla switch, problems. -->
+  <nav class="tabbar">
     {#each TABS as tb}
       <button class:on={kind === tb.kind} onclick={() => switchTab(tb.kind)}>
-        {tb.title} <span class="muted small">({all.filter((a: any) => a.kind === tb.kind).length})</span>
+        {tb.title}<span class="n">{all.filter((a: any) => a.kind === tb.kind).length}</span>
       </button>
     {/each}
+  </nav>
+  <div class="intro">
+    <span class="muted">Sold next to the vanilla ones; the game reads them when you click <b>Save</b> (restart the game to see changes).
+      To sell only yours: <b>Mod settings → Content → {kindInfo(kind)?.toggle ?? 'ShowVanilla…'}</b>.</span>
+    {#if view && !view.installed && view.accessories.length}<span class="badge warn">The game doesn't read this setup yet — set the game folder in Settings</span>{/if}
   </div>
+  {#if !templates}
+    {#if tplStatus?.busy}
+      <div class="notice info bar">Reading the game's models and art… {tplStatus.message ?? ''}</div>
+    {:else}
+      <div class="notice bar">The game's models and art aren't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</div>
+    {/if}
+  {/if}
+  {#if view?.errors?.length}<div class="notice err bar">{#each view.errors as e}<div>{e}</div>{/each}</div>{/if}
 
   <div class="wrap">
-    <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
-      <label class="sortby small">Sort
-        <select bind:value={sortBy} onchange={() => { try { localStorage.setItem('accessories.sort', sortBy); } catch {} }}>
+    <aside class="side sidelist">
+      <div class="sidetools">
+        <input type="search" bind:value={query} placeholder="Search {TABS.find((tb) => tb.kind === kind)?.title.toLowerCase() ?? ''}…" />
+        <select bind:value={sortBy} title="Sort" onchange={() => { try { localStorage.setItem('accessories.sort', sortBy); } catch {} }}>
           {#each Object.entries(SORT_LABELS) as [k, label]}<option value={k}>{label}</option>{/each}
-        </select></label>
-      {#each shown as a (a.id)}
-        <button class:active={a.id === selectedId} class:picked={picked.includes(a.id) && a.id !== selectedId} onclick={(e) => clickItem(e, a.id)}>
-          <span class="ico">{#if a.icon}<img src={accUrl(a.icon)} alt="" />{:else if tplItem(a)?.icon}<img src={tplUrl(tplItem(a).icon)} alt="" />{/if}</span>
-          <span class="grow">{a.id === selectedId && acc ? acc.name : a.name}
-            {#if draft.parked[a.id]?.problem}<span class="warn small" title={draft.parked[a.id].problem}>⚠</span>{/if}{#if draft.isNew(a.id)}<span class="tag small" title="New — not saved yet">new</span>{:else if draft.isEdited(a.id) || (a.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}<br /><span class="muted small">Level {a.license.level}{originOf(a) ? ` · from ${originName(originOf(a))}${originOf(a).author ? ` (${originOf(a).author})` : ''}` : ''}</span></span>
-        </button>
-      {/each}
-      <button onclick={() => add(kind)}>+ New {TABS.find((tb) => tb.kind === kind)?.one}</button>
-      <button onclick={() => (fromCatalog = true)} title="Accessories from your other setups and earlier imports — no re-import">Add from catalog…</button>
-    </div>
+        </select>
+      </div>
+      <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
+        {#each shown as a (a.id)}
+          <button class="item" class:active={a.id === selectedId} class:picked={picked.includes(a.id) && a.id !== selectedId} onclick={(e) => clickItem(e, a.id)}>
+            <span class="ico">{#if a.icon}<img src={accUrl(a.icon)} alt="" />{:else if tplItem(a)?.icon}<img src={tplUrl(tplItem(a).icon)} alt="" />{/if}</span>
+            <span class="info">
+              <span class="name">{a.id === selectedId && acc ? acc.name : a.name}
+                {#if draft.parked[a.id]?.problem}<span class="warn" title={draft.parked[a.id].problem}>⚠</span>{/if}
+                {#if draft.isNew(a.id)}<span class="tag" title="New — not saved yet">new</span>{:else if draft.isEdited(a.id) || (a.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}</span>
+              <span class="sub">Level {a.license.level}{originOf(a) ? ` · ${originName(originOf(a))}${originOf(a).author ? ` (${originOf(a).author})` : ''}` : ''}</span>
+            </span>
+          </button>
+        {:else}
+          <p class="muted small empty">{query ? 'Nothing matches.' : `No ${TABS.find((tb) => tb.kind === kind)?.title.toLowerCase() ?? 'items'} yet.`}</p>
+        {/each}
+      </div>
+      <div class="sidefoot">
+        <button class="primary" onclick={() => add(kind)}>+ New {TABS.find((tb) => tb.kind === kind)?.one}</button>
+        <button onclick={() => (fromCatalog = true)} title="Accessories from your other setups and earlier imports — no re-import">Add from catalog…</button>
+      </div>
+    </aside>
 
     {#if acc}
       <div class="form">
-        <section>
+        <header class="pane-hero">
+          <div class="art">
+            {#if acc.icon}<img src={accUrl(acc.icon)} alt="" title="Shop icon (saved)" />{:else if t?.icon}<img src={tplUrl(t.icon)} alt="" title="Vanilla icon" />{/if}
+          </div>
+          <div class="grow titlebox">
+            <input class="title" bind:value={acc.name} aria-label="Name" placeholder="Name" />
+            <div class="meta">
+              <span>{kindInfo(acc.kind)?.one ?? acc.kind}</span>
+              <span>from {baseName(baseOf(acc))}</span>
+              <span>License level {acc.license.level}</span>
+              <span class="code" title="Id">{acc.id}</span>
+            </div>
+          </div>
+          <div class="heroactions">
+            <button onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button>
+            <button class="danger" onclick={remove}>Delete</button>
+          </div>
+        </header>
+
+        <section class="block">
+          <div class="bhead"><h2>Basics</h2></div>
           <div class="row head">
-            <label class="field grow">Name<input bind:value={acc.name} /></label>
             <label class="field" title={acc.kind === 'Figurine'
               ? 'Vanilla toy whose shelf slot (how many fit and how big), shop tab and cost / market range are used.'
               : kindInfo(acc.kind)?.perBase
@@ -334,22 +364,19 @@
                 {#each Object.entries(SHOPS) as [v, label]}<option value={v}>{label}</option>{/each}
               </select>
             </label>
-            <label class="field" style="width:150px">Id<input value={acc.id} readonly /></label>
+            <div class="field order">Position in the list
+              <div class="row">
+                <button class="small" onclick={() => move(-1)} disabled={sortBy !== 'order' || items[0]?.id === acc.id}>▲ Earlier</button>
+                <button class="small" onclick={() => move(1)} disabled={sortBy !== 'order' || items.at(-1)?.id === acc.id}>▼ Later</button>
+              </div>
+            </div>
           </div>
-          <div class="row">
-            <button class="small" onclick={() => move(-1)} disabled={sortBy !== 'order' || items[0]?.id === acc.id}>▲ Earlier</button>
-            <button class="small" onclick={() => move(1)} disabled={sortBy !== 'order' || items.at(-1)?.id === acc.id}>▼ Later</button>
-            <span class="muted small">{sortBy === 'order' ? "List order = this type's ladder order in Gamify → Accessories."
-              : 'Sorted by ' + SORT_LABELS[sortBy].toLowerCase() + ' — choose “List order” to reorder the ladder.'}</span>
-            <div class="grow"></div>
-            <button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button>
-            <button class="danger small" onclick={remove}>Delete</button>
-          </div>
+          <p class="muted small">{sortBy === 'order' ? "List order = this type's ladder order in Gamify → Accessories."
+            : 'Sorted by ' + SORT_LABELS[sortBy].toLowerCase() + ' — choose “List order” to reorder the ladder.'}</p>
         </section>
 
-        <section>
-          <div class="row">
-            <h3 class="grow">Design</h3>
+        <section class="block">
+          <div class="bhead"><h2>Design</h2><span class="grow"></span>
             <span class="thumbs">
               <span class="small muted">Saved:</span>
               {#if acc.icon}<img src={accUrl(acc.icon)} alt="icon" title="Shop icon" />{:else if t?.icon}<img src={tplUrl(t.icon)} alt="vanilla icon" title="Vanilla icon" />{/if}
@@ -367,9 +394,9 @@
             </div>
           {/if}
           {#if kindInfo(acc.kind)?.ownModel}
-            <div class="row small">
-              <label class="check"><input type="radio" checked={!useOwn} onchange={() => { useOwn = false; }} /> Paint the game's model</label>
-              <label class="check"><input type="radio" checked={useOwn} onchange={() => { useOwn = true; }} /> My own 3D model (.glb / .gltf / .obj)</label>
+            <div class="seg">
+              <button class:on={!useOwn} onclick={() => { useOwn = false; }}>Paint the game's model</button>
+              <button class:on={useOwn} onclick={() => { useOwn = true; }}>My own 3D model (.glb / .gltf / .obj)</button>
             </div>
           {/if}
           {#key `${editorKey}|${kindInfo(acc.kind)?.perBase ? baseOf(acc) : ''}|${ownModel(acc)}`}
@@ -384,8 +411,10 @@
           {/key}
         </section>
 
-        <section>
-          <h3>Shop</h3>
+        <section class="block">
+          <div class="bhead"><h2>Shop &amp; license</h2>
+            <span class="muted small">{hasBig ? 'Sells in a small and a big delivery box (two licenses).' : `Sells in one big delivery box (one license).`}
+              Empty = the “Start from” item's vanilla value.</span></div>
           <div class="grid4">
             <label class="field">Cost<input type="number" step="0.5" min="0" placeholder={t ? String(t.baseCost) : 'model'} value={acc.cost ?? ''} oninput={(e) => { acc.cost = opt(e.currentTarget.value); }} /></label>
             <label class="field">Market min ×<input type="number" step="0.1" placeholder={t ? String(t.marketPriceMinPercent) : 'model'} value={acc.marketMin ?? ''} oninput={(e) => { acc.marketMin = opt(e.currentTarget.value); }} /></label>
@@ -398,12 +427,17 @@
               <label class="field">Big box license price<input type="number" min="0" placeholder={String(Math.round(acc.license.price * 2))} value={acc.license.bigPrice ?? ''} oninput={(e) => { acc.license.bigPrice = opt(e.currentTarget.value); }} /></label>
             {/if}
           </div>
-          <p class="muted small">Empty cost/market = the "Start from" item's vanilla values. {hasBig ? 'Deck boxes sell in a small and a big delivery box (two licenses).' : `${kindInfo(acc.kind)?.title} sell in one big delivery box (one license).`}</p>
         </section>
-
       </div>
     {:else if view}
-      <p class="muted" style="padding:20px">No {TABS.find((tb) => tb.kind === kind)?.title.toLowerCase()} yet — click “+ New {TABS.find((tb) => tb.kind === kind)?.one}”.</p>
+      <div class="emptypane">
+        <h1>No {TABS.find((tb) => tb.kind === kind)?.title.toLowerCase()} yet</h1>
+        <p class="muted">Make your own — paint the game's model or bring your own — or add one you made in another setup.</p>
+        <div class="row center">
+          <button onclick={() => (fromCatalog = true)}>Add from catalog…</button>
+          <button class="primary" onclick={() => add(kind)}>+ New {TABS.find((tb) => tb.kind === kind)?.one}</button>
+        </div>
+      </div>
     {/if}
   </div>
 </div>
@@ -411,34 +445,19 @@
 {#if fromCatalog}<CatalogPicker kind="accessory" sub={kind} onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
 
 <style>
-  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
-  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
-  .tabs button.on { border-color: var(--accent); background: #22304d; }
+  .page { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .wrap { display: flex; flex: 1; min-height: 0; }
+
+  .side { width: 280px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+
+  .head { flex-wrap: wrap; align-items: flex-end; gap: 12px; } /* fields wrap instead of running past the box */
+  .head > .field { min-width: 0; max-width: 100%; }
+  .order .row { gap: 4px; }
   .bases { flex-wrap: wrap; gap: 6px; }
   .bases button { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 92px; padding: 4px; }
   .bases button img { width: 56px; height: 56px; object-fit: contain; }
   .bases button.on { border-color: var(--accent); background: #22304d; }
-  .check { display: flex; align-items: center; gap: 6px; }
-  .wrap { display: flex; flex: 1; min-height: 0; }
-  .list { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
-  .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
-  .list button.active { border-color: var(--accent); background: #22304d; }
-  .list button.picked { border-color: var(--accent); background: #1c2740; }
-  .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .sortby select { flex: 1; }
-  .head { flex-wrap: wrap; align-items: flex-end; } /* fields wrap instead of running past the box */
-  .head > .field { min-width: 0; max-width: 100%; }
-  .head > .grow { flex: 1 1 180px; }
-  .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .ico img { max-width: 100%; max-height: 100%; }
-  .form { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .thumbs { display: flex; gap: 8px; align-items: center; }
-  .thumbs img { height: 44px; border-radius: 4px; background: var(--bg); }
-  .dot { color: var(--accent-2); margin-left: 4px; }
-  .tag { color: var(--accent); margin-left: 4px; }
-  .small { font-size: 12px; }
-  .warn { color: #d9a400; }
-  .err { color: var(--danger); }
+  .thumbs img { height: 40px; border-radius: 4px; background: var(--bg); }
 </style>

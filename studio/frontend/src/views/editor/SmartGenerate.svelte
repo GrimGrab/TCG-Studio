@@ -5,6 +5,7 @@
   // sides) in the box photo. Returns the sources for applySmartArt.
   import { onMount, untrack } from 'svelte';
   import { App, errText, projectFile } from '../../lib/api';
+  import { matchSearch } from '../../lib/search';
   import { loadImage } from '../../lib/accessoryArt';
   import type { SmartSources } from '../../lib/smartArt';
 
@@ -113,7 +114,7 @@
 
   const shownGroups = $derived.by(() => {
     const f = filter.trim().toLowerCase();
-    const gs = f ? groups.filter((g) => g.name.toLowerCase().includes(f) || g.code.toLowerCase() === f) : groups;
+    const gs = f ? groups.filter((g) => matchSearch(f, g.name) || g.code.toLowerCase() === f) : groups;
     const cur = groups.find((g) => g.id === group);
     return cur && !gs.includes(cur) ? [cur, ...gs] : gs;
   });
@@ -275,7 +276,6 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .dialog { width: min(1280px, 96vw); height: min(860px, 92vh); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .head h3 { margin: 0; }
@@ -293,6 +293,5 @@
     border-radius: 6px; cursor: crosshair; touch-action: none; }
   .g { color: #2fd65a; } .b { color: #3d8bff; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
-  .small { font-size: 12px; margin: 0; }
-  .err { color: var(--danger); }
+  .small { margin: 0; }
 </style>

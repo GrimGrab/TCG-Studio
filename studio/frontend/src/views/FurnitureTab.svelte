@@ -31,6 +31,7 @@
   import { maximizable } from '../lib/maximize';
   import { onMount, untrack } from 'svelte';
   import { App, EventsOn, errText, ask, originName } from '../lib/api';
+  import { matchSearch } from '../lib/search';
   import { loadImage, newLayout } from '../lib/accessoryArt';
   import AccessoryEditor from './AccessoryEditor.svelte';
   import { tick } from 'svelte';
@@ -361,7 +362,8 @@
     return list;
   }
   let sortBy = $state((() => { try { return localStorage.getItem('furniture.sort') || 'order'; } catch { return 'order'; } })());
-  let shown = $derived(sortShown(list.filter((x) => x.type === tab), sortBy));
+  let query = $state(''); // list search (name or id)
+  let shown = $derived(sortShown(list.filter((x) => x.type === tab && matchSearch(query, x.name, x.id)), sortBy));
   const countOf = (tp: string) => list.filter((x) => x.type === tp).length;
   let t = $derived(tplOf(f));
   let info = $derived(typeInfo(f?.type));
@@ -544,7 +546,8 @@
     if (e.key !== 'Delete' || !picked.length) return;
     e.preventDefault();
     e.stopPropagation();
-    removeIds([...picked]);
+    const ids = picked.filter((id) => shown.some((x: any) => x.id === id)); // not the ones a search hides
+    if (ids.length) removeIds(ids);
   }
 
   // ---------------------------------------------------------------- undo / redo (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z)
@@ -1526,24 +1529,21 @@
   let spot = $derived(f?.spots?.[sel]);
 </script>
 
-<p class="muted small intro">
-  Make new furniture for the furniture shop. Each piece copies a vanilla piece of the <b>type</b> you pick — that decides what it does
-  (shelf, card shelf, donation bin…). Then give it your own colour or 3D model, shop price, and — for shelves — your own spots.
-  <br />Only want your own furniture in the shop? Turn off <b>Mod settings → Content → ShowVanillaFurniture</b> (cash counter, workbench,
-  trash bin and empty box storage stay until you make your own).
-</p>
-{#if !pieces.length}
-  {#if tplStatus?.busy}<p class="muted small">Reading the game's furniture… {tplStatus.message ?? ''}</p>
-  {:else}<p class="warn small">The game's furniture isn't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</p>{/if}
-{/if}
-
-<div class="row tabs">
+<!-- Type tabs with counts; one short line about what a piece is, the vanilla switch, template problems. -->
+<nav class="tabbar">
   {#each types as tp}
-    <button class:on={tab === tp.type} onclick={() => switchTab(tp.type)}>
-      {tp.title} <span class="muted small">({countOf(tp.type)})</span>
-    </button>
+    <button class:on={tab === tp.type} onclick={() => switchTab(tp.type)}>{tp.title}<span class="n">{countOf(tp.type)}</span></button>
   {/each}
+</nav>
+<div class="intro">
+  <span class="muted">Each piece copies a vanilla piece of its <b>type</b> (that decides what it does), with your own look, price and — for
+    shelves — spots. To sell only yours: <b>Mod settings → Content → ShowVanillaFurniture</b> (cash counter, workbench, trash bin and
+    empty box storage stay until you make your own).</span>
 </div>
+{#if !pieces.length}
+  {#if tplStatus?.busy}<div class="notice info bar">Reading the game's furniture… {tplStatus.message ?? ''}</div>
+  {:else}<div class="notice bar">The game's furniture isn't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'}.</div>{/if}
+{/if}
 
 <!-- Number fields of the selected part: in the side column, and in the strip under the 3D view in full view. -->
 {#snippet spotFields(spot: any)}
@@ -1634,27 +1634,56 @@
 {/snippet}
 
 <div class="fwrap">
-  <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
-    <label class="sortby small">Sort
-      <select bind:value={sortBy} onchange={() => { try { localStorage.setItem('furniture.sort', sortBy); } catch {} }}>
+  <aside class="side sidelist">
+    <div class="sidetools">
+      <input type="search" bind:value={query} placeholder="Search {typeInfo(tab)?.title.toLowerCase() ?? 'furniture'}…" />
+      <select bind:value={sortBy} title="Sort" onchange={() => { try { localStorage.setItem('furniture.sort', sortBy); } catch {} }}>
         {#each Object.entries(SORT_LABELS) as [k, label]}<option value={k}>{label}</option>{/each}
-      </select></label>
-    {#each shown as x (x.id)}
-      <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
-        <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{:else if tplOf(x)?.icon}<img src={furnUrl(tplOf(x).icon)} alt="" />{/if}</span>
-        <span class="grow">{x.id === selectedId && f ? f.name : x.name}
-          {#if draft.parked[x.id]?.problem}<span class="warn small" title={draft.parked[x.id].problem}>⚠</span>{/if}{#if draft.isNew(x.id)}<span class="tag small" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}<br /><span class="muted small">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · from ${originName(originOf(x))}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span></span>
-      </button>
-    {/each}
-    <button onclick={add}>+ New {typeInfo(tab)?.one ?? ''}</button>
-    <button onclick={() => (fromCatalog = true)} title="Furniture from your other setups and earlier imports — no re-import">Add from catalog…</button>
-  </div>
+      </select>
+    </div>
+    <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
+      {#each shown as x (x.id)}
+        <button class="item" class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
+          <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{:else if tplOf(x)?.icon}<img src={furnUrl(tplOf(x).icon)} alt="" />{/if}</span>
+          <span class="info">
+            <span class="name">{x.id === selectedId && f ? f.name : x.name}
+              {#if draft.parked[x.id]?.problem}<span class="warn" title={draft.parked[x.id].problem}>⚠</span>{/if}
+              {#if draft.isNew(x.id)}<span class="tag" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}</span>
+            <span class="sub">{typeInfo(x.type)?.one ?? x.type}{originOf(x) ? ` · ${originName(originOf(x))}${originOf(x).author ? ` (${originOf(x).author})` : ''}` : ''}</span>
+          </span>
+        </button>
+      {:else}
+        <p class="muted small empty">{query ? 'Nothing matches.' : `No ${typeInfo(tab)?.title.toLowerCase() ?? 'furniture'} yet.`}</p>
+      {/each}
+    </div>
+    <div class="sidefoot">
+      <button class="primary" onclick={add}>+ New {typeInfo(tab)?.one ?? ''}</button>
+      <button onclick={() => (fromCatalog = true)} title="Furniture from your other setups and earlier imports — no re-import">Add from catalog…</button>
+    </div>
+  </aside>
 
   {#if f}
     <div class="form">
+      <header class="pane-hero">
+        <div class="art">{#if f.icon}<img src={accUrl(f.icon)} alt="" title="Shop icon" />{:else if t?.icon}<img src={furnUrl(t.icon)} alt="" title="Vanilla icon" />{/if}</div>
+        <div class="grow titlebox">
+          <input class="title" bind:value={f.name} oninput={changed} aria-label="Name" placeholder="Name" title="Name shown in the furniture shop and when you look at the piece." />
+          <div class="meta">
+            <span>{typeInfo(f.type)?.one ?? f.type}</span>
+            <span>from {baseOf(f)}</span>
+            {#if f.price ?? t?.price}<span>${f.price ?? t?.price}</span>{/if}
+            <span class="code" title="Fixed id that saves use to recognise this piece. It never changes, so renaming is safe.">{f.id}</span>
+          </div>
+        </div>
+        <div class="heroactions">
+          <button onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button>
+          <button class="danger" onclick={remove}>Delete</button>
+        </div>
+      </header>
+
       <section>
+        <div class="bhead"><h2>Basics</h2></div>
         <div class="row">
-          <label class="field grow" title="Name shown in the furniture shop and when you look at the piece.">Name<input bind:value={f.name} oninput={changed} /></label>
           <label class="field" title="What the piece does in the game: a shelf holds items, a card shelf holds cards, a donation bin takes cards… It is copied from a vanilla piece of this type.">Type
             <select value={f.type} onchange={(e) => setType(e.currentTarget.value)}>{#each types as tp}<option value={tp.type}>{tp.one}</option>{/each}</select>
           </label>
@@ -1664,17 +1693,15 @@
               {#if !bases.some((b) => b.base === baseOf(f))}<option value={baseOf(f)}>{baseOf(f)}</option>{/if}
             </select>
           </label>
-          <label class="field" style="width:150px" title="Fixed id that saves use to recognise this piece. It never changes, so renaming is safe.">Id<input value={f.id} readonly /></label>
+          <label class="field grow" title="Text shown in the furniture shop's purchase window. Empty = the vanilla piece's description.">Description <span class="muted small">(empty = the vanilla piece's)</span>
+            <input value={f.description ?? ''} oninput={(e) => { f.description = e.currentTarget.value; changed(); }} />
+          </label>
         </div>
-        <label class="field" title="Text shown in the furniture shop's purchase window. Empty = the vanilla piece's description.">Description <span class="muted small">(empty = the vanilla piece's)</span>
-          <input value={f.description ?? ''} oninput={(e) => { f.description = e.currentTarget.value; changed(); }} />
-        </label>
-        <div class="row"><div class="grow"></div><button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog (setups that already have it keep theirs).">Update catalog</button><button class="danger small" onclick={remove}>Delete</button></div>
       </section>
 
       <section>
         <div class="row">
-          <h3 class="grow">Look & spots</h3>
+          <h2 class="grow btitle">Look &amp; spots</h2>
           <span class="seg" title="Spots & positions: where items, cards and people go. Paint: put images, text and colours on the piece (like pack and box art).">
             <button class:on={mode === 'spots'} onclick={() => (mode = 'spots')}>Spots & positions</button>
             <button class:on={mode === 'paint'} onclick={openPaint}>Paint{painted() ? ' ●' : ''}</button>
@@ -1971,18 +1998,24 @@
       </section>
 
       <section>
-        <h3>Shop</h3>
+        <div class="bhead"><h2>Shop</h2><span class="muted small">Empty = the “Start from” piece's vanilla values.</span></div>
         <div class="grid4">
           <label class="field" title="Price in the furniture shop. Empty = the vanilla piece's price. Selling a placed piece gives back half.">Price<input type="number" min="1" placeholder={t ? String(t.price) : 'base'} value={f.price ?? ''} oninput={(e) => { f.price = opt(e.currentTarget.value); changed(); }} /></label>
           <label class="field" title="Shop level needed to buy it. Empty = the vanilla piece's level.">Shop level<input type="number" min="0" placeholder={t ? String(t.level) : 'base'} value={f.level ?? ''} oninput={(e) => { f.level = opt(e.currentTarget.value); changed(); }} /></label>
           <label class="field" title="How much a placed piece makes the shop more attractive to customers.">Deco bonus<input type="number" step="0.05" min="0" placeholder={t ? String(t.decoBonus) : 'base'} value={f.decoBonus ?? ''} oninput={(e) => { f.decoBonus = opt(e.currentTarget.value); changed(); }} /></label>
         </div>
-        <p class="muted small">Empty = the "Start from" piece's vanilla values.</p>
       </section>
 
     </div>
   {:else if view}
-    <p class="muted" style="padding:20px">No {typeInfo(tab)?.title.toLowerCase() ?? 'furniture'} yet — click “+ New {typeInfo(tab)?.one ?? ''}”.</p>
+    <div class="emptypane">
+      <h1>No {typeInfo(tab)?.title.toLowerCase() ?? 'furniture'} yet</h1>
+      <p class="muted">Build one on a vanilla piece — your own colours, paint, 3D model and spots — or add one from another setup.</p>
+      <div class="row center">
+        <button onclick={() => (fromCatalog = true)}>Add from catalog…</button>
+        <button class="primary" onclick={add}>+ New {typeInfo(tab)?.one ?? ''}</button>
+      </div>
+    </div>
   {/if}
 </div>
 
@@ -1990,19 +2023,9 @@
 
 <style>
   .fwrap { display: flex; flex: 1; min-height: 0; }
-  .list { width: 200px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
-  .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
-  .list button.active, .spotlist button.active { border-color: var(--accent); background: #22304d; }
-  .list button.picked { border-color: var(--accent); background: #1c2740; }
-  .dot { color: var(--accent-2); margin-left: 4px; }
-  .tag { color: var(--accent); margin-left: 4px; }
-  .sortby { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-  .sortby select { flex: 1; }
-  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
-  .tabs button.on { border-color: var(--accent); background: #22304d; }
-  .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .ico img { max-width: 100%; max-height: 100%; }
-  .form { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+  .side { width: 270px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .spotlist button.active { border-color: var(--accent); background: #22304d; }
+  .btitle { font-size: 15px; margin: 0; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   /* Side by side (wide enough): the 3D view stays in sight while the column beside it (spots, positions) scrolls. */
   .editor { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; container-type: inline-size; }
@@ -2017,7 +2040,6 @@
   .scene.full .view3d { flex: 1; min-height: 0; height: auto; }
   .strip { flex-shrink: 0; max-height: 45%; overflow: auto; padding: 8px 12px 10px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
   .strip .grid6 { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
-  .intro { max-width: 900px; line-height: 1.5; }
   .helpbtn { position: absolute; left: 44px; top: 8px; z-index: 5; padding: 2px 9px; font-weight: bold; }
   .helpcard { position: absolute; left: 8px; top: 40px; z-index: 6; max-height: calc(100% - 60px); overflow: auto; background: rgba(14, 18, 26, 0.94);
     border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 12px; width: min(420px, calc(100% - 16px)); }
@@ -2032,11 +2054,6 @@
   .tools button.on { border-color: var(--accent); background: #22304d; }
   .hidden { display: none; }
   .paint { margin-top: 8px; }
-  .seg { display: inline-flex; gap: 0; }
-  .seg button { border-radius: 0; }
-  .seg button:first-child { border-radius: 4px 0 0 4px; }
-  .seg button:last-child { border-radius: 0 4px 4px 0; }
-  .seg button.on { border-color: var(--accent); background: #22304d; }
   .fillsel { max-width: 170px; font-size: 12px; padding: 2px 4px; }
   .tools kbd { font-size: 10px; opacity: 0.6; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; margin-left: 2px; }
   .selpart { align-self: center; font-size: 12px; color: #ffd84d; background: rgba(0, 0, 0, 0.45); padding: 2px 8px; border-radius: 4px; }
@@ -2062,7 +2079,4 @@
   .thumbs img { height: 44px; border-radius: 4px; background: var(--bg); }
   .check { display: flex; align-items: center; gap: 6px; }
   .wrap.row, .row.wrap { flex-wrap: wrap; }
-  button.tiny { padding: 2px 7px; font-size: 12px; }
-  .small { font-size: 12px; }
-  .warn { color: #d9a400; }
 </style>

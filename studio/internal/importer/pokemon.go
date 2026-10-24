@@ -249,10 +249,7 @@ func (s *tcgdexSource) Import(ctx context.Context, ws project.Workspace, code st
 	var jobs []imageJob
 	used := map[string]int{}
 	for _, c := range cards {
-		if c == nil {
-			continue
-		}
-		img := c.ImageURL("high")
+		img := pokemonImage(c)
 		if img == "" {
 			continue
 		}
@@ -352,4 +349,13 @@ func (s *tcgdexSource) RefreshMeta(ctx context.Context, p *project.Project) (int
 	}
 	p.Meta.PricesUpdated = time.Now()
 	return n, nil
+}
+
+// pokemonImage is the picture of a card the import makes, "" for a card it leaves out (not read, or no picture); Import and
+// the set preview.
+func pokemonImage(c *tcgdex.Card) string {
+	if c == nil {
+		return ""
+	}
+	return c.ImageURL("high")
 }

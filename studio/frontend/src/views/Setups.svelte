@@ -28,6 +28,8 @@
 
   // Import preview
   let pick = $state<any>(null);
+  let menuFor = $state(''); // the setup card whose ⋯ menu is open
+  let moreInfo = $state(false); // the intro's "Sharing and saves"
 
   async function load() {
     try {
@@ -171,32 +173,43 @@
   });
 </script>
 
+<svelte:window onmousedown={(e) => { if (menuFor && !(e.target as HTMLElement).closest('.more')) menuFor = ''; }} />
+
 <div class="page">
-  <header class="row">
-    <h2 class="grow">My Setups</h2>
-    <button onclick={pickImport} disabled={!view || !!view.error}>Import…</button>
+  <header class="page-head">
+    <div class="title">
+      <h2>My Setups</h2>
+      {#if view && !view.error}
+        <div class="page-summary">
+          <span><b>{view.setups.length}</b> setup{view.setups.length === 1 ? '' : 's'}</span>
+          {#if view.setups.find((s: any) => s.active)}<span>in the game: <b>{view.setups.find((s: any) => s.active).name}</b></span>{/if}
+        </div>
+      {/if}
+    </div>
+    <span class="grow"></span>
+    <button onclick={pickImport} disabled={!view || !!view.error} title="Add a .tcgsetup file someone shared as a new setup">Import…</button>
     <button class="primary" onclick={() => startNew()} disabled={!view || !!view.error}>New setup</button>
   </header>
-  <p class="muted intro">
-    A setup is a complete collection of your custom content: sets, accessories, furniture, mod settings and the global card back.
-    Switch between setups to change what's in the game; each setup keeps <b>its own game saves</b>. Export a setup to share it
-    with friends as one <code>.tcgsetup</code> file — saves are never included.
-  </p>
+  <!-- Fixed intro strip under the header (not part of the scrolling body). -->
+  <div class="intro">
+    <p><span class="muted">A setup is a complete collection of your custom content — sets, accessories, furniture, decorations, mod settings
+      and the global card back — with <b>its own game saves</b>. Switch setups to change what's in the game.</span>
+      <button class="link" onclick={() => (moreInfo = !moreInfo)}>{moreInfo ? 'Hide' : 'Sharing and saves'}</button></p>
+    {#if moreInfo}<p class="muted">Export a setup to share it with friends as one <code>.tcgsetup</code> file — saves are never included.
+      Setups are kept in {view?.workspace ?? 'the workspace'}\setups (change the workspace folder in Settings).</p>{/if}
+  </div>
 
+  <div class="main">
   {#if loading}
-    <p class="muted">Loading…</p>
+    <div class="grid">{#each Array(3) as _}<div class="card skeleton"><div class="bar"></div><div class="bar short"></div></div>{/each}</div>
   {:else if view}
     {#if view.error}
-      <div class="notice err">
-        <b>Setups aren't available:</b> {view.error}
-        <div class="row"><button onclick={retry}>Try again</button></div>
-      </div>
+      <div class="notice err"><p><b>Setups aren't available:</b> {view.error}</p>
+        <div class="row"><button onclick={retry}>Try again</button></div></div>
     {/if}
     {#if view.pending}
-      <div class="notice err">
-        A setup switch didn't finish. Close the game, then repair it.
-        <div class="row"><button onclick={retry} disabled={view.gameRunning}>Repair now</button></div>
-      </div>
+      <div class="notice err"><p>A setup switch didn't finish. Close the game, then repair it.</p>
+        <div class="row"><button onclick={retry} disabled={view.gameRunning}>Repair now</button></div></div>
     {/if}
     {#if view.gameRunning}
       <div class="notice">The game is running — close it to switch setups.</div>
@@ -212,81 +225,98 @@
     {/if}
 
     {#if creating}
-      <section class="form">
-        <h3>New setup</h3>
-        <label class="field">Name <input bind:value={newName} placeholder="e.g. Vintage Magic" /></label>
-        <label class="field">Start from
-          <select bind:value={newFrom}>
-            <option value="">Empty (no custom content)</option>
-            {#each view.setups as s (s.id)}<option value={s.id}>A copy of "{s.name}"</option>{/each}
-          </select>
-        </label>
-        {#if newFrom}
-          <label class="check"><input type="checkbox" bind:checked={newSaves} /> Also copy its game saves</label>
-        {/if}
-        <div class="row">
-          <button class="primary" onclick={create}>Create</button>
-          <button onclick={() => (creating = false)}>Cancel</button>
+      <section class="block form">
+        <div class="bhead"><h2>New setup</h2></div>
+        <div class="formrow">
+          <label class="field">Name <input bind:value={newName} placeholder="e.g. Vintage Magic" /></label>
+          <label class="field">Start from
+            <select bind:value={newFrom}>
+              <option value="">Empty (no custom content)</option>
+              {#each view.setups as s (s.id)}<option value={s.id}>A copy of "{s.name}"</option>{/each}
+            </select>
+          </label>
         </div>
+        {#if newFrom}<label class="check"><input type="checkbox" bind:checked={newSaves} /> Also copy its game saves</label>{/if}
+        <div class="row"><button class="primary" onclick={create}>Create</button><button onclick={() => (creating = false)}>Cancel</button></div>
       </section>
     {/if}
 
     {#if pick}
-      <section class="form">
-        <h3>Import setup</h3>
-        <div><b>{pick.manifest.name}</b>{#if pick.manifest.studioVersion}<span class="muted"> · made with TCG Studio v{pick.manifest.studioVersion}</span>{/if}</div>
+      <section class="block form">
+        <div class="bhead"><h2>Import setup</h2>{#if pick.manifest.studioVersion}<span class="muted small">made with TCG Studio v{pick.manifest.studioVersion}</span>{/if}</div>
+        <div class="name">{pick.manifest.name}</div>
         {#if pick.manifest.description}<div class="muted">{pick.manifest.description}</div>{/if}
         <div class="muted small">{counts(pick.manifest)} · {pick.file}</div>
         <div class="muted small">It's added as a new setup with no saves; your current setup isn't changed.</div>
-        <div class="row">
-          <button class="primary" onclick={doImport}>Import</button>
-          <button onclick={() => (pick = null)}>Cancel</button>
-        </div>
+        <div class="row"><button class="primary" onclick={doImport}>Import</button><button onclick={() => (pick = null)}>Cancel</button></div>
       </section>
     {/if}
 
-    <div class="list">
-      {#each view.setups as s, i (s.id)}
-        <section class="setup" class:active={s.active}>
-          {#if editId === s.id}
-            <label class="field">Name <input bind:value={editName} /></label>
-            <label class="field">Description <textarea rows="2" bind:value={editDesc}></textarea></label>
-            <div class="row">
-              <button class="primary" onclick={saveEdit}>Save</button>
-              <button onclick={() => (editId = '')}>Cancel</button>
+    {#snippet stats(s: any)}
+      <div class="stats-mini">
+        <div><b>{s.sets ?? 0}</b><span>sets</span></div>
+        <div><b>{s.accessories ?? 0}</b><span>accessories</span></div>
+        <div><b>{s.furniture ?? 0}</b><span>furniture</span></div>
+        <div><b>{s.decorations ?? 0}</b><span>decorations</span></div>
+      </div>
+    {/snippet}
+
+    {#snippet card(s: any, i: number)}
+      <section class="card" class:active={s.active}>
+        {#if editId === s.id}
+          <label class="field">Name <input bind:value={editName} /></label>
+          <label class="field">Description <textarea rows="2" bind:value={editDesc}></textarea></label>
+          <div class="row"><button class="primary" onclick={saveEdit}>Save</button><button onclick={() => (editId = '')}>Cancel</button></div>
+        {:else}
+          <div class="top">
+            <span class="avatar">{s.name.slice(0, 1).toUpperCase()}</span>
+            <div class="grow info">
+              <div class="name">{s.name}
+                {#if s.active}<span class="badge ok">In the game</span>{/if}
+                {#if s.hasSaves}<span class="badge" title="This setup has parked game saves">saves</span>{/if}
+              </div>
+              <div class="muted small">{s.description || (s.created ? `Created ${fmtDate(s.created)}` : '')}</div>
             </div>
-          {:else}
-            <div class="row">
-              <div class="grow">
-                <div class="name">{s.name}
-                  {#if s.active}<span class="badge ok">In the game</span>{/if}
-                  {#if s.hasSaves}<span class="badge" title="This setup has parked game saves">saves</span>{/if}
+            <div class="more">
+              <button class="dots" onclick={() => (menuFor = menuFor === s.id ? '' : s.id)} aria-label="More" title="More">⋯</button>
+              {#if menuFor === s.id}
+                <div class="menu">
+                  <button onclick={() => { menuFor = ''; startEdit(s); }}>Rename…</button>
+                  <button onclick={() => { menuFor = ''; startNew(s.id); }}>Duplicate…</button>
+                  <button onclick={() => { menuFor = ''; exportSetup(s); }}>Export…</button>
+                  <button onclick={() => { menuFor = ''; App.OpenSetupFolder(s.id); }}>Open folder</button>
+                  <button disabled={i === 0} onclick={() => { menuFor = ''; move(s.id, i - 1); }}>Move earlier</button>
+                  <button disabled={i === view.setups.length - 1} onclick={() => { menuFor = ''; move(s.id, i + 1); }}>Move later</button>
+                  {#if !s.active}<button class="danger" onclick={() => { menuFor = ''; remove(s); }}>Delete…</button>{/if}
                 </div>
-                {#if s.description}<div class="muted">{s.description}</div>{/if}
-                <div class="muted small">{counts(s)}{#if s.created} · created {fmtDate(s.created)}{/if}</div>
-              </div>
-              <div class="order">
-                <button class="small" title="Move up" disabled={i === 0} onclick={() => move(s.id, i - 1)}>▲</button>
-                <button class="small" title="Move down" disabled={i === view.setups.length - 1} onclick={() => move(s.id, i + 1)}>▼</button>
-              </div>
-            </div>
-            <div class="row actions">
-              {#if !s.active}
-                <button class="primary" onclick={() => switchTo(s)} disabled={view.gameRunning || !view.gameFound || !!view.error}>Switch to this setup</button>
               {/if}
-              <button onclick={() => startEdit(s)}>Rename</button>
-              <button onclick={() => startNew(s.id)}>Duplicate</button>
-              <button onclick={() => exportSetup(s)}>Export…</button>
-              <button onclick={() => App.OpenSetupFolder(s.id)}>Open folder</button>
-              <div class="grow"></div>
-              {#if !s.active}<button class="danger" onclick={() => remove(s)}>Delete</button>{/if}
             </div>
+          </div>
+          {@render stats(s)}
+          {#if s.active}
+            <div class="row"><span class="muted small grow">The game plays this setup — its sets, accessories and saves.</span>
+              <button onclick={() => exportSetup(s)}>Export…</button><button onclick={() => startNew(s.id)}>Duplicate</button></div>
+          {:else}
+            <button class="primary switch" onclick={() => switchTo(s)} disabled={view.gameRunning || !view.gameFound || !!view.error}>Switch to this setup</button>
           {/if}
-        </section>
-      {/each}
-    </div>
-    <p class="muted small">Setups are kept in {view.workspace}\setups (change the workspace folder in Settings).</p>
+        {/if}
+      </section>
+    {/snippet}
+
+    {@const activeIdx = view.setups.findIndex((s: any) => s.active)}
+    {#if activeIdx >= 0}
+      <div class="activecard">{@render card(view.setups[activeIdx], activeIdx)}</div>
+    {/if}
+    {#if view.setups.some((s: any) => !s.active)}
+      <h3 class="sectiontitle">Other setups</h3>
+      <div class="grid">
+        {#each view.setups as s, i (s.id)}
+          {#if !s.active}{@render card(s, i)}{/if}
+        {/each}
+      </div>
+    {/if}
   {/if}
+  </div>
 </div>
 
 {#if busy}
@@ -300,20 +330,39 @@
 {/if}
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; height: 100%; display: flex; flex-direction: column; gap: 14px; }
-  .intro { max-width: 900px; margin: 0; }
-  .notice { max-width: 980px; padding: 10px 12px; border: 1px solid #6b5320; border-radius: var(--radius); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
-  .notice.err { border-color: #6b2a31; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; max-width: 980px; }
-  section.form { border-color: var(--accent-2); }
-  section.active { border-color: #1f6b4b; }
-  .list { display: flex; flex-direction: column; gap: 10px; }
-  .name { font-weight: 600; font-size: 15px; display: flex; gap: 8px; align-items: center; }
-  .order { display: flex; flex-direction: column; gap: 2px; }
-  .actions { flex-wrap: wrap; }
-  .small { font-size: 12px; }
+  .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .main { flex: 1; min-height: 0; overflow: auto; padding: 18px 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+  .notice p { margin: 0; }
+  .notice .row { margin-top: 8px; }
+  .intro { flex: none; padding: 8px 24px; font-size: 13px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .intro p { margin: 0; max-width: 1000px; }
+  .intro p + p { margin-top: 6px; }
+  .link { padding: 0 0 0 6px; font-size: 13px; }
+  .form { border-color: var(--accent-2); max-width: 760px; }
+  .formrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .sectiontitle { margin: 8px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .activecard .card { border-color: #1f6b4b; background: linear-gradient(90deg, rgba(62, 207, 142, 0.1), var(--panel) 55%); }
+  .card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card:hover { border-color: #46506a; }
+  .top { display: flex; align-items: flex-start; gap: 12px; }
+  .avatar { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; font-size: 20px; font-weight: 700;
+    background: var(--panel-2); border: 1px solid var(--line); }
+  .active .avatar { background: var(--ok); color: #0b2018; border-color: transparent; }
+  .info { min-width: 0; }
+  .name { font-weight: 600; font-size: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stats-mini { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .stats-mini div { background: var(--panel-2); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; }
+  .stats-mini b { font-size: 18px; }
+  .stats-mini span { font-size: 11px; color: var(--muted); }
+  .switch { align-self: flex-start; }
+  .dots { padding: 4px 10px; }
+  .menu { top: calc(100% + 4px); min-width: 170px; }
+  .skeleton { animation: pulse 1.2s ease-in-out infinite; min-height: 140px; }
+  .skeleton .bar { height: 14px; background: var(--panel-2); border-radius: 4px; }
+  .skeleton .bar.short { width: 60%; }
+  @keyframes pulse { 50% { opacity: 0.55; } }
   code { background: var(--panel-2); padding: 0 4px; border-radius: 4px; }
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 28px; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 280px; }
   .spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }

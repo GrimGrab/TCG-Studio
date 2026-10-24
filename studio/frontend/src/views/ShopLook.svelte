@@ -9,6 +9,7 @@
   import { App, EventsOn, errText } from '../lib/api';
   import type { Picture, TextStyleValue } from '../lib/shopLook';
   import PictureSlot from './PictureSlot.svelte';
+  import CardBackPreview from './CardBackPreview.svelte';
   import PictureList from './PictureList.svelte';
   import SignPreview from './SignPreview.svelte';
   import ScreenPreview from './ScreenPreview.svelte';
@@ -92,6 +93,12 @@
     { id: 'menu', title: 'Main menu', fields: ['menu'] },
     { id: 'boxes', title: 'Textures', fields: [] },
   ];
+  // Left nav: an icon and a one-line hint per picture.
+  const NAV: Record<string, [string, string]> = {
+    sign: ['🪧', 'Above the entrance'], door: ['🚪', 'Flipped at the door'], wallpaper: ['📱', 'Home screen background'],
+    back: ['🂠', 'Back of your cards'], card: ['💳', 'Customers pay with it'], loading: ['⏳', 'While the shop loads'],
+    menu: ['🏠', 'Behind the main menu'], boxes: ['📦', 'Boxes, bags, billboards'],
+  };
   let tab = $state<string>((() => { try { return localStorage.getItem('shoplook.tab') || 'sign'; } catch { return 'sign'; } })());
   function setTab(id: string) {
     tab = id;
@@ -204,20 +211,29 @@
   {#snippet title()}<h2>Game look</h2>{/snippet}
 </SaveBar>
 <div class="page">
-  <p class="muted small">Your own pictures for the shop and the game's screens. Choose any image, then drag the box to pick the part
-    that's shown (drag a corner to resize it). The previews follow your edits; click <b>Save</b> to put them in the game (a running
-    game shows them right away). Save stores the changes of every tab.</p>
   {#if look && draft}
     {@const pics = look.pictures}
     {@const lay = look.layouts}
-    <div class="row tabs">
+    <!-- Every picture on the left; the chosen one's pane on the right. Save stores the changes of every picture. -->
+    <nav class="nav sidelist">
+      <div class="navhead muted small">Pictures in the game</div>
       {#each TABS as tb}
-        <button class:on={tab === tb.id} onclick={() => setTab(tb.id)}>{tb.title}{#if tabDirty(tb.id)}<span class="dot" title="Unsaved changes">•</span>{/if}</button>
+        <button class="item" class:active={tab === tb.id} onclick={() => setTab(tb.id)}>
+          <span class="glyph">{NAV[tb.id]?.[0] ?? '🖼'}</span>
+          <span class="info"><span class="name">{tb.title}{#if tabDirty(tb.id)}<span class="dot" title="Unsaved changes">•</span>{/if}</span>
+            <span class="sub">{NAV[tb.id]?.[1] ?? ''}</span></span>
+        </button>
       {/each}
-    </div>
+      <p class="muted small navnote">Choose any image, then drag the box to pick the part that's shown (a corner resizes it).
+        <b>Save</b> puts every change in the game; a running game shows it right away.</p>
+    </nav>
     <div class="body">
-    <section hidden={tab !== 'sign'}>
-      <p class="muted">The sign above your shop's entrance. It glows at night like the vanilla sign.</p>
+    <section class="pane" hidden={tab !== 'sign'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['sign'][0]}</span>
+        <div class="grow"><h1>Shop sign</h1><p class="muted">The sign above your shop's entrance. It glows at night like the vanilla sign.</p></div>
+      </header>
+      <div class="block">
       <PictureSlot bind:value={draft.sign} aspect={pics.sign.aspect} pick={importPicture('sign')} label={draft.showName ? 'Shop name' : ''} {notify} />
       <label><input type="checkbox" bind:checked={draft.showName} /> Show the shop name on the sign
         <span class="muted small">(turn off when your picture already has a name or logo)</span></label>
@@ -237,10 +253,15 @@
           style={{ fontUrl: draft.font.url, color: draft.style.color, size: draft.style.size,
             outline: draft.style.outline, outlineColor: draft.style.outlineColor }} />
       </div>
+      </div>
     </section>
-    <section hidden={tab !== 'door'}>
-      <p class="muted">The sign you flip at the door. Give each side a board colour or your own picture, and write your words on
-        top. It's drawn inside the black frame; the frame and screws stay.</p>
+    <section class="pane" hidden={tab !== 'door'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['door'][0]}</span>
+        <div class="grow"><h1>Open / closed sign</h1><p class="muted">The sign you flip at the door. Give each side a board colour or your own picture, and write your words on
+        top. It's drawn inside the black frame; the frame and screws stay.</p></div>
+      </header>
+      <div class="block">
       <div class="sides">
         {#each [['open', 'OPEN side'], ['closed', 'CLOSED side']] as [side, title] (side)}
           <div class="side">
@@ -252,33 +273,54 @@
           </div>
         {/each}
       </div>
+      </div>
     </section>
-    <section hidden={tab !== 'wallpaper'}>
-      <p class="muted">The background of your phone's home screen.</p>
+    <section class="pane" hidden={tab !== 'wallpaper'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['wallpaper'][0]}</span>
+        <div class="grow"><h1>Phone wallpaper</h1><p class="muted">The background of your phone's home screen.</p></div>
+      </header>
+      <div class="block">
       <div class="pair">
         <PictureSlot bind:value={draft.wallpaper} aspect={pics.wallpaper.aspect} pick={importPicture('wallpaper')} {notify} />
         <ScreenPreview frame="phone" layoutUrl={lay.phone ?? ''} image={draft.wallpaper.url} crop={draft.wallpaper.crop} aspect={pics.wallpaper.aspect} />
       </div>
+      </div>
     </section>
-    <section hidden={tab !== 'back'}>
-      <p class="muted">The back of every card from your custom sets. Vanilla sets keep their own backs. Choose any image, then drag
+    <section class="pane" hidden={tab !== 'back'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['back'][0]}</span>
+        <div class="grow"><h1>Card back</h1><p class="muted">The back of every card from your custom sets. Vanilla sets keep their own backs. Choose any image, then drag
         the box to pick the part that's shown (drag a corner to resize it); it starts inside plain borders, like a scan's padding.
-        The game keeps its own rounded edge around it and shows a new back after a restart.</p>
+        The game keeps its own rounded edge around it and shows a new back after a restart.</p></div>
+      </header>
+      <div class="block">
       <p class="muted">A set can still have its own back instead: open the set on the <b>Sets</b> page and choose it on its
         <b>Set</b> tab. Sets without one use this back (or, when there's none here, their frame's back).</p>
-      <PictureSlot bind:value={() => draft!.back, setBack} aspect={look.cardBack.aspect} pick={() => App.ImportCardBack()}
-        fallback={draft.back.result} {notify}>
-        {#snippet extra()}
-          <span class="gen"><input type="color" bind:value={backColor} /><input placeholder="Title (optional)" bind:value={backTitle} />
-            <button onclick={generateBack}>Generate</button></span>
-        {/snippet}
-      </PictureSlot>
-      {#if !draft.back.file && draft.back.result}<p class="muted small">Made before Studio kept the picture: choose it again to move or resize the part that's shown.</p>{/if}
+      <div class="pair">
+        <div class="col grow">
+          <PictureSlot bind:value={() => draft!.back, setBack} aspect={look.cardBack.aspect} pick={() => App.ImportCardBack()}
+            fallback={draft.back.result} {notify}>
+            {#snippet extra()}
+              <span class="gen"><input type="color" bind:value={backColor} /><input placeholder="Title (optional)" bind:value={backTitle} />
+                <button onclick={generateBack}>Generate</button></span>
+            {/snippet}
+          </PictureSlot>
+          {#if !draft.back.file && draft.back.result}<p class="muted small">Made before Studio kept the picture: choose it again to move or resize the part that's shown.</p>{/if}
+        </div>
+        <CardBackPreview image={draft.back.url} crop={draft.back.crop} aspect={look.cardBack.aspect}
+          fallback={draft.back.file ? '' : draft.back.result} caption="No global back: each set shows its own or its frame's back" />
+      </div>
+      </div>
     </section>
-    <section hidden={tab !== 'card'}>
-      <p class="muted">The card your customers pay with. Add several designs: each time a customer pays by card, they hand you a
+    <section class="pane" hidden={tab !== 'card'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['card'][0]}</span>
+        <div class="grow"><h1>Credit card</h1><p class="muted">The card your customers pay with. Add several designs: each time a customer pays by card, they hand you a
         random one (the card at the counter shows the same). Your picture covers the card's printed side; keep the chip and the
-        embossed number, expiry date and name on top, or show the picture alone.</p>
+        embossed number, expiry date and name on top, or show the picture alone.</p></div>
+      </header>
+      <div class="block">
       <div class="pair">
         <div class="col grow">
           <PictureList bind:items={draft.card} bind:selected={cardShown} aspect={pics.card.aspect} pick={importPicture('card')} {notify}
@@ -291,10 +333,15 @@
             keepChip={draft.options.cardKeepChip} keepPrint={draft.options.cardKeepPrint} />
         </div>
       </div>
+      </div>
     </section>
-    <section hidden={tab !== 'loading'}>
-      <p class="muted">The screen shown while the game loads your shop. Add several pictures: each time it opens, the game picks one
-        at random. Its "Now Loading…" text, the percent and the spinning card stay on top.</p>
+    <section class="pane" hidden={tab !== 'loading'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['loading'][0]}</span>
+        <div class="grow"><h1>Loading screen</h1><p class="muted">The screen shown while the game loads your shop. Add several pictures: each time it opens, the game picks one
+        at random. Its "Now Loading…" text, the percent and the spinning card stay on top.</p></div>
+      </header>
+      <div class="block">
       <PictureList bind:items={draft.loading} bind:selected={loadingShown} aspect={pics.loading.aspect} pick={importPicture('loading')} {notify}
         empty="No pictures: the game shows its black screen. Add one or more; each time it opens the game picks one at random." />
       <div class="row card-mode">
@@ -315,44 +362,60 @@
       {/if}
       <ScreenPreview layoutUrl={lay.loading ?? ''} image={draft.loading[loadingShown]?.url ?? ''} crop={draft.loading[loadingShown]?.crop ?? null}
         aspect={pics.loading.aspect} card={loadingCard()} />
+      </div>
     </section>
-    <section hidden={tab !== 'menu'}>
-      <p class="muted">The background of the main menu. The logo and buttons stay on top.</p>
+    <section class="pane" hidden={tab !== 'menu'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['menu'][0]}</span>
+        <div class="grow"><h1>Main menu</h1><p class="muted">The background of the main menu. The logo and buttons stay on top.</p></div>
+      </header>
+      <div class="block">
       <PictureSlot bind:value={draft.menu} aspect={pics.menu.aspect} pick={importPicture('menu')} {notify} />
       <ScreenPreview layoutUrl={lay.menu ?? ''} image={draft.menu.url} crop={draft.menu.crop} aspect={pics.menu.aspect} />
+      </div>
     </section>
-    <section class="wide" hidden={tab !== 'boxes'}>
-      <p class="muted">The cardboard boxes your stock and furniture arrive in, the box graded cards come back in, the bulk card
+    <section class="pane wide" hidden={tab !== 'boxes'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['boxes'][0]}</span>
+        <div class="grow"><h1>Textures</h1><p class="muted">The cardboard boxes your stock and furniture arrive in, the box graded cards come back in, the bulk card
         boxes from the workbench, the customers' shopping bag and the billboards on the street. Paint each one on its texture: add images, text and colours and drag them over the parts you
-        want (the outlines show every part, inside and edges included).</p>
+        want (the outlines show every part, inside and edges included).</p></div>
+      </header>
+      <div class="block">
       <BoxLookTab bind:this={boxTab} boxes={look.boxes ?? []} {notify} bind:dirty={boxDirty} />
+      </div>
     </section>
     </div>
   {:else}
-    <p class="muted small">{error || 'Loading…'}</p>
+    <p class="muted loading">{error || 'Loading…'}</p>
   {/if}
 </div>
 
 <style>
-  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
-  .page > p { margin: 0; max-width: 900px; }
-  .tabs { border-bottom: 1px solid var(--line); padding-bottom: 8px; flex-wrap: wrap; }
-  .tabs button.on { border-color: var(--accent); background: #22304d; }
-  .dot { color: var(--accent-2); margin-left: 6px; }
-  .body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
-  section[hidden] { display: none; }
-  section.wide { max-width: none; }
+  .page { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .nav { width: 260px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+  .navhead { padding: 6px 8px; }
+  .navnote { margin: auto 6px 6px; padding-top: 12px; }
+  .glyph { font-size: 20px; width: 30px; text-align: center; flex: none; }
+  .info .sub { white-space: normal; }
+  .body { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+  .pane { max-width: none; }
+  .pane[hidden] { display: none; }
+  .pane-hero h1 { margin-bottom: 4px; }
+  .pane-hero p { margin: 0; max-width: 760px; }
+  .bigglyph { font-size: 30px; width: 60px; height: 60px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; flex: none; align-self: flex-start; }
+  .loading { padding: 24px; }
   h4 { margin: 0; }
-  .grow { flex: 1; }
   .col { display: flex; flex-direction: column; gap: 8px; min-width: 260px; }
   .gen { display: inline-flex; gap: 6px; align-items: center; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }
   .card-mode { align-items: flex-end; gap: 12px; }
   .sign-text { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 14px; margin: 6px 0; }
   .sign-preview { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-  .pair { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; }
-  .sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  /* Picture (crop box, options) and its preview side by side; both columns grow with the window. */
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start; }
+  .sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
   .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .small { font-size: 12px; margin: 0; }
+  .small { margin: 0; }
 </style>

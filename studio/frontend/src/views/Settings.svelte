@@ -95,61 +95,95 @@ TCG Studio starts an empty one there and ` +
 </SaveBar>
 <div class="page">
   {#if settings && status}
-    <section>
-      <h3>Game</h3>
-      <div class="row"><input class="grow" readonly value={settings.gameDir || '(not set)'} /><button onclick={locate}>Find automatically</button><button onclick={browse}>Browse…</button></div>
-      <ul>
-        <li>{status.found ? '✅' : '❌'} TCG Card Shop Simulator</li>
-        <li>{status.bepInEx ? '✅' : '❌'} BepInEx</li>
-        <li>{status.modInstalled ? '✅' : '❌'} TCG Custom Cards mod</li>
-        <li>
-          {#if tpl?.busy}⏳ Game templates — {tpl.message}
-          {:else if tpl?.ready}✅ Game templates <span class="muted">({tpl.source === 'mod' ? 'old in-game export — use Read again' : 'read from the game files'})</span>
-          {:else}⚠️ Game templates <span class="muted">{tpl?.error || (status.found ? 'not read yet' : 'set the game folder first')}</span>{/if}
+    <!-- One card per topic; each setting is a row: what it is on the left, the control on the right. -->
+    <section class="block">
+      <div class="bhead"><h2>Game</h2><span class="muted small">Where TCG Card Shop Simulator is installed</span></div>
+      <div class="srow">
+        <div class="label"><b>Game folder</b><span class="muted small">Studio reads the game's art and models from here and installs the mod into it.</span></div>
+        <div class="control">
+          <input class="path" readonly value={settings.gameDir || '(not set)'} title={settings.gameDir} />
+          <div class="row"><button onclick={locate}>Find automatically</button><button onclick={browse}>Browse…</button></div>
+        </div>
+      </div>
+      <ul class="items">
+        <li class={status.found ? 'ok' : 'missing'}><span class="icon">{status.found ? '✓' : '✗'}</span><b>TCG Card Shop Simulator</b></li>
+        <li class={status.bepInEx ? 'ok' : 'missing'}><span class="icon">{status.bepInEx ? '✓' : '✗'}</span><b>BepInEx</b></li>
+        <li class={status.modInstalled ? 'ok' : 'missing'}><span class="icon">{status.modInstalled ? '✓' : '✗'}</span><b>TCG Custom Cards mod</b>
+          {#if !status.modInstalled}<span class="muted small">install it on <b>Game &amp; mod</b></span>{/if}</li>
+        <li class={tpl?.busy ? 'info' : tpl?.ready ? 'ok' : 'outdated'}>
+          <span class="icon">{tpl?.busy ? '…' : tpl?.ready ? '✓' : '!'}</span>
+          <b>Game templates</b>
+          <span class="muted small grow">{tpl?.busy ? tpl.message : tpl?.ready ? (tpl.source === 'mod' ? 'old in-game export — use Read again' : 'read from the game files')
+            : (tpl?.error || (status.found ? 'not read yet' : 'set the game folder first'))}</span>
           {#if status.found && !tpl?.busy}<button class="small" onclick={rereadTemplates} title="Read the vanilla art, models and prices from the game files again">Read again</button>{/if}
         </li>
       </ul>
     </section>
-    <section>
-      <h3>Interface size</h3>
-      <label class="field">Size of text, buttons and panels in TCG Studio
-        <select bind:value={draft.value.uiScale}>
-          {#each UI_SCALES as v}<option value={v}>{Math.round(v * 100)} %{v === 1 ? ' (default)' : ''}</option>{/each}
-        </select>
-      </label>
-      {#if needsRestart}
-        <div class="row"><span class="grow">Saved. The new size shows after TCG Studio restarts.</span><button class="primary" onclick={restart} disabled={draft.dirty}
-          title={draft.dirty ? 'Save or revert your other changes on this page first' : 'Start TCG Studio again with the new size'}>Restart now</button></div>
-      {:else}
-        <p class="muted small">Takes effect when TCG Studio restarts (you can restart right after saving).</p>
-      {/if}
+
+    <section class="block">
+      <div class="bhead"><h2>Interface</h2></div>
+      <div class="srow">
+        <div class="label"><b>Interface size</b><span class="muted small">Size of text, buttons and panels in TCG Studio. Takes effect when Studio restarts.</span></div>
+        <div class="control">
+          <select bind:value={draft.value.uiScale}>
+            {#each UI_SCALES as v}<option value={v}>{Math.round(v * 100)} %{v === 1 ? ' (default)' : ''}</option>{/each}
+          </select>
+          {#if needsRestart}
+            <div class="row"><span class="small grow">Saved — shows after a restart.</span><button class="primary" onclick={restart} disabled={draft.dirty}
+              title={draft.dirty ? 'Save or revert your other changes on this page first' : 'Start TCG Studio again with the new size'}>Restart now</button></div>
+          {/if}
+        </div>
+      </div>
     </section>
-    <section>
-      <h3>Downloads</h3>
-      <label class="field">Default card image format for imports
-        <select bind:value={draft.value.imageFormat}>
-          <option value="png">PNG — best quality (default)</option>
-          <option value="jpg">JPEG — about 6× smaller, card scans lose a little detail</option>
-        </select>
-      </label>
-      <p class="muted small">The Import page starts with this format; you can still pick the other one for a single import.
-        Existing sets can be converted on the Storage page.</p>
+
+    <section class="block">
+      <div class="bhead"><h2>Downloads</h2></div>
+      <div class="srow">
+        <div class="label"><b>Card image format for imports</b><span class="muted small">The Import page starts with this; you can still pick the other for
+          one import. Existing sets can be converted on the Storage page.</span></div>
+        <div class="control">
+          <select bind:value={draft.value.imageFormat}>
+            <option value="png">PNG — best quality (default)</option>
+            <option value="jpg">JPEG — about 6× smaller, scans lose a little detail</option>
+          </select>
+        </div>
+      </div>
     </section>
-    <section>
-      <h3>Workspace</h3>
-      <p class="muted">The folder that holds all your setups (each with its sets, images and accessories) — see My Setups.</p>
-      <div class="row"><input class="grow" bind:value={draft.value.workspace} /></div>
-      <h4>Shared library</h4>
-      <p class="muted small">Every set's card art, card back and pack &amp; box art, stored once for all your setups. The game reads
-        them from here (no copies in the game folder). It is always the workspace's <code>library</code> folder.</p>
-      <div class="row"><input class="grow" value={libraryFolder} readonly /><button onclick={() => App.OpenFolder(libraryFolder)}>Open folder</button></div>
+
+    <section class="block">
+      <div class="bhead"><h2>Workspace</h2><span class="muted small">Where all your content lives</span></div>
+      <div class="srow">
+        <div class="label"><b>Workspace folder</b><span class="muted small">Holds all your setups (each with its sets and accessories) — see the setup picker.</span></div>
+        <div class="control"><input class="path" bind:value={draft.value.workspace} /></div>
+      </div>
+      <div class="srow">
+        <div class="label"><b>Shared library</b><span class="muted small">Every set's card art, card back and pack &amp; box art, stored once for all your
+          setups. The game reads it from here (no copies in the game folder). Always the workspace's <code>library</code> folder.</span></div>
+        <div class="control">
+          <input class="path" value={libraryFolder} readonly title={libraryFolder} />
+          <div class="row"><button onclick={() => App.OpenFolder(libraryFolder)}>Open folder</button></div>
+        </div>
+      </div>
     </section>
+  {:else}
+    <p class="muted">Loading…</p>
   {/if}
 </div>
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
-  ul { margin: 0; padding-left: 20px; line-height: 1.8; }
-  .small { font-size: 12px; margin: 0; }
+  .page { padding: 20px 24px 28px; overflow: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+  .block { max-width: 1000px; }
+  .srow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+  .bhead + .srow { border-top: none; }
+  .label { display: flex; flex-direction: column; gap: 3px; }
+  .control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .control select, .control .path { width: 100%; min-width: 0; }
+  .path { font-family: Consolas, monospace; font-size: 12px; }
+  .items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .items li { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 8px; background: var(--panel-2); }
+  .icon { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; background: var(--line); }
+  li.ok .icon { background: var(--ok); color: #fff; }
+  li.missing .icon { background: var(--danger); color: #fff; }
+  li.outdated .icon { background: #d9a400; color: #000; }
+  .small { margin: 0; }
 </style>

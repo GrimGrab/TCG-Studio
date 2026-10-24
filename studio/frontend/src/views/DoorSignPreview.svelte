@@ -82,6 +82,6 @@
 
 <style>
   .door { line-height: 0; }
-  canvas { display: block; width: 100%; max-width: 360px; image-rendering: auto; border-radius: 6px; }
+  canvas { display: block; width: 100%; max-width: 560px; image-rendering: auto; border-radius: 6px; }
   .muted { line-height: 1.2; }
 </style>

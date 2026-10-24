@@ -2,11 +2,10 @@
   // The card versions the set has (set.json "variants"): 6 borders × normal/foil. Versions that are off are never made by
   // packs or trade customers and are left out of the binder and Check Price — unless the player already owns one. All on =
   // the field is left out (the game's 12 versions).
-  import { BORDERS } from '../../lib/api';
+  import { BORDERS, BORDER_LABELS } from '../../lib/api';
 
   let { project }: { project: any } = $props();
 
-  const LABELS: Record<string, string> = { Base: 'Base', FirstEdition: 'First Edition', Silver: 'Silver', Gold: 'Gold', EX: 'EX', FullArt: 'Full Art' };
   const key = (b: string, foil: boolean) => (foil ? `${b}_foil` : b);
   const all = () => BORDERS.flatMap((b: string) => [key(b, false), key(b, true)]);
 
@@ -31,30 +30,30 @@
   const preset = (keys: string[]) => write(new Set(keys.map((k) => k.toLowerCase())));
 </script>
 
-<section>
-  <h3>Card versions <span class="muted small">({count} of 12)</span></h3>
+<section class="block">
+  <div class="bhead"><h2>Card versions</h2><span class="muted small">{count} of 12 on</span><span class="grow"></span>
+    <button class="small" onclick={() => preset(all())} disabled={count === 12}>All on</button></div>
   <p class="muted small">Which of the game's 12 versions (border × foil) this set's cards come in. Versions that are off never come
     out of packs or trade customers and don't take binder or Check Price slots — cards a player already owns in them stay
     visible. The binder's total counts only the versions that are on.</p>
-  <button class="small" onclick={() => preset(all())} disabled={count === 12}>Select all</button>
-  <table class="variants">
-    <thead><tr><th></th><th>Normal</th><th>Foil</th></tr></thead>
-    <tbody>
-      {#each BORDERS as b}
-        <tr>
-          <td>{LABELS[b] ?? b}</td>
-          {#each [false, true] as foil}
-            <td><input type="checkbox" checked={on.has(key(b, foil).toLowerCase())} disabled={count === 1 && on.has(key(b, foil).toLowerCase())}
-              onchange={() => toggle(b, foil)} aria-label="{LABELS[b] ?? b} {foil ? 'foil' : 'normal'}" /></td>
-          {/each}
-        </tr>
+  <div class="vgrid">
+    <span></span><span class="colhead">Normal</span><span class="colhead">Foil</span>
+    {#each BORDERS as b}
+      <span class="rowhead">{BORDER_LABELS[b]}</span>
+      {#each [false, true] as foil}
+        {@const isOn = on.has(key(b, foil).toLowerCase())}
+        <button class="v" class:on={isOn} class:foil disabled={count === 1 && isOn} onclick={() => toggle(b, foil)}
+          aria-pressed={isOn} aria-label="{BORDER_LABELS[b]} {foil ? 'foil' : 'normal'}">{isOn ? '✓ On' : 'Off'}</button>
       {/each}
-    </tbody>
-  </table>
+    {/each}
+  </div>
 </section>
 
 <style>
-  .variants { border-collapse: collapse; margin-top: 4px; }
-  .variants th, .variants td { padding: 3px 14px 3px 0; text-align: left; }
-  .variants td:not(:first-child), .variants th:not(:first-child) { text-align: center; }
+  .vgrid { display: grid; grid-template-columns: minmax(90px, auto) 1fr 1fr; gap: 4px 6px; align-items: center; }
+  .colhead { font-size: 12px; color: var(--muted); text-align: center; }
+  .rowhead { font-size: 13px; }
+  .v { padding: 4px 0; font-size: 12px; color: var(--muted); background: var(--bg); }
+  .v.on { color: var(--text); background: #1c2740; border-color: var(--accent-2); }
+  .v.on.foil { background: linear-gradient(120deg, #1c2740, #2e2148 55%, #1d3a3a); }
 </style>

@@ -240,6 +240,14 @@ func (s *unionArenaSource) cardArt(ctx context.Context, p *project.Project, _ []
 	return artFromCards(p, cards, s.t.c.Download, false, CardAspect), nil
 }
 
+func (s *tcgGameSource) cardArt(ctx context.Context, p *project.Project, _ []string) (*cardArt, error) {
+	cards, err := s.setCards(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return artFromCards(p, cards, s.t.c.Download, true, CardAspect), nil
+}
+
 func (s *swuSource) cardArt(ctx context.Context, p *project.Project, _ []string) (*cardArt, error) {
 	cards, err := s.setCards(ctx, p)
 	if err != nil {

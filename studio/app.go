@@ -56,6 +56,7 @@ type App struct {
 	tpl        templatesState   // game templates (app_templates.go)
 	setups     setupsState      // active setup (app_setups.go)
 	storage    storageState     // the running storage task (app_storage.go)
+	previews   previewCache     // set previews of the Import page (app_preview.go)
 }
 
 // taskSlot is the one import or download that may run at a time; stop cancels it.

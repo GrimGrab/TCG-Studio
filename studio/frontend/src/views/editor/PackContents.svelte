@@ -141,6 +141,4 @@
   .warn { color: var(--warn, #e0a030); font-size: 11px; margin-left: 6px; }
   .err { color: var(--danger); font-size: 12px; }
   .foot { gap: 8px; align-items: center; }
-  .link { background: none; border: none; color: var(--accent); }
-  .small { font-size: 12px; }
 </style>

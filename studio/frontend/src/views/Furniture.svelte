@@ -16,12 +16,11 @@
   leaveMessage="Leave Furniture without saving? Your unsaved changes will be lost."
   revertMessage="Throw away every unsaved change on this page (edits, new and deleted pieces)?">
   {#snippet title()}<h2>Furniture</h2>{/snippet}
-  {#snippet extra()}<button onclick={() => App.OpenAccessoriesFolder()} title="Furniture is saved with the accessories (accessories.json and images/).">Open folder</button>{/snippet}
 </SaveBar>
-<div class="page">
+<div class="page libpage">
   <FurnitureTab bind:this={tab} bind:dirty bind:saving {notify} />
 </div>
 
 <style>
-  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+  .page { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 </style>

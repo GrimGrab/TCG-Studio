@@ -125,6 +125,7 @@ export namespace catalog {
 	    usedBy: SetupRef[];
 	    cover: string;
 	    icon: string;
+	    base: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Entry(source);
@@ -149,6 +150,7 @@ export namespace catalog {
 	        this.usedBy = this.convertValues(source["usedBy"], SetupRef);
 	        this.cover = source["cover"];
 	        this.icon = source["icon"];
+	        this.base = source["base"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -877,6 +879,82 @@ export namespace importer {
 	        this.originLink = source["originLink"];
 	    }
 	}
+	export class PreviewCard {
+	    name: string;
+	    number: string;
+	    rarity: string;
+	    game: string;
+	    variant: string;
+	    price?: number;
+	    thumb: string;
+	    image: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewCard(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.number = source["number"];
+	        this.rarity = source["rarity"];
+	        this.game = source["game"];
+	        this.variant = source["variant"];
+	        this.price = source["price"];
+	        this.thumb = source["thumb"];
+	        this.image = source["image"];
+	    }
+	}
+	export class PreviewPack {
+	    cards: number;
+	    slots: setfmt.Slot[];
+	    foilChance: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewPack(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cards = source["cards"];
+	        this.slots = this.convertValues(source["slots"], setfmt.Slot);
+	        this.foilChance = source["foilChance"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PreviewRarity {
+	    name: string;
+	    game: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PreviewRarity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.game = source["game"];
+	        this.count = source["count"];
+	    }
+	}
 	
 	export class SealedGame {
 	    category: number;
@@ -929,6 +1007,62 @@ export namespace importer {
 	        this.thumb = source["thumb"];
 	        this.image = source["image"];
 	    }
+	}
+	export class SetPreview {
+	    source: string;
+	    code: string;
+	    name: string;
+	    releasedAt: string;
+	    logo: string;
+	    cards: number;
+	    variants: number;
+	    priced: number;
+	    value: number;
+	    rarities: PreviewRarity[];
+	    top: PreviewCard[];
+	    all: PreviewCard[];
+	    pack: PreviewPack;
+	    notes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SetPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = source["source"];
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.releasedAt = source["releasedAt"];
+	        this.logo = source["logo"];
+	        this.cards = source["cards"];
+	        this.variants = source["variants"];
+	        this.priced = source["priced"];
+	        this.value = source["value"];
+	        this.rarities = this.convertValues(source["rarities"], PreviewRarity);
+	        this.top = this.convertValues(source["top"], PreviewCard);
+	        this.all = this.convertValues(source["all"], PreviewCard);
+	        this.pack = this.convertValues(source["pack"], PreviewPack);
+	        this.notes = source["notes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SourceInfo {
 	    id: string;

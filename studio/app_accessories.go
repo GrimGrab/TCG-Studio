@@ -195,14 +195,6 @@ func (a *App) InstallAccessories() (AccessoryView, error) {
 	return a.saveLibrary(l)
 }
 
-func (a *App) OpenAccessoriesFolder() {
-	l, err := a.items()
-	if err == nil {
-		_ = os.MkdirAll(l.Folder, 0o755)
-		reveal(l.Folder)
-	}
-}
-
 // ---------------------------------------------------------------- accessory gamify (one ladder, library order)
 
 func (a *App) GamifyAccessoryDefaults() gamify.AccessorySettings {

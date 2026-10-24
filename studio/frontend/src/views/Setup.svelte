@@ -77,126 +77,149 @@
 </script>
 
 <div class="page">
-  <header class="row"><h2 class="grow">Game &amp; mod</h2>
+  <header class="head">
+    <div><h2>Game &amp; mod</h2>
+      <div class="muted small">BepInEx, the in-game settings menu (F1) and the TCG Custom Cards mod — only what's missing or out of date is
+        changed, your other mods and settings stay, and anything replaced is backed up.</div></div>
+    <span class="grow"></span>
     <button onclick={refresh} disabled={busy}>Re-check</button>
   </header>
-  <p class="muted intro">Installs everything needed to play with custom cards: the BepInEx mod loader, the in-game settings menu (F1)
-    and the TCG Custom Cards mod. Safe to run any time — it only changes what's missing or out of date, keeps your other mods
-    and settings, and backs up anything it replaces.</p>
 
+  <div class="main">
   {#if st}
     {#if !st.found}
-      <section>
-        <h3>Find the game</h3>
-        <p>TCG Card Shop Simulator wasn't found automatically.</p>
-        <div class="row"><button class="primary" onclick={locate}>Search Steam libraries</button><button onclick={browse}>Choose folder…</button></div>
-      </section>
+      <div class="banner bad">
+        <span class="bigicon">?</span>
+        <div class="grow"><h1>Find the game</h1><p class="muted">TCG Card Shop Simulator wasn't found automatically.</p></div>
+        <button class="primary big" onclick={locate}>Search Steam libraries</button><button class="big" onclick={browse}>Choose folder…</button>
+      </div>
     {:else}
-      <section>
-        <div class="row"><span class="muted small grow">{st.gameDir}</span>
-          {#if st.version}<span class="muted small">installer {st.version}</span>{/if}</div>
-        <ul class="items">
-          {#each st.items as it}
-            <li class={it.state}>
-              <span class="icon">{ICON[it.state] ?? '·'}</span>
-              <div><b>{it.title}</b><div class="small">{it.message}</div></div>
-            </li>
-          {/each}
-        </ul>
-        {#if !st.payload}
-          <p class="err small">This build of TCG Studio doesn't include the installer files (build it with tools\package.ps1).</p>
-        {/if}
-        <div class="row">
-          <button class="primary big" onclick={repair} disabled={busy || !st.payload || st.running || !needsWork}>
-            {busy ? 'Working…' : needsWork ? 'Install / Repair everything' : 'Everything is installed'}
-          </button>
-          {#if st.running}<span class="warn small">Close the game first, then Re-check.</span>{/if}
+      {@const problems = st.items.filter((it: any) => it.state !== 'ok' && it.state !== 'info').length}
+      <!-- One line that says whether you can play, with the one button that fixes it. -->
+      <div class="banner" class:good={!needsWork} class:bad={needsWork}>
+        <span class="bigicon">{needsWork ? '!' : '✓'}</span>
+        <div class="grow">
+          <h1>{needsWork ? `${problems || 'Some'} thing${problems === 1 ? '' : 's'} need${problems === 1 ? 's' : ''} attention` : 'Everything is installed'}</h1>
+          <p class="muted path" title={st.gameDir}>{st.gameDir}{st.version ? ` · installer ${st.version}` : ''}</p>
+          {#if st.running}<p class="warn small">The game is running — close it first, then Re-check.</p>{/if}
+          {#if !st.payload}<p class="err small">This build of TCG Studio doesn't include the installer files (build it with tools\package.ps1).</p>{/if}
         </div>
-      </section>
+        <button class="primary big" onclick={repair} disabled={busy || !st.payload || st.running || !needsWork}>
+          {busy ? 'Working…' : needsWork ? 'Install / Repair everything' : 'Up to date'}
+        </button>
+      </div>
 
-      {#if log.length || backup}
-        <section>
-          <h3>What happened</h3>
-          <pre class="log">{log.join('\n')}</pre>
-          {#if backup}<div class="row"><span class="small grow">Backup: {backup}</span><button class="small" onclick={() => App.OpenFolder(backup)}>Open backup folder</button></div>{/if}
-        </section>
-      {/if}
-
-      {#if forge}
-        <section>
-          <h3>MTG mode (optional)</h3>
-          <p class="small muted">Play real Magic: The Gathering against the AI with the cards in your in-game decks. Uses
-            <b>Forge</b> (open-source MTG rules engine, GPL-3.0) with its own Java — nothing else on your PC is changed.
-            In game, sit at a play table with a deck that contains MTG cards and pick <b>Magic (Forge)</b>.</p>
+      <div class="cards">
+        <section class="block">
+          <div class="bhead"><h2>Components</h2></div>
           <ul class="items">
-            <li class={forge.installed ? (forge.outdated ? 'outdated' : 'ok') : 'info'}>
-              <span class="icon">{forge.installed ? (forge.outdated ? '!' : '✓') : 'i'}</span>
-              <div><b>Forge {forge.installed ? forge.forgeVersion : ''}</b>
-                <div class="small">{forge.installed
-                  ? (forge.outdated ? `Update available (${forge.pinned}).` : `Installed with Java ${forge.javaVersion} in ${forge.dir}`)
-                  : `Not installed (about ${forge.sizeMB} MB download).`}</div></div>
-            </li>
+            {#each st.items as it}
+              <li class={it.state}>
+                <span class="icon">{ICON[it.state] ?? '·'}</span>
+                <div><b>{it.title}</b><div class="small muted">{it.message}</div></div>
+              </li>
+            {/each}
           </ul>
-          {#if forgeBusy && forgeProg}
-            <div class="small">{forgeProg.message}</div>
-            {#if forgeProg.total > 0}<progress max={forgeProg.total} value={forgeProg.done}></progress>{/if}
-          {/if}
-          <div class="row">
-            <button class="primary" onclick={installForge} disabled={forgeBusy || !st.found}>
-              {forgeBusy ? 'Installing…' : forge.installed ? (forge.outdated ? 'Update Forge' : 'Reinstall Forge') : 'Install MTG mode'}
-            </button>
-            {#if forgeBusy}<button onclick={() => App.CancelForgeInstall()}>Cancel</button>{/if}
-            {#if forge.installed && !forgeBusy}
-              <button onclick={() => App.OpenFolder(forge.dir)}>Open folder</button>
-              <button class="danger small" onclick={removeForge}>Remove</button>
-            {/if}
-          </div>
         </section>
-      {/if}
 
-      <section>
-        <h3>Next steps</h3>
-        <ol class="small steps">
-          <li>Use <b>Import</b> to download card sets (Magic, Pokémon, Yu-Gi-Oh!, One Piece, Star Wars: Unlimited, Lorcana, Flesh and Blood, Union Arena), then <b>Install</b> them from <b>Sets</b>.</li>
-          <li>Restart the game — your sets are in the shop and binder. Press <b>F1</b> in game for mod settings.</li>
-        </ol>
-        <div class="row">
-          <button onclick={launch} disabled={!st.ready}>Launch game</button>
-          <button onclick={verify}>Check it worked</button>
-        </div>
-        {#if check}
-          {#if !check.logFound}
-            <p class="small warn">No BepInEx log yet — launch the game once.</p>
-          {:else if check.loaded}
-            <p class="small ok">✓ Last launch ({check.when}): {check.summary}</p>
-          {:else}
-            <p class="small err">The last launch ({check.when}) didn't load the mod.</p>
+        <section class="block">
+          <div class="bhead"><h2>Play</h2></div>
+          <ol class="small steps">
+            <li>Use <b>Import</b> to bring in card sets, then <b>Install</b> them on <b>Sets</b>.</li>
+            <li>Restart the game — your sets are in the shop and binder. Press <b>F1</b> in game for mod settings.</li>
+          </ol>
+          <div class="row">
+            <button class="primary" onclick={launch} disabled={!st.ready}>Launch game</button>
+            <button onclick={verify} title="Reads the game's last log: did the mod load, and were there errors?">Check it worked</button>
+          </div>
+          {#if check}
+            {#if !check.logFound}
+              <div class="notice">No BepInEx log yet — launch the game once.</div>
+            {:else if check.loaded}
+              <div class="notice ok">✓ Last launch ({check.when}): {check.summary}</div>
+            {:else}
+              <div class="notice err">The last launch ({check.when}) didn't load the mod.</div>
+            {/if}
+            {#if check.errors?.length}<pre class="log">{check.errors.join('\n')}</pre>{/if}
           {/if}
-          {#if check.errors?.length}<pre class="log">{check.errors.join('\n')}</pre>{/if}
+        </section>
+
+        {#if forge}
+          <section class="block">
+            <div class="bhead"><h2>MTG mode</h2><span class="muted small">optional</span></div>
+            <p class="small muted">Play real Magic: The Gathering against the AI with the cards in your in-game decks, using <b>Forge</b>
+              (open-source rules engine, GPL-3.0) with its own Java — nothing else on your PC changes. In game, sit at a play table with a
+              deck that has MTG cards and pick <b>Magic (Forge)</b>.</p>
+            <ul class="items">
+              <li class={forge.installed ? (forge.outdated ? 'outdated' : 'ok') : 'info'}>
+                <span class="icon">{forge.installed ? (forge.outdated ? '!' : '✓') : 'i'}</span>
+                <div><b>Forge {forge.installed ? forge.forgeVersion : ''}</b>
+                  <div class="small muted">{forge.installed
+                    ? (forge.outdated ? `Update available (${forge.pinned}).` : `Installed with Java ${forge.javaVersion} in ${forge.dir}`)
+                    : `Not installed (about ${forge.sizeMB} MB download).`}</div></div>
+              </li>
+            </ul>
+            {#if forgeBusy && forgeProg}
+              <div class="small">{forgeProg.message}</div>
+              {#if forgeProg.total > 0}<progress max={forgeProg.total} value={forgeProg.done}></progress>{/if}
+            {/if}
+            <div class="row">
+              <button class="primary" onclick={installForge} disabled={forgeBusy || !st.found}>
+                {forgeBusy ? 'Installing…' : forge.installed ? (forge.outdated ? 'Update Forge' : 'Reinstall Forge') : 'Install MTG mode'}
+              </button>
+              {#if forgeBusy}<button onclick={() => App.CancelForgeInstall()}>Cancel</button>{/if}
+              {#if forge.installed && !forgeBusy}
+                <button onclick={() => App.OpenFolder(forge.dir)}>Open folder</button>
+                <button class="danger" onclick={removeForge}>Remove</button>
+              {/if}
+            </div>
+          </section>
         {/if}
-      </section>
+
+        {#if log.length || backup}
+          <section class="block">
+            <div class="bhead"><h2>What happened</h2></div>
+            <pre class="log">{log.join('\n')}</pre>
+            {#if backup}<div class="row"><span class="small grow">Backup: {backup}</span><button class="small" onclick={() => App.OpenFolder(backup)}>Open backup folder</button></div>{/if}
+          </section>
+        {/if}
+      </div>
 
       <DebugLog {notify} />
 
-      <section class="danger-zone">
-        <h3>Remove</h3>
+      <section class="block danger-zone">
+        <div class="bhead"><h2>Remove</h2><span class="muted small">Takes the mod out of the game (your setups and sets stay in TCG Studio).</span></div>
         <div class="row">
-          <button class="danger small" onclick={() => uninstall(false)} disabled={busy || st.running}>Remove the mod</button>
-          <button class="danger small" onclick={() => uninstall(true)} disabled={busy || st.running}>Remove mod + BepInEx</button>
+          <button class="danger" onclick={() => uninstall(false)} disabled={busy || st.running}>Remove the mod</button>
+          <button class="danger" onclick={() => uninstall(true)} disabled={busy || st.running}>Remove mod + BepInEx</button>
         </div>
       </section>
     {/if}
   {:else}
-    <p class="muted">Checking…</p>
+    <div class="banner"><span class="bigicon">…</span><div class="grow"><h1>Checking the game…</h1></div></div>
   {/if}
+  </div>
 </div>
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; height: 100%; display: flex; flex-direction: column; gap: 14px; }
-  .intro { max-width: 820px; margin: 0; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .head { display: flex; align-items: flex-start; gap: 16px; padding: 16px 24px 14px; border-bottom: 1px solid var(--line); }
+  .head h2 { font-size: 20px; margin-bottom: 4px; }
+  .head .small { max-width: 760px; }
+  .main { flex: 1; min-height: 0; overflow: auto; padding: 18px 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+  .banner { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+  .banner.good { border-color: #1f6b4b; background: linear-gradient(90deg, rgba(62, 207, 142, 0.12), var(--panel) 60%); }
+  .banner.bad { border-color: #6b5320; background: linear-gradient(90deg, rgba(255, 176, 32, 0.12), var(--panel) 60%); }
+  .banner h1 { font-size: 20px; }
+  .banner p { margin: 4px 0 0; }
+  .banner .path { font-family: Consolas, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .banner .grow { min-width: 0; }
+  .bigicon { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 26px; font-weight: 700; background: var(--line); }
+  .good .bigicon { background: var(--ok); color: #0b2018; }
+  .bad .bigicon { background: var(--warn); color: #2a1d00; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; align-items: start; }
   .items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .items li { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 6px; background: var(--panel-2); }
+  .items li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); }
   .icon { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; background: var(--line); }
   li.ok .icon { background: var(--ok); color: #fff; }
   li.missing .icon, li.blocked .icon { background: var(--danger); color: #fff; }
@@ -205,10 +228,6 @@
   .big { font-size: 15px; padding: 10px 18px; }
   .log { background: var(--bg); padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto; margin: 0; font-size: 12px; white-space: pre-wrap; }
   .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
-  .small { font-size: 12px; }
-  .ok { color: var(--ok); }
-  .err { color: var(--danger); }
-  .warn { color: #d9a400; }
   .danger-zone { border-color: #5a2a2a; }
   progress { width: 100%; height: 10px; }
 </style>

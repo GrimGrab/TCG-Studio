@@ -299,7 +299,6 @@
 <style>
   .base { align-items: flex-end; }
   button.on { border-color: var(--accent); background: #22304d; }
-  .small { font-size: 12px; }
   .classic { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
   .gen { align-items: flex-end; }
   .gen input[type="color"] { width: 60px; height: 32px; padding: 2px; }

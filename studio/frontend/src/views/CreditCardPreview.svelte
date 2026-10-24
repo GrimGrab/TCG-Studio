@@ -74,6 +74,6 @@
 
 <style>
   .card { line-height: 0; }
-  canvas { display: block; width: 100%; max-width: 360px; border-radius: 16px; box-shadow: 0 4px 14px #0008; }
+  canvas { display: block; width: 100%; max-width: 560px; border-radius: 16px; box-shadow: 0 4px 14px #0008; }
   .muted { line-height: 1.2; }
 </style>

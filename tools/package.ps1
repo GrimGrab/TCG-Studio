@@ -55,6 +55,6 @@ try {
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
 $out = Join-Path $dist "TCG Studio.exe"
-try { Copy-Item (Join-Path $studio "build\bin\studio.exe") $out -Force -ErrorAction Stop }
+try { Copy-Item (Join-Path $studio "build\bin\TCG Studio.exe") $out -Force -ErrorAction Stop }
 catch { throw "Couldn't write $out - close TCG Studio if it's running from the dist folder, then run this again. ($($_.Exception.Message))" }
 Write-Host "Done: $out (v$version) - send this one file; its Game & mod page installs everything."

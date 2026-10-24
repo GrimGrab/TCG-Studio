@@ -36,6 +36,7 @@
   import SaveBar from './SaveBar.svelte';
   import { accFile, templateFile } from '../lib/urls';
   import { App, EventsOn, errText, originName } from '../lib/api';
+  import { matchSearch } from '../lib/search';
   import { loadImage } from '../lib/accessoryArt';
   import CatalogPicker from './CatalogPicker.svelte';
   import { FigurineView, loadGeom, quadGeom, type Geom, type Mat, type Box, type SceneObj, mul, translate, scale, rotX, rotY, rotZ } from '../lib/figurineView';
@@ -65,7 +66,9 @@
   const kindInfo = (k: string) => kinds.find((x) => x.kind === k);
   const surface = (k: string) => !!kindInfo(k)?.surface;
   const list = $derived<any[]>(view ? draft.apply(view.decorations) : []);
-  const shown = $derived(list.filter((x) => x.kind === tab).slice().sort((a, b) => a.name.localeCompare(b.name)));
+  let query = $state(''); // list search (name or id)
+  const shown = $derived(list.filter((x) => x.kind === tab && matchSearch(query, x.name, x.id))
+    .slice().sort((a, b) => a.name.localeCompare(b.name)));
   const accUrl = (rel?: string) => accFile(rel, bust);
   const tplUrl = (f?: string) => templateFile('deco', f);
   const originOf = (x: any) => view?.origins?.[x.id];
@@ -163,7 +166,8 @@
   function listKey(e: KeyboardEvent) {
     if (e.key !== 'Delete' || !picked.length) return;
     e.preventDefault();
-    removeIds([...picked]);
+    const ids = picked.filter((id) => shown.some((x: any) => x.id === id)); // not the ones a search hides
+    if (ids.length) removeIds(ids);
   }
 
   async function addedFromCatalog(ids: string[]) {
@@ -511,63 +515,85 @@
   leaveMessage="Leave Decorations without saving? Your unsaved changes will be lost."
   revertMessage="Throw away every unsaved change on this page (edits, new and deleted decorations)?">
   {#snippet title()}<h2>Decorations</h2>{#if busy}<span class="muted small">{busy}</span>{/if}{/snippet}
-  {#snippet extra()}<button onclick={() => App.OpenAccessoriesFolder()} title="Decorations are saved with the accessories (accessories.json).">Open folder</button>{/snippet}
 </SaveBar>
-<div class="page">
-  <p class="muted small intro">
-    New things for the phone's <b>Buy Decoration</b> app: wall, floor and ceiling looks, posters made from your own pictures and decorations
-    from your own 3D models. Bought looks are switched in the game's Decorate screen; posters and decorations are placed like vanilla ones.
-    <br />Only want your own in the shop? Turn off <b>Mod settings → Content - Decorations</b> (ShowVanillaPosters, ShowVanillaDecoObjects,
-    ShowVanillaSurfaces).
-  </p>
+<div class="page libpage">
+  <!-- Kind tabs with counts; one short line about where these show up and the vanilla switches; template problems. -->
+  <nav class="tabbar">
+    {#each kinds as k}
+      <button class:on={tab === k.kind} onclick={() => setTab(k.kind)}>{k.title}<span class="n">{list.filter((x) => x.kind === k.kind).length}</span></button>
+    {/each}
+  </nav>
+  <div class="intro">
+    <span class="muted">For the phone's <b>Buy Decoration</b> app: looks are switched in the Decorate screen, posters and decorations are placed
+      like vanilla ones. To sell only yours: <b>Mod settings → Content - Decorations</b>.</span>
+  </div>
   {#if !tpl}
-    {#if tplStatus?.busy}<p class="muted small">Reading the game's decorations… {tplStatus.message ?? ''}</p>
-    {:else}<p class="warn small">The game's decorations aren't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'} (you can still make your own).</p>{/if}
+    {#if tplStatus?.busy}<div class="notice info bar">Reading the game's decorations… {tplStatus.message ?? ''}</div>
+    {:else}<div class="notice bar">The game's decorations aren't available{tplStatus?.error ? `: ${tplStatus.error}` : ' — set the game folder in Settings'} (you can still make your own).</div>{/if}
   {/if}
 
-  <div class="tabs">
-    {#each kinds as k}
-      <button class:active={tab === k.kind} onclick={() => setTab(k.kind)}>{k.title} <span class="muted small">{list.filter((x) => x.kind === k.kind).length || ''}</span></button>
-    {/each}
-  </div>
-
   <div class="fwrap">
-    <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
-      {#each shown as x (x.id)}
-        <button class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
-          <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{/if}</span>
-          <span class="grow">{x.id === selectedId && d ? d.name : x.name}
-            {#if draft.parked[x.id]?.problem}<span class="warn small" title={draft.parked[x.id].problem}>⚠</span>{/if}{#if draft.isNew(x.id)}<span class="tag small" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}<br /><span class="muted small">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · from ${originName(originOf(x))}` : ''}</span></span>
-        </button>
-      {/each}
-      <button onclick={add}>+ New {kindInfo(tab)?.one ?? ''}</button>
-      <button onclick={() => (fromCatalog = true)} title="Decorations from your other setups and earlier imports — no re-import">Add from catalog…</button>
-    </div>
+    <aside class="lside sidelist">
+      <div class="sidetools">
+        <input type="search" bind:value={query} placeholder="Search {kindInfo(tab)?.title.toLowerCase() ?? 'decorations'}…" />
+      </div>
+      <div class="list" role="listbox" tabindex="-1" onkeydown={listKey} title="Ctrl+click or Shift+click to select several; Delete removes them">
+        {#each shown as x (x.id)}
+          <button class="item" class:active={x.id === selectedId} class:picked={picked.includes(x.id) && x.id !== selectedId} onclick={(e) => clickItem(e, x.id)}>
+            <span class="ico">{#if x.icon}<img src={accUrl(x.icon)} alt="" />{/if}</span>
+            <span class="info">
+              <span class="name">{x.id === selectedId && d ? d.name : x.name}
+                {#if draft.parked[x.id]?.problem}<span class="warn" title={draft.parked[x.id].problem}>⚠</span>{/if}
+                {#if draft.isNew(x.id)}<span class="tag" title="New — not saved yet">new</span>{:else if draft.isEdited(x.id) || (x.id === selectedId && draft.shownDirty)}<span class="dot" title="Unsaved changes">•</span>{/if}</span>
+              <span class="sub">{x.kind === 'Object' ? `${x.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(x.kind)?.one ?? x.kind}{originOf(x) ? ` · ${originName(originOf(x))}` : ''}</span>
+            </span>
+          </button>
+        {:else}
+          <p class="muted small empty">{query ? 'Nothing matches.' : `No ${kindInfo(tab)?.title.toLowerCase() ?? 'decorations'} yet.`}</p>
+        {/each}
+      </div>
+      <div class="sidefoot">
+        <button class="primary" onclick={add}>+ New {kindInfo(tab)?.one ?? ''}</button>
+        <button onclick={() => (fromCatalog = true)} title="Decorations from your other setups and earlier imports — no re-import">Add from catalog…</button>
+      </div>
+    </aside>
 
     {#if d}
       <div class="form">
+        <header class="pane-hero">
+          <div class="art">{#if d.icon}<img src={accUrl(d.icon)} alt="" title="Shop icon" />{/if}</div>
+          <div class="grow titlebox">
+            <input class="title" bind:value={d.name} aria-label="Name" placeholder="Name" title="Name shown in the Buy Decoration app." />
+            <div class="meta">
+              <span>{d.kind === 'Object' ? `Decoration ${d.mount === 'Wall' ? 'on a wall' : 'on the floor'}` : kindInfo(d.kind)?.one ?? d.kind}</span>
+              <span>${d.price ?? 0}</span>
+              <span class="code" title="Fixed id that saves use to recognise this decoration. It never changes, so renaming is safe.">{d.id}</span>
+            </div>
+          </div>
+          <div class="heroactions">
+            {#if !draft.isNew(d.id)}<button onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog.">Update catalog</button>{/if}
+            <button class="danger" onclick={remove}>Delete</button>
+          </div>
+        </header>
+
         <section>
+          <div class="bhead"><h2>Shop</h2></div>
           <div class="row">
-            <label class="field grow" title="Name shown in the Buy Decoration app.">Name<input bind:value={d.name} /></label>
-            <label class="field" style="width:120px" title="Price in the Buy Decoration app.">Price<input type="number" min="0" step="10" bind:value={d.price} /></label>
-            <label class="field" style="width:170px" title="Fixed id that saves use to recognise this decoration. It never changes, so renaming is safe.">Id<input value={d.id} readonly /></label>
+            <label class="field" style="width:140px" title="Price in the Buy Decoration app.">Price<input type="number" min="0" step="10" bind:value={d.price} /></label>
+            <div class="field grow">Shop icon
+              <div class="row thumbs">
+                {#if d.icon}<img src={accUrl(d.icon)} alt="" />{/if}
+                <span class="muted small grow">{layout.autoIcon || !d.icon ? 'Made from the decoration when you save.' : 'Your own picture.'}</span>
+                <button class="small" onclick={iconFromFile}>Use a picture…</button>
+                {#if !layout.autoIcon && d.icon}<button class="small" onclick={() => { layout.autoIcon = true; }}>Make it from the decoration</button>{/if}
+              </div>
+            </div>
           </div>
-          <div class="row thumbs">
-            <span class="muted small">Shop icon</span>
-            {#if d.icon}<img src={accUrl(d.icon)} alt="" />{/if}
-            <span class="muted small">{layout.autoIcon || !d.icon ? 'made from the decoration when you save' : 'your own picture'}</span>
-            <div class="grow"></div>
-            <button class="small" onclick={iconFromFile}>Use a picture…</button>
-            {#if !layout.autoIcon && d.icon}<button class="small" onclick={() => { layout.autoIcon = true; }}>Make it from the decoration</button>{/if}
-          </div>
-          <div class="row"><div class="grow"></div>
-            {#if !draft.isNew(d.id)}<button class="small" onclick={saveToCatalog} title="Make this setup's saved version the one other setups get when they add it from the catalog.">Update catalog</button>{/if}
-            <button class="danger small" onclick={remove}>Delete</button></div>
         </section>
 
         {#if surface(d.kind)}
           <section>
-            <h3>Look</h3>
+            <div class="bhead"><h2>Look</h2></div>
             <div class="editor">
               <canvas bind:this={surfCanvas} width="420" height="420" class="preview"></canvas>
               <div class="side">
@@ -592,7 +618,7 @@
           </section>
         {:else if d.kind === 'Poster'}
           <section>
-            <h3>Poster</h3>
+            <div class="bhead"><h2>Poster</h2></div>
             <div class="editor">
               <canvas bind:this={posterCanvas} width="360" height="420" class="preview"></canvas>
               <div class="side">
@@ -611,7 +637,7 @@
           </section>
         {:else}
           <section>
-            <h3>Model</h3>
+            <div class="bhead"><h2>Model</h2></div>
             <div class="editor">
               <div class="scene"><canvas bind:this={canvas3d} class="view3d"></canvas>
                 <p class="hint muted small">Drag to turn, right-drag to pan, wheel to zoom. Grey: a vanilla {d.mount === 'Wall' ? 'poster' : 'plant'} for scale.</p></div>
@@ -660,15 +686,22 @@
           </section>
         {/if}
 
-        {#if problems.length}<section>{#each problems as m}<p class="warn small">{m}</p>{/each}</section>{/if}
+        {#each problems as m}<div class="notice">{m}</div>{/each}
 
       </div>
     {:else}
       <div class="form">
-        <p class="muted">No custom {kindInfo(tab)?.title.toLowerCase() ?? 'decorations'} yet — click <b>+ New</b>.</p>
+        <div class="emptypane">
+          <h1>No {kindInfo(tab)?.title.toLowerCase() ?? 'decorations'} yet</h1>
+          <p class="muted">Make your own from a picture or a 3D model, or add one from another setup.</p>
+          <div class="row center">
+            <button onclick={() => (fromCatalog = true)}>Add from catalog…</button>
+            <button class="primary" onclick={add}>+ New {kindInfo(tab)?.one ?? ''}</button>
+          </div>
+        </div>
         {#if vanilla.length}
           <section>
-            <h3>The game's {kindInfo(tab)?.title.toLowerCase()}</h3>
+            <div class="bhead"><h2>The game's {kindInfo(tab)?.title.toLowerCase()}</h2><span class="muted small">for comparison</span></div>
             <div class="vanilla">
               {#each vanilla as v}<span class="vico" title={`${v.name} — ${v.price}`}>{#if v.icon}<img src={tplUrl(v.icon)} alt="" />{/if}</span>{/each}
             </div>
@@ -682,21 +715,12 @@
 {#if fromCatalog}<CatalogPicker kind="decoration" sub={tab} onadded={addedFromCatalog} onclose={() => (fromCatalog = false)} />{/if}
 
 <style>
-  .page { padding: 16px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
-  .intro { max-width: 900px; line-height: 1.5; margin: 0; }
-  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-  .tabs button.active { border-color: var(--accent); background: #22304d; }
+  .page { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .fwrap { display: flex; flex: 1; min-height: 0; }
-  .list { width: 210px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
-  .list button { text-align: left; display: flex; gap: 8px; align-items: center; }
-  .list button.active { border-color: var(--accent); background: #22304d; }
-  .list button.picked { border-color: var(--accent); background: #1c2740; }
-  .ico { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .ico img { max-width: 100%; max-height: 100%; }
-  .form { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  section h3 { margin: 0; font-size: 14px; }
+  .lside { width: 270px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
   section > .row { flex-wrap: wrap; }
+  .emptypane { margin-top: 10vh; }
   .editor { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
   .preview { background: repeating-conic-gradient(#2a2f3a 0% 25%, #232833 0% 50%) 50% / 24px 24px; border-radius: 6px; max-width: 100%; }
   .side { flex: 1 1 240px; max-width: 360px; display: flex; flex-direction: column; gap: 10px; }
@@ -711,6 +735,4 @@
   .vico { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; background: var(--bg); border-radius: 4px; }
   .vico img { max-width: 100%; max-height: 100%; }
   .texbox { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
-  .dot { color: var(--accent-2); margin-left: 4px; }
-  .tag { color: var(--accent); margin-left: 4px; }
 </style>

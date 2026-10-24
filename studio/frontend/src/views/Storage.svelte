@@ -231,6 +231,47 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   const otherBytes = $derived(report ? Math.max(0, report.workspace - sharedBytes - report.setupsSize - report.cache) : 0);
   const unusedTotal = $derived((report?.unused ?? []).reduce((n: number, u: any) => n + u.size, 0));
 
+  // Master–detail: one section at a time (remembered); "To do" only shows while something needs you.
+  const NAV = [
+    { id: 'overview', title: 'Overview', glyph: '📊' },
+    { id: 'todo', title: 'To do', glyph: '⚠' },
+    { id: 'shrink', title: 'Shrink card art', glyph: '🗜' },
+    { id: 'setups', title: 'Setups', glyph: '🗂' },
+    { id: 'shared', title: 'Shared storage', glyph: '📦' },
+    { id: 'unused', title: 'Not used', glyph: '🧹' },
+  ];
+  let sec = $state((() => { try { return localStorage.getItem('storage.section') || 'overview'; } catch { return 'overview'; } })());
+  $effect(() => { try { localStorage.setItem('storage.section', sec); } catch {} });
+  const todo = $derived.by(() => {
+    if (!report) return [] as string[];
+    const t: string[] = [];
+    if (upgradeNeeded) t.push('Finish the upgrade');
+    if (report.gameFound && report.gameLibrary > 0 && !upgradeNeeded && report.modReadsLibrary) t.push(`Remove the game's old copies (${size(report.gameLibrary)})`);
+    if (report.backups?.length) t.push(`${plural(report.backups.length, 'backup folder')}`);
+    if (report.kept > 0) t.push(`Kept files (${size(report.kept)})`);
+    if (report.plainSaves?.files) t.push(`Compress ${plural(report.plainSaves.files, 'save file')}`);
+    return t;
+  });
+  $effect(() => { if (sec === 'todo' && report && !todo.length) sec = 'overview'; });
+  const spaceParts = $derived(report ? [
+    { label: 'Shared storage', bytes: sharedBytes, color: '#5b8cff' },
+    { label: 'Setups & saves', bytes: report.setupsSize, color: '#3ecf8e' },
+    { label: 'Download cache', bytes: report.cache, color: '#b66dff' },
+    { label: 'Other', bytes: otherBytes, color: '#9aa4b2' },
+  ].filter((x) => x.bytes > 0) : []);
+  function navSub(id: string): string {
+    if (!report) return '';
+    switch (id) {
+      case 'overview': return `${size(report.workspace)} in all`;
+      case 'todo': return todo[0] ?? '';
+      case 'shrink': return pngSets.length ? `${plural(pngSets.length, 'set')} with PNG art` : 'no PNG card art left';
+      case 'setups': return plural(report.setups.length, 'setup');
+      case 'shared': return size(sharedBytes);
+      case 'unused': return report.unused.length ? `${report.unused.length} · ${size(unusedTotal)}` : 'nothing to clean up';
+    }
+    return '';
+  }
+
   // The list in the same two tabs as Shared storage: sets (and unused files in a set's folder), items (and their files).
   const SET_KINDS = ['catalog-set', 'set-art', 'set-files'];
   let unusedTab = $state<'sets' | 'items'>('sets');
@@ -332,18 +373,20 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
 </script>
 
 <div class="page">
-  <header class="row">
-    <h2 class="grow">Storage</h2>
+  <header class="page-head">
+    <div>
+      <h2>Storage</h2>
+      <div class="page-summary">
+        {#if report}<span><b>{size(report.workspace)}</b> in this workspace</span>{#if todo.length}<span class="warn">{todo.length} thing{todo.length === 1 ? '' : 's'} to do</span>{/if}{/if}
+        <span>Nothing here runs until you press its button.</span>
+      </div>
+    </div>
+    <span class="grow"></span>
     <button onclick={() => measure()} disabled={!!running}>Refresh</button>
   </header>
-  <p class="muted intro">
-    How much space everything takes, and ways to make it smaller. Card art, pack &amp; box art and accessory files are kept once in
-    shared storage and used by every setup that has them; each setup keeps its game info (names, prices, tiers) and saves.
-    Nothing here runs until you press its button.
-  </p>
 
   {#if running}
-    <section class="progress">
+    <section class="progress strip">
       <div class="row"><span class="grow">{prog?.message || running}</span>
         {#if prog?.total}<span class="muted small">{prog.done} / {prog.total}</span>{/if}
         <button class="small" onclick={cancel} disabled={stopping}>{stopping ? 'Stopping…' : 'Cancel'}</button>
@@ -352,17 +395,40 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     </section>
   {/if}
 
+
   {#if report}
-    <div class="tiles">
-      <div class="tile"><div class="k">Workspace</div><div class="v">{size(report.workspace)}</div>
-        <div class="muted small">shared storage {size(sharedBytes)} · setups &amp; saves {size(report.setupsSize)}
-          {#if report.cache >= 1 << 20} · download cache {size(report.cache)}{/if}
-          {#if otherBytes >= 1 << 20} · other {size(otherBytes)}{/if}</div></div>
-      {#if report.gameFound}
-        <div class="tile"><div class="k">Game folder</div><div class="v">{size(report.gameLibrary)}</div>
-          <div class="muted small">old copies of your content (the game no longer reads them)</div></div>
-      {/if}
-    </div>
+  <div class="md">
+    <nav class="nav sidelist">
+      {#each NAV as n (n.id)}
+        {#if n.id !== 'todo' || todo.length}
+          <button class="item" class:active={sec === n.id} onclick={() => (sec = n.id)}>
+            <span class="glyph">{n.glyph}</span>
+            <span class="info"><span class="name">{n.title}</span><span class="sub">{navSub(n.id)}</span></span>
+            {#if n.id === 'todo'}<span class="count warn">{todo.length}</span>{/if}
+          </button>
+        {/if}
+      {/each}
+    </nav>
+    <div class="detail">
+    {#if sec === 'overview'}
+      <section class="block">
+        <div class="bhead"><h2>Space</h2><span class="muted small">Card art, pack &amp; box art and accessory files are kept once in shared storage and
+          used by every setup that has them; each setup keeps its game info and saves.</span></div>
+        <div class="big">{size(report.workspace)} <span class="muted small">in this workspace</span></div>
+        <div class="spacebar">
+          {#each spaceParts as part (part.label)}
+            <span style="flex:{Math.max(part.bytes, 1)}; background:{part.color}" title="{part.label}: {size(part.bytes)}"></span>
+          {/each}
+        </div>
+        <div class="legend">
+          {#each spaceParts as part (part.label)}
+            <span><i style="background:{part.color}"></i>{part.label} <b>{size(part.bytes)}</b></span>
+          {/each}
+        </div>
+        {#if report.gameFound && report.gameLibrary > 0}
+          <p class="muted small">Plus <b>{size(report.gameLibrary)}</b> of old copies of your content in the game folder (the game no longer reads them).</p>
+        {/if}
+      </section>
     {#if report.gameFound && report.modReadsLibrary && !report.libraryLinked}
       <div class="notice">The game isn't reading this workspace: open <b>Game &amp; mod</b> and click Install / Repair, or restart TCG Studio.</div>
     {/if}
@@ -372,9 +438,24 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         game's copies and mod save files are left as they are.</div>
     {/if}
 
+      {#if todo.length}
+        <button class="block tododash" onclick={() => (sec = 'todo')}>
+          <span class="count warn">{todo.length}</span>
+          <span class="grow"><b>Things to do</b><span class="muted small">{todo.join(' · ')}</span></span>
+          <span class="muted">Open →</span>
+        </button>
+      {/if}
+      {#if report.unused.length}
+        <button class="block tododash" onclick={() => (sec = 'unused')}>
+          <span class="count">{report.unused.length}</span>
+          <span class="grow"><b>Not used by any setup</b><span class="muted small">{size(unusedTotal)} you could free</span></span>
+          <span class="muted">Review →</span>
+        </button>
+      {/if}
+    {:else if sec === 'todo'}
     {#if upgradeNeeded}
-      <section class="upgrade">
-        <h3>Finish the upgrade</h3>
+      <section class="block upgrade">
+        <div class="bhead"><h2>Finish the upgrade</h2></div>
         <p class="small">TCG Studio moved this workspace's files into shared storage when it started. What's left below needs you:
           until then the game shows the shared art for these sets.</p>
         {#if up.files}
@@ -425,8 +506,8 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     {/if}
 
     {#if report.gameFound && report.gameLibrary > 0 && !upgradeNeeded && report.modReadsLibrary}
-      <section>
-        <h3>Remove the game's copies of your content</h3>
+      <section class="block">
+        <div class="bhead"><h2>Remove the game's copies of your content</h2></div>
         <p class="small">Older TCG Studio versions copied your content into the game folder
           (<code>BepInEx\plugins\TCGCustomCards</code>): every installed set with its card art, card backs and pack &amp; box art,
           every accessory's, furniture piece's and decoration's models and textures, the global card back and the Game look
@@ -441,8 +522,8 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     {/if}
 
     {#if report.backups?.length}
-      <section>
-        <h3>Backup folders in the game folder</h3>
+      <section class="block">
+        <div class="bhead"><h2>Backup folders in the game folder</h2></div>
         <p class="small">TCG Studio never deletes files from the game folder: what Install / Repair replaces and what "Move the game's
           copies out" moves goes into a <code>TCGStudio_backup_…</code> folder there instead. The game and TCG Studio don't use them;
           delete them once everything works. Close the game first.</p>
@@ -469,8 +550,8 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     {/if}
 
     {#if report.kept > 0}
-      <section>
-        <h3>Kept by the upgrade</h3>
+      <section class="block">
+        <div class="bhead"><h2>Kept by the upgrade</h2></div>
         <p class="small">When TCG Studio moved your files into shared storage, it didn't delete anything that wasn't an exact copy:
           images nothing pointed at, art you chose not to keep, and older card backs or Game look pictures it replaced went
           into a folder instead ({size(report.kept)}). Look through it, then delete it when you're sure.</p>
@@ -482,8 +563,8 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     {/if}
 
     {#if report.plainSaves?.files}
-      <section>
-        <h3>Compress mod save files</h3>
+      <section class="block">
+        <div class="bhead"><h2>Compress mod save files</h2></div>
         <p class="small">{plural(report.plainSaves.files, 'save file')} of the mod (your custom cards, prices and decks per save slot) are
           still in the older, uncompressed form: {size(report.plainSaves.bytes)} → about {size(report.plainSaves.after)}. The game
           converts a slot only when it saves it; this does all of them at once, in every setup. Only the file size changes.</p>
@@ -495,8 +576,10 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
       </section>
     {/if}
 
-    <section>
-      <h3>Shrink card art (JPEG)</h3>
+      {#if !todo.length}<div class="notice ok">✓ Nothing to do.</div>{/if}
+    {:else if sec === 'shrink'}
+    <section class="block">
+      <div class="bhead"><h2>Shrink card art (JPEG)</h2></div>
       <p class="muted small">Optional. JPEG card art is about 6× smaller than PNG; card scans lose a little detail. New imports can
         use JPEG too (Import → Card image format).</p>
       {#if preview}
@@ -543,8 +626,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
       {/if}
     </section>
 
-    <section>
-      <h3>Setups</h3>
+    {:else if sec === 'setups'}
+    <section class="block">
+      <div class="bhead"><h2>Setups</h2></div>
       <p class="muted small">What each setup's own folder holds: its game info (names, prices, tiers), saves and game settings. The
         files of its sets and items are in shared storage (below), stored once however many setups use them.</p>
       {#each report.setups as s (s.id)}
@@ -564,8 +648,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
       {/each}
     </section>
 
-    <section>
-      <h3>Shared storage</h3>
+    {:else if sec === 'shared'}
+    <section class="block">
+      <div class="bhead"><h2>Shared storage</h2></div>
       <p class="muted small">The sets and items your setups use: their files (card art, pack &amp; box art, models, textures) are
         stored once and shared by the setups listed. What no setup uses is under “Not used by any setup” below.</p>
       <div class="row tabs">
@@ -597,8 +682,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
       </div>
     </section>
 
-    <section>
-      <div class="row"><h3 class="grow">Not used by any setup</h3>
+    {:else if sec === 'unused'}
+    <section class="block">
+      <div class="bhead"><h2>Not used by any setup</h2><span class="grow"></span>
         {#if report.unused.length}
           <button class="small" onclick={() => pickTab(true)}>Select all</button>
           <button class="small" onclick={() => pickTab(false)} disabled={!tabPicked}>None</button>
@@ -653,17 +739,36 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         <p class="small ok">✓ Nothing stored that no setup uses.</p>
       {/if}
     </section>
+    {/if}
+    </div>
+  </div>
+  {:else}
+    <p class="muted pad">Measuring…</p>
   {/if}
 </div>
 
 <style>
-  .page { padding: 20px 24px; overflow: auto; height: 100%; display: flex; flex-direction: column; gap: 14px; }
-  .intro { max-width: 900px; margin: 0; }
-  h3 { margin: 0; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; max-width: 980px; }
-  section.progress, section.upgrade { border-color: var(--accent-2); }
-  .notice { max-width: 980px; padding: 10px 12px; border: 1px solid #6b5320; border-radius: var(--radius); background: var(--panel); }
-  .small { font-size: 12px; margin: 0; }
+  .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .strip { margin: 10px 24px 0; }
+  section.progress { background: var(--panel); border: 1px solid var(--accent-2); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  section.upgrade { border-color: var(--accent-2); }
+  .md { flex: 1; min-height: 0; display: flex; }
+  .nav { width: 260px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+  .glyph { font-size: 18px; width: 28px; text-align: center; flex: none; }
+  .count { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; background: var(--panel-2); color: var(--muted); }
+  .count.warn { background: var(--warn); color: #2a1d00; }
+  .detail { flex: 1; min-width: 0; overflow: auto; padding: 18px 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+  .pad { margin: 20px 24px; }
+  .big { font-size: 30px; font-weight: 600; }
+  .spacebar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; }
+  .spacebar span { min-width: 3px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .tododash { flex-direction: row; align-items: center; gap: 14px; text-align: left; cursor: pointer; }
+  .tododash .grow { display: flex; flex-direction: column; gap: 2px; }
+  .tododash:hover:not(:disabled) { border-color: var(--accent); }
+  .small { margin: 0; }
   .ok { color: var(--ok); }
   .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .bar div { height: 100%; background: var(--accent); transition: width 0.2s; }

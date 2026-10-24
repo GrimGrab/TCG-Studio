@@ -56,6 +56,7 @@ type Item struct {
 	Source    string // sets: the import source ("scryfall", "manual", …)
 	Cover     string // sets: a card image (relative to the set) for thumbnails
 	Icon      string // entries: the shop icon (accessory library relative)
+	Base      string // entries: the vanilla item it is built on ("" = the kind's default), for a fallback icon
 	Origin    *origin.Origin
 	Converted bool // converted from another mod: its art belongs to that mod's authors, so it is never exported
 }

@@ -1,5 +1,7 @@
 package art
 
+import "strings"
+
 // ArtWindow is where the artwork sits on a card scan of an import source, as fractions of the image (x0, y0, x1, y1).
 // Measured 2026-10-03 on sample scans (Dominaria + Alpha, Pokémon SV ex, Dark Magician, Lorcana TFC, OP-02, FaB WTR,
 // SWU SOR leader, Union Arena UE01BT). Hand-made sets use the whole image (their pictures are often art already).
@@ -25,6 +27,12 @@ func ArtWindow(source string, w, h int) [4]float64 {
 			return [4]float64{0.03, 0.05, 0.45, 0.95}
 		}
 		return [4]float64{0.05, 0.05, 0.95, 0.55}
+	}
+	if strings.HasPrefix(source, "tcg-") { // the other TCGplayer games: most cards have the art in the upper half
+		if landscape {
+			return [4]float64{0.05, 0.08, 0.95, 0.6}
+		}
+		return [4]float64{0.07, 0.1, 0.93, 0.55}
 	}
 	return [4]float64{0, 0, 1, 1}
 }

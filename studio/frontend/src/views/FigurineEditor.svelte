@@ -376,13 +376,9 @@
   .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; pointer-events: none; }
   .overlay { position: absolute; left: 48px; top: 10px; margin: 0; }
   .hint { position: absolute; left: 12px; bottom: 4px; margin: 0; }
-  .seg button.on { border-color: var(--accent); background: #22304d; }
   .side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
   .props { display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   .props h4 { margin: 0; font-size: 13px; }
   .check { display: flex; align-items: center; gap: 6px; }
   .wrap { flex-wrap: wrap; }
-  .warn { color: #d9a400; }
-  button.tiny { padding: 2px 7px; font-size: 12px; }
-  .small { font-size: 12px; }
 </style>

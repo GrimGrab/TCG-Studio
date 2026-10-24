@@ -179,7 +179,7 @@
 </div>
 
 <style>
-  .preview { position: relative; max-width: 820px; line-height: 0; }
+  .preview { position: relative; max-width: 1400px; line-height: 0; }
   canvas { display: block; border-radius: 6px; }
   .note { position: absolute; left: 8px; top: 8px; line-height: 1.2; }
 </style>

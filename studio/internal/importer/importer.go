@@ -116,13 +116,7 @@ func Import(ctx context.Context, sf *scryfall.Client, ws project.Workspace, code
 	var jobs []imageJob
 	used := map[string]int{}
 	for _, c := range cards {
-		if c.Digital && !sfSet.Digital {
-			continue
-		}
-		if !opt.IncludeVariants && c.Variation {
-			continue
-		}
-		img := c.FrontImage()
+		img := scryfallKeep(&c, sfSet, opt)
 		if img == nil {
 			continue
 		}
@@ -594,4 +588,13 @@ func VariantTags(c *scryfall.Card) []string {
 		tags = append(tags, "Full Art")
 	}
 	return tags
+}
+
+// scryfallKeep is the front picture of a card the import makes, nil for a card it leaves out (Import and the set preview):
+// digital-only printings of a paper set, variant printings unless asked for, cards without a picture.
+func scryfallKeep(c *scryfall.Card, set *scryfall.Set, opt Options) *scryfall.ImageURIs {
+	if c.Digital && !set.Digital || !opt.IncludeVariants && c.Variation {
+		return nil
+	}
+	return c.FrontImage()
 }

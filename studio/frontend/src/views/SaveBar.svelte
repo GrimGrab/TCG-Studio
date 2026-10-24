@@ -41,7 +41,6 @@
     border-bottom: 1px solid var(--line); min-height: 52px;
   }
   .title { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .grow { flex: 1; }
   .status { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .status.dirty { color: var(--accent-2, #d9a400); }
 </style>

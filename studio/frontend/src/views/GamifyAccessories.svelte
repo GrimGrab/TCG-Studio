@@ -3,6 +3,7 @@
   // custom accessories in library order, independent of set tiers.
   import { onMount } from 'svelte';
   import { App, money, errText, ask } from '../lib/api';
+  import { accFile } from '../lib/urls';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
@@ -60,6 +61,13 @@
   const lic = (l: any, big: boolean) => (l ? `L${l.level} ${money(l.price)}${big && l.bigLevel ? ` / L${l.bigLevel} ${money(l.bigPrice)}` : ''}` : '–');
   const after = (id: string) => preview?.find((r: any) => r.id === id);
 
+  // One type at a time (remembered): its settings and ladder on the right, every type with a count on the left.
+  const used = $derived(KINDS.filter((k) => list.some((a) => a.kind === k.kind)));
+  let current = $state((() => { try { return localStorage.getItem('gamify.accKind') || ''; } catch { return ''; } })());
+  $effect(() => { try { localStorage.setItem('gamify.accKind', current); } catch {} });
+  const kind = $derived(used.find((k) => k.kind === current) ?? used[0]);
+  const items = $derived(kind ? list.filter((a) => a.kind === kind.kind) : []);
+
   onMount(async () => {
     try {
       KINDS = await App.AccessoryKinds();
@@ -69,57 +77,82 @@
   });
 </script>
 
-<p class="muted intro">
-  Custom accessories (made under <b>Accessories</b>) get their own progression, separate from the set tiers — one ladder per
-  type; types you haven't made anything for are hidden. In each list, license levels are spread from the first to the last level and prices follow the vanilla license curve.
-</p>
-
 {#if settings && list.length === 0}
   <p class="muted">No accessories yet — make some under <b>Accessories</b>.</p>
 {/if}
-{#if settings}
-  <div class="kinds">
-    {#each KINDS.filter((k) => list.some((a) => a.kind === k.kind)) as k (k.kind)}
-      {@const items = list.filter((a) => a.kind === k.kind)}
-      {@const s = settings[k.kind]}
-      <section>
-        <h3>{k.title} <span class="muted small">({items.length})</span></h3>
-        <p class="muted small">{NOTES[k.kind] ?? ''}</p>
+{#if settings && kind}
+  {@const st = settings[kind.kind]}
+  <div class="md">
+    <nav class="kindnav">
+      {#each used as k (k.kind)}
+        <button class="item" class:active={k.kind === kind.kind} onclick={() => (current = k.kind)}>
+          <span class="name">{k.title}</span><span class="count">{list.filter((a) => a.kind === k.kind).length}</span>
+        </button>
+      {/each}
+    </nav>
+    <div class="detail">
+      <section class="block">
+        <div class="bhead"><h2>{kind.title}</h2><span class="count">{items.length}</span></div>
+        {#if NOTES[kind.kind]}<p class="muted small">{NOTES[kind.kind]}</p>{/if}
         <div class="settings">
-          <label class="field">First level<input type="number" min="1" bind:value={s.minLevel} oninput={() => (preview = null)} /></label>
-          <label class="field">Last level<input type="number" min="1" bind:value={s.maxLevel} oninput={() => (preview = null)} /></label>
-          <label class="field" title="Multiplies the license price curve; 100% = vanilla">Price vs vanilla (%)<input type="number" min="10" step="10" value={Math.round(s.priceScale * 100)} oninput={(e) => { s.priceScale = (+e.currentTarget.value || 100) / 100; preview = null; }} /></label>
+          <label class="field">First level<input type="number" min="1" bind:value={st.minLevel} oninput={() => (preview = null)} /></label>
+          <label class="field">Last level<input type="number" min="1" bind:value={st.maxLevel} oninput={() => (preview = null)} /></label>
+          <label class="field" title="Multiplies the license price curve; 100% = vanilla">Price vs vanilla (%)<input type="number" min="10" step="10" value={Math.round(st.priceScale * 100)} oninput={(e) => { st.priceScale = (+e.currentTarget.value || 100) / 100; preview = null; }} /></label>
         </div>
-        {#each items as a, i (a.id)}
-          {@const r = after(a.id)}
-          <div class="tier row">
-            <b class="num">{i + 1}</b>
-            <span class="grow">{a.name}
-              <span class="muted small">{lic(a.license, a.kind === 'Deckbox')}</span>
-              {#if r}<span class="small">→ <b>{lic(r.after, r.hasBig)}</b></span>{/if}
-            </span>
-            <button class="small" onclick={() => move(a.id, k.kind, -1)} disabled={busy || i === 0}>↑</button>
-            <button class="small" onclick={() => move(a.id, k.kind, 1)} disabled={busy || i === items.length - 1}>↓</button>
-          </div>
-        {/each}
-        {#if items.length === 0}<p class="muted small">None yet — make one under Accessories.</p>{/if}
       </section>
-    {/each}
+      <section class="block">
+        <div class="bhead"><h2>Ladder</h2><span class="muted small">List order = unlock order (also the order on the Accessories page).</span></div>
+        <div class="ladder">
+          <div class="lhead muted small"><span></span><span></span><span>Name</span><span>License now</span><span>{preview ? 'After' : ''}</span><span></span></div>
+          {#each items as a, i (a.id)}
+            {@const r = after(a.id)}
+            <div class="tier">
+              <span class="num">{i + 1}</span>
+              <span class="ico">{#if a.icon}<img src={accFile(a.icon)} alt="" loading="lazy" />{/if}</span>
+              <span class="name">{a.name}</span>
+              <span class="muted small">{lic(a.license, a.kind === 'Deckbox')}</span>
+              <span class="small">{#if r}<b>{lic(r.after, r.hasBig)}</b>{/if}</span>
+              <span class="arrows">
+                <button class="small" onclick={() => move(a.id, kind.kind, -1)} disabled={busy || i === 0} aria-label="Earlier">↑</button>
+                <button class="small" onclick={() => move(a.id, kind.kind, 1)} disabled={busy || i === items.length - 1} aria-label="Later">↓</button>
+              </span>
+            </div>
+          {/each}
+        </div>
+      </section>
+    </div>
   </div>
 {/if}
 
-<div class="row">
+<div class="actionbar">
+  <span class="grow muted">{preview ? 'Preview shown next to each item (now → after).' : `${list.length} accessor${list.length === 1 ? 'y' : 'ies'} — preview first, nothing changes until Apply.`}</span>
   <button onclick={doPreview} disabled={busy || !list.length}>Preview</button>
   <button class="primary" onclick={apply} disabled={busy || !list.length}>Apply to {list.length} accessor{list.length === 1 ? 'y' : 'ies'}</button>
-  {#if preview}<span class="muted small">Preview shown next to each item (now → after).</span>{/if}
 </div>
 
 <style>
-  .intro { max-width: 900px; margin: 0; }
-  .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .settings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .tier { padding: 6px 8px; border-radius: 6px; background: var(--panel-2); }
-  .num { width: 24px; text-align: center; }
-  .small { font-size: 12px; }
+  .md { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .kindnav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 6px; }
+  .item { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: none; }
+  .item:hover:not(:disabled) { background: var(--panel-2); border-color: transparent; }
+  .item.active { background: var(--panel-2); border-color: var(--accent-2); }
+  .item .name { flex: 1; font-weight: 600; }
+  .detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .count { font-size: 11px; color: var(--muted); background: var(--panel-2); border-radius: 8px; padding: 0 6px; }
+  /* Fields shrink with the card instead of running past its edge. */
+  .settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 640px; }
+  .settings .field { min-width: 0; }
+  .settings input { width: 100%; min-width: 0; }
+  .ladder { display: flex; flex-direction: column; gap: 3px; }
+  .lhead, .tier { display: grid; grid-template-columns: 32px 36px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+  .lhead { padding: 0 10px 2px; }
+  .tier { padding: 5px 10px; border-radius: 8px; background: var(--panel-2); }
+  .tier .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .num { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 12px; background: var(--accent-2); font-weight: 700; font-size: 12px; }
+  .ico { width: 32px; height: 32px; display: grid; place-items: center; background: var(--bg); border-radius: 5px; }
+  .ico img { width: 30px; height: 30px; object-fit: contain; }
+  .arrows { display: flex; gap: 4px; }
+  .actionbar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35); }
 </style>

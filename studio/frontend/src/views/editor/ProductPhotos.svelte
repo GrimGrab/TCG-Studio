@@ -4,6 +4,7 @@
   // project (white background cropped away) and hands its path to the pack art editor.
   import { untrack } from 'svelte';
   import { App, errText } from '../../lib/api';
+  import { matchSearch } from '../../lib/search';
 
   let { projectId, which, onpick, oncancel }: {
     projectId: string; which: 'pack' | 'box';
@@ -56,7 +57,7 @@
 
   const shownGroups = $derived.by(() => {
     const f = filter.trim().toLowerCase();
-    const gs = f ? groups.filter((g) => g.name.toLowerCase().includes(f) || g.code.toLowerCase() === f) : groups;
+    const gs = f ? groups.filter((g) => matchSearch(f, g.name) || g.code.toLowerCase() === f) : groups;
     const cur = groups.find((g) => g.id === group);
     return cur && !gs.includes(cur) ? [cur, ...gs] : gs;
   });
@@ -111,7 +112,6 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .dialog { width: min(1100px, 94vw); height: min(780px, 90vh); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .head h3 { margin: 0; }
@@ -119,6 +119,5 @@
   .grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-content: start; }
   .card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; height: auto; text-align: center; }
   .card img { width: 100%; height: 160px; object-fit: contain; background: #fff; border-radius: 4px; }
-  .small { font-size: 12px; margin: 0; }
-  .err { color: var(--danger); }
+  .small { margin: 0; }
 </style>

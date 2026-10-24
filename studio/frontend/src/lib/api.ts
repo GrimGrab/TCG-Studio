@@ -7,6 +7,8 @@ import { Confirm, ImportSources } from '../../wailsjs/go/main/App';
 export const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
 export const ELEMENTS = ['Fire', 'Earth', 'Water', 'Wind'];
 export const BORDERS = ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt'];
+/** Shown names of the borders. */
+export const BORDER_LABELS: Record<string, string> = { Base: 'Base', FirstEdition: 'First Edition', Silver: 'Silver', Gold: 'Gold', EX: 'EX', FullArt: 'Full Art' };
 export const FRAME_TEMPLATES = ['Tetramon', 'Destiny', 'Ghost', 'Megabot', 'FantasyRPG', 'CatJob', 'Ascension'];
 export const LANES = ['Fire', 'Earth', 'Water', 'Wind'];
 
@@ -19,6 +21,7 @@ export function money(v: number | undefined | null): string {
 
 /** Display name of an import source (project meta.source). */
 export function sourceName(source: string | undefined): string {
+  if (source?.startsWith('tcg-')) return 'TCGplayer';
   return ({ scryfall: 'Scryfall', tcgdex: 'TCGdex', ygoprodeck: 'YGOPRODeck', optcg: 'TCGplayer', swudb: 'SWU-DB', lorcast: 'Lorcast', fab: 'TCGplayer', unionarena: 'TCGplayer', folder: 'Image folder', epl: 'EPL mod' } as Record<string, string>)[source ?? ''] ?? source ?? '';
 }
 

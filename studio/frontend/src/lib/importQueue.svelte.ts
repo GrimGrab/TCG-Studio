@@ -12,7 +12,6 @@ export type ImportJob = {
   cards: number;
   opt: any; // importer.Options, complete (lang, useLibrary, setName…)
   ownArt: boolean; // source brings its own pack art (EPL): no smart generate
-  open: boolean; // open the set when done (a single import with nothing queued after it)
 };
 
 type Notify = (t: string, k?: string) => void;
@@ -36,13 +35,11 @@ export const jobKey = (source: string, code: string, lang: string) => `${source}
 export const isQueued = (key: string) => queue.jobs.some((j) => j.key === key);
 
 let notify: Notify = () => {};
-let open: (id: string) => void = () => {};
 
 // Adds jobs to the end of the queue (skips sets already waiting or running) and starts it if idle.
-export function enqueue(jobs: ImportJob[], n: Notify, o: (id: string) => void) {
+export function enqueue(jobs: ImportJob[], n: Notify) {
   listen();
   notify = n;
-  open = o;
   for (const j of jobs) if (!isQueued(j.key) && j.key !== queue.key) queue.jobs.push(j);
   if (!queue.current) run();
 }
@@ -73,7 +70,6 @@ async function run() {
         await App.SaveProject(p);
       } catch (e) { notify(`Pack art for ${job.name}: ` + errText(e) + ' — kept the simple generated art', 'error'); }
       notify(done, 'ok');
-      if (job.open && !queue.jobs.length) open(id);
     } catch (e) {
       notify(`${job.name}: ` + errText(e), 'error');
     }

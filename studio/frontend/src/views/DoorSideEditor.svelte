@@ -118,5 +118,5 @@
   .wrap { flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
   label { display: flex; align-items: center; gap: 6px; }
   input[type="color"] { width: 48px; height: 32px; padding: 2px; }
-  .small { font-size: 12px; margin: 0; }
+  .small { margin: 0; }
 </style>

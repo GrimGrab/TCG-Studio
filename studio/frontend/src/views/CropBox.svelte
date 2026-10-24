@@ -83,7 +83,7 @@
 
 <style>
   .crop { position: relative; display: inline-block; align-self: flex-start; max-width: 100%; overflow: hidden; border-radius: 6px; background: var(--bg); line-height: 0; user-select: none; }
-  img { display: block; max-width: 100%; max-height: 320px; }
+  img { display: block; max-width: 100%; max-height: clamp(320px, 50vh, 620px); }
   .box { position: absolute; box-sizing: border-box; border: 2px solid #fff; outline: 1px solid rgba(0, 0, 0, 0.6);
     box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); cursor: move; touch-action: none; }
   .label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); line-height: 1.2; font-size: 12px; font-weight: 600;

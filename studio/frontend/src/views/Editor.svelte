@@ -3,7 +3,7 @@
   // stores the set; the game reads an installed set's saved files.
   import { onMount } from 'svelte';
   import SaveBar from './SaveBar.svelte';
-  import { App, errText, ask, sourceName, sourceCode, BrowserOpenURL, originLabel } from '../lib/api';
+  import { App, errText, ask, sourceName, sourceCode, BrowserOpenURL, originLabel, projectFile } from '../lib/api';
   import CardsTab from './editor/CardsTab.svelte';
   import PacksTab from './editor/PacksTab.svelte';
   import SetTab from './editor/SetTab.svelte';
@@ -126,8 +126,15 @@
     }
   }
 
+  // The set's cover in the header: the first card's picture, like the Sets page.
+  const cover = $derived(project?.set.cards.find((c: any) => c.image)?.image ?? '');
+  let menu = $state(false);
+  function closeMenu(e: MouseEvent) { if (menu && !(e.target as HTMLElement).closest('.more')) menu = false; }
+
   onMount(load);
 </script>
+
+<svelte:window onmousedown={closeMenu} />
 
 {#if project}
   <div class="editor">
@@ -136,48 +143,61 @@
       revertMessage="Throw away your unsaved changes to this set?"
       saveTitle={installState === 'none' ? 'Save the set (Ctrl+S)' : 'Save the set and update it in the game (Ctrl+S)'}>
       {#snippet title()}
-      <button onclick={leave}>← Sets</button>
+      <button class="back" onclick={leave} title="Back to Sets">←</button>
+      <div class="cover">{#if cover}<img src={projectFile(project.id, cover, imgBust)} alt="" />{:else}<span>{project.set.name.slice(0, 2)}</span>{/if}</div>
       <div class="grow title">
-        <h2>{project.set.name}</h2>
-        <span class="muted">{project.id}{project.meta?.origin?.mod ? ` · ${originLabel(project.meta.origin.kind, project.meta.origin.mod, project.meta.origin.author)}` : sourceCode(project.meta) ? ` · ${sourceName(project.meta.source)} ${sourceCode(project.meta).toUpperCase()}` : ''}</span>{#if project.meta?.origin?.link}<button class="link small" onclick={() => BrowserOpenURL(project.meta.origin.link)} title={project.meta.origin.link}>{project.meta.origin.kind === 'Shared file' ? 'Link' : 'Mod page'} ↗</button>{/if}
+        <h2 title={project.set.name}>{project.set.name}</h2>
+        <div class="meta">
+          {#if project.meta?.origin?.mod}<span>{originLabel(project.meta.origin.kind, project.meta.origin.mod, project.meta.origin.author)}</span>
+          {:else if sourceCode(project.meta)}<span>{sourceName(project.meta.source)} · {sourceCode(project.meta).toUpperCase()}</span>{/if}
+          {#if project.set.released}<span>{project.set.released.slice(0, 4)}</span>{/if}
+          <span class="code" title="Set id (stable)">{project.id}</span>
+          {#if project.meta?.origin?.link}<button class="link" onclick={() => BrowserOpenURL(project.meta.origin.link)} title={project.meta.origin.link}>{project.meta.origin.kind === 'Shared file' ? 'Link' : 'Mod page'} ↗</button>{/if}
+        </div>
       </div>
       {/snippet}
       {#snippet extra()}
-      <button class="issues" onclick={() => (showIssues = !showIssues)}>
-        {#if errors}<span class="badge err">{errors} errors</span>{/if}
-        {#if warnings}<span class="badge warn">{warnings} warnings</span>{/if}
-        {#if !errors && !warnings}<span class="badge ok">Valid</span>{/if}
+      <button class="issues" class:on={showIssues} onclick={() => (showIssues = !showIssues)} title={issues.length ? 'Show the problems the game would find' : 'Nothing to fix'}>
+        {#if errors}<span class="badge err">{errors} error{errors === 1 ? '' : 's'}</span>{/if}
+        {#if warnings}<span class="badge warn">{warnings} warning{warnings === 1 ? '' : 's'}</span>{/if}
+        {#if !errors && !warnings}<span class="badge ok">✓ Valid</span>{/if}
       </button>
-      {#if sourceCode(project.meta)}
-        <button onclick={refreshPrices} title="Pull today's {sourceName(project.meta.source)} prices (re-applies this set's Gamify settings)">Refresh prices</button>
-      {/if}
       {#if missingBacks > 0}
         <button onclick={fetchBackFaces} disabled={fetchingBacks}
           title="Download the back-face pictures of this set's double-faced cards, so transformed cards show their other side in MTG games">
           {fetchingBacks ? 'Downloading back faces…' : `Download back faces (${missingBacks})`}</button>
       {/if}
-      <button onclick={() => App.OpenProjectFolder(id)}>Folder</button>
       {#if installState === 'current'}
-        <span class="chip ok" title="Installed: the game loads the saved set at its next start">In game ✓</span>
+        <span class="chip ok" title="Installed: the game loads the saved set at its next start">● In game</span>
       {:else if installState === 'stale'}
         <button class="chip warn" onclick={install} title="The game reads another setup or workspace, or its mod is older — click to fix">Not read by the game — Fix</button>
       {:else if installState === 'none'}
-        <span class="chip" title="This set isn't in the game yet">Not in game</span>
+        <button class="primary" onclick={install} title="This set isn't in the game yet">Install to game</button>
       {/if}
-      {#if installState === 'none'}<button class="primary" onclick={install}>Install to game</button>{/if}
+      <div class="more">
+        <button class="dots" onclick={() => (menu = !menu)} aria-label="More" title="More">⋯</button>
+        {#if menu}
+          <div class="menu">
+            {#if sourceCode(project.meta)}
+              <button onclick={() => { menu = false; refreshPrices(); }} title="Pull today's {sourceName(project.meta.source)} prices (re-applies this set's Gamify settings)">Refresh prices</button>
+            {/if}
+            <button onclick={() => { menu = false; App.OpenProjectFolder(id); }}>Open the set's folder</button>
+          </div>
+        {/if}
+      </div>
       {/snippet}
     </SaveBar>
 
     {#if showIssues && issues.length}
       <div class="issue-list">
-        {#each issues as i}<div class={i.level}><b>{i.where}</b>: {i.message}</div>{/each}
+        {#each issues as i}<div class="notice" class:err={i.level === 'error'}><b>{i.where}</b>: {i.message}</div>{/each}
       </div>
     {/if}
 
-    <nav class="tabs">
-      <button class:active={tab === 'cards'} onclick={() => showTab('cards')}>Cards ({project.set.cards.length})</button>
-      <button class:active={tab === 'packs'} onclick={() => showTab('packs')}>Packs ({project.set.packs.length})</button>
-      <button class:active={tab === 'set'} onclick={() => showTab('set')}>Set</button>
+    <nav class="tabbar">
+      <button class:on={tab === 'cards'} onclick={() => showTab('cards')}>Cards<span class="n">{project.set.cards.length}</span></button>
+      <button class:on={tab === 'packs'} onclick={() => showTab('packs')}>Packs<span class="n">{project.set.packs.length}</span></button>
+      <button class:on={tab === 'set'} onclick={() => showTab('set')}>Set details</button>
     </nav>
 
     <div class="body">
@@ -196,16 +216,21 @@
 
 <style>
   .editor { display: flex; flex-direction: column; height: 100%; }
-  .title { display: flex; flex-direction: column; min-width: 0; }
-  .issues { display: flex; gap: 4px; background: transparent; }
+  .back { padding: 6px 10px; font-size: 16px; line-height: 1; }
+  .cover { width: 34px; height: 47px; flex: none; border-radius: 4px; overflow: hidden; background: var(--panel-2); display: grid; place-items: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .cover span { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+  .title { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+  .title h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; color: var(--muted); font-size: 12px; }
+  .link { padding: 0; font-size: 12px; }
+  .issues { display: flex; gap: 4px; background: transparent; border-color: transparent; padding: 4px 6px; }
+  .issues.on { border-color: var(--line); }
   .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
-  .chip.ok { color: var(--ok, #3fb96b); border-color: var(--ok, #3fb96b); }
-  .chip.warn { color: var(--warn, #d9a400); border-color: var(--warn, #d9a400); background: transparent; cursor: pointer; }
-  .issue-list { max-height: 160px; overflow: auto; padding: 8px 18px; background: #1a1c22; border-bottom: 1px solid var(--line); font-size: 13px; }
-  .issue-list .error { color: var(--danger); }
-  .issue-list .warning { color: var(--warn); }
-  .tabs { display: flex; gap: 4px; padding: 8px 18px 0; border-bottom: 1px solid var(--line); }
-  .tabs button { border-radius: 6px 6px 0 0; border-bottom: none; background: transparent; }
-  .tabs button.active { background: var(--panel-2); }
+  .chip.ok { color: var(--ok); border-color: #1f6b4b; }
+  .chip.warn { color: var(--warn); border-color: #6b5320; background: transparent; cursor: pointer; }
+  .menu { top: calc(100% + 4px); min-width: 200px; }
+  .issue-list { max-height: 180px; overflow: auto; padding: 10px 20px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--line); }
   .body { flex: 1; min-height: 0; }
 </style>

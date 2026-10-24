@@ -67,7 +67,8 @@ type setIn struct {
 	Packs []setfmt.Pack
 	// Extra images written into the set's shared folder through Get (pack/box art, the card back).
 	Extra      []extraImage
-	RenderMode string // "" = FullImage
+	RenderMode string   // "" = FullImage
+	Notes      []string // set preview only: what the import leaves out ("12 cards without a picture")
 }
 
 // extraImage is a non-card image of an import: saved as PNG at Rel, or composed into the set's card back.

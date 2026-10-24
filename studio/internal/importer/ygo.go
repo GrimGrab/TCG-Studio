@@ -266,28 +266,37 @@ func (s *ygoSource) cards(ctx context.Context, setName string) ([]cardIn, error)
 }
 
 func (s *ygoSource) Import(ctx context.Context, ws project.Workspace, code string, opt Options, report func(Progress)) (*project.Project, error) {
-	sets, err := s.sets(ctx)
+	in, err := s.prepare(ctx, code, &opt, report)
 	if err != nil {
 		return nil, err
 	}
+	return buildProject(ctx, ws, in, opt, report)
+}
+
+// prepare finds the set and reads its card list (Import and the set preview).
+func (s *ygoSource) prepare(ctx context.Context, code string, opt *Options, report func(Progress)) (setIn, error) {
+	sets, err := s.sets(ctx)
+	if err != nil {
+		return setIn{}, err
+	}
 	x, ok := ygoKeys(sets)[code]
 	if !ok {
-		return nil, fmt.Errorf("Yu-Gi-Oh! set %s not found", code)
+		return setIn{}, fmt.Errorf("Yu-Gi-Oh! set %s not found", code)
 	}
 	report(Progress{Stage: "cards", Message: "Fetching card list…"})
 	cards, err := s.cards(ctx, x.Name)
 	if err != nil {
-		return nil, err
+		return setIn{}, err
 	}
 	if opt.RarityMap == nil {
 		opt.RarityMap = DefaultYGORarityMap()
 	}
-	return buildProject(ctx, ws, setIn{ID: s.ProjectID(code, ""), Source: "ygoprodeck", Code: code, Name: x.Name,
+	return setIn{ID: s.ProjectID(code, ""), Source: "ygoprodeck", Code: code, Name: x.Name,
 		ReleasedAt: x.TCGDate, Logo: x.Image, Cards: cards, Get: s.c.Download,
 		Aspect: CardAspect, // Yu-Gi-Oh! cards are 59×86 mm, narrower than the game's 63×88 slot
 		Rarity: rarityMapper(opt.RarityMap, ygoRarityFallback),
 		// Yu-Gi-Oh! boosters: commons, a rare, then a foil (super → ultra → secret).
-		Slots: YgoBooster(x.TCGDate).Slots, FoilChance: YgoBooster(x.TCGDate).FoilChance}, opt, report)
+		Slots: YgoBooster(x.TCGDate).Slots, FoilChance: YgoBooster(x.TCGDate).FoilChance}, nil
 }
 
 // setCards fetches the card list of the set p was imported from (prices, Re-download image).

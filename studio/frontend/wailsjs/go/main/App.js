@@ -370,10 +370,6 @@ export function NewFurniture(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewFurniture'](arg1, arg2, arg3);
 }
 
-export function OpenAccessoriesFolder() {
-  return window['go']['main']['App']['OpenAccessoriesFolder']();
-}
-
 export function OpenFolder(arg1) {
   return window['go']['main']['App']['OpenFolder'](arg1);
 }
@@ -444,6 +440,10 @@ export function PreviewEPL(arg1, arg2) {
 
 export function PreviewImportFolder(arg1, arg2) {
   return window['go']['main']['App']['PreviewImportFolder'](arg1, arg2);
+}
+
+export function PreviewSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PreviewSet'](arg1, arg2, arg3);
 }
 
 export function PreviewShare(arg1) {

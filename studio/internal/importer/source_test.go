@@ -36,7 +36,9 @@ func TestSourcesConsistent(t *testing.T) {
 				t.Errorf("%s: %q is in RarityOrder but not mapped", info.ID, r)
 			}
 		}
-		if (len(info.Colors) == 0 || info.ColorLabel == "") && !info.Local { // local files have no fixed colours
+		// local files have no fixed colours; TCGplayer lists no colour or card type for these games
+		noFacets := info.Local || slices.Contains([]string{"tcg-naruto", "tcg-dbz", "tcg-buddyfight", "tcg-wow"}, info.ID)
+		if (len(info.Colors) == 0 || info.ColorLabel == "") && !noFacets {
 			t.Errorf("%s: no colour/type filter", info.ID)
 		}
 		for _, f := range info.Sorts {

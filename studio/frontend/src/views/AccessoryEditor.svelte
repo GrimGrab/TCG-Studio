@@ -1519,10 +1519,7 @@
   /* A container: texture and 3D stack when the editor itself is narrow (a smaller window), not only below a window width. */
   .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; container-type: inline-size; }
   .tabs button.on { border-color: var(--accent); background: #22304d; }
-  .seg { display: inline-flex; }
-  .seg button { border-radius: 0; padding: 3px 12px; }
-  .seg button:first-child { border-radius: 4px 0 0 4px; }
-  .seg button:last-child { border-radius: 0 4px 4px 0; }
+  .seg button { padding: 3px 12px; }
   .tag { font-size: 11px; padding: 0 5px; border-radius: 4px; background: #2b3a55; color: #9cc4ff; }
   .tag.face { background: #3a3352; color: #d2b8ff; }
   .texview.palette { image-rendering: pixelated; width: 128px; height: 128px; flex-shrink: 0; }
@@ -1545,7 +1542,6 @@
   .view3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   .view3d:active { cursor: grabbing; }
   .overlay { position: absolute; left: 12px; bottom: 4px; margin: 0; }
-  .warn { color: #d9a400; }
   .side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
   .layers { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow: auto; }
   .layer { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; background: var(--panel); }
@@ -1593,6 +1589,4 @@
   .size { align-items: flex-end; gap: 6px; }
   .size .field { flex: 1; min-width: 0; }
   .size input { width: 100%; min-width: 0; box-sizing: border-box; }
-  button.tiny { padding: 2px 7px; font-size: 12px; }
-  .small { font-size: 12px; }
 </style>

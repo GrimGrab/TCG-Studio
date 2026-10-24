@@ -11,7 +11,8 @@
     for (const c of project.set.cards) m[c.rarity] = (m[c.rarity] ?? 0) + 1;
     return m;
   });
-  const hasSource = $derived(!project.set.rarities?.length && project.set.cards.some((c: any) => project.meta?.cards?.[c.id]?.srcRarity));
+  const maxCount = $derived(Math.max(1, ...Object.values(counts)));
+  const hasSource =$derived(!project.set.rarities?.length && project.set.cards.some((c: any) => project.meta?.cards?.[c.id]?.srcRarity));
   let busy = $state(false);
 
   /** The set's own list, written from the rows shown on the first edit. */
@@ -68,40 +69,47 @@
   const set = (i: number, field: keyof RarityDef, v: string | undefined) => { (list()[i] as any)[field] = v; };
 </script>
 
-<section>
-  <h3>Rarities</h3>
-  <p class="muted small">Lowest first. Each rarity is its own in game: its name shows on the cards, in the binder and in Check Price, and each
+<section class="block">
+  <div class="bhead"><h2>Rarities</h2><span class="muted small">lowest first</span><span class="grow"></span>
+    <button class="small" onclick={add}>+ Rarity</button></div>
+  <p class="muted small">Each rarity is its own in game: its name shows on the cards, in the binder and in Check Price, and each
     has its own weight in pack slots (Packs tab). Cards show the game's rarity icon for the rarity's place in the list.</p>
   {#if hasSource}
-    <div class="row"><button onclick={useSource} disabled={busy}>Use the source's rarities</button>
+    <div class="notice info row"><button class="small" onclick={useSource} disabled={busy}>Use the source's rarities</button>
       <span class="muted small">the import's own names (e.g. Secret Rare, SR, a mod's tiers) instead of these four</span></div>
   {/if}
-  <table class="rar">
-    <thead><tr><th></th><th>Name</th><th>Colour</th><th>Cards</th><th></th></tr></thead>
-    <tbody>
-      {#each rows as r, i (r.id)}
-        <tr>
-          <td class="nowrap">
-            <button class="small" onclick={() => move(i, -1)} disabled={i === 0}>↑</button>
-            <button class="small" onclick={() => move(i, 1)} disabled={i === rows.length - 1}>↓</button>
-          </td>
-          <td><input value={r.name} oninput={(e) => set(i, 'name', e.currentTarget.value)} title="Id (stable): {r.id}" /></td>
-          <td><input type="color" value={rarityColor(project.set, r.id)} oninput={(e) => set(i, 'color', e.currentTarget.value)} />
-            {#if r.color}<button class="small" title="Automatic colour" onclick={() => set(i, 'color', undefined)}>✕</button>{/if}</td>
-          <td>{counts[r.id] ?? 0}</td>
-          <td><button class="small" onclick={() => remove(i)} disabled={rows.length === 1}>Delete</button></td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-  <div class="row"><button class="small" onclick={add}>+ Rarity</button></div>
+  <div class="rows">
+    {#each rows as r, i (r.id)}
+      <div class="rr">
+        <span class="order">
+          <button class="small" onclick={() => move(i, -1)} disabled={i === 0} title="Lower in the list">▲</button>
+          <button class="small" onclick={() => move(i, 1)} disabled={i === rows.length - 1} title="Higher in the list">▼</button>
+        </span>
+        <label class="swatch" style="background:{rarityColor(project.set, r.id)}" title={r.color ? 'Own colour — click to change' : 'Automatic colour — click to choose one'}>
+          <input type="color" value={rarityColor(project.set, r.id)} oninput={(e) => set(i, 'color', e.currentTarget.value)} />
+        </label>
+        <input class="name" value={r.name} oninput={(e) => set(i, 'name', e.currentTarget.value)} title="Id (stable): {r.id}" />
+        <span class="bar" title="{counts[r.id] ?? 0} cards"><span style="width:{Math.round(((counts[r.id] ?? 0) / maxCount) * 100)}%; background:{rarityColor(project.set, r.id)}"></span></span>
+        <span class="n">{counts[r.id] ?? 0}</span>
+        {#if r.color}<button class="small x" title="Use the automatic colour" onclick={() => set(i, 'color', undefined)}>⟲</button>{:else}<span class="x"></span>{/if}
+        <button class="small x" onclick={() => remove(i)} disabled={rows.length === 1} title="Delete this rarity">✕</button>
+      </div>
+    {/each}
+  </div>
 </section>
 
 <style>
-  .rar { border-collapse: collapse; width: 100%; }
-  .rar th { text-align: left; font-weight: 500; color: var(--muted, #8a93a3); font-size: 12px; padding: 2px 6px; }
-  .rar td { padding: 2px 6px; vertical-align: middle; }
-  .rar input:not([type='color']) { width: 100%; min-width: 120px; }
-  .rar input[type='color'] { width: 34px; height: 24px; padding: 0; vertical-align: middle; }
-  .nowrap { white-space: nowrap; }
+  .rows { display: flex; flex-direction: column; gap: 4px; }
+  .rr { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+  .rr:hover { background: var(--panel-2); }
+  .order { display: flex; gap: 2px; }
+  .order button { padding: 1px 5px; font-size: 10px; }
+  .swatch { position: relative; width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255, 255, 255, 0.15); }
+  .swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+  .name { flex: 1 1 140px; min-width: 100px; }
+  .bar { flex: 0 1 120px; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 3px; }
+  .n { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+  .x { width: 28px; flex: none; padding: 2px 0; }
+  .notice.row { gap: 10px; }
 </style>

@@ -4,6 +4,7 @@
   // the game info (names, prices, tiers…), so editing it here never changes other setups.
   import { App, errText } from '../lib/api';
   import { grouped, groupOf as groupFor, sourceGames, OWN_GROUP } from '../lib/catalog';
+  import { matchSearch } from '../lib/search';
 
   let { kind, sub = '', onadded, onclose }: {
     kind: 'set' | 'accessory' | 'furniture' | 'decoration';
@@ -35,8 +36,7 @@
   const shown = $derived(entries.filter((e) => {
     if (e.here && !showHere) return false;
     if (kind !== 'set' && sub && onlyKind && e.sub !== sub) return false;
-    const q = filter.trim().toLowerCase();
-    return !q || `${e.name} ${e.id} ${e.origin} ${e.author} ${e.sub} ${groupOf(e)}`.toLowerCase().includes(q);
+    return matchSearch(filter, e.name, e.id, e.origin, e.author, e.sub, groupOf(e));
   }));
   const groups = $derived(grouped(shown, games));
   const chosen = $derived(Object.keys(picked).filter((id) => picked[id] && entries.some((e) => e.id === id && !e.here)));
@@ -108,7 +108,6 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
   .dialog { width: min(820px, 94vw); height: min(760px, 90vh); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 12px; display: flex; flex-direction: column; gap: 10px; }
   .head h3 { margin: 0; }
@@ -118,11 +117,5 @@
   .ghead { gap: 8px; padding: 2px 0 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
   .item { gap: 8px; padding: 2px 0; }
   .item.here { opacity: 0.55; }
-  .small { font-size: 12px; margin: 0; }
-  .err { color: var(--danger); }
-  .seg { display: inline-flex; }
-  .seg button { border-radius: 0; }
-  .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-  .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-  .seg button.on { border-color: var(--accent); background: #22304d; }
+  .small { margin: 0; }
 </style>

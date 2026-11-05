@@ -1,11 +1,9 @@
 package importer
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/png"
 	"math"
 	"path/filepath"
 	"strings"
@@ -14,6 +12,7 @@ import (
 	"tcgstudio/internal/epl"
 	"tcgstudio/internal/figurine"
 	"tcgstudio/internal/gameextract"
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/uvmap"
 )
@@ -426,7 +425,7 @@ func convertItem(a *epl.Assets, b epl.Bundle, it *epl.Item, variant int, strip b
 		c := it.BaseCost
 		acc.Cost = &c
 	}
-	data, err := encodePNG(tex)
+	data, err := imgfile.EncodeFast(tex)
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +449,18 @@ func convertItem(a *epl.Assets, b epl.Bundle, it *epl.Item, variant int, strip b
 		}
 	}
 	lib.Put(acc)
+	markEPLArt(lib, id, a.BuiltForCurrentGame())
 	return job, nil
+}
+
+// markEPLArt sets the mark on a converted accessory (a re-import replaces one): the mod's texture is used as it is, so its
+// layout is the mod's. Without the mark, Studio offers to convert it like other art from before the game's update.
+func markEPLArt(lib *accessories.Library, id string, current bool) {
+	if current {
+		lib.Meta.ArtCurrent[id] = true
+	} else {
+		delete(lib.Meta.ArtCurrent, id)
+	}
 }
 
 // storeSource stores a converted model's editable source (what the Figurine/Furniture editor opens): its OBJ and texture.
@@ -466,14 +476,8 @@ func storeSource(lib *accessories.Library, m *figurine.Mesh, tex image.Image) (m
 	return model, texture, err
 }
 
-func encodePNG(img image.Image) ([]byte, error) {
-	var buf bytes.Buffer
-	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&buf, img)
-	return buf.Bytes(), err
-}
-
 func writePNG(lib *accessories.Library, id, suffix string, img image.Image) (string, error) {
-	b, err := encodePNG(img)
+	b, err := imgfile.EncodeFast(img)
 	if err != nil {
 		return "", err
 	}

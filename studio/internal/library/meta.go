@@ -10,12 +10,13 @@ import (
 // Meta is where a listed set or item came from and its picture, so the Storage page can group and show its lists the way
 // the Catalog page does (lib/catalog.ts grouped).
 type Meta struct {
-	Origin     string `json:"origin,omitempty"`     // the mod it was converted from, or a shared file's source
-	OriginKind string `json:"originKind,omitempty"` // origin.KindEPL / origin.KindShared
-	Author     string `json:"author,omitempty"`
-	Source     string `json:"source,omitempty"` // sets: the import source
-	Cover      string `json:"cover,omitempty"`  // sets: a card image (relative to the set)
-	Icon       string `json:"icon,omitempty"`   // items: the shop icon (accessory library relative)
+	Origin     string        `json:"origin,omitempty"`     // the mod it was converted from, or a shared file's source
+	OriginKind string        `json:"originKind,omitempty"` // origin.KindEPL / origin.KindShared
+	Author     string        `json:"author,omitempty"`
+	Source     string        `json:"source,omitempty"` // sets: the import source
+	Cover      string        `json:"cover,omitempty"`  // sets: a card image (relative to the set)
+	Icon       string        `json:"icon,omitempty"`   // items: the shop icon (accessory library relative)
+	Look       *content.Look `json:"look,omitempty"`   // items with no picture: what to show instead
 }
 
 // metaIndex reads every content kind in every setup and the catalog once: content kind id → item id → Meta.
@@ -34,7 +35,7 @@ func metaIndex(h setups.Home, list []setups.Summary) map[string]map[string]Meta 
 				if _, ok := m[it.ID]; ok {
 					continue
 				}
-				e := Meta{Source: it.Source, Cover: it.Cover, Icon: it.Icon}
+				e := Meta{Source: it.Source, Cover: it.Cover, Icon: it.Icon, Look: it.Look}
 				if o := it.Origin; o != nil {
 					e.Origin, e.OriginKind, e.Author = o.Name(), o.Kind, o.Author
 				}
@@ -46,16 +47,10 @@ func metaIndex(h setups.Home, list []setups.Summary) map[string]map[string]Meta 
 	return out
 }
 
-// itemMeta finds an accessory, furniture piece or decoration (ids are unique across them in practice).
-func itemMeta(idx map[string]map[string]Meta, kind, id string) Meta {
-	switch kind {
-	case "Furniture":
-		return idx["furniture"][id]
-	case "Decoration":
-		return idx["decoration"][id]
-	}
-	for _, k := range []string{"accessory", "furniture", "decoration"} {
-		if m, ok := idx[k][id]; ok {
+// itemMeta finds an item of the library, whatever its kind (ids are unique across them in practice).
+func itemMeta(idx map[string]map[string]Meta, id string) Meta {
+	for _, k := range content.LibraryKinds() {
+		if m, ok := idx[k.ID][id]; ok {
 			return m
 		}
 	}

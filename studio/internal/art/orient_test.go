@@ -89,11 +89,11 @@ func withExif(t *testing.T, jpg []byte, o uint16, bo binary.ByteOrder) []byte {
 	}
 	bo.PutUint16(tiff[2:], 42)
 	bo.PutUint32(tiff[4:], 8)
-	bo.PutUint16(tiff[8:], 1)        // one entry
-	bo.PutUint16(tiff[10:], 0x0112)  // orientation
-	bo.PutUint16(tiff[12:], 3)       // SHORT
-	bo.PutUint32(tiff[14:], 1)       // count
-	bo.PutUint16(tiff[18:], o)       // value
+	bo.PutUint16(tiff[8:], 1)       // one entry
+	bo.PutUint16(tiff[10:], 0x0112) // orientation
+	bo.PutUint16(tiff[12:], 3)      // SHORT
+	bo.PutUint32(tiff[14:], 1)      // count
+	bo.PutUint16(tiff[18:], o)      // value
 	seg := append([]byte("Exif\x00\x00"), tiff...)
 	app1 := []byte{0xFF, 0xE1, 0, 0}
 	binary.BigEndian.PutUint16(app1[2:], uint16(len(seg)+2))

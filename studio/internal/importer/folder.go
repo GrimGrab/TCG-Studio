@@ -155,32 +155,19 @@ func ScanFolder(dir string, opt Options) (FolderPreview, error) {
 	return s.preview, nil
 }
 
-func scanFolder(dir string, opt Options) (*folderScan, error) {
-	dir = filepath.Clean(dir)
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		return nil, fmt.Errorf("%s is not a folder", dir)
-	}
-	s := &folderScan{preview: FolderPreview{Dir: dir, Name: filepath.Base(dir), ProjectID: folderSource{}.ProjectID(dir, "")}}
-	p := &s.preview
-	if opt.SetName != "" {
-		p.Name = opt.SetName
-	}
-	rows, err := readCardsCSV(dir)
-	if err != nil {
-		return nil, err
-	}
-	p.CSV, p.CSVRows = rows != nil, len(rows)
+// folderFile is a card image found in the folder; folderRarity comes from its subfolder.
+type folderFile struct{ path, rel, folderRarity string }
 
+// listFolder sorts what the folder holds: card images and the rarity subfolders they came from; it notes the logo and what it skips.
+func (s *folderScan) listFolder(dir string) (files []folderFile, folders []string, err error) {
+	p := &s.preview
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
 		return naturalLess(strings.ToLower(entries[i].Name()), strings.ToLower(entries[j].Name()))
 	})
-	type file struct{ path, rel, folderRarity string }
-	var files []file
-	var folders []string
 	for _, e := range entries {
 		name := e.Name()
 		low := strings.ToLower(name)
@@ -197,7 +184,7 @@ func scanFolder(dir string, opt Options) (*folderScan, error) {
 				}
 				if folderImageExt[strings.ToLower(filepath.Ext(path))] {
 					rel, _ := filepath.Rel(dir, path)
-					files = append(files, file{path, rel, rar})
+					files = append(files, folderFile{path, rel, rar})
 					n++
 				} else if !folderIgnored[strings.ToLower(d.Name())] {
 					p.Skipped = append(p.Skipped, filepath.Join(name, d.Name()))
@@ -213,10 +200,49 @@ func scanFolder(dir string, opt Options) (*folderScan, error) {
 			}
 		case low == "cards.csv" || folderIgnored[low]:
 		case folderImageExt[filepath.Ext(low)]:
-			files = append(files, file{filepath.Join(dir, name), name, ""})
+			files = append(files, folderFile{filepath.Join(dir, name), name, ""})
 		default:
 			p.Skipped = append(p.Skipped, name)
 		}
+	}
+	return files, folders, nil
+}
+
+// applyRow takes over what the card's row in cards.csv says.
+func (c *cardIn) applyRow(r map[string]string) {
+	set := func(dst *string, key string) {
+		if v := strings.TrimSpace(r[key]); v != "" {
+			*dst = v
+		}
+	}
+	set(&c.Name, "name")
+	set(&c.Number, "number")
+	set(&c.SrcRarity, "rarity")
+	set(&c.Artist, "artist")
+	set(&c.Text, "text")
+	set(&c.TypeLine, "type")
+	c.USD, c.USDFoil = money(r["price"]), money(r["foilprice"])
+}
+
+func scanFolder(dir string, opt Options) (*folderScan, error) {
+	dir = filepath.Clean(dir)
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("%s is not a folder", dir)
+	}
+	s := &folderScan{preview: FolderPreview{Dir: dir, Name: filepath.Base(dir), ProjectID: folderSource{}.ProjectID(dir, "")}}
+	p := &s.preview
+	if opt.SetName != "" {
+		p.Name = opt.SetName
+	}
+	rows, err := readCardsCSV(dir)
+	if err != nil {
+		return nil, err
+	}
+	p.CSV, p.CSVRows = rows != nil, len(rows)
+
+	files, folders, err := s.listFolder(dir)
+	if err != nil {
+		return nil, err
 	}
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no card images (PNG, JPG, WebP or AVIF) found in %s", dir)
@@ -252,19 +278,7 @@ func scanFolder(dir string, opt Options) (*folderScan, error) {
 		}
 		if i, ok := matchRow(rows, f.rel); ok {
 			used[i] = true
-			r := rows[i]
-			set := func(dst *string, key string) {
-				if v := strings.TrimSpace(r[key]); v != "" {
-					*dst = v
-				}
-			}
-			set(&c.Name, "name")
-			set(&c.Number, "number")
-			set(&c.SrcRarity, "rarity")
-			set(&c.Artist, "artist")
-			set(&c.Text, "text")
-			set(&c.TypeLine, "type")
-			c.USD, c.USDFoil = money(r["price"]), money(r["foilprice"])
+			c.applyRow(rows[i])
 		}
 		if n, err := strconv.Atoi(c.Number); err == nil {
 			maxNum, width = max(maxNum, n), max(width, len(c.Number))

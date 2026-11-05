@@ -14,6 +14,9 @@ namespace TCGCustomCards.Runtime
     /// with their emboss shading. Each design fills a copy of the texture; CreditCardKeepChip / CreditCardKeepPrint paint those
     /// vanilla parts back on top, keeping only their own (grey) pixels, not the blue around them. Each time a customer pays by
     /// card they hand over a random design; the counter's cards show the last one handed over.
+    /// The card slotted into a counter's card machine (game 1.03+) is a different model: material CreditCard, whose texture
+    /// CreditCard_CreditCard_AlbedoTransparency (1024²) is the whole machine's sheet with the card's print in one corner, upside
+    /// down (MachineCard). It gets the finished hand-card design painted into that corner.
     /// </summary>
     internal static class CreditCard
     {
@@ -21,6 +24,11 @@ namespace TCGCustomCards.Runtime
         internal const float FaceAspect = 85.72f / 53.98f;
 
         private const string VanillaTexture = "credit_card_D";
+        private const string MachineTexture = "CreditCard_CreditCard_AlbedoTransparency";
+
+        /// <summary>The card's print on the machine sheet (texture pixels at 1024², top-left origin; measured from the game files
+        /// 2026-10-29), turned 180°.</summary>
+        private static readonly RectInt MachineCard = new RectInt(1, 53, 229, 144);
 
         // Areas of credit_card_D (texture pixels, top-left origin, measured from the game files 2026-10-17 plus 4 px for the emboss
         // shadow; Studio gameextract.CardChip/CardPrint have the same values).
@@ -34,7 +42,7 @@ namespace TCGCustomCards.Runtime
 
         private static readonly PictureSet<Texture2D> Textures = new PictureSet<Texture2D>();
         private static readonly System.Random Random = new System.Random();
-        private static Texture _vanilla;
+        private static Texture _vanilla, _vanillaMachine;
 
         /// <summary>Card renderers by owner: each customer's hand (one design per payment) and each counter (the last one handed over).</summary>
         private static readonly Dictionary<Component, List<Renderer>> Customers = new Dictionary<Component, List<Renderer>>();
@@ -82,12 +90,19 @@ namespace TCGCustomCards.Runtime
             owners[owner] = root.GetComponentsInChildren<MeshRenderer>(true).Where(r => Slot(r) >= 0).Cast<Renderer>().ToList();
         }
 
-        /// <summary>The material slot drawing the card's print, or -1.</summary>
-        private static int Slot(Renderer r)
+        /// <summary>The material slot drawing a card's print (machine: the card machine's sheet), or -1.</summary>
+        private static int Slot(Renderer r) => Slot(r, out _);
+
+        private static int Slot(Renderer r, out bool machine)
         {
+            machine = false;
             var mats = r.sharedMaterials;
             for (int i = 0; i < mats.Length; i++)
-                if (MaterialTex.Main(mats[i]) is Texture t && t != null && t.name == VanillaTexture) return i;
+            {
+                if (!(MaterialTex.Main(mats[i]) is Texture t) || t == null) continue;
+                if (t.name == VanillaTexture) return i;
+                if (t.name == MachineTexture) { machine = true; return i; }
+            }
             return -1;
         }
 
@@ -98,10 +113,12 @@ namespace TCGCustomCards.Runtime
             foreach (var r in renderers)
             {
                 if (r == null) continue;
-                int slot = Slot(r);
+                int slot = Slot(r, out bool machine);
                 if (slot < 0) continue;
-                if (_vanilla == null) _vanilla = MaterialTex.Main(r.sharedMaterials[slot]); // Unity's null: also a destroyed texture
-                ShopPicture.SetTexture(r, key == null ? null : TextureFor(key), slot);
+                var main = MaterialTex.Main(r.sharedMaterials[slot]);
+                if (machine && _vanillaMachine == null) _vanillaMachine = main; // Unity's null: also a destroyed texture
+                if (!machine && _vanilla == null) _vanilla = main;
+                ShopPicture.SetTexture(r, key == null ? null : machine ? MachineTextureFor(key) : TextureFor(key), slot);
             }
         }
 
@@ -127,7 +144,7 @@ namespace TCGCustomCards.Runtime
         {
             var entries = Entries();
             var keys = entries.Select(e => e.key).ToList();
-            Textures.Keep(new HashSet<string>(keys));
+            Textures.Keep(new HashSet<string>(keys.Concat(keys.Select(k => k + "|machine")))); // hand + card-machine versions
             string Pick(string current) => current != null && keys.Contains(current) ? current : keys.Count == 0 ? null : keys[Random.Next(keys.Count)];
             if (!keys.Contains(_lastHandedOver)) _lastHandedOver = Pick(null);
             foreach (var kv in Customers.Where(k => k.Key != null).ToList())
@@ -149,10 +166,10 @@ namespace TCGCustomCards.Runtime
         {
             var entry = Entries().FirstOrDefault(e => e.key == key);
             if (entry.path == null) return null;
+            if (_vanilla == null) return null; // not known yet (no hand card seen): build later, don't store an empty result
             bool chip = Plugin.CreditCardKeepChip.Value, print = Plugin.CreditCardKeepPrint.Value;
             return Textures.Get(key, () =>
             {
-                if (_vanilla == null) return null;
                 var src = ShopPicture.Load(entry.path, "Credit card");
                 if (src == null) return null;
                 var keep = new List<RectInt>();
@@ -166,6 +183,27 @@ namespace TCGCustomCards.Runtime
                 });
                 UnityEngine.Object.Destroy(src);
                 if (tex != null) Plugin.Log.LogInfo($"Credit card: using {entry.path}");
+                return tex;
+            });
+        }
+
+        /// <summary>The card machine's sheet with design <paramref name="key"/> (as the hand card shows it) in the card's corner.</summary>
+        private static Texture2D MachineTextureFor(string key)
+        {
+            var hand = TextureFor(key);
+            if (hand == null || _vanillaMachine == null) return null;
+            return Textures.Get(key + "|machine", () =>
+            {
+                var card = TextureReadback.Read(hand, new RectInt(0, 0, hand.width, hand.height)); // the design is GPU-only
+                if (card == null) return null;
+                var tex = ShopPicture.Compose(_vanillaMachine, "TCGCC_CreditCardMachine", (px, w, h) =>
+                {
+                    // MachineCard as fractions of the sheet, bottom-left origin (Paint's rows run bottom-up).
+                    var dst = new Rect(MachineCard.x / 1024f, (1024 - MachineCard.yMax) / 1024f, MachineCard.width / 1024f, MachineCard.height / 1024f);
+                    // Turned 180° (the sheet has the card upside down); weight 1 = no bleed into the keys beside it.
+                    ShopPicture.Paint(px, w, h, card, new Rect(1, 1, -1, -1), dst, (x, y) => 1f);
+                });
+                UnityEngine.Object.Destroy(card);
                 return tex;
             });
         }

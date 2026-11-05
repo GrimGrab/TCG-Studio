@@ -39,18 +39,23 @@ func TestRead(t *testing.T) {
 	}
 }
 
+func set(path, section, key, value string) error {
+	_, err := SetMany(path, [][3]string{{section, key, value}})
+	return err
+}
+
 func TestSetKeepsFile(t *testing.T) {
 	p := write(t)
-	if _, err := Set(p, "Foil", "HoloFoilMotion", "2"); err != nil {
+	if err := set(p, "Foil", "HoloFoilMotion", "2"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Set(p, "Foil", "HoloFoilMotion", "9"); err == nil {
+	if err := set(p, "Foil", "HoloFoilMotion", "9"); err == nil {
 		t.Fatal("out of range accepted")
 	}
-	if _, err := Set(p, "Foil", "BasePattern", "Glitter"); err == nil {
+	if err := set(p, "Foil", "BasePattern", "Glitter"); err == nil {
 		t.Fatal("unknown enum value accepted")
 	}
-	if _, err := Set(p, "Content", "ShowVanillaCards", "true"); err != nil {
+	if err := set(p, "Content", "ShowVanillaCards", "true"); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(p)

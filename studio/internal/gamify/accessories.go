@@ -84,9 +84,6 @@ func priceAt(kind string, level float64) float64 {
 	return math.Max(b[1], b[1]+(level-b[0])*(b[1]-a[1])/(b[0]-a[0]))
 }
 
-// playmatPriceAt is kept for the curve test.
-func playmatPriceAt(level float64) float64 { return priceAt("Playmat", level) }
-
 // smoothCurve averages vanilla rows that share a level and makes the price non-decreasing.
 func smoothCurve(raw [][2]float64) [][2]float64 {
 	byLevel := map[float64][]float64{}

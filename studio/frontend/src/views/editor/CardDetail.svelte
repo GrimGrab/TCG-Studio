@@ -55,12 +55,29 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
+  async function changeBackImage() {
+    try {
+      const rel = await App.PickCardImage(project.id);
+      if (rel) { card.backImage = rel; showBack = true; }
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  function removeBackImage() {
+    card.backImage = undefined;
+    showBack = false;
+  }
+
   let rotating = $state(false);
+  // Turns the side the preview shows.
   async function rotate(turns: number) {
     rotating = true;
     try {
-      const turned = await App.RotateCardImages(project.id, [card.image], turns, false);
-      if (turned[card.image]) card.image = turned[card.image]; // a new file: the game sees it once the set is saved
+      const back = showBack && !!card.backImage, rel = back ? card.backImage : card.image;
+      const turned = await App.RotateCardImages(project.id, [rel], turns, false);
+      if (turned[rel]) { // a new file: the game sees it once the set is saved
+        if (back) card.backImage = turned[rel];
+        else card.image = turned[rel];
+      }
     } catch (e) { notify(errText(e), 'error'); }
     rotating = false;
   }
@@ -107,13 +124,16 @@
       <button class="noimg" onclick={changeImage}>No image — choose one…</button>
     {/if}
     {#if card.backImage}
-      <button class="flip small" onclick={() => (showBack = !showBack)} title="Double-faced card: show the other side">
+      <button class="flip small" onclick={() => (showBack = !showBack)} title="Show the other side">
         ⇄ {showBack ? 'Front' : 'Back'}</button>
     {/if}
   </div>
   {#if card.backImage && showBack && card.mtg?.backName}<div class="muted small center">Back: {card.mtg.backName}</div>{/if}
   <div class="imgtools">
     <button class="small" onclick={changeImage}>Change image…</button>
+    <button class="small" onclick={changeBackImage} title="The picture on this card's back, instead of the set's card back">
+      {card.backImage ? 'Change back…' : 'Add back…'}</button>
+    {#if card.backImage}<button class="small" onclick={removeBackImage} title="Use the set's card back again">Remove back</button>{/if}
     {#if canRedownload}
       <button class="small" disabled={redownloading} onclick={redownload}
         title="Download this card's original image again from where the set was imported">
@@ -124,6 +144,7 @@
     <button class="small" disabled={!card.image || rotating} onclick={() => rotate(1)} title="Rotate right">⟳</button>
   </div>
   {#if card.image}<div class="muted path" title={card.image}>{card.image}</div>{/if}
+  {#if card.backImage}<div class="muted path" title={card.backImage}>Back: {card.backImage}</div>{/if}
 
   <div class="head">
     <input class="title" bind:value={card.name} aria-label="Card name" placeholder="Card name" />

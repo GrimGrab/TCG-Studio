@@ -82,6 +82,36 @@ namespace TCGCustomCards.Core
             return result;
         }
 
+        /// <summary>Employees from the same library file.</summary>
+        public static List<EmployeeDef> LoadEmployees(string setupDir)
+        {
+            var result = new List<EmployeeDef>();
+            if (setupDir == null) return result;
+            string dir = Path.Combine(setupDir, FolderName);
+            string file = Path.Combine(dir, FileName);
+            if (!File.Exists(file)) return result;
+            AccessoryLibraryDef lib;
+            try { lib = JsonConvert.DeserializeObject<AccessoryLibraryDef>(File.ReadAllText(file)); }
+            catch (Exception) { return result; } // already reported by Load
+            if (lib?.Employees == null || lib.SchemaVersion > AccessoryLibraryDef.CurrentSchemaVersion) return result;
+            var ids = new HashSet<string>();
+            foreach (var e in lib.Employees)
+            {
+                if (e == null) continue;
+                if (string.IsNullOrWhiteSpace(e.Id) || !ids.Add(e.Id))
+                {
+                    Plugin.Log.LogError($"Employee {e.Label} rejected: missing or duplicate id");
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(e.Name)) e.Name = e.Id;
+                e.RestockSpeed = UnityEngine.Mathf.Max(0.1f, e.RestockSpeed);
+                e.CheckoutSpeed = UnityEngine.Mathf.Max(0.1f, e.CheckoutSpeed);
+                e.FolderPath = dir;
+                result.Add(e);
+            }
+            return result;
+        }
+
         /// <summary>
         /// Custom furniture from the same library file. Checks that only need the def happen here; the base piece's type is checked
         /// against its prefab when injecting (<see cref="Runtime.FurnitureInjector"/>).

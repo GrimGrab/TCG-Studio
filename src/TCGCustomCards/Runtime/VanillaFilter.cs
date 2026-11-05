@@ -56,7 +56,7 @@ namespace TCGCustomCards.Runtime
             foreach (Core.FurnitureType type in System.Enum.GetValues(typeof(Core.FurnitureType)))
             {
                 if (!Core.FurnitureKinds.Matches(type, prefab)) continue;
-                if (Core.FurnitureKinds.IsEssential(type) && !Registry.Furniture.Exists(f => f.Prefab != null && f.Def.Type == type)) return false;
+                if (Core.FurnitureKinds.IsEssential(type) && !Registry.Furniture.Exists(f => f.Prefab != null && f.Def.Type == type && !f.Def.BuiltIn)) return false;
                 break;
             }
             return true;
@@ -92,6 +92,7 @@ namespace TCGCustomCards.Runtime
             for (int i = 0; i < (int)EItemType.Max; i++)
                 if (InventoryBase.ItemTypeToCollectionPackType((EItemType)i) != ECollectionPackType.None)
                     VanillaCardProducts.Add((EItemType)i);
+            VanillaCardProducts.Add(EItemType.AscensionCardBox); // the game's lookup above has no case for it
             Apply();
         }
 

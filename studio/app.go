@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -40,6 +41,8 @@ import (
 
 // App is the Wails-bound backend. Every exported method is callable from the frontend.
 type App struct {
+	artConverting atomic.Bool // BeginArtConversion is running: saves of sets and libraries wait
+
 	ctx        context.Context
 	sf         *scryfall.Client
 	sources    *importer.Registry
@@ -421,7 +424,7 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 func (a *App) DefaultArtColor(id string) string { return art.DefaultColor(id) }
 
 // GeneratePackArt renders pack/box textures + icons for one pack from the game's templates and returns the file paths.
-// The caller assigns them to the pack (new file names each time, freshName: the game sees them once the set is saved).
+// The caller assigns them to the pack (new file names each time, project.FreshName: the game sees them once the set is saved).
 func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Result, error) {
 	dir, err := a.requireTemplates()
 	if err != nil {
@@ -435,7 +438,7 @@ func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Resu
 		return art.Result{}, err
 	}
 	o.Resolve = p.ImagePath // the set icon / front image may live in the shared library
-	o.Target = func(rel string) (string, string) { return p.WriteTarget(freshName(rel)) }
+	o.Target = func(rel string) (string, string) { return p.WriteTarget(project.FreshName(rel)) }
 	return art.Generate(dir, p.LibFolder, p.ID, p.Set.Name, o)
 }
 
@@ -449,8 +452,8 @@ func (a *App) GenerateSetCardBack(id, color, title string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rel, out := p.WriteTarget(freshName("images/card_back.png"))
-	return rel, art.GenerateCardBackFrom(p.ImagePath, "", color, title, out)
+	rel, out := p.WriteTarget(project.FreshName("images/card_back.png"))
+	return rel, art.GenerateCardBack(p.ImagePath, color, title, out)
 }
 
 func (a *App) globalBackPath() string {
@@ -583,6 +586,9 @@ type SaveResult struct {
 // SaveProject writes the project (even with issues); an installed set is what the game loads at its next start
 // (unless validation found errors) — so "Save" is all it takes for edits to reach the game.
 func (a *App) SaveProject(p project.Project) (SaveResult, error) {
+	if a.artConverting.Load() {
+		return SaveResult{}, errArtConverting
+	}
 	if !setfmt.SafeID(p.ID) {
 		return SaveResult{}, errBadID
 	}
@@ -882,7 +888,7 @@ func uprightJPEG(b []byte) ([]byte, error) {
 }
 
 // RotateCardImages turns card images of project id by turns quarter turns clockwise (negative = anticlockwise); with
-// onlyLandscape, only images wider than tall are turned. Each turned image is written under a new name (freshName) and
+// onlyLandscape, only images wider than tall are turned. Each turned image is written under a new name (project.FreshName) and
 // returned as old path → new path: the caller points the cards at it, and the game shows it once the set is saved.
 func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscape bool) (map[string]string, error) {
 	if !setfmt.SafeID(id) {
@@ -927,7 +933,7 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 		if err != nil {
 			return n, err
 		}
-		to, err := p.WriteFile(freshName(rel), out)
+		to, err := p.WriteFile(project.FreshName(rel), out)
 		if err != nil {
 			return n, err
 		}
@@ -937,7 +943,7 @@ func (a *App) RotateCardImages(id string, rels []string, turns int, onlyLandscap
 }
 
 // RedownloadCardImages downloads the art of project id's cards again from the source the set was imported from (Re-download
-// image), each under a new name (freshName), and returns card id → new paths: the caller points the cards at them, and the
+// image), each under a new name (project.FreshName), and returns card id → new paths: the caller points the cards at them, and the
 // game shows them once the set is saved.
 func (a *App) RedownloadCardImages(id string, cardIDs []string) (map[string]importer.CardImages, error) {
 	if !setfmt.SafeID(id) {
@@ -947,7 +953,7 @@ func (a *App) RedownloadCardImages(id string, cardIDs []string) (map[string]impo
 	if err != nil {
 		return nil, err
 	}
-	got, missing, err := a.sources.RedownloadImages(a.ctx, p, cardIDs, freshName)
+	got, missing, err := a.sources.RedownloadImages(a.ctx, p, cardIDs, project.FreshName)
 	if err != nil {
 		return got, err
 	}

@@ -274,6 +274,7 @@ namespace TCGCustomCards.Core
         [JsonProperty("accessories")] public List<AccessoryDef> Accessories = new List<AccessoryDef>();
         [JsonProperty("furniture")] public List<FurnitureDef> Furniture = new List<FurnitureDef>();
         [JsonProperty("decorations")] public List<DecorationDef> Decorations = new List<DecorationDef>();
+        [JsonProperty("employees")] public List<EmployeeDef> Employees = new List<EmployeeDef>();
         [JsonIgnore] public string FolderPath;
     }
 
@@ -323,9 +324,37 @@ namespace TCGCustomCards.Core
         [JsonProperty("tab"), JsonConverter(typeof(StringEnumConverter))] public DecorationTab? Tab;
 
         [JsonIgnore] public string FolderPath;
+        /// <summary>Made by the mod, not the library: its model and art come from code (the shop whiteboard).</summary>
+        [JsonIgnore] public bool BuiltIn;
         [JsonIgnore] public bool IsSurface => Kind == DecorationKind.Wall || Kind == DecorationKind.Floor || Kind == DecorationKind.Ceiling;
         [JsonIgnore] public DecorationMount EffectiveMount => Kind == DecorationKind.Poster ? DecorationMount.Wall : Mount;
         [JsonIgnore] public DecorationTab EffectiveTab => Tab ?? (Kind == DecorationKind.Poster ? DecorationTab.Poster : DecorationTab.Other);
+    }
+
+    /// <summary>A hireable employee made in TCG Studio. Speeds are seconds per action, as the game's WorkerData (lower is faster).</summary>
+    public class EmployeeDef
+    {
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("name")] public string Name;
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
+        [JsonProperty("female")] public bool Female;
+        /// <summary>Character preset ("Male3"/"Female0"); -1 = one of the game's worker looks.</summary>
+        [JsonProperty("model")] public int Model = -1;
+        [JsonProperty("portrait")] public string Portrait;
+        [JsonProperty("description")] public string Description;
+        [JsonProperty("restockSpeed")] public float RestockSpeed = 2f;
+        [JsonProperty("checkoutSpeed")] public float CheckoutSpeed = 2f;
+        [JsonProperty("walkSpeed")] public float WalkSpeed;
+        [JsonProperty("wage")] public float Wage = 100f;
+        [JsonProperty("hireCost")] public float HireCost = 500f;
+        [JsonProperty("level")] public int Level = 1;
+        [JsonProperty("perks")] public List<string> Perks = new List<string>();
+        [JsonProperty("voice")] public Runtime.Customers.CustomerVoice Voice;
+        [JsonProperty("lines")] public Dictionary<string, List<string>> Lines;
+        [JsonProperty("removed")] public Dictionary<string, List<string>> Removed;
+        [JsonProperty("anims")] public Dictionary<string, List<string>> Anims;
+        [JsonProperty("animsOff")] public Dictionary<string, List<string>> AnimsOff;
+        [JsonIgnore] public string FolderPath;
     }
 
     /// <summary>What a custom furniture piece does: the vanilla behaviour (component) it is built on.</summary>
@@ -375,6 +404,8 @@ namespace TCGCustomCards.Core
         /// <summary>Positions the game uses (seats, where the cashier/worker stands, customer stand points…) by role. Null = the base's.</summary>
         [JsonProperty("points")] public List<FurniturePointDef> Points;
 
+        /// <summary>Made by the mod, not the library: only ever sold and delivered boxed (the shop whiteboard's box).</summary>
+        [JsonIgnore] public bool BuiltIn;
         [JsonIgnore] public EObjectType BaseObject = EObjectType.None;
         [JsonIgnore] public string FolderPath;
     }

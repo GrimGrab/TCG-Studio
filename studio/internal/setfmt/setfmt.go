@@ -18,9 +18,9 @@ var Elements = []string{"Fire", "Earth", "Water", "Wind"}
 var FrameTemplates = []string{"Tetramon", "Destiny", "Ghost", "Megabot", "FantasyRPG", "CatJob", "Ascension"}
 
 type Set struct {
-	SchemaVersion int           `json:"schemaVersion"`
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
+	SchemaVersion int    `json:"schemaVersion"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
 	// Collection: the game or series the set belongs to ("Magic: The Gathering", "Gundam"…); the mod's binder groups sets
 	// by it. Released: "yyyy-mm-dd", orders sets inside a collection. Both optional (mirror of the mod's SetDef).
 	Collection    string        `json:"collection,omitempty"`

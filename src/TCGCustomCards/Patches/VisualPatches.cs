@@ -19,7 +19,6 @@ namespace TCGCustomCards.Patches
         private const string OverlayName = "TCGCC_FullImage";
         /// <summary>Full-image cards relative to the 900×900 card front (tuned in game, 2026-09-23).</summary>
         private const float FullImageScale = 0.9f;
-        private static bool _loggedLayout;
 
         private static void Prefix(CardUI __instance)
         {
@@ -113,29 +112,8 @@ namespace TCGCustomCards.Patches
             // CardFront is a 900×900 square with the card centered inside; keep the image's own aspect (MTG ≈ 0.716).
             img.preserveAspect = true;
 
-            if (!_loggedLayout)
-            {
-                _loggedLayout = true;
-                Plugin.Log.LogInfo($"FullImage overlay: parent={parent.name} parentRect={(parentRt != null ? parentRt.rect.ToString() : "n/a")} " +
-                                   $"borderMaskRect={(reference != null ? reference.rect.ToString() : "n/a")} sibling={rt.GetSiblingIndex()}/{parent.childCount}");
-                string Describe(Component c) => c == null ? "null" :
-                    $"{PathOf(c.transform)} active={c.gameObject.activeInHierarchy} rect={(c.transform as RectTransform)?.rect} localPos={c.transform.localPosition} scale={c.transform.localScale}";
-                Plugin.Log.LogInfo("CardFront children: " + string.Join(" | ", Enumerable.Range(0, parent.childCount).Select(i =>
-                    { var ch = parent.GetChild(i); return $"{i}:{ch.name}{(ch.gameObject.activeSelf ? "" : "(off)")}"; })));
-                Plugin.Log.LogInfo($"Border image: {Describe(ui.m_CardBorderImage)} sprite={ui.m_CardBorderImage?.sprite?.name}");
-                Plugin.Log.LogInfo($"Border mask: {Describe(ui.m_CardBorderMask)}");
-                Plugin.Log.LogInfo($"Edition text: {Describe(ui.m_FirstEditionText)}");
-                Plugin.Log.LogInfo($"Foil group: {Describe(ui.m_FoilGrp != null ? ui.m_FoilGrp.transform : null)}");
-            }
             return img;
         }
 
-        private static string PathOf(Transform t)
-        {
-            string p = t.name;
-            int depth = 0;
-            for (var x = t.parent; x != null && depth < 6; x = x.parent, depth++) p = x.name + "/" + p;
-            return p;
-        }
     }
 }

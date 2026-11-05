@@ -9,7 +9,7 @@ import (
 // ---------------------------------------------------------------- every other TCGplayer card game (via TCGCSV)
 // One engine (tcgplayer_source.go) for the card games TCGplayer sells that have no source of their own: each game is
 // one tcgGame entry below and shows up as its own source on the Import page. Field names, rarities and colours come
-// from surveys of the live catalogue (TestTCGSurvey, TestTCGValues), 2026-10-23.
+// from surveys of the live catalogue (survey tests removed, see commit f564d91), 2026-10-23.
 //
 // Not listed: KeyForge (every deck is unique, no packs), Dice Masters, and categories with no usable cards on TCGplayer:
 // Epic (sealed only), Redakai, Alternate Souls, Architect, Neopets Battledome, Rush of Ikorr (no products yet), My Little

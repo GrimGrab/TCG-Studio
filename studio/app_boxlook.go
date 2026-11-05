@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/modconfig"
 	"tcgstudio/internal/uvmap"
@@ -31,7 +32,7 @@ const (
 	boxImagePrefix   = "boximg_" // images placed in the box editor
 )
 
-// boxLook is one look of the tab: its mod setting, editor layout (uvmap.BoxLook) and vanilla texture (templates
+// boxLook is one look of the tab: its mod setting, editor layout (uvmap.ModelFor) and vanilla texture (templates
 // boxes\<id>.png); twin = a second vanilla texture (template id) painted with the same design, set in twinKey.
 type boxLook struct {
 	id, key, model, title, group string
@@ -50,10 +51,8 @@ var boxLooks = func() []boxLook {
 		{id: "streetBillboard", key: "StreetBillboardTexture", model: "streetBillboard", title: "Street billboards", group: "street",
 			section: sceneLookSection},
 	}
-	for _, v := range [][2]string{{"Base", "Tetramon"}, {"Destiny", "Destiny"},
-		{"BaseGradeHG", "Tetramon HG"}, {"BaseGradeMG", "Tetramon MG"}, {"BaseGradePG", "Tetramon PG"}, {"BaseGradeUG", "Tetramon UG"},
-		{"DestinyGradeHG", "Destiny HG"}, {"DestinyGradeMG", "Destiny MG"}, {"DestinyGradePG", "Destiny PG"}, {"DestinyGradeUG", "Destiny UG"}} {
-		id := "BulkBox_Tetramon" + v[0]
+	for _, v := range [][2]string{{"NG", "no grade"}, {"HG", "HG"}, {"MG", "MG"}, {"PG", "PG"}, {"UG", "UG"}, {"OG", "OG"}} {
+		id := "BulkBox" + v[0]
 		out = append(out, boxLook{id: id, key: id + "Texture", model: "bulk", title: "Bulk box: " + v[1], group: "bulk"})
 	}
 	for i := range out {
@@ -90,10 +89,10 @@ func (a *App) boxLookViews(p string) []BoxLookView {
 	out := []BoxLookView{}
 	for _, b := range boxLooks {
 		v := BoxLookView{ID: b.id, Title: b.title, Group: b.group, Model: b.model}
-		if exists(a.templateFile(gameextract.BoxesDir, b.id+".png")) {
+		if fsutil.Exists(a.templateFile(gameextract.BoxesDir, b.id+".png")) {
 			v.Vanilla = "/boxtemplates/" + b.id + ".png"
 		}
-		if b.twin != "" && exists(a.templateFile(gameextract.BoxesDir, b.twin+".png")) {
+		if b.twin != "" && fsutil.Exists(a.templateFile(gameextract.BoxesDir, b.twin+".png")) {
 			v.Twin = "/boxtemplates/" + b.twin + ".png"
 		}
 		if e, err := modconfig.Get(p, b.section, b.key); err == nil && e.Value != "" {
@@ -111,7 +110,7 @@ func (a *App) boxLookViews(p string) []BoxLookView {
 
 // BoxLookModel is a box's editor layout, its 3D preview served from the templates' boxes folder.
 func (a *App) BoxLookModel(model string) (uvmap.Model, error) {
-	m, ok := uvmap.BoxLook(model)
+	m, ok := uvmap.ModelFor(model)
 	if !ok {
 		return m, errors.New("no layout for box " + model)
 	}

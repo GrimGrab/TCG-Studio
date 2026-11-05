@@ -17,8 +17,8 @@ import {art} from '../models';
 import {forge} from '../models';
 import {gamify} from '../models';
 import {share} from '../models';
+import {customers} from '../models';
 import {installer} from '../models';
-import {upgrade} from '../models';
 
 export function Accessories():Promise<main.AccessoryView>;
 
@@ -36,7 +36,7 @@ export function AddFromCatalog(arg1:string,arg2:Array<string>):Promise<catalog.A
 
 export function AppVersion():Promise<main.VersionInfo>;
 
-export function AutoUpgrade():Promise<main.AutoUpgradeResult>;
+export function ArtLayoutStatus():Promise<main.ArtLayoutStatus>;
 
 export function BakeDecorationModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.ModelBake>;
 
@@ -45,6 +45,8 @@ export function BakeFigurine(arg1:string,arg2:string,arg3:string,arg4:figurine.P
 export function BakeFurnitureModel(arg1:string,arg2:string,arg3:string,arg4:figurine.Placement):Promise<main.ModelBake>;
 
 export function BakePoster(arg1:string,arg2:decoart.Poster):Promise<main.ModelBake>;
+
+export function BeginArtConversion():Promise<void>;
 
 export function BoxFromPack(arg1:string,arg2:string):Promise<main.BoxArt>;
 
@@ -65,6 +67,8 @@ export function CatalogList(arg1:string):Promise<Array<catalog.Entry>>;
 export function CheckForUpdate():Promise<updater.Release>;
 
 export function CheckModLoaded():Promise<main.ModCheck>;
+
+export function ClothingModel(arg1:string,arg2:string,arg3:number):Promise<uvmap.Model>;
 
 export function Collections():Promise<Array<string>>;
 
@@ -170,8 +174,6 @@ export function ImportShopPicture(arg1:string):Promise<main.ShopFile>;
 
 export function ImportSources():Promise<Array<importer.SourceInfo>>;
 
-export function InstallAccessories():Promise<main.AccessoryView>;
-
 export function InstallForge():Promise<string>;
 
 export function InstallProject(arg1:string):Promise<main.SaveResult>;
@@ -188,6 +190,12 @@ export function ListProjects():Promise<Array<project.Summary>>;
 
 export function ListSetups():Promise<main.SetupsView>;
 
+export function LoadClothes():Promise<main.ClothesPage>;
+
+export function LoadCustomersPage():Promise<main.CustomersPage>;
+
+export function LoadEmployeesPage():Promise<main.EmployeesPage>;
+
 export function LoadProject(arg1:string):Promise<project.Project>;
 
 export function LocateGame():Promise<game.Status>;
@@ -199,6 +207,10 @@ export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryVie
 export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
+
+export function NewClothingID():Promise<string>;
+
+export function NewCustomerID():Promise<string>;
 
 export function NewDecoration(arg1:string,arg2:string):Promise<setfmt.Decoration>;
 
@@ -258,8 +270,6 @@ export function RefreshTemplates(arg1:boolean):Promise<main.TemplatesStatus>;
 
 export function RemoveForge():Promise<void>;
 
-export function RemoveFromCatalog(arg1:string,arg2:Array<string>):Promise<void>;
-
 export function RemoveGameCopies():Promise<main.StorageResult>;
 
 export function RestartStudio():Promise<void>;
@@ -274,7 +284,13 @@ export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Pro
 
 export function SaveBoxImage(arg1:string,arg2:string):Promise<string>;
 
+export function SaveClothes(arg1:Array<main.ClothingSave>):Promise<Array<string>>;
+
+export function SaveCustomers(arg1:Array<setfmt.Customer>,arg2:customers.SetupLines,arg3:Array<setfmt.SavedFace>,arg4:Array<setfmt.Animation>,arg5:Record<string, Array<string>>,arg6:Record<string, Array<string>>):Promise<Array<string>>;
+
 export function SaveDebugReport():Promise<string>;
+
+export function SaveEmployees(arg1:Array<setfmt.Employee>,arg2:Record<string, Array<string>>,arg3:Record<string, Array<string>>,arg4:Array<setfmt.SavedFace>,arg5:Array<setfmt.Animation>,arg6:Record<string, Array<string>>,arg7:Record<string, Array<string>>):Promise<Array<string>>;
 
 export function SaveLibraryDraft(arg1:string,arg2:main.LibraryDraft):Promise<main.AccessoryView>;
 
@@ -320,7 +336,9 @@ export function SnapshotPackBase(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SourceSets(arg1:string,arg2:string,arg3:boolean):Promise<Array<main.ImportableSet>>;
 
-export function StorageReport():Promise<main.StorageView>;
+export function StartupUpdate():Promise<main.StartupResult>;
+
+export function StorageReport():Promise<library.Report>;
 
 export function StorageTask():Promise<main.StorageTaskInfo>;
 
@@ -335,12 +353,6 @@ export function UIScaleAtStart():Promise<number>;
 export function UninstallProject(arg1:string):Promise<void>;
 
 export function UpdateSetup(arg1:string,arg2:string,arg3:string):Promise<main.SetupsView>;
-
-export function UpgradePreviewDiffer(arg1:string):Promise<upgrade.Preview>;
-
-export function UpgradePreviewNamed(arg1:string,arg2:string,arg3:string):Promise<upgrade.Preview>;
-
-export function UpgradeStorage(arg1:upgrade.Choices):Promise<main.StorageResult>;
 
 export function UseProductPhoto(arg1:string,arg2:importer.SealedProduct):Promise<string>;
 

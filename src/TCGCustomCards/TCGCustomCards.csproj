@@ -28,6 +28,7 @@
     <Reference Include="UnityEngine"><HintPath>$(ManagedPath)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AudioModule"><HintPath>$(ManagedPath)\UnityEngine.AudioModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule"><HintPath>$(ManagedPath)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(ManagedPath)\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(ManagedPath)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
@@ -40,9 +41,19 @@
     <Reference Include="UnityEngine.PhysicsModule"><HintPath>$(ManagedPath)\UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.TextMeshPro"><HintPath>$(ManagedPath)\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.TextCoreFontEngineModule"><HintPath>$(ManagedPath)\UnityEngine.TextCoreFontEngineModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AstarPathfindingProject"><HintPath>$(ManagedPath)\AstarPathfindingProject.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="PackageTools"><HintPath>$(ManagedPath)\PackageTools.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Drawing"><HintPath>$(ManagedPath)\Drawing.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Newtonsoft.Json"><HintPath>$(ManagedPath)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="BepInEx"><HintPath>$(BepInExCorePath)\BepInEx.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(BepInExCorePath)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!-- Customer traits and lines: one file shared with TCG Studio (Customers page). -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\studio\frontend\src\assets\talk\letters.wav" LogicalName="TCGCustomCards.talk-letters.wav" />
+    <EmbeddedResource Include="..\..\studio\internal\customers\defaults.json" LogicalName="TCGCustomCards.customer-defaults.json" />
+    <EmbeddedResource Include="..\..\studio\internal\customers\default-animations.json" LogicalName="TCGCustomCards.customer-default-animations.json" />
   </ItemGroup>
 
   <!-- BepInPlugin needs a compile-time constant: generate BuildInfo.Version from VERSION. -->

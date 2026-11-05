@@ -1,7 +1,7 @@
 // Tiny WebGL viewer for the accessory meshes the mod exports (templates\accessories\*.obj). No dependencies.
 // OBJ from the mod: Unity space (left-handed, Y up), UV origin bottom-left, one "f a/a/a" index per vertex.
 
-export interface MeshPart {
+interface MeshPart {
   url: string;                          // .obj
   texture?: 'main' | 'secondary';       // main = the texture being edited; secondary = a fixed image (e.g. binder pages)
   secondaryUrl?: string;
@@ -22,6 +22,12 @@ async function loadObj(url: string): Promise<Parsed> {
     }));
   }
   return objCache.get(url)!;
+}
+
+/** A whole OBJ as interleaved position(3) normal(3) uv(2) per vertex, non-indexed (GL space: z negated). */
+export async function loadObjMesh(url: string): Promise<{ data: Float32Array; count: number }> {
+  const p = await loadObj(url);
+  return { data: p.data, count: p.count };
 }
 
 /** A mesh's UVs (u, v per vertex; origin bottom-left) and positions (x, y, z), three vertices per triangle. */

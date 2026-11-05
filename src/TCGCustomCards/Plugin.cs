@@ -17,11 +17,26 @@ namespace TCGCustomCards
         public const string Version = BuildInfo.Version; // from TCG Custom Cards\VERSION
 
         internal static ManualLogSource Log;
-        internal static ConfigEntry<bool> DumpDiagnostics;
+        internal static ConfigEntry<bool> DumpDiagnostics, CustomerDebug;
+        internal static ConfigEntry<float> CustomerCrowdRange;
         internal static ConfigEntry<bool> ShowVanillaCards;
         internal static ConfigEntry<bool> ShowVanillaPacks;
         internal static ConfigEntry<bool> ShowVanillaFurniture;
+        internal static ConfigEntry<bool> ShowVanillaEmployees;
+        internal static ConfigEntry<bool> EmployeeTalk;
+        internal static ConfigEntry<float> EmployeeChattiness;
         internal static ConfigEntry<bool> StinkyCustomers;
+        internal static ConfigEntry<bool> Personalities, CustomerNameplates, CustomerInspectOnLook, CustomerLastNameInitialOnly, NameplatesLookedAtOnly, CustomerChatting, CustomerTableBanter, CustomerNicknames, CustomerBrowsing, CustomerTrading, CustomerAnimations, CustomerFriendships;
+        internal static ConfigEntry<float> RegularChance, TournamentRegularChance, PromoteChance, PromoteSpend, NameplateDistance;
+        internal static ConfigEntry<int> MaxRegulars;
+        internal static ConfigEntry<KeyboardShortcut> RegularsListKey, KickOutKey, ProfileKey;
+        internal static ConfigEntry<bool> CustomerDialogue, CustomerTraitEffects, CustomerWishlists, CustomerLoyalty,
+            CustomerPackRipping, CustomerRivalries, CustomerShoplifting, CustomerImpatience;
+        internal static ConfigEntry<bool> CustomerTalkSounds;
+        internal static ConfigEntry<int> CustomerMaxVoices, CustomerCrowdReactors;
+        internal static ConfigEntry<float> CustomerTalkVolume;
+        internal static ConfigEntry<float> CustomerChattiness, CustomerLineSeconds, CustomerLineTextSize, CustomerPackHitPrice, CustomerPatienceSeconds, CustomerPackRipChance;
+        internal static ConfigEntry<UI.CustomerPadButton> KickOutPadButton, ProfilePadButton;
         internal static ConfigEntry<bool> ShowVanillaPosters, ShowVanillaDecoObjects, ShowVanillaSurfaces;
         /// <summary>[Content] ShowVanilla&lt;Kind&gt; per accessory kind.</summary>
         internal static readonly System.Collections.Generic.Dictionary<AccessoryKind, ConfigEntry<bool>> ShowVanillaAccessory =
@@ -100,10 +115,12 @@ namespace TCGCustomCards
         {
             Log = Logger;
             PluginDir = Path.GetDirectoryName(Info.Location);
+            Debug.HangWatch.Start();
 
             var cfgBefore = ConfigMoves.Snapshot(Config); // see ConfigMoves: settings moved to a sub-section keep their value
             EnhancedBinder = Config.Bind("Binder", "EnhancedBinder", true,
                 "On = the improved binder (one slot per card with a version switcher, fast sorting). Off = the game's own binder, unchanged.");
+            // migration:settings-binder-layout
             // [Binder] Layout was removed: the layout is now per save (binder panel). Its old value is the default for older saves.
             OldClassicLayout = cfgBefore.TryGetValue(("Binder", "Layout"), out var oldLayout) && oldLayout == "Classic";
             BinderFavouriteKey = Config.Bind("Binder", "FavouriteKey", new KeyboardShortcut(UnityEngine.KeyCode.T),
@@ -116,8 +133,10 @@ namespace TCGCustomCards
             BinderPadFavourite = Config.Bind("Binder", "ControllerFavouriteButton", UI.BinderPadButton.LeftStickClick,
                 "Controller button that marks the card you are aiming at (or holding up close) as a favourite, or unmarks it. The " +
                 "choices are buttons the game leaves free in the binder. Only with EnhancedBinder on.");
-            DumpDiagnostics = Config.Bind("Debug", "DumpDiagnostics", true,
+            DumpDiagnostics = Config.Bind("Debug", "DumpDiagnostics", false,
                 "Write runtime game data (list sizes, materials, restock entries) to diagnostics.txt once per session after a save loads.");
+            CustomerDebug = Config.Bind("Debug", "CustomerDebug", false,
+                "Customers - Personalities on: a live panel beside a customer you keep on screen (ProfileKey) shows what they are doing inside: game or mod state, where they are heading, till and bag, patience timer, pack ripping, mood, theft, kick.");
             ShowVanillaCards = Config.Bind("Content", "ShowVanillaCards", true,
                 "Show the vanilla card sets (binder tabs, set pickers, trade customers). Off = custom sets only (no card trades if you have none). Nothing is deleted; turning it back on restores vanilla.");
             ShowVanillaPacks = Config.Bind("Content", "ShowVanillaPacks", true,
@@ -145,9 +164,105 @@ namespace TCGCustomCards
             ShowVanillaFurniture = Config.Bind("Content", "ShowVanillaFurniture", true,
                 "Sell the vanilla furniture in the furniture shop. Off = only your custom furniture from TCG Studio (the cash counter, " +
                 "workbench, trash bin and empty box storage stay unless you have a custom one of that kind). Placed furniture stays.");
+            ShowVanillaEmployees = Config.Bind("Content", "ShowVanillaEmployees", true,
+                "List the game's own employees in the hire app. Off = only your employees from TCG Studio; anyone already hired stays.");
+            EmployeeTalk = Config.Bind("Customers - Employees", "EmployeeTalk", false,
+                "Employees say things while they work, in text and with a voice (TalkSounds), the game's own and yours.");
+            EmployeeChattiness = Config.Bind("Customers - Employees", "EmployeeChattiness", 1f, new ConfigDescription(
+                "How often employees talk. 1 = normal, 0 = only when something big happens to them.", new AcceptableValueRange<float>(0f, 2f)));
             StinkyCustomers = Config.Bind("Gameplay", "StinkyCustomers", true,
                 "New customers can arrive stinky (vanilla). Off = no new stinky customers; ones already stinky stay until they leave " +
                 "or you spray them. Applies live.");
+            Personalities = Config.Bind("Customers", "Personalities", false,
+                "On = customers have names and personalities: walk-ins get a name for their visit, and some come back as regulars " +
+                "with the same name and look. Off = vanilla customers. Regulars stay in your save either way. Applies live.");
+            RegularChance = Config.Bind("Customers", "RegularChance", 0.3f, new ConfigDescription(
+                "Chance that a new customer is one of your regulars (when one of that body type hasn't been " +
+                "in today) instead of a walk-in.", new AcceptableValueRange<float>(0f, 1f)));
+            TournamentRegularChance = Config.Bind("Customers", "TournamentRegularChance", 0.6f, new ConfigDescription(
+                "Chance that a tournament slot a walk-in got goes to one of your regulars instead (some slots go to regulars anyway, by Regular Chance: the two together make about 7 in 10 with the defaults). Stays a walk-in when no regular of that body type is left.",
+                new AcceptableValueRange<float>(0f, 1f)));
+            MaxRegulars = Config.Bind("Customers", "MaxRegulars", 30, new ConfigDescription(
+                "Walk-ins stop becoming regulars once you have this many. Regulars you made in TCG Studio count too.",
+                new AcceptableValueRange<int>(0, 200)));
+            PromoteSpend = Config.Bind("Customers", "PromoteSpend", 100f, new ConfigDescription(
+                "A walk-in who pays at least this much in one visit becomes a regular. 0 = never this way.",
+                new AcceptableValueRange<float>(0f, 10000f)));
+            PromoteChance = Config.Bind("Customers", "PromoteChance", 0.1f, new ConfigDescription(
+                "Chance that any other walk-in who bought something becomes a regular when they leave.",
+                new AcceptableValueRange<float>(0f, 1f)));
+            CustomerLastNameInitialOnly = Config.Bind("Customers", "LastNameInitialOnly", false,
+                "New customers get their last name as an initial (Maya R.) instead of in full (Maya Rossi). Names they already have don't change.");
+            CustomerNameplates = Config.Bind("Customers", "Nameplates", true,
+                "Show names above nearby customers (regulars in gold). Applies live.");
+            NameplatesLookedAtOnly = Config.Bind("Customers", "NameplatesLookedAtOnly", true,
+                "Nameplates on: only the customer you're looking at shows their name (off: everyone nearby).");
+            NameplateDistance = Config.Bind("Customers", "NameplateDistance", 6f, new ConfigDescription(
+                "Names show for customers closer than this (metres).", new AcceptableValueRange<float>(1f, 30f)));
+            CustomerInspectOnLook = Config.Bind("Customers", "InspectOnLook", true,
+                "Show a panel about the customer you look at: portrait, traits, mood, wishes, table record, pulls and reviews. Off: only when you press ProfileKey.");
+            RegularsListKey = Config.Bind("Customers", "RegularsListKey", new KeyboardShortcut(UnityEngine.KeyCode.F6),
+                "This key shows or hides the list of your regulars.");
+            KickOutKey = Config.Bind("Customers", "KickOutKey", new KeyboardShortcut(UnityEngine.KeyCode.K),
+                "Look at a customer and press this key to kick them out (unpaid things go back on their shelves or are dropped where they stand; someone you started scanning pays first). To stop a thief, left click them instead.");
+            ProfileKey = Config.Bind("Customers", "ProfileKey", new KeyboardShortcut(UnityEngine.KeyCode.J),
+                "The panel about a customer shows while you look at them. Press this key while looking at them to keep it on screen after you look away; press it again to let go.");
+            KickOutPadButton = Config.Bind("Customers", "KickOutPadButton", UI.CustomerPadButton.SelectButton,
+                "Controller button for KickOutKey (look at a customer: kick them out). Change it if it clashes with something in the game.");
+            ProfilePadButton = Config.Bind("Customers", "ProfilePadButton", UI.CustomerPadButton.RightStickClick,
+                "Controller button for ProfileKey: keep the panel of the customer you look at on screen, or the regulars list when you look at nobody.");
+            CustomerDialogue = Config.Bind("Customers - Behaviour", "Dialogue", true,
+                "Customers say things that fit them and what happens (lines from TCG Studio's Customers page).");
+            CustomerChattiness = Config.Bind("Customers - Behaviour", "Chattiness", 1f, new ConfigDescription(
+                "Dialogue on: how often customers talk. 0 = only important moments, 1 = normal, 3 = a lot.", new AcceptableValueRange<float>(0f, 3f)));
+            CustomerLineSeconds = Config.Bind("Customers - Behaviour", "LineSeconds", 4f, new ConfigDescription(
+                "Dialogue on: how long a customer's line stays above their head, in seconds. The game's own popups (money, its customer lines) keep their time.", new AcceptableValueRange<float>(1f, 15f)));
+            CustomerLineTextSize = Config.Bind("Customers - Behaviour", "LineTextSize", 1.3f, new ConfigDescription(
+                "Dialogue on: size of a customer's line above their head. 1 = the game's popup size, 2 = twice as big. The game's own popups keep their size.", new AcceptableValueRange<float>(0.5f, 3f)));
+            CustomerTalkSounds = Config.Bind("Customers - Behaviour", "TalkSounds", false,
+                "Customers talk Animal Crossing style when they say something (the game's own lines too, with or without Personalities): each person has their own voice, from where they stand, and a line's mood changes how it sounds.");
+            CustomerTalkVolume = Config.Bind("Customers - Behaviour", "TalkVolume", 0.5f, new ConfigDescription(
+                "How loud the talking sounds are, on top of the game's sound effects volume.", new AcceptableValueRange<float>(0f, 1f)));
+            CustomerMaxVoices = Config.Bind("Customers - Behaviour", "MaxVoices", 3, new ConfigDescription(
+                "How many customers can be heard talking at once. When that many are talking, someone closer to you replaces the farthest; anyone else's line stays silent (its text still shows).", new AcceptableValueRange<int>(1, 12)));
+            CustomerCrowdReactors = Config.Bind("Customers - Behaviour", "HitReactors", 3,
+                new ConfigDescription("How many of the closest customers react to someone pulling a hit: half as many again for a big pull, twice as many for a huge one. Friends and rivals in range react as well.", new AcceptableValueRange<int>(0, 12)));
+            CustomerCrowdRange = Config.Bind("Customers - Behaviour", "HitReactionRange", 10f,
+                new ConfigDescription("How far away, in metres, a customer can be and still react to someone pulling a hit: half as far again for a big pull, twice as far for a huge one.", new AcceptableValueRange<float>(1f, 30f)));
+            CustomerTraitEffects = Config.Bind("Customers - Behaviour", "TraitEffects", true,
+                "Traits change how customers shop (big spenders bring more money, hagglers buy less at high prices, …).");
+            CustomerWishlists = Config.Bind("Customers - Behaviour", "Wishlists", true,
+                "Collectors look for a few cards; they ask for them, pay more for them and tip you when they find one on your card shelves.");
+            CustomerLoyalty = Config.Bind("Customers - Behaviour", "Loyalty", true,
+                "Regulars build up loyalty to your shop, shown as a bar with named tiers. A record of your relationship: it changes how they greet you, not what they do.");
+            CustomerPackRipping = Config.Bind("Customers - Behaviour", "PackRipping", true,
+                "Customers sometimes open the packs they bought right in the shop and celebrate big pulls (chance: PackRipChance; the Pack ripper trait always does). Their cards stay theirs.");
+            CustomerPackRipChance = Config.Bind("Customers - Behaviour", "PackRipChance", 10f, new ConfigDescription(
+                "PackRipping on: chance that any customer who bought packs opens them in the shop, in percent. The Pack ripper trait adds 100% (always).", new AcceptableValueRange<float>(0f, 100f)));
+            CustomerPackHitPrice = Config.Bind("Customers - Behaviour", "PackHitPrice", 10f, new ConfigDescription(
+                "PackRipping on: a pulled card worth at least this much counts as a hit (cheering, the card shown above their head, a little shop XP).", new AcceptableValueRange<float>(0f, 10000f)));
+            CustomerRivalries = Config.Bind("Customers - Behaviour", "Rivalries", true,
+                "Tetramon games between two named customers (casual tables, Tetramon tournaments) are won by the better player (table skill) instead of a coin flip; Magic tournaments keep using deck strength. Records and rivals are kept, also against you.");
+            CustomerImpatience = Config.Bind("Customers - Behaviour", "Impatience", true,
+                "Customers who wait too long at the till (in the queue, or at the counter before you scan anything) give up: they put their items back on the shelves they came from and leave. Items that don't fit are left in a box on the floor, cards go back into your collection. Off = nobody leaves because of waiting.");
+            CustomerPatienceSeconds = Config.Bind("Customers - Behaviour", "PatienceSeconds", 180f, new ConfigDescription(
+                "Impatience on: how long a customer waits at the till (to pay or to trade cards) before giving up, in seconds. Traits change it (Impatient customers give up after a quarter of this).", new AcceptableValueRange<float>(20f, 900f)));
+            CustomerNicknames = Config.Bind("Customers - Behaviour", "Nicknames", true,
+                "Regulars can earn a nickname for what they do in your shop, rarely, and it can be taken by someone who does it better.");
+            CustomerTableBanter = Config.Bind("Customers - Behaviour", "TableBanter", true,
+                "Customers playing each other at a table talk now and then, and the other one sometimes answers. Needs Personalities and Dialogue.");
+            CustomerChatting = Config.Bind("Customers - Behaviour", "Chatting", true,
+                "Customers sometimes walk up to each other and chat for a bit (small talk, gossip about today's pulls, thefts and trades), then go back to shopping. Gossips, Hype and Tire-kickers chat most.");
+            CustomerBrowsing = Config.Bind("Customers - Behaviour", "Browsing", true,
+                "Tire-kickers wander from shelf to shelf looking at the stock, pick things up and put them back, and stay longer while buying little.");
+            CustomerAnimations = Config.Bind("Customers - Behaviour", "Animations", true,
+                "Customers play the animations made in TCG Studio (Customers → Animations) at the moments they're set for there (a pull, a trade, a chat line, …).");
+            CustomerTrading = Config.Bind("Customers - Behaviour", "Trading", true,
+                "Regulars keep a small binder of their best cards and trade with each other while chatting, the cards showing above their heads. Hustlers sometimes rip people off, and their victims hold a grudge.");
+            CustomerFriendships = Config.Bind("Customers - Behaviour", "Friendships", true,
+                "Customers who chat, trade fairly and play together become friends. Friends seek each other out to chat, wave, cheer each other's pulls, comfort each other's bad luck, and come by together more often. A rip-off ends a friendship.");
+            CustomerShoplifting = Config.Bind("Customers - Behaviour", "Shoplifting", true,
+                "Some customers (Thief trait) try to walk out without paying. They show in red with a warning; look at them and left click to make them pay. A thief who gets out takes the stock.");
             const string decoSection = "Content - Decorations";
             ShowVanillaPosters = Config.Bind(decoSection, "ShowVanillaPosters", true,
                 "Sell the vanilla posters and fan art in the Buy Decoration app (Poster tab). Off = only your custom posters from TCG Studio. " +
@@ -403,18 +518,27 @@ namespace TCGCustomCards
             ShowVanillaCards.SettingChanged += (_, __) => VanillaFilter.Apply();
             ShowVanillaPacks.SettingChanged += (_, __) => VanillaFilter.Apply();
             DevTools.Init(Config);
-            ConfigMoves.CarryMoved(Config, cfgBefore); // after every Bind
-            ConfigMoves.DropRemoved(Config, ("Binder", "Layout"), ("Visuals - Game look", "CreditCardImage"), ("Visuals - Game look", "CreditCardCrop"));
+            ConfigMoves.Run(Config, cfgBefore); // after every Bind
 
             StudioPaths.Load(PluginDir);
             if (StudioPaths.Problem != null) StartCoroutine(UI.ContentMissingNotice.ShowWhenInShop());
             Registry.Build(SetLoader.LoadAll());
             Registry.BuildAccessories(AccessoryLoader.Load(StudioPaths.Setup));
-            Registry.BuildFurniture(AccessoryLoader.LoadFurniture(StudioPaths.Setup));
-            Registry.BuildDecorations(AccessoryLoader.LoadDecorations(StudioPaths.Setup));
+            var furniture = AccessoryLoader.LoadFurniture(StudioPaths.Setup);
+            var whiteboardBox = Runtime.Customers.Whiteboard.BoxDef();
+            if (whiteboardBox != null) furniture.Add(whiteboardBox);
+            Registry.BuildFurniture(furniture);
+            var decorations = AccessoryLoader.LoadDecorations(StudioPaths.Setup);
+            var whiteboard = Runtime.Customers.Whiteboard.Def();
+            if (whiteboard != null) decorations.Add(whiteboard);
+            Registry.BuildDecorations(decorations);
+            Runtime.Employees.Roster.Init(AccessoryLoader.LoadEmployees(StudioPaths.Setup));
+            Runtime.Customers.Cast.Init(StudioPaths.Setup);
+            Runtime.Employees.EmployeeLife.Init();
+            Runtime.Clothes.Wardrobe.Init(StudioPaths.Setup);
 
             _harmony = new Harmony(Guid);
-            _harmony.PatchAll(typeof(Plugin).Assembly);
+            Core.Compat.Patch(_harmony, typeof(Plugin).Assembly); // one class at a time: a game change switches off only that feature
             Hooks.TableSession.OnSit = Runtime.Mtg.MtgTableChoice.OnSit;
             Runtime.Mtg.MtgEvents.Register();
             Runtime.Mtg.MtgDraftEvent.Register();
@@ -453,6 +577,8 @@ namespace TCGCustomCards
 
         private void Update()
         {
+            Debug.HangWatch.Frame();
+            Debug.SpikeWatch.Frame();
             Runtime.Mtg.MtgSession.PreloadTick();
             if (_cfgTouched)
             {
@@ -477,5 +603,7 @@ namespace TCGCustomCards
         }
 
         private void OnDestroy() => _cfgWatcher?.Dispose();
+
+        private void OnApplicationFocus(bool focused) => Debug.HangWatch.Focus(focused);
     }
 }

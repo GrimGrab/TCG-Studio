@@ -3,8 +3,6 @@
 //   - Shrink: a set's PNG card art becomes JPEG (about 6x smaller), set.json of every setup with the set updated;
 //   - things no setup uses (shared set folders, unused files in them, the game's copies, store files, catalog-only
 //     entries) can be listed and deleted.
-//
-// Bringing a workspace from older storage layouts to shared storage is internal/upgrade.
 package library
 
 import (
@@ -50,11 +48,11 @@ type SetInfo struct {
 	Meta
 }
 
-// ItemInfo is an accessory, furniture piece or decoration of a setup.
+// ItemInfo is an entry of a setup's item library.
 type ItemInfo struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
-	Kind   string `json:"kind"`   // accessory kind (Playmat, …), "Furniture" or "Decoration"
+	Kind   string `json:"kind"`   // the kind\'s title, with its sub label for those that have one
 	Shared int64  `json:"shared"` // its files in the shared store
 	Meta
 }
@@ -251,9 +249,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 			}
 		}
 		breakdown(&si, sm.Folder)
-		if l, err := workspace.Dir(h.Root).Items(sm.Folder); err == nil {
-			si.Items = itemsOf(l)
-		}
+		si.Items = itemsOf(workspace.Dir(h.Root), sm.Folder)
 		r.Setups = append(r.Setups, si)
 	}
 	if entries, err := store.List(); err == nil {
@@ -272,7 +268,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 	for i := range r.Setups {
 		for j := range r.Setups[i].Items {
 			it := &r.Setups[i].Items[j]
-			it.Meta = itemMeta(idx, it.Kind, it.ID)
+			it.Meta = itemMeta(idx, it.ID)
 		}
 	}
 	for i := range r.Unused {
@@ -281,7 +277,7 @@ func Analyze(ctx context.Context, h setups.Home, gameDir string, progress func(P
 		case UnusedSetFiles, UnusedCatalogSet:
 			u.Meta = idx["set"][u.ID]
 		case UnusedCatalogItem:
-			u.Meta = itemMeta(idx, "", u.ID)
+			u.Meta = itemMeta(idx, u.ID)
 		}
 	}
 	r.PlainSaves = checkPlainSaves(h, r.GameFound)
@@ -376,20 +372,6 @@ func toJPEG(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	return art.EncodeCardJPEG(img)
-}
-
-// HumanSize formats bytes for messages.
-func HumanSize(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 // gameCopies is the content older Studio versions put into the game folder: installed sets (<plugin>\Sets), their files

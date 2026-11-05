@@ -11,10 +11,26 @@ namespace TCGCustomCards.Runtime
     /// </summary>
     internal static class ModelSwap
     {
+        private static readonly System.Action<InteractableObject> EvaluateMeshOverride = Core.Compat.Method<InteractableObject>(
+            "Furniture models", "EvaluateMeshOverride");
+
+        /// <summary>
+        /// A fresh template copy of a vanilla piece (game 1.05+): the game swaps meshes and materials listed in
+        /// m_OverrideMeshDataList in every object's Awake — on each placed copy, which would undo our paint and model swaps.
+        /// Applies those swaps to the template once (its copies start from them) and empties the list.
+        /// </summary>
+        public static void SettleOverrides(InteractableObject tpl)
+        {
+            if (tpl == null || tpl.m_OverrideMeshDataList == null || tpl.m_OverrideMeshDataList.Count == 0) return;
+            EvaluateMeshOverride?.Invoke(tpl);
+            tpl.m_OverrideMeshDataList.Clear();
+        }
+
         /// <param name="body">The base's renderers that make up its look (hidden unless <paramref name="keep"/> says otherwise).</param>
         /// <param name="keep">Renderers that stay visible (working parts…). The highlight shell and the placement area are always kept.</param>
+        /// <param name="texPath">The texture's file, if any (a texture-array base takes its slice from it).</param>
         public static MeshRenderer Apply(InteractableObject tpl, IEnumerable<Renderer> body, Mesh mesh, Texture tex, Color? tint, string id,
-            System.Func<Transform, bool> keep = null)
+            System.Func<Transform, bool> keep = null, string texPath = null)
         {
             var bodyList = body.ToList();
             var mainRenderer = tpl.m_Mesh;
@@ -29,14 +45,25 @@ namespace TCGCustomCards.Runtime
             var m = mainMat != null ? new Material(mainMat) : new Material(Shader.Find("Standard"));
             m.name = $"TCGCC_{id}";
             m.hideFlags = HideFlags.DontUnloadUnusedAsset;
-            m.mainTexture = tex != null ? tex : Texture2D.whiteTexture;
-            m.mainTextureScale = Vector2.one;
-            m.mainTextureOffset = Vector2.zero;
+            // A base drawn from a texture array (wall decorations: the posters' array) shows a slice picked by "_TexIndex": our
+            // texture becomes a slice of that array, and the game's own decoration code sets the index on every placed copy.
+            int slice = Hooks.ItemVisuals.AddSlice(m, texPath, tex as Texture2D);
+            if (slice < 0)
+            {
+                m.mainTexture = tex != null ? tex : Texture2D.whiteTexture;
+                m.mainTextureScale = Vector2.one;
+                m.mainTextureOffset = Vector2.zero;
+            }
             if (m.HasProperty("_Color")) m.color = tint ?? Color.white;
             // One material per submesh (the OBJ's "usemtl" groups all read the same texture).
             var mats = new Material[Mathf.Max(1, mesh.subMeshCount)];
             for (int i = 0; i < mats.Length; i++) mats[i] = m;
             mr.sharedMaterials = mats;
+            if (slice >= 0)
+            {
+                if (tpl is InteractableDecoration deco) { deco.m_SpecialMesh = mr; deco.m_SpecialIndex = slice; }
+                else Plugin.Log.LogError($"Model {id}: base {tpl.name} draws from a texture array but isn't a decoration — its texture won't show");
+            }
 
             var area = tpl.m_MoveStateValidArea != null ? (tpl.m_MoveStateValidArea.parent != null && tpl.m_MoveStateValidArea.parent != tpl.transform
                 ? tpl.m_MoveStateValidArea.parent : tpl.m_MoveStateValidArea) : null;

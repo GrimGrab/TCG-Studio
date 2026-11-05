@@ -46,6 +46,7 @@ section() { printf '\n----- %s -----\n\n' "$1"; tr -d '\r' < "$lic/$2"; printf '
   section "Mono.Cecil (MIT)" Mono.Cecil-MIT.txt
   section "Go standard library (BSD-3-Clause)" Go-BSD-3-Clause.txt
   section "Svelte (MIT)" Svelte-MIT.txt
+  section "animalese.js letter sounds (CC BY 4.0, Josh Simmons)" animalese.js-LICENSE.txt
   section "libavif (BSD-2-Clause; inside github.com/gen2brain/avif)" libavif-BSD-2-Clause.txt
   section "dav1d (BSD-2-Clause; inside github.com/gen2brain/avif)" dav1d-BSD-2-Clause.txt
   section "libaom (BSD-2-Clause; inside github.com/gen2brain/avif)" aom-BSD-2-Clause.txt

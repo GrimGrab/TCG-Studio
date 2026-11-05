@@ -1,7 +1,7 @@
 // Svelte action for a drag divider: dragging sets a CSS variable on a container (a column width, a row height or a ratio in
 // %), clamped and (with a key) remembered per viewer in localStorage. Double-click goes back to the default.
 
-export interface SplitOpts {
+interface SplitOpts {
   container: () => HTMLElement | null | undefined;
   prop: string;                       // CSS variable, e.g. '--split'
   key?: string;                       // localStorage key (none: starts from def every time)

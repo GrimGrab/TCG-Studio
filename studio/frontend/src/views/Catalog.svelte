@@ -4,7 +4,7 @@
   // shared files. "Add to this setup" copies its game info into the active setup; Export… writes the selection to an item
   // file (Import → "TCG Studio file" reads it). The tabs are the content registry (App.ContentKinds).
   import { onMount } from 'svelte';
-  import { accFile, templateFile } from '../lib/urls';
+  import { accFile, templateFile, customerPortrait } from '../lib/urls';
   import { App, errText, ask, projectFile } from '../lib/api';
   import { grouped, groupOf, sourceGames, contentKinds, OWN_GROUP } from '../lib/catalog';
   import { matchSearch } from '../lib/search';
@@ -164,6 +164,8 @@
     if (e.icon) return accFile(e.icon);
     if (kind === 'accessory') { const i = accIcons[e.base || accDefault[e.sub]]; return i ? templateFile('acc', i) : ''; }
     if (kind === 'furniture') { const i = furnIcons[e.base || furnDefault[e.sub]]; return i ? templateFile('furn', i) : ''; }
+    if (e.look?.print) return accFile(e.look.print);
+    if (e.look?.model >= 0) return customerPortrait(!!e.look.female, e.look.model);
     return '';
   }
 </script>
@@ -230,6 +232,9 @@
               onclick={(ev) => click(ev, e)} onkeydown={() => {}}>
               <div class="art" class:card={kind === 'set'}>
                 {#if thumb(e)}<img src={thumb(e)} alt="" loading="lazy" onerror={(ev) => ((ev.currentTarget as HTMLImageElement).style.display = 'none')} />
+                {:else if e.look?.tint}<span class="swatch" style:background={e.look.tint.slice(0, 7)}></span>
+                {:else if e.look?.animation}<span class="noart">▶</span>
+                {:else if e.look}<span class="noart">{e.look.female ? '♀' : '♂'}</span>
                 {:else}<span class="noart">{(e.name || e.id).slice(0, 2)}</span>{/if}
                 {#if layout === 'grid'}
                   {#if e.here}<span class="pill ok">In this setup</span>{:else if !e.usedBy?.length}<span class="pill warn">Unused</span>{/if}
@@ -284,6 +289,7 @@
   .section h3 { color: var(--text); font-size: 13px; }
   .chev { width: 12px; color: var(--muted); font-size: 12px; }
 
+  .swatch { width: 60%; height: 60%; border-radius: 8px; border: 1px solid var(--line); }
   /* Grid: tiles with a big thumbnail on a dark stage (fixed image sizes: a % size inside the box doesn't resolve). */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
   .tile { position: relative; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;

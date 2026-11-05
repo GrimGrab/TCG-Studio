@@ -92,10 +92,11 @@
   const matches = (e: any) => !q || label(e.key).toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q);
   // Settings shown only while another setting has certain values (settings-meta.json "showWhen", shared with the mod's F1
   // menu; keys are unique across sections).
-  const visible = (e: any, values: Record<string, string>) => {
+  const visible = (e: any, values: Record<string, string>): boolean => {
     const rule = showWhen[e.key];
     if (!rule || values[rule.setting] === undefined) return true;
-    return rule.is.some((v) => v.toLowerCase() === String(values[rule.setting]).toLowerCase());
+    if (!rule.is.some((v) => v.toLowerCase() === String(values[rule.setting]).toLowerCase())) return false;
+    return visible({ key: rule.setting }, values); // a setting that depends on a hidden one is hidden too
   };
   let tree = $derived.by(() => {
     const values: Record<string, string> = {};

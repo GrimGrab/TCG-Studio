@@ -16,8 +16,8 @@ package content
 
 import (
 	"tcgstudio/internal/origin"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 // Kind is one kind of content.
@@ -35,6 +35,23 @@ var Kinds = []Kind{
 	{ID: "accessory", One: "accessory", Many: "accessories", Title: "Accessories", Store: Entry{Field: "accessories", Sub: "kind"}},
 	{ID: "furniture", One: "furniture piece", Many: "furniture pieces", Title: "Furniture", Store: Entry{Field: "furniture", Sub: "type"}},
 	{ID: "decoration", One: "decoration", Many: "decorations", Title: "Decorations", Store: Entry{Field: "decorations", Sub: "kind"}},
+	{ID: "customer", One: "customer", Many: "customers", Title: "Customers", Store: Entry{Field: "customers", Preview: PreviewPerson}},
+	{ID: "employee", One: "employee", Many: "employees", Title: "Employees", Store: Entry{Field: "employees", Preview: PreviewPerson}},
+	{ID: "clothing", One: "clothing look", Many: "clothes", Title: "Clothes", Store: Entry{Field: "clothes", Preview: PreviewClothing}},
+	{ID: "face", One: "face", Many: "faces", Title: "Faces", Store: Entry{Field: "faces", Label: "Saved face", Preview: PreviewPerson}},
+	{ID: "animation", One: "animation", Many: "animations", Title: "Animations", Store: Entry{Field: "animations", Preview: PreviewAnimation}},
+}
+
+// LibraryKinds are the kinds kept in the accessory library, one entry each: every page that lists "items" goes through this, so a new kind only needs its line
+// in Kinds.
+func LibraryKinds() []Kind {
+	var out []Kind
+	for _, k := range Kinds {
+		if _, ok := k.Store.(Entry); ok {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // Get finds a kind by id.
@@ -47,16 +64,27 @@ func Get(id string) (Kind, bool) {
 	return Kind{}, false
 }
 
+// Look is a preview for entries with no picture of their own: a game character, a clothing look's colour or print, or an animation.
+type Look struct {
+	Model     int    `json:"model"` // -1 = none
+	Female    bool   `json:"female,omitempty"`
+	Tint      string `json:"tint,omitempty"`
+	Print     string `json:"print,omitempty"`
+	Animation bool   `json:"animation,omitempty"`
+}
+
 // Item describes one piece of content in a root.
 type Item struct {
 	ID        string
 	Name      string
-	Sub       string // accessory kind, furniture type… ("" for sets)
-	Detail    string // "983 cards · 1 pack", or the sub label
-	Source    string // sets: the import source ("scryfall", "manual", …)
-	Cover     string // sets: a card image (relative to the set) for thumbnails
-	Icon      string // entries: the shop icon (accessory library relative)
-	Base      string // entries: the vanilla item it is built on ("" = the kind's default), for a fallback icon
+	Sub       string   // accessory kind, furniture type… ("" for sets)
+	Detail    string   // "983 cards · 1 pack", or the sub label
+	Source    string   // sets: the import source ("scryfall", "manual", …)
+	Cover     string   // sets: a card image (relative to the set) for thumbnails
+	Icon      string   // entries: the shop icon (accessory library relative)
+	Look      *Look    // entries without an icon: what to show instead
+	Refs      []string // entries: the shared-store files it and its editor layout refer to
+	Base      string   // entries: the vanilla item it is built on ("" = the kind's default), for a fallback icon
 	Origin    *origin.Origin
 	Converted bool // converted from another mod: its art belongs to that mod's authors, so it is never exported
 }
@@ -83,7 +111,7 @@ type Storage interface {
 	// folder went (sets).
 	Cleanup(ws workspace.Dir, roots, ids, refs []string) []string
 	// Export writes item id of root into z under prefix ("items/<kind>/<id>/"): its game info and every file it uses.
-	Export(ws workspace.Dir, root, id, prefix string, z *ziputil.Writer) error
+	Export(ws workspace.Dir, root, id, prefix string, z *sharezip.Writer) error
 	// Import adds unpacked items to root (appended, in order), with their new ids and origins.
 	Import(ws workspace.Dir, root string, in []In) error
 	// Taken reports an id that is in use beyond the roots' lists (a set's shared folder without a project).

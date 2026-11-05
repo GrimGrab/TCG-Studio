@@ -74,7 +74,7 @@ namespace TCGCustomCards.Runtime.Mtg
         public static void PreloadTick()
         {
             if (_preloaded) return;
-            if (!GameInstance.m_FinishedSavefileLoading || UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "Start")
+            if (!GameInstance.m_FinishedSavefileLoading || !Core.GameScene.InShop)
             {
                 _savedLoadedAt = -1f;
                 return;

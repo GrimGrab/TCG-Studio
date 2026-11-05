@@ -73,19 +73,8 @@ func (a *App) SaveToCatalog(kind string, ids []string) error {
 	return a.catalog().Save(kind, a.root(), ids)
 }
 
-// RemoveFromCatalog deletes templates. Setups that have the items keep them (and the picker still offers them from there).
-func (a *App) RemoveFromCatalog(kind string, ids []string) error {
-	a.catalogMu.Lock()
-	defer a.catalogMu.Unlock()
-	var errs []error
-	for _, id := range ids {
-		errs = append(errs, a.catalog().Remove(kind, id))
-	}
-	return errors.Join(errs...)
-}
-
 // keepInCatalog templates items about to be deleted from this setup when the catalog doesn't hold them yet, so they stay
-// available to every setup (Remove from catalog forgets them). l = the setup's library (accessories/furniture), nil for sets.
+// available to every setup (the Catalog page deletes them). l = the setup's library (accessories/furniture), nil for sets.
 func (a *App) keepInCatalog(kind string, ids []string, l *accessories.Library) error {
 	a.catalogMu.Lock()
 	defer a.catalogMu.Unlock()

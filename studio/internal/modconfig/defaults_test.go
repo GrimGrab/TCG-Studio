@@ -25,9 +25,8 @@ var loopBinds = map[string][]string{
 // bulkBoxLooks: the mod's BoxLook binds one texture per bulk box item.
 func bulkBoxLooks() []string {
 	var out []string
-	for _, v := range []string{"Base", "Destiny", "BaseGradeHG", "BaseGradeMG", "BaseGradePG", "BaseGradeUG",
-		"DestinyGradeHG", "DestinyGradeMG", "DestinyGradePG", "DestinyGradeUG"} {
-		out = append(out, "Visuals - Game look - Boxes/BulkBox_Tetramon"+v+"Texture")
+	for _, v := range []string{"NG", "HG", "MG", "PG", "UG", "OG"} {
+		out = append(out, "Visuals - Game look - Boxes/BulkBox"+v+"Texture")
 	}
 	return out
 }

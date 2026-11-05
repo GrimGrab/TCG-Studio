@@ -2,11 +2,26 @@ package project
 
 import (
 	"encoding/json"
+	"path"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"tcgstudio/internal/fsutil"
 )
+
+// FreshName gives a set file a new name ("images/x_texture.png" → "images/x_texture.v<time>.png"; an earlier ".v…" mark is
+// replaced): the game keeps reading the file set.json names until the set is saved with the new one, so nothing changes in
+// the game before Save. Older versions stay until the Storage page deletes unused files.
+func FreshName(rel string) string {
+	ext := path.Ext(rel)
+	base := freshMark.ReplaceAllString(strings.TrimSuffix(rel, ext), "")
+	return base + ".v" + strconv.FormatInt(time.Now().UnixMilli(), 36) + ext
+}
+
+var freshMark = regexp.MustCompile(`\.v[0-9a-z]+$`)
 
 // ImplicitFiles are used by name without being referenced (the art generator's default set icon).
 var ImplicitFiles = []string{"images/set_icon.svg", "images/set_icon.png"}

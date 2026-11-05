@@ -1,12 +1,10 @@
 package importer
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -18,6 +16,7 @@ import (
 	"golang.org/x/image/draw"
 
 	"tcgstudio/internal/epl"
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
@@ -237,19 +236,7 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 	if err != nil {
 		return nil, err
 	}
-	var b *epl.Bundle
-	var exp *epl.CardExpansion
-	for i := range mod.Bundles {
-		if mod.Bundles[i].Rel != rel {
-			continue
-		}
-		b = &mod.Bundles[i]
-		for j := range b.Desc.CardExpansions {
-			if b.Desc.CardExpansions[j].CardExpansion == expName {
-				exp = &b.Desc.CardExpansions[j]
-			}
-		}
-	}
+	b, exp := findEPLExpansion(mod, rel, expName)
 	if exp == nil {
 		return nil, fmt.Errorf("card set %q not found in %s", expName, filepath.Base(path))
 	}
@@ -272,35 +259,7 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 	var own []setfmt.Rarity
 	groupOf := map[string]string{} // own rarity id → its tier's odds group (only orders the list and shares a fallback booster)
 	if opt.KeepRarities {
-		cardRarity = map[string]string{}
-		used := map[string]bool{}
-		// Lowest first: by the game rarity each counts as, then most pulled first (mods list tiers in any order, DBS
-		// alphabetically). This order is the binder's rarity sort and Gamify's price ranges; prices stay the mod's.
-		tiers := append([]epl.Tier(nil), sp.Tiers...)
-		gameRank := func(t epl.Tier) int {
-			for i, g := range setfmt.GameRarities {
-				if g == rarity[t.Name] {
-					return i
-				}
-			}
-			return 0
-		}
-		sort.SliceStable(tiers, func(i, j int) bool {
-			if a, b := gameRank(tiers[i]), gameRank(tiers[j]); a != b {
-				return a < b
-			}
-			return tiers[i].PerCard > tiers[j].PerCard
-		})
-		for _, t := range tiers {
-			id := setfmt.RarityID(t.Name)
-			for n := 2; used[id]; n++ {
-				id = fmt.Sprintf("%s-%d", setfmt.RarityID(t.Name), n)
-			}
-			used[id] = true
-			cardRarity[t.Name] = id
-			groupOf[id] = rarity[t.Name]
-			own = append(own, setfmt.Rarity{ID: id, Name: t.Name})
-		}
+		cardRarity, own, groupOf = eplOwnRarities(sp, rarity)
 	}
 
 	// Prices: EPL's own price generator for the expansion (expected value), Base border; foil = its foil entry's price.
@@ -345,6 +304,101 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 			{Count: 1, Weights: map[string]float64{"Epic": 4, "Legendary": 1}},
 		}, FoilChance: 5,
 		Get: func(_ context.Context, url string) ([]byte, error) { return eplImage(assets, url) }}
+	addEPLPacks(&in, sp, cardRarity, opt)
+	for _, back := range []string{sp.CardBack, sp.CardBackAlt} {
+		if _, _, err := assets.SpriteSize(back); back != "" && err == nil {
+			in.Extra = append(in.Extra, extraImage{URL: "cardback:" + back, Rel: "images/card_back.png", CardBack: true})
+			break
+		}
+	}
+	p, err := buildProject(ctx, ws, in, opt, report)
+	if err != nil {
+		return nil, err
+	}
+	p.Meta.Origin = eplOrigin(mod, b, "", opt)
+	// EPL's border/foil multipliers; Real pricing (prices from EPL's generator, above) keeps them.
+	pd := setfmt.PriceDefaults{BorderMultipliers: pm.BorderMultipliers(), FoilMultiplier: math.Round(pm.FoilMult*100) / 100, Minimum: 0.01}
+	p.Set.PriceDefaults = pd
+	p.Meta.SrcPriceDefaults = &pd
+	p.Meta.Pricing = &project.Pricing{Mode: "real", BorderCurve: "gentle", TierStep: 0}
+	// The pack/box 3D editor starts from the mod's own art ("Earlier art (snapshot)"), not the vanilla pack and box.
+	if p.Meta.PackArt == nil {
+		p.Meta.PackArt = map[string]map[string]json.RawMessage{}
+	}
+	for _, pk := range p.Set.Packs {
+		art := map[string]json.RawMessage{}
+		for which, file := range map[string]string{"pack": pk.PackTexture, "box": pk.BoxTexture} {
+			if file != "" {
+				art[which], _ = json.Marshal(map[string]any{"version": 2, "net": uvmap.NetVersion, "layers": []any{}, "base": "vanilla",
+					"baseColor": "#3a3a3a", "baseItem": "file", "baseFile": file})
+			}
+		}
+		if len(art) > 0 {
+			p.Meta.PackArt[pk.ID] = art
+		}
+	}
+	if !assets.BuiltForCurrentGame() {
+		p.Meta.ArtKinds = nil // the mod's pack and box art is in the earlier layouts: Studio offers to convert it
+	}
+	if err := ws.Save(p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// findEPLExpansion finds a card set in the mod (nil when it isn't there).
+func findEPLExpansion(mod *epl.Mod, rel, expName string) (b *epl.Bundle, exp *epl.CardExpansion) {
+	for i := range mod.Bundles {
+		if mod.Bundles[i].Rel != rel {
+			continue
+		}
+		b = &mod.Bundles[i]
+		for j := range b.Desc.CardExpansions {
+			if b.Desc.CardExpansions[j].CardExpansion == expName {
+				exp = &b.Desc.CardExpansions[j]
+			}
+		}
+	}
+	return b, exp
+}
+
+// eplOwnRarities makes every tier a rarity of the set (its exact pack odds kept): the rarity of each tier, the list, and each
+// one's odds group.
+func eplOwnRarities(sp *epl.SetPlan, rarity map[string]string) (cardRarity map[string]string, own []setfmt.Rarity, groupOf map[string]string) {
+	cardRarity, groupOf = map[string]string{}, map[string]string{}
+	used := map[string]bool{}
+	// Lowest first: by the game rarity each counts as, then most pulled first (mods list tiers in any order, DBS
+	// alphabetically). This order is the binder's rarity sort and Gamify's price ranges; prices stay the mod's.
+	tiers := append([]epl.Tier(nil), sp.Tiers...)
+	gameRank := func(t epl.Tier) int {
+		for i, g := range setfmt.GameRarities {
+			if g == rarity[t.Name] {
+				return i
+			}
+		}
+		return 0
+	}
+	sort.SliceStable(tiers, func(i, j int) bool {
+		if a, b := gameRank(tiers[i]), gameRank(tiers[j]); a != b {
+			return a < b
+		}
+		return tiers[i].PerCard > tiers[j].PerCard
+	})
+	for _, t := range tiers {
+		id := setfmt.RarityID(t.Name)
+		for n := 2; used[id]; n++ {
+			id = fmt.Sprintf("%s-%d", setfmt.RarityID(t.Name), n)
+		}
+		used[id] = true
+		cardRarity[t.Name] = id
+		groupOf[id] = rarity[t.Name]
+		own = append(own, setfmt.Rarity{ID: id, Name: t.Name})
+	}
+	return cardRarity, own, groupOf
+}
+
+// addEPLPacks adds the mod's pack items, with their art, to the set being imported.
+func addEPLPacks(in *setIn, sp *epl.SetPlan, cardRarity map[string]string, opt Options) {
 	used := map[string]bool{}
 	for _, pp := range sp.Packs {
 		id := slug(pp.Item.Name)
@@ -395,42 +449,6 @@ func (s eplSource) Import(ctx context.Context, ws project.Workspace, code string
 		}
 		in.Packs = append(in.Packs, pk)
 	}
-	for _, back := range []string{sp.CardBack, sp.CardBackAlt} {
-		if _, _, err := assets.SpriteSize(back); back != "" && err == nil {
-			in.Extra = append(in.Extra, extraImage{URL: "cardback:" + back, Rel: "images/card_back.png", CardBack: true})
-			break
-		}
-	}
-	p, err := buildProject(ctx, ws, in, opt, report)
-	if err != nil {
-		return nil, err
-	}
-	p.Meta.Origin = eplOrigin(mod, b, "", opt)
-	// EPL's border/foil multipliers; Real pricing (prices from EPL's generator, above) keeps them.
-	pd := setfmt.PriceDefaults{BorderMultipliers: pm.BorderMultipliers(), FoilMultiplier: math.Round(pm.FoilMult*100) / 100, Minimum: 0.01}
-	p.Set.PriceDefaults = pd
-	p.Meta.SrcPriceDefaults = &pd
-	p.Meta.Pricing = &project.Pricing{Mode: "real", BorderCurve: "gentle", TierStep: 0}
-	// The pack/box 3D editor starts from the mod's own art ("Earlier art (snapshot)"), not the vanilla pack and box.
-	if p.Meta.PackArt == nil {
-		p.Meta.PackArt = map[string]map[string]json.RawMessage{}
-	}
-	for _, pk := range p.Set.Packs {
-		art := map[string]json.RawMessage{}
-		for which, file := range map[string]string{"pack": pk.PackTexture, "box": pk.BoxTexture} {
-			if file != "" {
-				art[which], _ = json.Marshal(map[string]any{"version": 2, "net": uvmap.NetVersion, "layers": []any{}, "base": "vanilla",
-					"baseColor": "#3a3a3a", "baseItem": "file", "baseFile": file})
-			}
-		}
-		if len(art) > 0 {
-			p.Meta.PackArt[pk.ID] = art
-		}
-	}
-	if err := ws.Save(p); err != nil {
-		return nil, err
-	}
-	return p, nil
 }
 
 // eplImage renders a bundle image as PNG: "sprite:<name>", "material:<name>" (its main texture) or
@@ -451,7 +469,7 @@ func eplImage(a *epl.Assets, url string) ([]byte, error) {
 	case "box":
 		base, mat, _ := strings.Cut(name, "|")
 		if img, err = a.MaterialTexture(mat); err == nil {
-			img = basicBoxLayout(img, base)
+			img = basicBoxLayout(img, base, a.BuiltForCurrentGame())
 		}
 	default:
 		err = fmt.Errorf("unknown image %q", url)
@@ -459,12 +477,7 @@ func eplImage(a *epl.Assets, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var buf bytes.Buffer
-	enc := png.Encoder{CompressionLevel: png.BestSpeed}
-	if err := enc.Encode(&buf, img); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return imgfile.EncodeFast(img)
 }
 
 // cardBackArt cuts the art window out of a card-back texture in the game's card-back mesh layout (T_CardBackMesh, square:
@@ -479,10 +492,15 @@ func cardBackArt(src *image.NRGBA) *image.NRGBA {
 	return src.SubImage(win).(*image.NRGBA)
 }
 
+// migration:art-layouts-1.03
 // basicBoxLayout copies a vanilla box texture's faces for box mesh base (RareCardBox, DestinyEpicCardBox, …: other areas
-// of the shared box atlas) into the Basic box's areas. Basic layouts and unknown bases are returned unchanged.
-func basicBoxLayout(src *image.NRGBA, base string) *image.NRGBA {
-	model, _ := uvmap.ModelFor("Box")
+// of the shared box atlas) into the Basic box's areas. Basic layouts and unknown bases are returned unchanged. Only a bundle
+// from before the game's update has such an atlas (current = false): today each box is its own texture, nothing to move.
+func basicBoxLayout(src *image.NRGBA, base string, current bool) *image.NRGBA {
+	if current {
+		return src
+	}
+	model, _ := uvmap.LegacyModelFor("Box")
 	var b *uvmap.Base
 	for i := range model.Bases {
 		if strings.EqualFold(model.Bases[i].ID, base) {

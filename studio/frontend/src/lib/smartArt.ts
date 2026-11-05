@@ -1,19 +1,19 @@
 // Smart generate: builds a pack's and its box's editor layouts from TCGplayer product photos (App.SmartArtSources), or from
-// the set's own card art when there are none. Everything ends up as ordinary map layers (named "Auto: …") placed straight in
-// the texture's areas, that can be moved, hidden or recoloured; box faces cut from the display photo keep their corners
-// (layer.straighten) for Adjust straighten….
+// the set's own card art when there are none. Everything ends up as ordinary face layers (named "Auto: …"): one layer per thing
+// on the Faces tab, shown in every texture area of its face, that can be moved, hidden or recoloured; box faces cut from the
+// display photo keep their corners (layer.straighten) for Adjust straighten….
 import { App, projectFile } from './api';
 import { templateFile } from './urls';
 import {
-  areaAspect, areaFills, composeIcon, faceArea, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, placeIn,
-  placeRect, placeStacked, renderTexture, loadIslands, leftoverIslands, type Layer, type Layout, type Model,
+  composeIcon, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderTexture, shownArea, shownNet,
+  type Layer, type Layout, type Model,
 } from './accessoryArt';
 import { rectify, type Pt } from './perspective';
 
-export const AUTO = 'Auto: ';
+const AUTO = 'Auto: ';
 
 type Picture = CanvasImageSource & { width: number; height: number };
-type Part = number[]; // x, y, w, h as fractions of a face's area seen upright
+type Part = number[]; // x, y, w, h as fractions of the part of a face the item shows
 
 export interface SmartSources {
   packPhoto: string; packName: string; boxPhoto: string; boxName: string;
@@ -26,52 +26,52 @@ export interface SmartSources {
 
 interface Job { projectId: string; packId: string; title: string; src: SmartSources; packModel: Model; boxModel: Model }
 
-// ---------------------------------------------------------------- layers (map layers in the faces' texture areas)
+// ---------------------------------------------------------------- layers (one face layer each: shows in all the face's areas)
 
 const base = (name: string, kind: Layer['kind'], opacity = 1): Layer =>
   ({ id: layerId(), kind, name: AUTO + name, visible: true, opacity, blend: 'source-over', x: 0, y: 0, w: 0, h: 0, rot: 0 });
 
-/** A face's texture area (the model always has the faces Smart generate uses). */
-const areaOf = (m: Model, face: string) => faceArea(m, face)!;
+/** A face of the model (it always has the faces Smart generate uses). */
+const faceOf = (m: Model, face: string) => m.faces.find((f) => f.id === face)!;
 
-/** Width ÷ height of a face's area seen upright: pictures are cut to it. */
-const aspectOf = (m: Model, face: string) => areaAspect(m, areaOf(m, face));
+/** Width ÷ height of the part of a face the item shows: pictures are cut to it. */
+const aspectOf = (m: Model, face: string) => { const [, , w, h] = shownNet(faceOf(m, face)); return w / h; };
 
-/** An image stretched over a face's area (or a part of it). */
-function image(m: Model, name: string, src: string, face: string, opacity = 1, straighten?: Layer['straighten'], part?: Part): Layer {
-  const l: Layer = { ...base(name, 'image', opacity), src, straighten };
-  if (part) placeRect(areaOf(m, face), l, part); else placeIn(m, areaOf(m, face), l, 'stretch');
-  return l;
+/** Places a layer on a part of a net rectangle (x, y, w, h). */
+function placeAt(l: Layer, [x, y, w, h]: number[], part: Part = [0, 0, 1, 1]): Layer {
+  return Object.assign(l, { x: x + (part[0] + part[2] / 2) * w, y: y + (part[1] + part[3] / 2) * h, w: part[2] * w, h: part[3] * h });
 }
 
-/** An image keeping the picture's shape, as large as fits in a part of a face's area (scale ≤ 1), centred. */
+/** An image stretched over the shown part of a face (or a part of that). */
+const image = (m: Model, name: string, src: string, face: string, opacity = 1, straighten?: Layer['straighten'], part?: Part): Layer =>
+  placeAt({ ...base(name, 'image', opacity), src, straighten }, shownNet(faceOf(m, face)), part);
+
+/** An image keeping the picture's shape, as large as fits in a part of a face (scale ≤ 1), centred. */
 function contain(m: Model, name: string, src: string, pic: Picture, face: string, scale = 1, opacity = 1, part: Part = [0, 0, 1, 1]): Layer {
-  const t = areaOf(m, face), asp = pic.width / Math.max(1, pic.height), ar = areaAspect(m, t) * part[2] / part[3];
+  const asp = pic.width / Math.max(1, pic.height), ar = aspectOf(m, face) * part[2] / part[3];
   let w = scale, h = (w * ar) / asp;
   if (h > scale) { h = scale; w = (h * asp) / ar; }
-  const l: Layer = { ...base(name, 'image', opacity), src };
-  placeRect(t, l, [part[0] + part[2] * (1 - w) / 2, part[1] + part[3] * (1 - h) / 2, part[2] * w, part[3] * h]);
-  return l;
+  return placeAt({ ...base(name, 'image', opacity), src }, shownNet(faceOf(m, face)),
+    [part[0] + part[2] * (1 - w) / 2, part[1] + part[3] * (1 - h) / 2, part[2] * w, part[3] * h]);
 }
 
-/** Colour (top → bottom gradient) over these faces' areas. */
-const fill = (m: Model, name: string, faces: string[], color: string, color2 = ''): Layer[] =>
-  areaFills(m, faces, { ...base(name, 'fill'), color, color2 });
+/** Colour (top → bottom gradient) over a whole face, also the part the item doesn't show. */
+const fill = (m: Model, name: string, face: string, color: string, color2 = ''): Layer =>
+  placeAt({ ...base(name, 'fill'), color, color2 }, faceOf(m, face).net);
 
-/** Colour over the mesh parts no face reaches (a pack's fin edges), so nothing keeps the vanilla print. */
-const otherParts = (m: Model, color: string): Layer[] => leftoverIslands(m).map((r) => ({
-  ...base('other parts', 'fill'), space: 'texture', color, color2: '',
-  x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2, w: Math.max(1, r[2] - r[0]), h: Math.max(1, r[3] - r[1]),
-}));
-
-/** A text layer as large as fits in a part of a face's area (rough width estimate: 0.62 em per letter, bold); maxH as a
- *  fraction of the area's height. */
+/** A text layer as large as fits in a part of a face (rough width estimate: 0.62 em per letter, bold); maxH as a fraction of
+ *  the face's height. */
 function text(m: Model, name: string, t: string, face: string, part: Part, maxH: number): Layer {
-  const a = areaOf(m, face), ar = areaAspect(m, a);
-  const h = Math.min(maxH, (part[2] * ar) / Math.max(1, t.length * 0.62));
-  const l: Layer = { ...base(name, 'text'), text: t, color: '#ffffff', outline: '#000000' };
-  placeRect(a, l, [part[0], part[1] + part[3] / 2 - h / 2, part[2], h]);
-  return l;
+  const h = Math.min(maxH, (part[2] * aspectOf(m, face)) / Math.max(1, t.length * 0.62));
+  return placeAt({ ...base(name, 'text'), text: t, color: '#ffffff', outline: '#000000' }, shownNet(faceOf(m, face)),
+    [part[0], part[1] + part[3] / 2 - h / 2, part[2], h]);
+}
+
+/** Copies of the layers centred on one face for another face of the same size, in the same order. */
+function onOpposite(m: Model, layers: Layer[], from: string, to: string): Layer[] {
+  const [x, y, w, h] = faceOf(m, from).net, n = faceOf(m, to).net;
+  return layers.filter((l) => l.x >= x && l.x < x + w && l.y >= y && l.y < y + h)
+    .map((l) => ({ ...l, id: layerId(), name: `${l.name} (${to})`, x: l.x + n[0] - x, y: l.y + n[1] - y }));
 }
 
 // ---------------------------------------------------------------- pictures
@@ -193,14 +193,14 @@ function shade(hex: string, f: number): string {
 
 // ---------------------------------------------------------------- generate
 
-export interface SmartResult { pack: Layout; box: Layout; notes: string[] }
+interface SmartResult { pack: Layout; box: Layout; notes: string[] }
 
 /** Thrown when a pack has no product photos and no card images: callers use the simple generator instead. */
-export class NoSources extends Error {
+class NoSources extends Error {
   constructor() { super('no product photos and no card images for this pack'); }
 }
 
-export async function smartGenerate(job: Job): Promise<SmartResult> {
+async function smartGenerate(job: Job): Promise<SmartResult> {
   const { projectId, src } = job;
   const url = (rel: string) => projectFile(projectId, rel);
   const save = (part: string, c: HTMLCanvasElement) => App.SaveAutoArt(projectId, job.packId, part, c.toDataURL('image/png'));
@@ -235,8 +235,6 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     packPhoto = c;
   }
   if (!packPhoto && !arts.length) throw new NoSources();
-  // The meshes' islands: face areas take in their rims, and parts no face has get a colour too.
-  await Promise.all([loadIslands(job.packModel), loadIslands(job.boxModel)]);
 
   // ---- pack
   const P = job.packModel, pack = newLayout();
@@ -245,19 +243,24 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
   const c = packPhoto ? edgeColors(packPhoto) : dominantColors(arts[0]);
   if (!packPhoto) {
     c.top = shade(c.top, 0.8); c.bottom = shade(c.bottom, 0.55); // card art colours are bright: darker packaging
-    pack.layers.push(...fill(P, 'crimps', ['crimpTop'], c.top), ...fill(P, 'crimps (bottom)', ['crimpBottom'], c.bottom));
+    pack.layers.push(fill(P, 'crimps', 'crimpTop', c.top), fill(P, 'crimps (bottom)', 'crimpBottom', c.bottom));
   }
-  pack.layers.push(...fill(P, 'front', ['front'], c.top, c.bottom), ...fill(P, 'back', ['back'], c.top, c.bottom),
-    ...fill(P, 'edges', ['edges'], c.top, c.bottom), ...fill(P, 'seam', ['seam'], c.top, c.bottom), ...otherParts(P, c.top));
+  pack.layers.push(fill(P, 'front', 'front', c.top, c.bottom), fill(P, 'back', 'back', c.top, c.bottom),
+    fill(P, 'edges', 'edges', c.top, c.bottom), fill(P, 'seam', 'seam', c.top, c.bottom));
   // Back: the art faded over the packaging colours and the set icon (no set name on packs: user choice 2026-10-03).
   const band = packPhoto ? crop(packPhoto, [0.05, 0.3, 0.95, 0.75]) : arts[0];
-  pack.layers.push(image(P, 'back art', await save('packback', cover(band, aspectOf(P, 'back'), 768, 'blur(5px) brightness(0.8)')), 'back', 0.45));
+  const backArt = await save('packback', cover(band, aspectOf(P, 'back'), 768, 'blur(5px) brightness(0.8)'));
+  pack.layers.push(image(P, 'back art', backArt, 'back', 0.45));
+  // The back flap lies over the middle of the back: the same faded art, its middle strip, so the flap doesn't stand out as solid colour.
+  const flap = faceOf(P, 'seam').net[2] / shownNet(faceOf(P, 'back'))[2];
+  pack.layers.push({ ...image(P, 'back art (flap)', backArt, 'seam', 0.45), crop: [0.5 - flap / 2, 0, 0.5 + flap / 2, 1] });
   const backIcon = await iconOn(c.top);
   if (backIcon) pack.layers.push(contain(P, 'back icon', backIcon.rel, backIcon.pic, 'back', 0.45, 0.9));
   if (packPhoto) {
-    // The photo includes its crimps and has nearly their shape: stretched over crimps + front, a slice on each.
-    pack.layers.push(...placeStacked(P, ['crimpTop', 'front', 'crimpBottom'],
-      { ...base(src.packName || 'pack photo', 'image'), src: packRel, straighten: packStraight }));
+    // The photo includes its crimps and has nearly their shape: one layer over crimp, front and crimp, which lie on top of
+    // each other in the net; every area of those faces (the crimps' back and ends too) shows its part.
+    pack.layers.push(placeAt({ ...base(src.packName || 'pack photo', 'image'), src: packRel, straighten: packStraight },
+      shownArea(['crimpTop', 'front', 'crimpBottom'].map((f) => faceOf(P, f)))));
   } else {
     pack.layers.push(image(P, `art – ${src.cards[0]?.name ?? 'card'}`, await save('packfront', cover(arts[0], aspectOf(P, 'front'))), 'front'));
     const frontIcon = await iconOn(dominantColors(arts[0]).bottom);
@@ -277,7 +280,7 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     clearBackground(pan);
     clearBackground(lid);
     const pc = edgeColors(pan), lc = edgeColors(lid);
-    box.layers.push(...fill(B, 'front', ['front'], pc.top, pc.bottom), ...fill(B, 'top', ['top'], lc.top, lc.bottom), ...fill(B, 'sides', ['right'], lc.top, pc.bottom));
+    box.layers.push(fill(B, 'front', 'front', pc.top, pc.bottom), fill(B, 'top', 'top', lc.top, lc.bottom), fill(B, 'sides', 'right', lc.top, pc.bottom));
     box.layers.push(image(B, 'front panel', await save('boxpanel', pan), 'front', 1, { src: src.boxPhoto, pts: src.box.front }));
     // A lid cut that is mostly background (detection missed it: Welcome to Rathe 1st Ed.) → the pack photo's art on top and
     // sides instead of an empty lid; the dialog lets the user fix the lid corners instead.
@@ -295,7 +298,7 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     // No box photo: the second-best card art (or the pack photo's art) with the set name, and the pack photo stacked.
     const art = arts[1] ?? arts[0] ?? crop(look, [0.05, 0.3, 0.95, 0.75]);
     const ac = dominantColors(art);
-    box.layers.push(...fill(B, 'top', ['top'], shade(ac.top, 0.7), shade(ac.bottom, 0.5)), ...fill(B, 'sides', ['right'], shade(ac.top, 0.7), shade(ac.bottom, 0.5)));
+    box.layers.push(fill(B, 'top', 'top', shade(ac.top, 0.7), shade(ac.bottom, 0.5)), fill(B, 'sides', 'right', shade(ac.top, 0.7), shade(ac.bottom, 0.5)));
     box.layers.push(image(B, 'front art', await save('boxfront', cover(art, aspectOf(B, 'front'))), 'front'));
     box.layers.push(image(B, 'top art', await save('boxtop', cover(arts[2] ?? art, aspectOf(B, 'top'), 1024, 'brightness(0.85)')), 'top'));
     const textW = packPhoto ? 0.58 : 0.9;
@@ -314,6 +317,8 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
     if (sideIcon) box.layers.push(contain(B, 'side icon', sideIcon.rel, sideIcon.pic, 'right', 0.6, 0.9));
     if (src.cards.length) notes.push(`Box made from card art (${src.cards.slice(0, 3).map((c) => c.name).join(', ')}).`);
   }
+  // The opposite sides get the same art: like a real box, and every side of the model is covered.
+  box.layers.push(...onOpposite(B, box.layers, 'front', 'back'), ...onOpposite(B, box.layers, 'right', 'left'), ...onOpposite(B, box.layers, 'top', 'bottom'));
   return { pack, box, notes };
 }
 
@@ -321,7 +326,7 @@ export async function smartGenerate(job: Job): Promise<SmartResult> {
 export const hasOwnLayers = (l?: Layout) => !!l?.textureFile || !!l?.layers.some((x) => !x.name.startsWith(AUTO));
 
 /** A layout's texture and shop icon as PNG data URLs, without the editor (same steps as AccessoryEditor.exportImages). */
-export async function renderLayout(projectId: string, m: Model, layout: Layout): Promise<{ texture: string; icon: string }> {
+async function renderLayout(projectId: string, m: Model, layout: Layout): Promise<{ texture: string; icon: string }> {
   const b = m.bases?.find((x) => x.id === layout.baseItem) ?? m.bases?.[0];
   if (!b) throw new Error("the game templates aren't available yet (Settings → Game)");
   const vanilla = await loadImage(templateFile('game', b.texture));
@@ -404,6 +409,8 @@ export async function boxFromPackArt(project: any, pack: any, boxModel?: Model):
   project.meta.packArt ??= {};
   project.meta.packArt[pack.id] ??= {};
   project.meta.packArt[pack.id].box = layout;
+  // This box is new, so it's in the current layout even when the pack's art still waits to be converted (an older mod's).
+  project.meta.artKinds = [...new Set([...(project.meta.artKinds ?? []), 'Box'])];
 }
 
 /** Boxes for every pack of a project that has pack art but no box art (see boxFromPackArt). Returns how many were made. */

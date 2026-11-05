@@ -13,8 +13,8 @@
   let tpl = $state<any>(null); // game templates (read from the game files, or the mod's in-game export)
   let libraryFolder = $state('');
   // The settings this page edits (Save stores them); the game folder is set by its own buttons straight away.
-  const draft = new Draft<{ workspace: string; imageFormat: string; uiScale: number }>();
-  const fromSettings = (s: any) => ({ workspace: s.workspace ?? '', imageFormat: s.imageFormat || 'png', uiScale: s.uiScale || 1 });
+  const draft = new Draft<{ workspace: string; imageFormat: string; uiScale: number; layoutTuner: boolean }>();
+  const fromSettings = (s: any) => ({ workspace: s.workspace ?? '', imageFormat: s.imageFormat || 'png', uiScale: s.uiScale || 1, layoutTuner: !!s.layoutTuner });
   async function readSettings() {
     settings = await App.GetSettings();
     if (!draft.dirty) draft.reset(fromSettings(settings));
@@ -134,6 +134,14 @@ TCG Studio starts an empty one there and ` +
           {/if}
         </div>
       </div>
+    </section>
+
+    <section class="block">
+      <div class="bhead"><h2>Developer</h2></div>
+      <label class="row">
+        <input type="checkbox" bind:checked={draft.value.layoutTuner} />
+        <div class="label"><b>Layout tuner</b><span class="muted small">Adds a panel to the texture editor for moving their pieces and copying the numbers.</span></div>
+      </label>
     </section>
 
     <section class="block">

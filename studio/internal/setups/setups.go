@@ -46,7 +46,7 @@ type Info struct {
 	FormatVersion int       `json:"formatVersion"`
 	// InstalledSets = the project ids the game's mod loads while this setup is active (Studio's Install / Uninstall).
 	InstalledSets []string `json:"installedSets"`
-	// AdoptedGame is set once the setup has taken over what older Studio versions kept in the game folder (upgrade.AdoptGame).
+	// AdoptedGame: the setup took over what older Studio versions kept in the game folder (v1.14.0 and earlier; migrate.OldLayout reads it).
 	AdoptedGame bool `json:"adoptedGame,omitempty"`
 }
 
@@ -55,6 +55,7 @@ type Registry struct {
 	Order  []string `json:"order"`
 }
 
+// migration:save-backups
 // RemoveSaveBackups deletes the saves-backup-<time> folders older versions copied the game's saves into before the first
 // switch (the switch journal covers an interrupted switch; nothing reads these copies).
 func (h Home) RemoveSaveBackups() {
@@ -160,6 +161,7 @@ func writeJSON(path string, v any) error {
 // Ensure prepares the workspace: on the first run it creates the setup "default" — from the layout before setups
 // (<workspace>\projects + accessories) by renaming the two folders, rolled back if a rename fails — and it repairs a registry
 // whose active setup is gone. Returns the active setup's folder.
+// migration:setups-layout
 func (h Home) Ensure(studioVersion string) (string, error) {
 	if r, err := h.Registry(); err == nil {
 		r.Order = h.knownIDs(r.Order)

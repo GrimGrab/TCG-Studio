@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tcgstudio/internal/imgfile"
 )
 
 // A synthetic head-on display: lid art on top, a row of "packs", the front panel at the bottom, on white.
@@ -71,7 +73,7 @@ func TestDetectDisplayLive(t *testing.T) {
 				draw.Draw(img, img.Bounds(), src, src.Bounds().Min, draw.Src)
 				drawQuad(img, f.Front, color.NRGBA{0, 220, 0, 255})
 				drawQuad(img, f.Lid, color.NRGBA{0, 80, 255, 255})
-				if err := savePNG(filepath.Join(out, fmt.Sprintf("box_%s.png", id)), img); err != nil {
+				if err := imgfile.Save(filepath.Join(out, fmt.Sprintf("box_%s.png", id)), img); err != nil {
 					t.Fatal(err)
 				}
 			}

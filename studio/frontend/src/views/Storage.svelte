@@ -6,19 +6,18 @@
 <script lang="ts">
   // Storage: how much disk the workspace, every shared set and setup take, and the player's actions on shared storage.
   // Every set's files live once in <workspace>\library\<setId> (and <plugin>\Library in the game), accessory files once in
-  // <workspace>\assets; each setup keeps only its game info and saves. Older workspaces get one "Upgrade storage" card.
+  // <workspace>\assets; each setup keeps only its game info and saves.
   // Nothing here runs unless its button is pressed.
   import { onMount } from 'svelte';
   import { Ev } from '../lib/events';
   import { App, EventsOn, errText, ask } from '../lib/api';
-  import { accFile, projectFile } from '../lib/urls';
+  import { accFile, customerPortrait, projectFile } from '../lib/urls';
   import { grouped, groupOf, sourceGames, OWN_GROUP } from '../lib/catalog';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
 
   let view = $state<any>(lastView);
-  const report = $derived(view?.report);
-  const up = $derived(view?.upgrade);
+  const report = $derived(view);
   let running = $state(''); // what's running ("" = idle)
   let alive = true; // false once the page is closed: a task it started then doesn't start a refresh behind the next page
   let adopted = false; // showing a task started before this page was opened (it reports through "storage:done")
@@ -64,54 +63,6 @@
     notify(parts.join(' '), 'ok');
   }
 
-  // ---------------------------------------------------------------- upgrade storage (older workspaces only)
-
-  const upgradeNeeded = $derived(!!up && (up.files > 0 || up.differ.length > 0 || up.named.length > 0 || up.game.sets.length > 0 ||
-    up.game.cardBack || up.game.shopLook.length > 0));
-  const actionText: Record<string, string> = { move: 'moves to shared', duplicate: 'already shared — deleted here', leftover: 'unused — deleted' };
-  let choice = $state<Record<string, string>>({}); // differ/named key → "shared" | "replace"
-  let pv = $state<Record<string, any>>({}); // key → preview
-  const choicesLeft = $derived(up ? [...up.differ, ...up.named].filter((d: any) => !choice[d.key]).length : 0);
-
-  $effect(() => {
-    if (!up) return;
-    for (const d of up.differ) if (!(d.key in pv)) {
-      pv[d.key] = null;
-      App.UpgradePreviewDiffer(d.key).then((p: any) => (pv[d.key] = p)).catch((e: any) => notify(errText(e), 'error'));
-    }
-    for (const n of up.named) if (!(n.key in pv)) {
-      pv[n.key] = null;
-      App.UpgradePreviewNamed(n.set, n.name, n.sample).then((p: any) => (pv[n.key] = p)).catch((e: any) => notify(errText(e), 'error'));
-    }
-  });
-
-  function fileGroups(list: any[]) {
-    const out: { key: string; setup: string; owner: string; files: any[] }[] = [];
-    for (const f of list) {
-      const key = `${f.setup}/${f.owner}`;
-      let g = out.find((x) => x.key === key);
-      if (!g) out.push((g = { key, setup: f.setup, owner: f.owner, files: [] }));
-      g.files.push(f);
-    }
-    return out;
-  }
-
-  async function upgrade() {
-    const replaced = Object.values(choice).filter((c) => c === 'replace').length;
-    if (!(await ask(
-      `Upgrade storage?\n\n` +
-      (up.files ? `• ${plural(up.files, 'file')} (${size(up.bytes)}) move into shared storage or are deleted as copies / unused.\n` : '') +
-      (up.differ.length + up.named.length ? `• Your ${plural(up.differ.length + up.named.length, 'choice')} for art that differs` +
-        (replaced ? ` (${replaced} replace the shared art for every setup using it)` : '') + `.\n` : '') +
-      `• Afterwards each setup keeps only its game info and saves.\n\nYou can cancel at any time; what's done is kept.`))) return;
-    const r = await run('Upgrading storage…', () => App.UpgradeStorage({ differ: pickChoices(up.differ), named: pickChoices(up.named) }));
-    done(r, 'Storage upgraded.');
-    choice = {};
-    pv = {};
-    if (alive) await measure();
-  }
-  const pickChoices = (list: any[]) => Object.fromEntries(list.map((d: any) => [d.key, choice[d.key]]));
-
   // ---------------------------------------------------------------- the game's old copies of set files
 
   async function removeGameCopies() {
@@ -135,8 +86,8 @@
     done(await run('Deleting backup folders…', () => App.DeleteBackups(list.map((b) => b.name))), 'Backup folders deleted.');
     // Backups are outside the workspace: no other size on the page changes, so only the list is read again.
     const backups = await App.GameBackups();
-    if (view?.report) {
-      view.report.backups = backups;
+    if (view) {
+      view.backups = backups;
       lastView = view;
     }
   }
@@ -210,7 +161,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   const KIND: Record<string, string> = {
     'set-art': 'Shared files of a set no setup has',
     'set-files': 'in its shared folder',
-    'shared-files': 'not used by any accessory, furniture piece or decoration',
+    'shared-files': 'not used by anything in your library',
     'catalog-set': 'set',
     'catalog-item': 'item',
   };
@@ -221,7 +172,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   // their own groups (they have no origin).
   let games = $state<Record<string, string>>({}); // import source id → game
   const LOOSE: Record<string, string> = {
-    'shared-files': 'Loose files (no accessory, furniture piece or decoration uses them)',
+    'shared-files': 'Loose files (nothing in your library uses them)',
     'set-art': 'Folders of sets no setup or the catalog has',
   };
   const byName = (a: any, b: any) => (a.name || a.id).localeCompare(b.name || b.id);
@@ -245,8 +196,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   const todo = $derived.by(() => {
     if (!report) return [] as string[];
     const t: string[] = [];
-    if (upgradeNeeded) t.push('Finish the upgrade');
-    if (report.gameFound && report.gameLibrary > 0 && !upgradeNeeded && report.modReadsLibrary) t.push(`Remove the game's old copies (${size(report.gameLibrary)})`);
+    if (report.gameFound && report.gameLibrary > 0 && report.modReadsLibrary) t.push(`Remove the game's old copies (${size(report.gameLibrary)})`);
     if (report.backups?.length) t.push(`${plural(report.backups.length, 'backup folder')}`);
     if (report.kept > 0) t.push(`Kept files (${size(report.kept)})`);
     if (report.plainSaves?.files) t.push(`Compress ${plural(report.plainSaves.files, 'save file')}`);
@@ -310,14 +260,17 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
     if (!r) { if (alive) await measure(); return; }
     // The list shows the result at once; the sizes elsewhere on the page follow from a fresh measure.
     const gone = new Set(r.deleted.map(ukey));
-    if (view?.report) view.report.unused = view.report.unused.filter((u: any) => !gone.has(ukey(u)));
+    if (view) view.unused = view.unused.filter((u: any) => !gone.has(ukey(u)));
     notify(`Deleted ${plural(r.deleted.length, 'entry', 'entries')}, freed ${size(r.freed)}.`, 'ok');
     if (alive) await measure('Updating sizes…');
   }
 
   // ---------------------------------------------------------------- shared storage
 
-  /** Every accessory, furniture piece and decoration once, with the setups using it. */
+  /** A picture for an item with no icon of its own. */
+  const lookPic = (x: any): string => (x.look?.print ? accFile(x.look.print) : x.look?.model >= 0 ? customerPortrait(!!x.look.female, x.look.model) : '');
+
+  /** Every item of the library once, with the setups using it. */
   const sharedItems = $derived.by(() => {
     const byId = new Map<string, any>();
     for (const s of report?.setups ?? [])
@@ -453,59 +406,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         </button>
       {/if}
     {:else if sec === 'todo'}
-    {#if upgradeNeeded}
-      <section class="block upgrade">
-        <div class="bhead"><h2>Finish the upgrade</h2></div>
-        <p class="small">TCG Studio moved this workspace's files into shared storage when it started. What's left below needs you:
-          until then the game shows the shared art for these sets.</p>
-        {#if up.files}
-          <p class="small">{plural(up.files, 'file')} ({size(up.bytes)}) move into shared storage, or go as copies and unused leftovers.</p>
-          <details class="movelist">
-            <summary>Show the files</summary>
-            {#each fileGroups(up.list) as g (g.key)}
-              <div class="mg"><b>{g.owner}</b> <span class="muted">in {g.setup}</span></div>
-              <table>
-                <tbody>{#each g.files as f (f.file)}
-                  <tr><td class="f">{f.file}</td><td class="muted">{size(f.bytes)}</td><td class={f.action}>{actionText[f.action] ?? f.action}</td></tr>
-                {/each}</tbody>
-              </table>
-            {/each}
-          </details>
-        {/if}
-        {#if up.differ.length || up.named.length}
-          <h4>Art that differs from the shared art — click the one to keep</h4>
-          <p class="muted small">Each set has one shared version of its art. Keeping another version makes it the shared art for every
-            setup that has the set.</p>
-          {#each [...up.differ.map((d: any) => ({ ...d, label: `${d.setName}`, where: `in ${d.setupName}`, own: `${d.setupName}'s` })),
-                  ...up.named.map((n: any) => ({ ...n, label: `${n.setName}`, where: `“${n.name}”, used by ${n.usedBy.join(', ') || 'no setup'}`, own: `“${n.name}”` }))] as d (d.key)}
-            <div class="group differ">
-              <div class="row"><b class="grow">{d.label} <span class="muted">{d.where}</span></b>
-                <span class="muted small">{plural(d.files, 'file')} · {size(d.bytes)}</span></div>
-              {#if pv[d.key]}
-                <div class="choose">
-                  <button class="pick-img" class:on={choice[d.key] === 'shared'} onclick={() => (choice[d.key] = 'shared')} disabled={!!running}
-                    title="Keep the shared art: this version's files are deleted">
-                    {#if pv[d.key].shared}<img src={pv[d.key].shared} alt="" />{:else}<div class="noimg">no shared file</div>{/if}<span>Shared</span></button>
-                  <button class="pick-img" class:on={choice[d.key] === 'replace'} onclick={() => (choice[d.key] = 'replace')} disabled={!!running}
-                    title="Keep this version: it becomes the shared art for every setup using the set">
-                    <img src={pv[d.key].own} alt="" /><span>{d.own}</span></button>
-                </div>
-              {:else}<div class="muted small">Loading preview…</div>{/if}
-            </div>
-          {/each}
-        {/if}
-        {#if up.game.sets.length || up.game.imported?.length || up.game.accessories || up.game.cardBack || up.game.shopLook.length || up.game.others?.length}
-          <p class="muted small">Some content is still only in the game folder, where older TCG Studio versions put it. TCG Studio
-            takes it over on its own when it starts while the game is closed.</p>
-        {/if}
-        <div class="row">
-          <button class="primary" onclick={upgrade} disabled={!!running || choicesLeft > 0}>Upgrade storage…</button>
-          {#if choicesLeft}<span class="muted small">Choose the art to keep for {plural(choicesLeft, 'set')} first.</span>{/if}
-        </div>
-      </section>
-    {/if}
-
-    {#if report.gameFound && report.gameLibrary > 0 && !upgradeNeeded && report.modReadsLibrary}
+    {#if report.gameFound && report.gameLibrary > 0 && report.modReadsLibrary}
       <section class="block">
         <div class="bhead"><h2>Remove the game's copies of your content</h2></div>
         <p class="small">Older TCG Studio versions copied your content into the game folder
@@ -655,7 +556,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
         stored once and shared by the setups listed. What no setup uses is under “Not used by any setup” below.</p>
       <div class="row tabs">
         <button class:on={sharedTab === 'sets'} onclick={() => (sharedTab = 'sets')}>Sets ({sharedSets.length}) · {size(sharedSetBytes)}</button>
-        <button class:on={sharedTab === 'items'} onclick={() => (sharedTab = 'items')}>Accessories &amp; furniture ({sharedItems.length}) · {size(sharedItemBytes)}</button>
+        <button class:on={sharedTab === 'items'} onclick={() => (sharedTab = 'items')}>Items ({sharedItems.length}) · {size(sharedItemBytes)}</button>
       </div>
       <div class="shared">
         <table>
@@ -671,7 +572,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
                 {/each}
               {:else}
                 {#each list as it (it.id)}
-                  <tr><td><div class="nm">{#if it.icon}<img class="thumb" src={accFile(it.icon)} alt="" loading="lazy" />{:else}<span class="thumb"></span>{/if}
+                  <tr><td><div class="nm">{#if it.icon}<img class="thumb" src={accFile(it.icon)} alt="" loading="lazy" />{:else if lookPic(it)}<img class="thumb" src={lookPic(it)} alt="" loading="lazy" />{:else}<span class="thumb" style:background={it.look?.tint?.slice(0, 7)}></span>{/if}
                     {it.name} <span class="muted small">· {it.kind}</span></div></td><td class="muted small">{it.usedBy.join(', ')}</td>
                     <td class="num">{size(it.shared)}</td></tr>
                 {/each}
@@ -697,7 +598,7 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
           “Only what no setup uses”.</p>
         <div class="row tabs">
           <button class:on={unusedTab === 'sets'} onclick={() => (unusedTab = 'sets')}>Sets ({unusedSets.length}) · {size(bytesOf(unusedSets))}</button>
-          <button class:on={unusedTab === 'items'} onclick={() => (unusedTab = 'items')}>Accessories &amp; furniture ({unusedItems.length}) · {size(bytesOf(unusedItems))}</button>
+          <button class:on={unusedTab === 'items'} onclick={() => (unusedTab = 'items')}>Items ({unusedItems.length}) · {size(bytesOf(unusedItems))}</button>
         </div>
         <div class="shared">
           {#each groupsOf(unusedShown) as [g, list] (g)}
@@ -711,7 +612,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
               <input type="checkbox" bind:checked={upick[ukey(u)]} />
               {#if isImage(u)}<img class="thumb" src={accFile(u.id)} alt="" loading="lazy" />
               {:else if u.icon}<img class="thumb" src={accFile(u.icon)} alt="" loading="lazy" />
-              {:else if u.cover}<img class="thumb" src={projectFile(u.id, u.cover)} alt="" loading="lazy" />{/if}
+              {:else if u.cover}<img class="thumb" src={projectFile(u.id, u.cover)} alt="" loading="lazy" />
+              {:else if lookPic(u)}<img class="thumb" src={lookPic(u)} alt="" loading="lazy" />
+              {:else if u.look?.tint}<span class="thumb" style:background={u.look.tint.slice(0, 7)}></span>{/if}
               <span class="grow">{u.name} <span class="muted small">· {KIND[u.kind] ?? u.kind}{u.kind === 'shared-files' ? '' : ` · ${plural(u.files, 'file')}`}{u.note ? ` · ${u.note}` : ''}</span></span>
               <span class="num">{size(u.size)}</span>
               {#if u.paths?.length}
@@ -751,7 +654,6 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
   .strip { margin: 10px 24px 0; }
   section.progress { background: var(--panel); border: 1px solid var(--accent-2); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-  section.upgrade { border-color: var(--accent-2); }
   .md { flex: 1; min-height: 0; display: flex; }
   .nav { width: 260px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
   .glyph { font-size: 18px; width: 28px; text-align: center; flex: none; }
@@ -774,20 +676,9 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   .bar div { height: 100%; background: var(--accent); transition: width 0.2s; }
   .bar div.indet { animation: slide 1.2s ease-in-out infinite; }
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-width: 980px; }
-  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
-  .k { font-size: 12px; color: var(--muted); }
-  .v { font-size: 20px; font-weight: 600; }
   .group { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
   .pick { display: flex; gap: 8px; align-items: center; font-size: 13px; }
   .num { text-align: right; white-space: nowrap; }
-  .movelist { font-size: 12px; }
-  .movelist summary { cursor: pointer; color: var(--muted); }
-  .movelist .mg { margin-top: 8px; }
-  .movelist table { border-collapse: collapse; width: 100%; max-height: 320px; }
-  .movelist td { padding: 1px 8px 1px 0; white-space: nowrap; }
-  .movelist td.f { width: 100%; white-space: normal; word-break: break-all; }
-  .movelist .duplicate, .movelist .leftover { color: var(--muted); }
   .preview { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
   .pair { display: flex; gap: 12px; flex-wrap: wrap; }
   .pair figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -801,7 +692,6 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   .zoomhint { position: absolute; bottom: 1.5vh; left: 0; right: 0; text-align: center; color: #aaa; font-size: 12px; }
   .pair figcaption { font-size: 12px; color: var(--muted); }
   button.on { border-color: var(--accent); }
-  h4 { margin: 6px 0 0; font-size: 13px; }
   .tabs { gap: 6px; }
   .flist { padding-left: 46px; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow: auto; }
   .flist .row { gap: 8px; align-items: center; }
@@ -813,16 +703,6 @@ About ${size(p.bytes)} → ${size(p.after)}. The saves stay the same; ` +
   .ghead { gap: 8px; align-items: center; padding: 8px 0 2px; border-bottom: 1px solid var(--line); }
   .setup { border-top: 1px solid var(--line); padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
   .parts { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-left: 18px; }
-  .choose { display: flex; gap: 14px; flex-wrap: wrap; }
-  .pick-img { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; height: auto; background: var(--bg);
-    border: 2px solid var(--line); border-radius: 10px; cursor: pointer; transition: border-color 0.12s, transform 0.12s; }
-  .pick-img img, .pick-img .noimg { width: 150px; border-radius: 6px; display: block; }
-  .pick-img .noimg { height: 210px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
-  .pick-img span { font-size: 12px; color: var(--muted); }
-  .pick-img:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-2px); }
-  .pick-img.on { border-color: var(--accent); }
-  .pick-img.on span { color: var(--text); }
-  .pick-img.on span::after { content: ' — keep this'; }
   .badge { font-size: 11px; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; margin-left: 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); padding: 4px 6px; }

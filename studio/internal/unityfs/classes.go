@@ -106,13 +106,16 @@ func ReadRenderer(o *Object) (m Renderer, err error) {
 	if err != nil {
 		return m, err
 	}
-	return readRenderer(r), nil
+	return readRenderer(r, o.File), nil
 }
 
-func readRenderer(r *reader) (m Renderer) {
+func readRenderer(r *reader, f *File) (m Renderer) {
 	m.GameObject = r.pptr()
 	m.Enabled = r.bool()
 	r.skip(9) // cast/receive shadows, dynamic occludee, static shadow caster, motion vectors, light/reflection probes, ray tracing ×2
+	if f.AtLeast(6000, 0) {
+		r.skip(3) // Unity 6: ray tracing build flags ×2, small mesh culling (measured on the game's files)
+	}
 	r.align()
 	r.u32()    // rendering layer mask
 	r.i32()    // renderer priority
@@ -131,7 +134,7 @@ func ReadSkinnedMesh(o *Object) (m Renderer, mesh PPtr, err error) {
 	if err != nil {
 		return m, mesh, err
 	}
-	m = readRenderer(r)
+	m = readRenderer(r, o.File)
 	r.pptr() // static batch root
 	r.pptr() // probe anchor
 	r.pptr() // light probe volume override
@@ -144,6 +147,32 @@ func ReadSkinnedMesh(o *Object) (m Renderer, mesh PPtr, err error) {
 	r.bool() // skinned motion vectors
 	r.align()
 	return m, r.pptr(), nil
+}
+
+// ReadSkinnedMeshBones returns a SkinnedMeshRenderer's bones (Transforms, in the order of the mesh's bind poses and
+// vertex bone indices) and its root bone.
+func ReadSkinnedMeshBones(o *Object) (bones []PPtr, root PPtr, err error) {
+	defer catch(&err, "SkinnedMeshRenderer bones")
+	r, err := o.reader()
+	if err != nil {
+		return nil, root, err
+	}
+	readRenderer(r, o.File)
+	r.pptr()
+	r.pptr()
+	r.pptr()
+	r.i32()
+	r.i16()
+	r.i16()
+	r.align()
+	r.i32()
+	r.bool()
+	r.bool()
+	r.align()
+	r.pptr() // mesh
+	bones = r.pptrs()
+	r.skip(r.count(4) * 4) // blend shape weights
+	return bones, r.pptr(), nil
 }
 
 // MonoBehaviour header; Fields continues at the script's own serialized fields.

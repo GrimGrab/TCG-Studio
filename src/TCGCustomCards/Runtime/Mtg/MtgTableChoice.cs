@@ -23,12 +23,6 @@ namespace TCGCustomCards.Runtime.Mtg
             if (ChoicePopup.IsOpen || MtgDeckPickerUI.IsOpen || MtgDraftUI.IsOpen) return true; // held right mouse button repeats the call
             if (!MtgMode.Enabled || !ForgeLauncher.IsInstalled) return false;
 
-            if (MtgDraftGame.DevPending != null) // Debug TestDraft: the next table plays the drafted decks
-            {
-                TableSession.Sit(table, new MtgDraftGame(MtgDraftGame.DevPending, dev: true), sit => MtgVanillaDeckStandIn.Run(sit, always: true));
-                return true;
-            }
-
             if (MtgDraftEvent.PlayerInEvent)
             {
                 if (!MtgEvents.TournamentTableOk(table)) return false; // vanilla says why (wrong table, round reported…)
@@ -111,16 +105,11 @@ namespace TCGCustomCards.Runtime.Mtg
     /// <summary>A match with drafted decks: the player's built deck vs one customer's Forge-drafted deck (faces = the drafted copies).</summary>
     internal sealed class MtgDraftGame : ITableGame
     {
-        /// <summary>Debug TestDraft: decks waiting for the next table sit.</summary>
-        public static MtgSession.DeckPair DevPending;
-
         private readonly MtgSession.DeckPair _pair;
-        private readonly bool _dev;
 
-        public MtgDraftGame(MtgSession.DeckPair pair, bool dev = false)
+        public MtgDraftGame(MtgSession.DeckPair pair)
         {
             _pair = pair;
-            _dev = dev;
         }
 
         public IEnumerator Run(PlayTableGame game, bool rematch)
@@ -140,7 +129,6 @@ namespace TCGCustomCards.Runtime.Mtg
         {
             MtgSession.LeaveMidGame();
             MtgSession.Override = null;
-            if (_dev) DevPending = null;
         }
     }
 }

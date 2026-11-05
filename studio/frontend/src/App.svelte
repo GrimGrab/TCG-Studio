@@ -13,34 +13,70 @@
   import Accessories from './views/Accessories.svelte';
   import Furniture from './views/Furniture.svelte';
   import Decorations from './views/Decorations.svelte';
+  import Customers from './views/Customers.svelte';
+  import Employees from './views/Employees.svelte';
   import ShopLook from './views/ShopLook.svelte';
   import ModSettings from './views/ModSettings.svelte';
   import Setups from './views/Setups.svelte';
   import Storage from './views/Storage.svelte';
   import Catalog from './views/Catalog.svelte';
 
-  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'decorations' | 'shoplook' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'decorations' | 'customers' | 'employees' | 'shoplook' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
   let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
-  const AUTO_TASK = 'Updating your content for the game'; // App.runAutoUpgrade's storage task label
-  let upgradeChoices = $state(0); // differing art waiting for the player's choice (Storage → Finish the upgrade)
-  let upgradeWaiting = $state(''); // why the start-up upgrade couldn't run (the game is running)
+  const AUTO_TASK = 'Updating your content for the game'; // autoTaskLabel (app_migrate_upgrade.go): the automatic upgrade steps' storage task
+  let oldLayout = $state<{ url: string; version: string } | null>(null); // the workspace needs that version first
+  let upgradeWaiting = $state(''); // why the start-up step couldn't run (the game is running)
+  // Art made for the game's previous models (App.ArtLayoutStatus): converted only when the player chooses to, after the
+  // warnings in the dialog (it can't be undone and no longer suits older game versions).
+  let artLayouts = $state<any>(null);
+  /** "a, b and c". */
+  const listText = (xs: string[]) => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+  let templates = $state<any>(null); // reading the game files (TemplatesStatus): banner while busy or failed
+  let artDialog = $state(false);
+  let artHidden = $state(false); // "Not now" for this session
+  let artBusy = $state(false);
+  async function checkArtLayouts() {
+    try { artLayouts = await App.ArtLayoutStatus(); } catch { artLayouts = null; }
+  }
+  // The work runs as a Storage task: once it is registered, the Storage page (which adopts a running task) shows its
+  // progress and can cancel it. The result comes as an event (onArtConverted).
+  // No editor may stay open over it (or open during it, see go): its later save would put the old files back.
+  async function convertArtLayouts() {
+    if (!(await canLeave())) return;
+    artBusy = true;
+    try {
+      await App.BeginArtConversion();
+      artDialog = false;
+      view = 'storage';
+    } catch (e) {
+      artBusy = false;
+      notify('Converting the art failed: ' + errText(e), 'error');
+    }
+  }
+  function onArtConverted(r: { message: string; error: string }) {
+    artBusy = false;
+    if (r.error) notify('Converting the art failed: ' + r.error, 'error');
+    else notify(r.message, 'ok');
+    checkArtLayouts();
+  }
 
-  // Start-up (and after Storage tasks / "Try again"): what the mod needs from an older TCG Studio happens on its own
-  // (App.AutoUpgrade), then, once per Studio version, installed sets get what this version adds (App.SyncInstalledSets).
+  // Start-up (and after Storage tasks / "Try again"): the game is pointed at the setup and an older mod updated
+  // (App.StartupUpdate), then, once per Studio version, installed sets get what this version adds (App.SyncInstalledSets).
   // One message for all of it.
   async function startupTasks(sync: boolean) {
     const said: string[] = [];
     try {
-      const r = await App.AutoUpgrade();
+      const r = await App.StartupUpdate();
       upgradeWaiting = r.waiting || '';
-      upgradeChoices = r.choices || 0;
-      if (r.files > 0 || r.notes?.length) said.push('Your content was moved to where the game now reads it' + (r.notes?.length ? ': ' + r.notes.join('; ') : '') + '.');
-      if (r.modUpdated) said.push('The mod in the game was updated.');
-      if (r.modUpdated || r.files > 0 || r.notes?.length) await refreshStatus();
+      oldLayout = r.oldLayoutUrl ? { url: r.oldLayoutUrl, version: r.version } : null;
+      if (r.modUpdated) {
+        said.push('The mod in the game was updated.');
+        await refreshStatus();
+      }
     } catch (e) {
-      notify('Updating your content for the game failed: ' + errText(e), 'error');
+      notify('Updating the mod in the game failed: ' + errText(e), 'error');
     }
     if (sync) {
       try {
@@ -62,7 +98,8 @@
   let checking = $state(false);
   let toast = $state<{ text: string; kind: string } | null>(null);
   let setupName = $state('');   // active setup, shown under the logo
-  let setupLoaded = $state(false); // the first list arrived (it loads after the start-up checks)
+  let setupLoaded = $state(false); // the first list arrived
+  let startupBusy = $state(true);  // the start-up tasks still work on the setups: no switching or new setups yet
   let setupKey = $state(0);     // bumped after a setup switch so every view reloads
   let setupList = $state<any[]>([]);
   let setupMenu = $state(false);
@@ -98,6 +135,7 @@
     import: ['M12 3v12', 'M7 10l5 5 5-5', 'M4 20h16'],
     dice: ['M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4z', 'M8.5 8.5h.01', 'M15.5 15.5h.01', 'M15.5 8.5h.01', 'M8.5 15.5h.01', 'M12 12h.01'],
     shelf: ['M4 3v18', 'M20 3v18', 'M4 9h16', 'M4 15h16', 'M7 6.5h3', 'M13 12.5h4'],
+    people: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5', 'M16 4.5a3 3 0 0 1 0 6', 'M18 14.8c2 .7 3.2 2.4 3.5 5.2'],
     sparkle: ['M11 3l1.8 4.7L17.5 9.5l-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8z', 'M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z'],
     store: ['M3 9l1.6-5h14.8L21 9', 'M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0', 'M5 12v8h14v-8', 'M10 20v-5h4v5'],
     chart: ['M3 21h18', 'M6 17v-5', 'M11 17V7', 'M16 17v-7', 'M21 17V4'],
@@ -136,11 +174,14 @@
 
   // Pages with unsaved changes register a leave guard (lib/leaveGuard.ts); leaving them asks first.
   async function go(v: View) {
+    if (artBusy && v !== 'storage') { notify('Your art is being converted. Other pages open again when that has finished.', 'error'); return; }
     if (v === view || (await canLeave())) view = v;
   }
 
   async function openSetups(action: any = null) {
     setupMenu = false;
+    if (startupBusy) return;
+    if (artBusy) { notify('Your art is being converted. Other pages open again when that has finished.', 'error'); return; }
     if (!(await canLeave())) return;
     setupAction = action;
     view = 'setups';
@@ -190,14 +231,24 @@
   onMount(async () => {
     await App.WaitReady(); // the backend's startup runs alongside the page load
     ready = true;
+    refreshSetup(); // right away: the name and list don't wait for the start-up tasks below
     EventsOn(Ev.UpdateProgress, (f: number) => (updateProgress = f));
     EventsOn(Ev.StorageProgress, () => (storageBusy = true));
-    // After a Storage task (e.g. Finish the upgrade) the banner follows what's left; not after the start-up run's own task.
-    EventsOn(Ev.StorageDone, (label: string) => { storageBusy = false; if (label !== AUTO_TASK) startupTasks(false); });
+    // After a Storage task the banner follows what's left; not after the start-up run's own task.
+    EventsOn(Ev.StorageDone, (label: string) => { storageBusy = false; if (label !== AUTO_TASK) startupTasks(false); checkArtLayouts(); });
+    EventsOn(Ev.TemplatesProgress, (message: string) => (templates = { ...templates, busy: true, error: '', message }));
+    EventsOn(Ev.TemplatesReady, (st: any) => { templates = st; checkArtLayouts(); }); // the new models are known once Studio has read the game
+    App.TemplatesStatus().then((st) => (templates = st)).catch(() => {});
+    EventsOn(Ev.ArtConverted, onArtConverted);
     version = await App.AppVersion();
-    await refreshStatus();
-    await startupTasks(true); // may update the mod: before the notice below
-    refreshSetup();
+    try {
+      await refreshStatus();
+      await startupTasks(true); // may update the mod: before the notice below
+    } finally {
+      startupBusy = false;
+    }
+    refreshSetup(); // again: an upgrade may have changed the setups
+    await checkArtLayouts();
     if (version.updatedTo) {
       notify(`Updated to v${version.updatedTo}.` + (setupReady ? '' : ' Update the mod in the game on the Game & mod page.'), 'ok');
     }
@@ -213,7 +264,7 @@
     <!-- The active setup's pages sit in one box under its picker; then the pages every setup shares. -->
     <div class="setupbox">
         <div class="setup-pick">
-          <!-- Until the first list arrives (after the start-up checks): a quiet placeholder, not "unavailable". -->
+          <!-- Until the first list arrives: a quiet placeholder, not "unavailable". -->
           <button class="setup-current" bind:this={setupButton} class:open={setupMenu} class:loading={!setupLoaded} disabled={!setupLoaded}
             title={setupLoaded ? 'Switch setup or make a new one' : 'Loading your setups…'} onclick={toggleSetupMenu}>
             {#if setupLoaded}
@@ -234,9 +285,9 @@
           {#if setupMenu}
             <div class="menu-catcher" role="presentation" onclick={() => (setupMenu = false)}></div>
             <div class="menu" role="menu" style="left:{menuPos.left}px; top:{menuPos.top}px">
-              <div class="menu-head">Switch setup</div>
+              <div class="menu-head">{startupBusy ? 'Finishing start-up, one moment…' : 'Switch setup'}</div>
               {#each setupList as s (s.id)}
-                <button role="menuitem" class:current={s.active} disabled={s.active} onclick={() => openSetups({ switchTo: s.id })}
+                <button role="menuitem" class:current={s.active} disabled={s.active || startupBusy} onclick={() => openSetups({ switchTo: s.id })}
                   title={s.description || s.name}>
                   <span class="avatar sm" style="--h:{hue(s.id)}">{initials(s.name)}</span>
                   <span class="who">
@@ -247,8 +298,8 @@
                 </button>
               {/each}
               <div class="sep"></div>
-              <button role="menuitem" onclick={() => openSetups({ create: true })}><span class="mi">+</span>New setup…</button>
-              <button role="menuitem" onclick={() => openSetups()}><span class="mi">⚙</span>Manage setups…</button>
+              <button role="menuitem" disabled={startupBusy} onclick={() => openSetups({ create: true })}><span class="mi">+</span>New setup…</button>
+              <button role="menuitem" disabled={startupBusy} onclick={() => openSetups()}><span class="mi">⚙</span>Manage setups…</button>
             </div>
           {/if}
         </div>
@@ -259,6 +310,8 @@
         {@render item('accessories', 'Accessories', 'dice', view === 'accessories')}
         {@render item('furniture', 'Furniture', 'shelf', view === 'furniture')}
         {@render item('decorations', 'Decorations', 'sparkle', view === 'decorations')}
+        {@render item('customers', 'Customers', 'people', view === 'customers')}
+        {@render item('employees', 'Employees', 'people', view === 'employees')}
         {@render item('shoplook', 'Game look', 'store', view === 'shoplook')}
         {@render item('gamify', 'Gamify', 'chart', view === 'gamify')}
         {@render item('modsettings', 'Mod settings', 'sliders', view === 'modsettings')}
@@ -305,16 +358,64 @@
         <button onclick={() => (updateHidden = true)} disabled={updating}>Later</button>
       </div>
     {/if}
+    {#if templates?.busy}
+      <div class="update-banner">
+        <div class="grow"><b>Reading the game files…</b> <span class="muted">{templates.message || 'Starting'}</span>
+          <div class="muted">Previews, editors and the art conversion use the game's models and wait until this is done.</div></div>
+      </div>
+    {:else if templates?.error}
+      <div class="update-banner">
+        <div class="grow"><b>Studio couldn't read the game files.</b> <span class="muted">{templates.error}</span>
+          <div class="muted">Previews and editors that use the game's models won't work until this succeeds.</div></div>
+        <button class="primary" onclick={() => go('settings')}>Open Settings</button>
+      </div>
+    {/if}
     {#if upgradeWaiting}
       <div class="update-banner">
         <div class="grow"><b>The game is running.</b> <span class="muted">{upgradeWaiting}</span></div>
         <button class="primary" onclick={() => startupTasks(false)}>Try again</button>
       </div>
-    {:else if upgradeChoices > 0 && view !== 'storage'}
+    {:else if oldLayout}
       <div class="update-banner">
-        <div class="grow"><b>Some sets have their own art that differs from the shared art.</b>
-          <span class="muted">The game shows the shared art until you choose which to keep.</span></div>
-        <button class="primary" onclick={() => go('storage')}>Choose on Storage</button>
+        <div class="grow"><b>Your content is in an older layout, so it isn't shown here.</b>
+          <span class="muted">Nothing is lost. Open TCG Studio {oldLayout.version} once to move it, then come back to this version.</span></div>
+        <button class="primary" onclick={() => BrowserOpenURL(oldLayout!.url)}>Get {oldLayout.version}</button>
+      </div>
+    {/if}
+    {#if artLayouts?.needed && !artHidden && !artDialog && !artBusy}
+      <div class="update-banner">
+        <div class="grow"><b>Your {listText(artLayouts.kinds)} art was made for the game's previous models.</b>
+          <span class="muted">The game's latest update changed those models, so this art looks wrong in the game until it is converted.</span></div>
+        <button class="primary" onclick={() => (artDialog = true)}>Review and convert…</button>
+        <button onclick={() => (artHidden = true)}>Not now</button>
+      </div>
+    {/if}
+    {#if artDialog && artLayouts}
+      <div class="art-backdrop">
+        <div class="art-dialog" role="dialog" aria-modal="true" aria-labelledby="art-title">
+          <h2 id="art-title">Convert your art to the game's new models</h2>
+          <p>The game's latest update gave {listText(artLayouts.kinds)} new 3D models with a different texture layout. This
+            converts the art of {#if artLayouts.sets}<b>{artLayouts.sets} set(s)</b>{#if artLayouts.accessories} and{/if}{/if}{#if artLayouts.accessories} <b>your accessories</b>{/if} in {artLayouts.setups.join(', ')} to the new layout: each
+            texture is redrawn side by side (front, back, top…) into a new file, and your designs move with it.</p>
+          <ul>
+            <li><b>Only for the current version of the game.</b> Converted art no longer fits older versions of the game. If you
+              play an older version, don't convert: keep using TCG Studio {artLayouts.version} instead.</li>
+            <li><b>Convert before you edit older art.</b> Art you changed with this version of TCG Studio is already in the
+              new layout and would be converted again. Convert first, then edit. New sets and accessories aren't affected.</li>
+            <li><b>There is no undo button.</b> Your old files are kept (Storage lists them as unused afterwards), but the
+              sets point at the converted files. To go back, install TCG Studio {artLayouts.version} again and play the
+              game version it was made for.</li>
+            <li>Converted art can look a little softer than the original. Open a design in the pack editor and save it to
+              draw it again at full quality.</li>
+          </ul>
+          <p class="muted">Earlier version: <button class="linkish" onclick={() => BrowserOpenURL(artLayouts.rollbackUrl)}>TCG Studio
+            {artLayouts.version} on GitHub</button></p>
+          <div class="art-buttons">
+            <button onclick={() => (artDialog = false)} disabled={artBusy}>Cancel</button>
+            <button class="primary" onclick={convertArtLayouts} disabled={artBusy || storageBusy}>
+              {artBusy ? 'Converting…' : 'I understand, convert my art'}</button>
+          </div>
+        </div>
       </div>
     {/if}
     {#key setupKey}
@@ -334,6 +435,10 @@
       <Furniture {notify} />
     {:else if view === 'decorations'}
       <Decorations {notify} />
+    {:else if view === 'customers'}
+      <Customers {notify} />
+    {:else if view === 'employees'}
+      <Employees {notify} />
     {:else if view === 'shoplook'}
       <ShopLook {notify} />
     {:else if view === 'gamify'}
@@ -454,6 +559,14 @@
     display: flex; gap: 10px; align-items: flex-start; padding: 10px 16px; background: var(--panel-2);
     border-bottom: 1px solid var(--accent);
   }
+  .art-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center;
+    justify-content: center; z-index: 50; padding: 16px; }
+  .art-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); max-width: 620px; width: 100%;
+    max-height: 90vh; overflow: auto; padding: 20px 24px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
+  .art-dialog h2 { margin: 0 0 10px; font-size: 18px; }
+  .art-dialog ul { padding-left: 18px; }
+  .art-dialog li { margin: 8px 0; }
+  .art-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
   .update-banner .notes { font-size: 12px; white-space: pre-wrap; max-height: 90px; overflow: auto; margin-top: 4px; }
   .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 6px; overflow: hidden; }
   .bar div { height: 100%; background: var(--accent); }

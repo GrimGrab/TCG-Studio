@@ -19,7 +19,7 @@ func (x *extractor) packTemplates() error {
 		if !isPackOrBox(name) {
 			continue
 		}
-		if _, t, ok := x.mainTexture(f, x.so.Meshes[i].Material); ok && x.saveTexture(t, filepath.Join(x.dir, name+"_texture.png")) {
+		if _, t, ok := x.itemTexture(f, x.so.Meshes[i], false); ok && x.saveTexture(t, filepath.Join(x.dir, name+"_texture.png")) {
 			n++
 		}
 		if _, ok := x.saveSprite(f, x.so.Items[i].Icon, filepath.Join(x.dir, name+"_icon.png")); ok {
@@ -124,7 +124,7 @@ func (x *extractor) accessories() ([]accItem, error) {
 			ItemHandScaleOffset: d.ItemHandScaleOffset, IconScale: d.IconScale, ColliderPosOffset: d.ColliderPosOffset, ColliderScale: d.ColliderScale,
 			MaterialListTextures: []*string{}, ShownIn: []string{}, MaterialList: []any{}, RestockRows: []restockRow{}}
 
-		texObj, tex, hasTex := x.mainTexture(f, md.Material)
+		texObj, tex, hasTex := x.itemTexture(f, md, false)
 		if hasTex && x.saveTexture(tex, filepath.Join(x.acc, name+"_texture.png")) {
 			it.Texture, it.TextureName, it.TextureSize = ptr(name+"_texture.png"), ptr(tex.Name), &[2]int{tex.Width, tex.Height}
 		}
@@ -141,7 +141,7 @@ func (x *extractor) accessories() ([]accItem, error) {
 		if m2 != nil {
 			it.MeshSecondary = ptr(m2.Name)
 		}
-		if o2, t2, ok := x.mainTexture(f, md.MaterialSecondary); ok && o2 != texObj && x.saveTexture(t2, filepath.Join(x.acc, name+"_texture2.png")) {
+		if o2, t2, ok := x.itemTexture(f, md, true); ok && (o2 != texObj || md.SecondTextureIndex != md.TextureIndex) && x.saveTexture(t2, filepath.Join(x.acc, name+"_texture2.png")) {
 			it.Texture2 = ptr(name + "_texture2.png")
 		}
 		for k, mp := range md.MaterialList {
@@ -222,7 +222,7 @@ func (x *extractor) packMeshes() ([]packItem, error) {
 		if m2 != nil {
 			it.MeshSecondary = ptr(m2.Name)
 		}
-		if _, t, ok := x.mainTexture(f, md.Material); ok {
+		if _, t, ok := x.itemTexture(f, md, false); ok {
 			it.TextureName, it.Texture = ptr(t.Name), ptr(name+"_texture.png")
 		}
 		out = append(out, it)

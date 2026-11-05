@@ -1,6 +1,7 @@
 package gameextract
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"image"
@@ -10,8 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"strconv"
+	"strings"
 	"tcgstudio/internal/unityfs"
-	"tcgstudio/internal/uvmap"
 )
 
 // Extracts from the installed game (TCG_GAME, default Steam path) into a temp folder; EXTRACT_OUT keeps it somewhere.
@@ -36,6 +38,65 @@ func TestExtract(t *testing.T) {
 	for _, w := range info.Warnings {
 		t.Log("warning:", w)
 	}
+	checkClothes(t, out)
+	checkCharacters(t, out)
+}
+
+// The face editor's characters: both bodies with their parts, hair slots and presets, and the face sliders in the body mesh.
+func checkCharacters(t *testing.T, out string) {
+	var f CharactersFile
+	b, err := os.ReadFile(filepath.Join(out, CharactersDir, "characters.json"))
+	if err != nil || json.Unmarshal(b, &f) != nil {
+		t.Fatalf("characters.json: %v", err)
+	}
+	for body, slots := range map[string]int{"male": 3, "female": 2} {
+		c := f.Bodies[body]
+		if len(c.Parts) != 6 || len(c.Hair) != slots || len(c.Presets) == 0 || len(c.Presets[0].Shapes) < 60 {
+			t.Fatalf("%s: %d parts, %d hair slots, %d presets", body, len(c.Parts), len(c.Hair), len(c.Presets))
+		}
+		mesh, err := os.ReadFile(filepath.Join(out, CharactersDir, c.Mesh))
+		if err != nil || string(mesh[:4]) != "TCGM" || !bytes.Contains(mesh, []byte("mod_jaw_width")) {
+			t.Fatalf("%s mesh %s: %v", body, c.Mesh, err)
+		}
+	}
+	for _, name := range []string{"T_Skin_01", "T_Sclera", "T_Iris_Mask", "T_Lips", "T_Eyebrows_01", "T_Hair_Bob_01_AO"} {
+		if f.Textures[name] == "" {
+			t.Errorf("texture %s missing", name)
+		}
+	}
+}
+
+// The customer clothes: both bodies, the presets, and the male T-shirt's four panels named by where they sit.
+func checkClothes(t *testing.T, out string) {
+	var f ClothesFile
+	b, err := os.ReadFile(filepath.Join(out, ClothesDir, "clothes.json"))
+	if err != nil || json.Unmarshal(b, &f) != nil {
+		t.Fatalf("clothes.json: %v", err)
+	}
+	for _, body := range []string{"male", "female"} {
+		if len(f.Bodies[body].Slots) != 4 || len(f.Bodies[body].Presets) == 0 {
+			t.Fatalf("%s: %d slots, %d presets", body, len(f.Bodies[body].Slots), len(f.Bodies[body].Presets))
+		}
+	}
+	for _, it := range f.Bodies["male"].Slots[0].Items {
+		if it.Name != "TShirt_01" {
+			continue
+		}
+		got := map[string]bool{}
+		for _, is := range it.Islands[0] {
+			got[is.Label] = true
+		}
+		for _, want := range []string{"Front", "Back", "Left side", "Right side"} {
+			if !got[want] {
+				t.Errorf("T-shirt: no %q island (got %v)", want, got)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(out, ClothesDir, it.Mesh)); err != nil || len(it.Variants) != 7 {
+			t.Errorf("T-shirt: mesh %q (%v), %d variants", it.Mesh, err, len(it.Variants))
+		}
+		return
+	}
+	t.Error("no male T-shirt")
 }
 
 // Paint templates of a few kinds of pieces (real unwrap, two-colour strip, plain colours, many parts) from the installed game;
@@ -71,7 +132,7 @@ func TestPaintTemplate(t *testing.T) {
 			t.Fatalf("%s: empty template", base)
 		}
 		for _, q := range tpl.Parts {
-			m, err := uvmap.LoadOBJ(filepath.Join(out, FurnitureDir, q.Mesh))
+			m, err := readOBJ(filepath.Join(out, FurnitureDir, q.Mesh))
 			if err != nil {
 				t.Fatalf("%s %s: %v", base, q.Mesh, err)
 			}
@@ -148,13 +209,35 @@ func TestPaintTemplateFromMesh(t *testing.T) {
 	if len(tpl.Parts) != 1 || tpl.Parts[0].Renderer != "" || len(tpl.Model.Views) != 6 {
 		t.Fatalf("own template: %d parts (renderer %q), %d views", len(tpl.Parts), tpl.Parts[0].Renderer, len(tpl.Model.Views))
 	}
-	om, err := uvmap.LoadOBJ(filepath.Join(dir, FurnitureDir, tpl.Parts[0].Mesh))
-	if err != nil || len(om.Tris) != 12 {
-		t.Fatalf("own model mesh: %v, %d triangles", err, len(om.Tris))
+	om, err := readOBJ(filepath.Join(dir, FurnitureDir, tpl.Parts[0].Mesh))
+	if err != nil || om.Tris != 12 {
+		t.Fatalf("own model mesh: %v, %d triangles", err, om.Tris)
 	}
 	for _, uv := range om.UV {
 		if uv[0] < 0 || uv[0] > 1 || uv[1] < 0 || uv[1] > 1 {
 			t.Fatalf("UV %v outside the atlas", uv)
 		}
 	}
+}
+
+// readOBJ reads what these tests check of an exported mesh: its UVs and how many triangles it has.
+func readOBJ(path string) (m struct {
+	UV   [][2]float64
+	Tris int
+}, err error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return m, err
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && f[0] == "vt" {
+			u, _ := strconv.ParseFloat(f[1], 64)
+			v, _ := strconv.ParseFloat(f[2], 64)
+			m.UV = append(m.UV, [2]float64{u, v})
+		} else if len(f) >= 4 && f[0] == "f" {
+			m.Tris++
+		}
+	}
+	return m, nil
 }

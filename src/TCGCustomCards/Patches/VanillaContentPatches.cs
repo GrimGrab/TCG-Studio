@@ -102,7 +102,7 @@ namespace TCGCustomCards.Patches
     internal static class PlayTableNoGiftWithoutPacks
     {
         private static readonly AccessTools.FieldRef<PlayTableGame, List<EItemType>> Gifts =
-            AccessTools.FieldRefAccess<PlayTableGame, List<EItemType>>("m_EndGameGiftItemTypeList");
+            Core.Compat.Field<PlayTableGame, List<EItemType>>(typeof(PlayTableNoGiftWithoutPacks), "m_EndGameGiftItemTypeList");
 
         private static bool Prefix(PlayTableGame __instance)
         {
@@ -170,7 +170,7 @@ namespace TCGCustomCards.Patches
     internal static class BinderDefaultExpansion
     {
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, ECardExpansionType> Expansion =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, ECardExpansionType>("m_ExpansionType");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, ECardExpansionType>(typeof(BinderDefaultExpansion), "m_ExpansionType");
 
         private static void Prefix(CollectionBinderFlipAnimCtrl __instance)
         {
@@ -183,11 +183,11 @@ namespace TCGCustomCards.Patches
     internal static class CheckPriceDefaultExpansion
     {
         private static readonly AccessTools.FieldRef<CheckPriceScreen, ECardExpansionType> Expansion =
-            AccessTools.FieldRefAccess<CheckPriceScreen, ECardExpansionType>("m_CurrentExpansionType");
+            Core.Compat.Field<CheckPriceScreen, ECardExpansionType>(typeof(CheckPriceDefaultExpansion), "m_CurrentExpansionType");
         private static readonly AccessTools.FieldRef<CheckPriceScreen, int> PageIndex =
-            AccessTools.FieldRefAccess<CheckPriceScreen, int>("m_CardPageIndex");
+            Core.Compat.Field<CheckPriceScreen, int>(typeof(CheckPriceDefaultExpansion), "m_CardPageIndex");
         private static readonly AccessTools.FieldRef<CheckPriceScreen, int> PageMax =
-            AccessTools.FieldRefAccess<CheckPriceScreen, int>("m_CardPageMaxIndex");
+            Core.Compat.Field<CheckPriceScreen, int>(typeof(CheckPriceDefaultExpansion), "m_CardPageMaxIndex");
 
         private static void Prefix(CheckPriceScreen __instance, ref int cardPageIndex)
         {

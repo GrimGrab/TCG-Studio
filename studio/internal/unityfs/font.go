@@ -29,7 +29,7 @@ func FontFile(o *Object) ([]byte, error) {
 	return nil, fmt.Errorf("no font data")
 }
 
-// TMPFont is the part of a TextMeshPro font asset (TMP_FontAsset, TMP 3.0.x, version "1.1.0") the shop sign preview draws with.
+// TMPFont is the part of a TextMeshPro font asset (TMP_FontAsset: TMP 3.0.x "1.1.0", or Unity 6's) the shop sign preview draws with.
 type TMPFont struct {
 	Name       string     `json:"name"`
 	Family     string     `json:"family"`
@@ -63,29 +63,59 @@ func (e *Env) ReadTMPFont(o *Object) (f TMPFont, err error) {
 	}
 	r := m.fields
 	f.Name = m.Name
-	r.i32()  // hashCode
-	r.pptr() // material
-	r.i32()  // materialHashCode
-	if v := r.str(); v != "1.1.0" {
-		return f, fmt.Errorf("font asset version %q", v)
+	faceInfo := func(floatSize bool) {
+		r.i32() // face index
+		f.Family = r.str()
+		r.str() // style
+		if floatSize {
+			f.PointSize = r.f32()
+		} else {
+			f.PointSize = float32(r.i32())
+		}
+		r.f32() // scale
+		r.i32() // units per EM
+		f.LineHeight = r.f32()
+		f.Ascent = r.f32()
+		r.f32() // cap line
+		r.f32() // mean line
+		r.f32() // baseline
+		f.Descent = r.f32()
+		r.skip(4 * 9) // super/subscript, underline, strikethrough, tab width
 	}
-	r.str()  // source font file GUID
-	r.pptr() // source font file
-	r.i32()  // atlas population mode
-	// FaceInfo
-	r.i32() // face index
-	f.Family = r.str()
-	r.str() // style
-	f.PointSize = float32(r.i32())
-	r.f32() // scale
-	r.i32() // units per EM
-	f.LineHeight = r.f32()
-	f.Ascent = r.f32()
-	r.f32() // cap line
-	r.f32() // mean line
-	r.f32() // baseline
-	f.Descent = r.f32()
-	r.skip(4 * 9) // super/subscript, underline, strikethrough, tab width
+	if o.File.AtLeast(2023, 1) {
+		// TextMeshPro in Unity 6 (com.unity.ugui 2.0): TMP_Asset = version, face info (point size a float), material;
+		// then the font asset's own fields (as the game's Unity.TextMeshPro.dll declares them).
+		r.str() // version
+		faceInfo(true)
+		r.pptr() // material
+		r.str()  // source font file GUID
+		// FontAssetCreationSettings
+		r.str()       // source font file name
+		r.str()       // source font file GUID
+		r.skip(4 * 9) // face index, sampling mode, point size, padding, padding mode, packing mode, atlas w/h, charset mode
+		r.str()       // character sequence
+		r.str()       // referenced font asset GUID
+		r.str()       // referenced text asset GUID
+		r.skip(4 * 3) // font style, style modifier, render mode
+		r.bool()      // include font features
+		r.align()
+		r.pptr() // source font file
+		r.str()  // source font file path
+		r.i32()  // atlas population mode
+		r.bool() // internal dynamic OS
+		r.align()
+	} else {
+		r.i32()  // hashCode
+		r.pptr() // material
+		r.i32()  // materialHashCode
+		if v := r.str(); v != "1.1.0" {
+			return f, fmt.Errorf("font asset version %q", v)
+		}
+		r.str()  // source font file GUID
+		r.pptr() // source font file
+		r.i32()  // atlas population mode
+		faceInfo(false)
+	}
 	n := r.count(52)
 	glyphs := make(map[uint32]TMPGlyph, n)
 	for range n {

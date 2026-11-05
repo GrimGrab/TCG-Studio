@@ -84,7 +84,7 @@ namespace TCGCustomCards.Patches
     internal static class CanOpenCardBoxPatch
     {
         private static readonly AccessTools.FieldRef<InteractionPlayerController, List<Item>> HoldItems =
-            AccessTools.FieldRefAccess<InteractionPlayerController, List<Item>>("m_HoldItemList");
+            Core.Compat.Field<InteractionPlayerController, List<Item>>(typeof(CanOpenCardBoxPatch), "m_HoldItemList");
 
         private static void Postfix(InteractionPlayerController __instance, ref bool __result)
         {
@@ -110,17 +110,17 @@ namespace TCGCustomCards.Patches
     internal static class GetPackContentPatch
     {
         private static readonly AccessTools.FieldRef<CardOpeningSequence, ECollectionPackType> PackTypeRef =
-            AccessTools.FieldRefAccess<CardOpeningSequence, ECollectionPackType>("m_CollectionPackType");
+            Core.Compat.Field<CardOpeningSequence, ECollectionPackType>(typeof(GetPackContentPatch), "m_CollectionPackType");
         private static readonly AccessTools.FieldRef<CardOpeningSequence, List<CardData>> Rolled =
-            AccessTools.FieldRefAccess<CardOpeningSequence, List<CardData>>("m_RolledCardDataList");
+            Core.Compat.Field<CardOpeningSequence, List<CardData>>(typeof(GetPackContentPatch), "m_RolledCardDataList");
         private static readonly AccessTools.FieldRef<CardOpeningSequence, List<CardData>> Rolled2 =
-            AccessTools.FieldRefAccess<CardOpeningSequence, List<CardData>>("m_SecondaryRolledCardDataList");
+            Core.Compat.Field<CardOpeningSequence, List<CardData>>(typeof(GetPackContentPatch), "m_SecondaryRolledCardDataList");
         private static readonly AccessTools.FieldRef<CardOpeningSequence, List<CardData>> Pool =
-            AccessTools.FieldRefAccess<CardOpeningSequence, List<CardData>>("m_CardDataPool");
+            Core.Compat.Field<CardOpeningSequence, List<CardData>>(typeof(GetPackContentPatch), "m_CardDataPool");
         private static readonly AccessTools.FieldRef<CardOpeningSequence, List<CardData>> Pool2 =
-            AccessTools.FieldRefAccess<CardOpeningSequence, List<CardData>>("m_CardDataPool2");
+            Core.Compat.Field<CardOpeningSequence, List<CardData>>(typeof(GetPackContentPatch), "m_CardDataPool2");
         private static readonly AccessTools.FieldRef<CardOpeningSequence, bool> HasFoil =
-            AccessTools.FieldRefAccess<CardOpeningSequence, bool>("m_HasFoilCard");
+            Core.Compat.Field<CardOpeningSequence, bool>(typeof(GetPackContentPatch), "m_HasFoilCard");
 
         private static bool Prefix(CardOpeningSequence __instance, bool clearList, bool isSecondaryRolledData, ECollectionPackType overrideCollectionPackType)
         {
@@ -180,7 +180,7 @@ namespace TCGCustomCards.Patches
     internal static class WorkerPackListPadding
     {
         private static readonly AccessTools.FieldRef<Worker, List<bool>> Enabled =
-            AccessTools.FieldRefAccess<Worker, List<bool>>("m_CardPackItemTypeEnabledList");
+            Core.Compat.Field<Worker, List<bool>>(typeof(WorkerPackListPadding), "m_CardPackItemTypeEnabledList");
 
         private static void Postfix(Worker __instance)
         {

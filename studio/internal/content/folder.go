@@ -11,8 +11,8 @@ import (
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 // Folder stores sets: a project folder per set in the root, and the set's files in the workspace's shared library.
@@ -127,7 +127,7 @@ func (f Folder) Cleanup(ws workspace.Dir, roots, ids, _ []string) []string {
 	return gone
 }
 
-func (f Folder) Export(ws workspace.Dir, root, id, prefix string, z *ziputil.Writer) error {
+func (f Folder) Export(ws workspace.Dir, root, id, prefix string, z *sharezip.Writer) error {
 	pw := ws.Projects(root)
 	p, err := pw.Load(id)
 	if err != nil {
@@ -141,7 +141,7 @@ func (f Folder) Export(ws workspace.Dir, root, id, prefix string, z *ziputil.Wri
 		if err != nil {
 			return err
 		}
-		if err := z.Bytes(prefix+folderProject+name, ziputil.ScrubJSON(b)); err != nil {
+		if err := z.Bytes(prefix+folderProject+name, sharezip.ScrubJSON(b)); err != nil {
 			return err
 		}
 	}

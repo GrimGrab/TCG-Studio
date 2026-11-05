@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -146,7 +147,7 @@ func TestGLBImportAndBake(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "cubes.glb")
 	writeGLB(t, p)
-	m, img, warns, err := Import(p)
+	m, img, warns, err := ImportWith(p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,8 +185,8 @@ func TestGLBImportAndBake(t *testing.T) {
 	}
 
 	// Source round trip.
-	base := filepath.Join(dir, "src", "cubes.fig")
-	if err := WriteSource(base, m, img); err != nil {
+	base := filepath.Join(dir, "cubes.fig")
+	if err := os.WriteFile(base+".obj", SourceOBJ(m), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	src, err := ReadSource(base + ".obj")
@@ -219,10 +220,6 @@ func TestGLBImportAndBake(t *testing.T) {
 	if n, _ := outward(g, func(v [3]float64) [3]float64 { return v }); n != 1 {
 		t.Fatalf("baked: cross·normal > 0 for %.2f of triangles, want all (vanilla meshes: all)", n)
 	}
-	// The mirrored-node cube (+x in glTF) stays at +x; front (+z in glTF) becomes −z in Unity (vanilla toys face −z).
-	if err := WriteGame(filepath.Join(dir, "game.obj"), g); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestRotationOrder(t *testing.T) {
@@ -243,7 +240,7 @@ func TestOBJWithMTL(t *testing.T) {
 		"usemtl green\nf 1/1 2/2 3/3 4/4\nusemtl plain\nf -4 -2 -3\n"
 	_ = os.WriteFile(filepath.Join(dir, "m.mtl"), []byte(mtl), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "m.obj"), []byte(obj), 0o644)
-	m, img, warns, err := Import(filepath.Join(dir, "m.obj"))
+	m, img, warns, err := ImportWith(filepath.Join(dir, "m.obj"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +267,7 @@ func TestSample(t *testing.T) {
 	if src == "" {
 		t.Skip("FIG_SAMPLE not set")
 	}
-	m, img, warns, err := Import(src)
+	m, img, warns, err := ImportWith(src, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +275,11 @@ func TestSample(t *testing.T) {
 	t.Logf("%s: %d vertices, %d triangles, texture %v, bounds %v..%v, warnings %v", filepath.Base(src), len(m.Pos), m.Triangles(), img.Bounds().Size(), lo, hi, warns)
 	if out := os.Getenv("FIG_OUT"); out != "" {
 		base := filepath.Join(out, "sample.fig")
-		if err := WriteSource(base, m, img); err != nil {
+		tex, err := PNG(img)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(os.WriteFile(base+".obj", SourceOBJ(m), 0o644), os.WriteFile(base+".png", tex, 0o644)); err != nil {
 			t.Fatal(err)
 		}
 		// PiggyA's slot: 1.3 units tall, footprint centre (−0.044, −0.011), bottom −0.54.
@@ -286,7 +287,7 @@ func TestSample(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := WriteGame(filepath.Join(out, "sample_model.obj"), g); err != nil {
+		if err := os.WriteFile(filepath.Join(out, "sample_model.obj"), GameOBJ(g), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

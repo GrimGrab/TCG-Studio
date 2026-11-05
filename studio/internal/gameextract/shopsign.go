@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"tcgstudio/internal/fontname"
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/unityfs"
 )
 
@@ -59,20 +60,13 @@ func (x *extractor) shopSign() error {
 	if err := os.MkdirAll(filepath.Join(dir, "fonts"), 0o755); err != nil {
 		return err
 	}
-	f, err := x.env.File("level1")
-	if err != nil || f == nil {
-		return fmt.Errorf("level1 not found")
+	f, err := x.shopScene()
+	if err != nil {
+		return err
 	}
 	g := newGraph(x.env, f)
-	var text, bill *node
-	for _, n := range g.byGO {
-		switch n.path() {
-		case "CanvasWorldspace/CanvasGrp/Billboard_ShopName_Text":
-			text = n
-		case "Level_Environment_Grp/ShopGrp/Billboard":
-			bill = n
-		}
-	}
+	text := g.named("", "Billboard_ShopName_Text")
+	bill := g.named("ShopGrp/", "Billboard", "OptimizedBillboard")
 	if text == nil || bill == nil || text.tr.Rect == nil {
 		return fmt.Errorf("sign objects not found")
 	}
@@ -134,13 +128,19 @@ func (x *extractor) shopSign() error {
 	lay.Default, lay.Atlas = font, "default-font.png"
 
 	// Vanilla sign art as one banner (both halves side by side), the preview's background without a custom image.
-	if banner := x.vanillaBanner(f, bill); banner != nil && savePNG(filepath.Join(dir, "vanilla.png"), banner) == nil {
+	// The banner's texture regions were measured on the original billboard; the Unity 6 build keeps it (hidden) next to the
+	// optimized one it shows, so the preview's background still comes from it.
+	src := bill
+	if old := g.named("ShopGrp/", "Billboard"); old != nil {
+		src = old
+	}
+	if banner := x.vanillaBanner(f, src); banner != nil && imgfile.SaveFast(filepath.Join(dir, "vanilla.png"), banner) == nil {
 		lay.Vanilla = "vanilla.png"
 	}
 
 	// Every font the game ships with its data: offered as sign fonts.
 	seen := map[string]bool{}
-	for _, name := range []string{"resources.assets", "sharedassets0.assets", "sharedassets1.assets"} {
+	for _, name := range x.assetFiles() {
 		sf, err := x.env.File(name)
 		if err != nil || sf == nil {
 			continue

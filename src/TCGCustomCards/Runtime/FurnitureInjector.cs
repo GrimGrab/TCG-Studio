@@ -70,6 +70,7 @@ namespace TCGCustomCards.Runtime
             var basePurchase = so.m_FurniturePurchaseDataList.Find(p => p != null && p.objectType == def.BaseObject);
 
             var tpl = Object.Instantiate(basePrefab, _root.transform);
+            ModelSwap.SettleOverrides(tpl); // before any change of ours (the game's own mesh swaps)
             tpl.name = $"TCGCC_{def.Id}";
             tpl.transform.localPosition = Vector3.zero;
             tpl.transform.localRotation = Quaternion.identity;
@@ -91,7 +92,7 @@ namespace TCGCustomCards.Runtime
                 decoBonus = def.DecoBonus ?? baseData.decoBonus,
             });
             Sprite baseIcon = basePurchase?.icon;
-            Sprite icon = string.IsNullOrEmpty(def.Icon) ? null
+            Sprite icon = def.BuiltIn ? Customers.Whiteboard.Icon() : string.IsNullOrEmpty(def.Icon) ? null
                 : ImageCache.GetPadded(Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
             // No own icon but a tint: the base icon in the same colour, so the shop shows what you get.
             if (icon == null && baseIcon != null && !string.IsNullOrEmpty(def.Tint) && ColorUtility.TryParseHtmlString(def.Tint, out var iconTint))

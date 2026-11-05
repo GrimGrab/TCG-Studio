@@ -2,7 +2,7 @@ package uvmap
 
 // Tabletop items (the Tabletop Geek phone shop): the Speedrobo board games and the Ultra-PRO card supplies. Unlike the other
 // kinds, every vanilla item has its own mesh, so each base has its own layout (ModelForBase). Measured from the game 1.02
-// meshes with uvdebug (rects incl. the rounded lid edges next to an island); orientations checked with TestRenderOrientation.
+// meshes (rects incl. the rounded lid edges next to an island); orientations checked with TestRenderOrientation.
 // Where the game's mesh reads one texture area from several sides (a box's top and bottom, both spines), that area is one face.
 
 func ttModel(kind, mesh string, tex int, size [3]float64, faces ...Face) Model {
@@ -108,17 +108,20 @@ func init() {
 	// UP playmat tube: the four vanilla colours are one box shape (own meshes UltraProPlaymat<Colour>_Mesh, same box areas) and differ
 	// only in which swatch the rolled mat inside reads (gray 876–1088, green 64–447, purple 447–636, yellow 636–876 × 1368–1961), so
 	// UP_Playmat1 (gray) is the one base and the mat colour is a face. The four long sides lie on their side. 2048² texture.
-	tabletop["UP_Playmat1"] = ttModel("CardSupply", "UltraProPlaymatGray_Mesh", 2048, [3]float64{0.508, 3.003, 0.415},
-		face("left", "Left side", [4]float64{0, 0, 0.41, 2.674}, atT([4]float64{22, 677, 2035, 946}, true, false, true)),
-		face("front", "Front", [4]float64{0.41, 0, 0.507, 2.674}, atT([4]float64{18, 367, 2032, 648}, true, false, true)),
-		face("right", "Right side", [4]float64{0.917, 0, 0.41, 2.674}, atT([4]float64{12, 1000, 2037, 1267}, true, true, false)),
-		face("back", "Back (with the tab)", [4]float64{1.327, -0.329, 0.505, 3.003}, atT([4]float64{18, 50, 2031, 321}, true, false, true)),
-		face("tab", "Hang tab front", [4]float64{0.41, -0.722, 0.504, 0.329}, at([4]float64{1186, 1689, 1984, 1867})),
-		face("top", "Top end", [4]float64{0.41, -0.393, 0.496, 0.393}, at([4]float64{1189, 1359, 1949, 1656})),
-		face("mat", "Mat inside (its colour)", [4]float64{1.932, 0, 0.3, 0.6}, at([4]float64{876, 1368, 1088, 1961})))
+	tabletop["UP_Playmat1"] = upPlaymat
 	// Collectors Album: the collection book's mesh (ItemBinderBook + pages) with a 2048² texture — the binder layout at 2×.
 	tabletop["UP_Album"] = scaled(binder, "CardSupply", 2)
 }
+
+// upPlaymat: the UP playmat tube of game 1.02 (see init).
+var upPlaymat = ttModel("CardSupply", "UltraProPlaymatGray_Mesh", 2048, [3]float64{0.508, 3.003, 0.415},
+	face("left", "Left side", [4]float64{0, 0, 0.41, 2.674}, atT([4]float64{22, 677, 2035, 946}, true, false, true)),
+	face("front", "Front", [4]float64{0.41, 0, 0.507, 2.674}, atT([4]float64{18, 367, 2032, 648}, true, false, true)),
+	face("right", "Right side", [4]float64{0.917, 0, 0.41, 2.674}, atT([4]float64{12, 1000, 2037, 1267}, true, true, false)),
+	face("back", "Back (with the tab)", [4]float64{1.327, -0.329, 0.505, 3.003}, atT([4]float64{18, 50, 2031, 321}, true, false, true)),
+	face("tab", "Hang tab front", [4]float64{0.41, -0.722, 0.504, 0.329}, at([4]float64{1186, 1689, 1984, 1867})),
+	face("top", "Top end", [4]float64{0.41, -0.393, 0.496, 0.393}, at([4]float64{1189, 1359, 1949, 1656})),
+	face("mat", "Mat inside (its colour)", [4]float64{1.932, 0, 0.3, 0.6}, at([4]float64{876, 1368, 1088, 1961})))
 
 // scaled copies a layout for a texture k times as large (same UVs).
 func scaled(m Model, kind string, k float64) Model {
@@ -139,17 +142,8 @@ func scaled(m Model, kind string, k float64) Model {
 
 // ModelForBase returns the layout of an accessory's model: per base for the tabletop kinds, per kind otherwise.
 func ModelForBase(kind, base string) (Model, bool) {
-	if m, ok := tabletop[base]; ok && m.Kind == kind {
-		return inclusive(m), true
+	if m, ok := faceMapOf(base); ok && m.Kind == kind {
+		return m, true
 	}
 	return ModelFor(kind)
-}
-
-// TabletopBases lists the vanilla items that have their own layout (tests).
-func TabletopBases() []string {
-	var out []string
-	for b := range tabletop {
-		out = append(out, b)
-	}
-	return out
 }

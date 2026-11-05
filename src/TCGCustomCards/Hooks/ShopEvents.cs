@@ -93,6 +93,9 @@ namespace TCGCustomCards.Hooks
         /// <summary>The hosted event's options (null = vanilla). Saved in the side-car.</summary>
         public static ShopEventConfig Config;
 
+        /// <summary>The day's entrants were spawned, whatever the format; they can still be changed, nobody has registered yet.</summary>
+        public static event Action EntrantsSpawned;
+
         public static void Register(ShopEventFormat format)
         {
             Formats.RemoveAll(f => f.Id == format.Id);
@@ -381,11 +384,11 @@ namespace TCGCustomCards.Hooks
         // ---- match gate (CanStartMatches)
 
         private static readonly AccessTools.FieldRef<InteractablePlayTable, bool> HasStartPlay =
-            AccessTools.FieldRefAccess<InteractablePlayTable, bool>("m_HasStartPlay");
+            Core.Compat.Field<InteractablePlayTable, bool>(typeof(ThinkPatch), "m_HasStartPlay");
         private static readonly AccessTools.FieldRef<InteractablePlayTable, float> PlayTime =
-            AccessTools.FieldRefAccess<InteractablePlayTable, float>("m_CurrentPlayTime");
+            Core.Compat.Field<InteractablePlayTable, float>(typeof(ThinkPatch), "m_CurrentPlayTime");
         private static readonly AccessTools.FieldRef<InteractablePlayTable, bool> IsTournamentTable =
-            AccessTools.FieldRefAccess<InteractablePlayTable, bool>("m_IsTournamentPlayTable");
+            Core.Compat.Field<InteractablePlayTable, bool>(typeof(ThinkPatch), "m_IsTournamentPlayTable");
 
         /// <summary>Holds a seated customer pair's match timer at 0 while the format says matches can't start.</summary>
         [HarmonyPatch(typeof(InteractablePlayTable), "Update")]
@@ -402,22 +405,38 @@ namespace TCGCustomCards.Hooks
         // ---- customer-vs-customer result (DecideCustomerMatch)
 
         private static readonly AccessTools.FieldRef<InteractablePlayTable, List<Customer>> Occupied =
-            AccessTools.FieldRefAccess<InteractablePlayTable, List<Customer>>("m_OccupiedCustomer");
+            Core.Compat.Field<InteractablePlayTable, List<Customer>>(typeof(MatchGatePatch), "m_OccupiedCustomer");
 
         /// <summary>Stands in for StopTableGame's coin flip <c>Random.Range(0, 100) &lt; 50</c> (true there = seat 1 wins).</summary>
+        /// <summary>
+        /// Decides customer-vs-customer matches that the event format leaves to chance (casual tables, vanilla tournaments):
+        /// true = seat 0 wins, null = vanilla coin flip. User: NPC personalities (table skill).
+        /// </summary>
+        public static System.Func<Customer, Customer, bool?> CustomerMatchDecider;
+
+        /// <summary>A customer-vs-customer table match ended: (seat 0, seat 1, seat 0 won). Casual and tournament tables.</summary>
+        public static event System.Action<Customer, Customer, bool> CustomerMatchEnded;
+
         public static int MatchRoll(int min, int max, InteractablePlayTable table)
         {
+            var seats = Occupied(table);
+            bool customers = seats != null && seats.Count >= 2 && seats[0] != null && seats[1] != null;
+            bool? seat0Wins = null;
             var h = Handler;
-            if (h != null && EventRunning && IsTournamentTable(table))
+            if (customers && h != null && EventRunning && IsTournamentTable(table)) seat0Wins = h.DecideCustomerMatch(seats[0], seats[1]);
+            if (customers && !seat0Wins.HasValue && CustomerMatchDecider != null)
             {
-                var seats = Occupied(table);
-                if (seats != null && seats.Count >= 2 && seats[0] != null && seats[1] != null)
-                {
-                    bool? seat0Wins = h.DecideCustomerMatch(seats[0], seats[1]);
-                    if (seat0Wins.HasValue) return seat0Wins.Value ? max - 1 : min;
-                }
+                try { seat0Wins = CustomerMatchDecider(seats[0], seats[1]); }
+                catch (System.Exception e) { Plugin.Log.LogError($"Customer match decider failed: {e}"); }
             }
-            return Random.Range(min, max);
+            int roll = seat0Wins.HasValue ? (seat0Wins.Value ? max - 1 : min) : Random.Range(min, max);
+            // Vanilla: roll < 50 = seat 1 wins (InteractablePlayTable.cs:319-322).
+            if (customers && CustomerMatchEnded != null)
+            {
+                try { CustomerMatchEnded(seats[0], seats[1], roll >= 50); }
+                catch (System.Exception e) { Plugin.Log.LogError($"Customer match result handler failed: {e}"); }
+            }
+            return roll;
         }
 
         [HarmonyPatch(typeof(InteractablePlayTable), "StopTableGame")]
@@ -452,7 +471,9 @@ namespace TCGCustomCards.Hooks
             private static void Postfix()
             {
                 _registered.Clear();
-                if (CPlayerData.m_TournamentData.m_IsTournamentDay) Handler?.OnEntrantsSpawned();
+                if (!CPlayerData.m_TournamentData.m_IsTournamentDay) return;
+                EntrantsSpawned?.Invoke();
+                Handler?.OnEntrantsSpawned();
             }
         }
 

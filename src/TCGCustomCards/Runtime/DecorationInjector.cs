@@ -132,11 +132,12 @@ namespace TCGCustomCards.Runtime
                 Plugin.Log.LogError($"Decoration {def.Label}: base decoration {baseIdx} not found — skipped");
                 return false;
             }
-            var mesh = MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
+            var mesh = def.BuiltIn ? Customers.Whiteboard.BoardMesh() : MeshLoader.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Mesh));
             if (mesh == null) { Plugin.Log.LogError($"Decoration {def.Label}: model '{def.Mesh}' could not be loaded — skipped"); return false; }
             var basePurchase = so.m_DecoPurchaseDataList[baseIdx];
 
             var tpl = Object.Instantiate(so.m_DecoDataList[baseIdx].spawnPrefab, _root.transform);
+            ModelSwap.SettleOverrides(tpl); // before any change of ours (the game's own mesh swaps)
             tpl.name = $"TCGCC_{def.Id}";
             tpl.transform.localPosition = Vector3.zero;
             tpl.transform.localRotation = Quaternion.identity;
@@ -144,10 +145,12 @@ namespace TCGCustomCards.Runtime
             tpl.m_DecoObjectType = d.Object;
             d.Prefab = tpl;
 
-            Texture tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
+            var texPath = string.IsNullOrEmpty(def.Texture) ? null : Core.StudioPaths.ItemFile(def.FolderPath, def.Texture);
+            Texture tex = def.BuiltIn ? Customers.Whiteboard.BoardTexture() : texPath == null ? null : ImageCache.Get(texPath)?.texture;
             var body = tpl.GetComponentsInChildren<Renderer>(true).Where(r => r.GetType().Name != "ParticleSystemRenderer");
-            ModelSwap.Apply(tpl, body, mesh, tex, null, def.Id);
+            ModelSwap.Apply(tpl, body, mesh, tex, null, def.Id, texPath: texPath);
             SetArea(tpl, mesh.bounds, wall);
+            if (def.BuiltIn) Customers.Whiteboard.Dress(tpl);
 
             var data = new DecoData
             {
@@ -156,7 +159,7 @@ namespace TCGCustomCards.Runtime
                 spawnPrefab = tpl,
             };
             Sprite baseIcon = basePurchase?.icon;
-            Sprite icon = string.IsNullOrEmpty(def.Icon) ? null
+            Sprite icon = def.BuiltIn ? Customers.Whiteboard.Icon() : string.IsNullOrEmpty(def.Icon) ? null
                 : ImageCache.GetPadded(Core.StudioPaths.ItemFile(def.FolderPath, def.Icon), baseIcon != null ? baseIcon.rect.width / baseIcon.rect.height : 1f);
             var purchase = new DecoPurchaseData
             {

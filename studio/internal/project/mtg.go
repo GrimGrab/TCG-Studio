@@ -8,6 +8,7 @@ import (
 
 // FillMtg adds the MTG export data (set.json "mtg" fields) to a Scryfall-imported project from its meta, so the mod can
 // export decks to Forge. Projects imported before this existed get it on load. Returns true when anything changed.
+// migration:set-sync
 func FillMtg(p *Project) bool {
 	if p == nil || p.Set == nil || p.Meta == nil || p.Meta.Source != "scryfall" || p.Meta.ScryfallCode == "" {
 		return false

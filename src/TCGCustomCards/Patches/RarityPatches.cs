@@ -34,7 +34,7 @@ namespace TCGCustomCards.Patches
     [HarmonyPatch(typeof(CardUI), nameof(CardUI.SetCardUI))]
     internal static class RarityIconPatch
     {
-        private static readonly AccessTools.FieldRef<CardUI, CardUISettingData> SettingData = AccessTools.FieldRefAccess<CardUI, CardUISettingData>("m_CardUISettingData");
+        private static readonly AccessTools.FieldRef<CardUI, CardUISettingData> SettingData = Core.Compat.Field<CardUI, CardUISettingData>(typeof(RarityIconPatch), "m_CardUISettingData");
 
         private static void Postfix(CardUI __instance, CardData cardData)
         {
@@ -52,10 +52,10 @@ namespace TCGCustomCards.Patches
     [HarmonyPatch(typeof(CollectionBinderFlipAnimCtrl), "SortByCardRarity")]
     internal static class BinderRaritySortPatch
     {
-        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> Graded = AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_IsGradedCardAlbum");
-        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, ECardExpansionType> Expansion = AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, ECardExpansionType>("m_ExpansionType");
-        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, List<int>> Sorted = AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, List<int>>("m_SortedIndexList");
-        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, List<int>> Temp = AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, List<int>>("m_SortTempList");
+        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> Graded = Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(BinderRaritySortPatch), "m_IsGradedCardAlbum");
+        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, ECardExpansionType> Expansion = Core.Compat.Field<CollectionBinderFlipAnimCtrl, ECardExpansionType>(typeof(BinderRaritySortPatch), "m_ExpansionType");
+        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, List<int>> Sorted = Core.Compat.Field<CollectionBinderFlipAnimCtrl, List<int>>(typeof(BinderRaritySortPatch), "m_SortedIndexList");
+        private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, List<int>> Temp = Core.Compat.Field<CollectionBinderFlipAnimCtrl, List<int>>(typeof(BinderRaritySortPatch), "m_SortTempList");
 
         private static bool Prefix(CollectionBinderFlipAnimCtrl __instance, bool isCompactView)
         {
@@ -162,7 +162,7 @@ namespace TCGCustomCards.Patches
     [HarmonyPatch(typeof(CardRaritySelectScreen), nameof(CardRaritySelectScreen.OpenScreen))]
     internal static class RarityPickerOpenPatch
     {
-        private static readonly AccessTools.FieldRef<CardRaritySelectScreen, int> CurrentIndex = AccessTools.FieldRefAccess<CardRaritySelectScreen, int>("m_CurrentIndex");
+        private static readonly AccessTools.FieldRef<CardRaritySelectScreen, int> CurrentIndex = Core.Compat.Field<CardRaritySelectScreen, int>(typeof(RarityPickerOpenPatch), "m_CurrentIndex");
 
         private static CardRaritySelectScreen _builtFor;
         private static ButtonGrid _grid;

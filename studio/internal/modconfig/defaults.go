@@ -53,11 +53,6 @@ func AddMissing(path string) (int, error) {
 	return addMissing(path, defaultsCfg)
 }
 
-// removedSettings are "section/key" of settings the mod dropped; BepInEx keeps such entries, so Studio removes them.
-var removedSettings = map[string]bool{
-	"Binder/Layout": true, // now per save, in the binder panel
-}
-
 func addMissing(path string, defaults []byte) (int, error) {
 	secs, err := Read(path)
 	if err != nil {
@@ -106,6 +101,13 @@ func addMissing(path string, defaults []byte) (int, error) {
 			b.lines = append([]string(nil), b.lines...)
 			b.lines[len(b.lines)-1] = b.key + " = " + old[0].Value
 			drop[old[0].line] = true
+		} else if from, ok := renamedSettings[b.section+"/"+b.key]; ok {
+			for _, e := range byKey[from] {
+				if e.Section == b.section && e.Value != "" {
+					b.lines = append([]string(nil), b.lines...)
+					b.lines[len(b.lines)-1] = b.key + " = " + e.Value
+				}
+			}
 		}
 		if at, ok := lastLine[b.section]; ok {
 			insert[at] = append(append(insert[at], ""), b.lines...)

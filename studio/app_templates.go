@@ -8,6 +8,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/gameextract"
 )
@@ -59,7 +60,7 @@ func resolveTemplates(gameDir string) (dir, source string) {
 		return "", ""
 	case cacheCurrent(gameDir):
 		return templatesCacheDir(), "game"
-	case exists(filepath.Join(game.TemplatesDir(gameDir), "BasicCardPack_texture.png")):
+	case fsutil.Exists(filepath.Join(game.TemplatesDir(gameDir), "BasicCardPack_texture.png")):
 		return game.TemplatesDir(gameDir), "mod" // leftover in-game export while Studio reads the game files
 	}
 	return "", ""
@@ -98,13 +99,11 @@ func (a *App) templateJSON(parts ...string) string {
 
 // templatesReadyIn: dir holds a complete set of templates (the editors need both).
 func templatesReadyIn(dir string) bool {
-	return dir != "" && exists(filepath.Join(dir, "BasicCardPack_texture.png")) &&
-		exists(filepath.Join(dir, "accessories", "accessories.json"))
+	return dir != "" && fsutil.Exists(filepath.Join(dir, "BasicCardPack_texture.png")) &&
+		fsutil.Exists(filepath.Join(dir, "accessories", "accessories.json"))
 }
 
 func (a *App) templatesReady() bool { return templatesReadyIn(a.templatesDir()) }
-
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 // TemplatesStatus reports where the templates come from and whether Studio is reading them.
 func (a *App) TemplatesStatus() TemplatesStatus {

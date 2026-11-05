@@ -41,6 +41,20 @@ namespace TCGCustomCards.Runtime
             return Store(absolutePath, tex);
         }
 
+        /// <summary>True when <see cref="Get"/> already holds this picture.</summary>
+        public static bool Has(string absolutePath) =>
+            !string.IsNullOrEmpty(absolutePath) && Sprites.TryGetValue(absolutePath, out var s) && s != null;
+
+        /// <summary>Frees a picture loaded by <see cref="Get"/> (the next Get loads it again).</summary>
+        public static void Forget(string absolutePath)
+        {
+            if (string.IsNullOrEmpty(absolutePath) || !Sprites.TryGetValue(absolutePath, out var sprite)) return;
+            Sprites.Remove(absolutePath);
+            if (sprite == null) return;
+            Object.Destroy(sprite.texture);
+            Object.Destroy(sprite);
+        }
+
         private static readonly Dictionary<string, Texture2D> Tiling = new Dictionary<string, Texture2D>();
 
         /// <summary>

@@ -12,4 +12,5 @@ const (
 	evTemplatesProgress = "templates:progress"
 	evTemplatesReady    = "templates:ready"
 	evUpdateProgress    = "update:progress"
+	evArtConverted      = "art:converted" // ArtConversionResult (App.BeginArtConversion)
 )

@@ -18,9 +18,9 @@ namespace TCGCustomCards.Patches
     {
         private static readonly Quaternion Turned = Quaternion.Euler(0f, 180f, 0f);
         private static readonly AccessTools.FieldRef<InteractableCard3d, Quaternion> TargetRot =
-            AccessTools.FieldRefAccess<InteractableCard3d, Quaternion>("m_CardTargetLerpRot");
+            Core.Compat.Field<InteractableCard3d, Quaternion>(typeof(CardFlip), "m_CardTargetLerpRot");
         private static readonly AccessTools.FieldRef<InteractableCard3d, bool> LerpingRot =
-            AccessTools.FieldRefAccess<InteractableCard3d, bool>("m_IsLerpingCardRot");
+            Core.Compat.Field<InteractableCard3d, bool>(typeof(CardFlip), "m_IsLerpingCardRot");
 
         /// <summary>Has a back-face picture (double-faced card).</summary>
         private static bool CanTurn(CardData d) => MtgCardFaces.BackFaceOf(d) != null;

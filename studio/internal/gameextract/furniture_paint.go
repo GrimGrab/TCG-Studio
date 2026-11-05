@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/unityfs"
 	"tcgstudio/internal/uvmap"
@@ -57,6 +58,9 @@ func PaintTemplate(gameDir, templatesDir, base string) (string, error) {
 		return "", err
 	}
 	defer env.Close()
+	if env.Scripts, err = unityfs.ScriptLayoutOf(filepath.Join(data, "Managed", "Assembly-CSharp.dll")); err != nil {
+		return "", err
+	}
 	x := &extractor{env: env, dir: templatesDir, objNames: invert(enums["EObjectType"]), texNames: map[*unityfs.Object]unityfs.Texture2D{}}
 	sd, err := x.shelfData()
 	if err != nil {
@@ -409,7 +413,7 @@ func (x *extractor) buildPaint(name string, rs []paintRenderer, rendererPath fun
 
 	// Bake the vanilla look, then the meshes.
 	atlas := x.bakePaint(rs, tris, pad)
-	if err := savePNG(filepath.Join(dir, base+".png"), atlas); err != nil {
+	if err := imgfile.SaveFast(filepath.Join(dir, base+".png"), atlas); err != nil {
 		x.warn("furniture %s: %v", name, err)
 		return false
 	}

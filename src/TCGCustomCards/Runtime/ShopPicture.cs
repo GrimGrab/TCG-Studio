@@ -31,7 +31,7 @@ namespace TCGCustomCards.Runtime
         {
             if (!File.Exists(path))
             {
-                Plugin.Log.LogWarning($"{what} image not found: {path}");
+                Plugin.Log.LogInfo($"{what}: {path} is not there, using the game's own");
                 return null;
             }
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, mipmaps) { name = "TCGCC_" + what.Replace(' ', '_') };

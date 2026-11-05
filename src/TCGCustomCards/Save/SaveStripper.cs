@@ -78,6 +78,7 @@ namespace TCGCustomCards.Save
             // Newest first: a field swapped twice (pre-pass, then the generic pass) ends with its true original.
             undo = () => { for (int i = originals.Count - 1; i >= 0; i--) originals[i].f.SetValue(g, originals[i].value); };
             stash.carried.AddRange(_carry);
+            StripEmployees(g, originals);
             if (Registry.Sets.Count == 0 && Registry.Accessories.Count == 0 && Registry.Furniture.Count == 0 && Registry.Decorations.Count == 0) return stash;
 
             StripSpawnWaiting(g, stash, originals);
@@ -219,6 +220,21 @@ namespace TCGCustomCards.Save
                 return Neutralized(value);
             }
             return value;
+        }
+
+        /// <summary>Our employees are in the side-car by id; their index would mean someone else after a library change.</summary>
+        private static void StripEmployees(CGameData g, List<(FieldInfo f, object value)> originals)
+        {
+            // VanillaCount 0: they were never added, so there's nothing of ours in the lists, and cutting to 0 would un-hire everyone.
+            if (Runtime.Employees.Roster.Count == 0 || Runtime.Employees.Roster.VanillaCount == 0) return;
+            var fData = typeof(CGameData).GetField("m_WorkerSaveDataList");
+            var fHired = typeof(CGameData).GetField("m_IsWorkerHired");
+            if (!(fData?.GetValue(g) is List<WorkerSaveData> data) || !(fHired?.GetValue(g) is List<bool> hired)) return;
+            var clean = Runtime.Employees.Roster.ForVanillaSave(data, hired);
+            originals.Add((fData, data));
+            originals.Add((fHired, hired));
+            fData.SetValue(g, clean.data);
+            fHired.SetValue(g, clean.hired);
         }
 
         /// <summary>Queued restock deliveries are two parallel lists (restock row, amount); custom rows are removed from both together.</summary>

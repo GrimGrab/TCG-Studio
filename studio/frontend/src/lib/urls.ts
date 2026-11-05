@@ -16,7 +16,7 @@ export function accFile(rel: string | undefined, bust = 0): string {
 
 /** Game template folders: game = pack/box textures, acc = accessory models, furn = furniture, deco = decorations,
  * sign = shop look previews (file may be "sub/file"). */
-export type TemplateKind = 'game' | 'acc' | 'furn' | 'deco' | 'sign';
+type TemplateKind = 'game' | 'acc' | 'furn' | 'deco' | 'sign';
 const templatePrefix: Record<TemplateKind, string> = {
   game: '/templates/', acc: '/acctemplates/', furn: '/furntemplates/', deco: '/decotemplates/', sign: '/signtemplates/',
 };
@@ -24,6 +24,11 @@ const templatePrefix: Record<TemplateKind, string> = {
 /** A file from the game templates Studio read from the game files. */
 export function templateFile(kind: TemplateKind, file: string | undefined): string {
   return file ? templatePrefix[kind] + path(file) : '';
+}
+
+/** The game's portrait of a customer character (empty when Studio hasn't read the game files yet). */
+export function customerPortrait(female: boolean, model: number): string {
+  return model >= 0 ? `/custtemplates/${female ? 'female' : 'male'}_${model}.png` : '';
 }
 
 /** A picture or font chosen for the shop look (in <plugin>\ShopSign). */

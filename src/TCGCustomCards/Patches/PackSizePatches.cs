@@ -81,7 +81,7 @@ namespace TCGCustomCards.Patches
         /// <summary>Cards in a pack of this type: its set.json cardsPerPack for custom packs, 7 for vanilla ones.</summary>
         internal static int CardsIn(ECollectionPackType type)
         {
-            if (!RevealPatched || !Registry.IsCustom(type)) return 7;
+            if (!RevealPatched || !Core.Compat.Ok(Feature) || !Registry.IsCustom(type)) return 7;
             var pack = Registry.Get(type);
             return pack == null ? 7 : Mathf.Clamp(pack.Def.CardsPerPack, 1, MaxCards);
         }
@@ -112,9 +112,12 @@ namespace TCGCustomCards.Patches
         [HarmonyPatch(typeof(CardOpeningSequence), "Update")]
         internal static class FinalScalePatch
         {
-            private static void Prefix(CardOpeningSequence __instance)
+            private static void Prefix(CardOpeningSequence __instance, out bool __state) => __state = __instance.m_StateIndex == 7;
+
+            // After vanilla: each card it lays out goes back to its base scale, and the frame the last one lands it has left state 7 already.
+            private static void Postfix(CardOpeningSequence __instance, bool __state)
             {
-                if (__instance.m_StateIndex != 7 || Mathf.Approximately(_finalScale, 1f)) return;
+                if (!__state || Mathf.Approximately(_finalScale, 1f)) return;
                 foreach (var g in __instance.m_Card3dUIList)
                     if (g != null && g.m_ScaleGrp != null) g.m_ScaleGrp.localScale = Vector3.one * _finalScale;
             }
@@ -131,6 +134,7 @@ namespace TCGCustomCards.Patches
                 _ui = null;
                 _anim = null;
                 _vanillaPos = null;
+                _vanillaBaseScales = null;
                 Layouts.Clear();
                 Plugin.Log.LogInfo("Pack opening: new scene, card slots set up again");
             }
@@ -153,8 +157,21 @@ namespace TCGCustomCards.Patches
             s.m_Card3dUIList = _ui.Take(cards).ToList();
             s.m_CardAnimList = _anim.Take(cards).ToList();
             s.m_ShowAllCardPosList = layout.pos;
+            // The reveal scales each slot from a base-scale list filled once in Start (one per vanilla slot), indexed by the
+            // slot: it must hold one entry per slot of this pack, or the reveal throws on slot 8 and the opening never starts.
+            var baseScales = BaseScales != null ? BaseScales(s) : null;
+            if (baseScales == null) return;
+            if (_vanillaBaseScales == null) _vanillaBaseScales = new List<Vector3>(baseScales);
+            baseScales.Clear();
+            for (int i = 0; i < cards; i++)
+                baseScales.Add(i < _vanillaBaseScales.Count ? _vanillaBaseScales[i]
+                    : _vanillaBaseScales.Count > 0 ? _vanillaBaseScales[_vanillaBaseScales.Count - 1] : Vector3.one);
         }
 
+        private const string Feature = "Pack sizes";
+        private static readonly AccessTools.FieldRef<CardOpeningSequence, List<Vector3>> BaseScales =
+            Core.Compat.Field<CardOpeningSequence, List<Vector3>>(Feature, "m_CardBaseScaleList");
+        private static List<Vector3> _vanillaBaseScales; // vanilla's base scales, before we resize the list
         /// <summary>Clones the last vanilla slot until there are enough (clones keep stacking 0.001 apart like vanilla's).</summary>
         private static void EnsureSlots(int cards)
         {

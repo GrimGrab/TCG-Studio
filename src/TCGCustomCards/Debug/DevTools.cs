@@ -10,7 +10,6 @@ namespace TCGCustomCards.Debug
     {
         internal static ConfigEntry<KeyboardShortcut> GrantKey;
         internal static ConfigEntry<KeyboardShortcut> GrantAllVariantsKey;
-        internal static ConfigEntry<KeyboardShortcut> TestDraftKey;
         internal static ConfigEntry<KeyboardShortcut> ShopLevelKey;
         internal static ConfigEntry<KeyboardShortcut> MoneyKey;
 
@@ -23,8 +22,6 @@ namespace TCGCustomCards.Debug
                 "Adds one Base copy and one random variant of every custom card to the collection.");
             GrantAllVariantsKey = config.Bind("Debug", "GrantAllVariants", new KeyboardShortcut(KeyCode.F9, KeyCode.LeftShift),
                 "Adds one copy of every border/foil variant of every custom card.");
-            TestDraftKey = config.Bind("Debug", "TestDraft", new KeyboardShortcut(KeyCode.F10, KeyCode.LeftShift),
-                "MTG booster draft test without a tournament: drafts the MTG packs in your hands (or 3 test packs) against 7 Forge seats, then the next table plays your deck. Nothing is used up; your picks go into the collection.");
             ShopLevelKey = config.Bind("Debug", "SetShopLevel100", new KeyboardShortcut(KeyCode.F7, KeyCode.LeftShift),
                 "Sets the shop to level 100 (no level-up popup and no Steam achievements). Saved with the game like a normal level.");
             MoneyKey = config.Bind("Debug", "AddMillion", new KeyboardShortcut(KeyCode.F8, KeyCode.LeftShift),
@@ -40,14 +37,13 @@ namespace TCGCustomCards.Debug
         {
             if (GrantAllVariantsKey.Value.IsDown()) Grant(allVariants: true);
             else if (GrantKey.Value.IsDown()) Grant(allVariants: false);
-            else if (TestDraftKey.Value.IsDown()) DraftTest.Run();
             else if (ShopLevelKey.Value.IsDown()) SetShopLevel();
             else if (MoneyKey.Value.IsDown()) AddMoney();
         }
 
         private static bool InShop(string what)
         {
-            if (SceneManager.GetActiveScene().name == "Start" && GameInstance.m_FinishedSavefileLoading) return true;
+            if (Core.GameScene.InShop && GameInstance.m_FinishedSavefileLoading) return true;
             Plugin.Log.LogInfo(what + " ignored: load a save first");
             return false;
         }

@@ -29,7 +29,7 @@ export interface ItemTpl {
 }
 
 /** Mathf.RoundToInt = Math.Round: halves go to the even number. */
-export function roundToInt(v: number): number {
+function roundToInt(v: number): number {
   const f = Math.floor(v), d = v - f;
   if (Math.abs(d - 0.5) < 1e-9) return f % 2 === 0 ? f : f + 1;
   return Math.round(v);

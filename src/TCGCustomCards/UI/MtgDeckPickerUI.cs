@@ -103,7 +103,7 @@ namespace TCGCustomCards.UI
         }
 
         private static readonly HarmonyLib.AccessTools.FieldRef<InteractionPlayerController, bool> InUIMode =
-            HarmonyLib.AccessTools.FieldRefAccess<InteractionPlayerController, bool>("m_IsInUIMode");
+            Core.Compat.Field<InteractionPlayerController, bool>(typeof(Row), "m_IsInUIMode");
 
         private void Update()
         {

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 
+	"tcgstudio/internal/fsutil"
+
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -62,13 +64,11 @@ func GetStatus(gameDir string) Status {
 	if !s.Found {
 		return s
 	}
-	s.BepInEx = exists(filepath.Join(gameDir, "BepInEx", "core"))
-	s.ModInstalled = exists(filepath.Join(PluginDir(gameDir), "TCGCustomCards.dll"))
-	s.TemplatesFound = exists(filepath.Join(TemplatesDir(gameDir), "BasicCardPack_texture.png"))
+	s.BepInEx = fsutil.Exists(filepath.Join(gameDir, "BepInEx", "core"))
+	s.ModInstalled = fsutil.Exists(filepath.Join(PluginDir(gameDir), "TCGCustomCards.dll"))
+	s.TemplatesFound = fsutil.Exists(filepath.Join(TemplatesDir(gameDir), "BasicCardPack_texture.png"))
 	return s
 }
-
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 // ExeName is the game's process image name.
 const ExeName = "Card Shop Simulator.exe"

@@ -19,6 +19,11 @@ type ItemMeshData struct {
 	Name                                             string
 	Mesh, Material, MeshSecondary, MaterialSecondary PPtr
 	MaterialList                                     []PPtr
+	// Since the game update of 2026-10-27 items can share one material over a Texture2DArray: ArrayMaterial says which of
+	// the meshes do (0 none, 1 first, 2 second, 3 both, 4 first from the array and second plain) and TextureIndex /
+	// SecondTextureIndex pick their slice (ItemMeshData.ApplyToRenderer sets _TexIndex).
+	TextureIndex, SecondTextureIndex uint16
+	ArrayMaterial                    byte
 }
 
 type RestockData struct {
@@ -31,10 +36,12 @@ type RestockData struct {
 
 type StockItemData struct {
 	File                                                           *File
+	ArrayMaterials                                                 bool // the layout with ItemMeshData's texture-array fields
 	ShownAll, Shown, ShownAccessory, ShownFigurine, ShownBoardGame []int32
 	Items                                                          []ItemData
 	Meshes                                                         []ItemMeshData
 	Restock                                                        []RestockData
+	MaleCustomerIcons, FemaleCustomerIcons                         []PPtr // Sprites, by character model
 }
 
 func (r *reader) flag() bool {
@@ -44,7 +51,20 @@ func (r *reader) flag() bool {
 }
 
 // ReadStockItemData decodes StockItemData_ScriptableObject up to m_RestockDataList.
-func (e *Env) ReadStockItemData(o *Object) (s StockItemData, err error) {
+// ReadStockItemData reads the game's item list: the layout since the 2026-10-27 update (texture-array fields on every
+// ItemMeshData) first, else the older one.
+func (e *Env) ReadStockItemData(o *Object) (StockItemData, error) {
+	s, err := e.readStockItemData(o, true)
+	if err == nil {
+		return s, nil
+	}
+	if old, err2 := e.readStockItemData(o, false); err2 == nil {
+		return old, nil
+	}
+	return s, err
+}
+
+func (e *Env) readStockItemData(o *Object, arrays bool) (s StockItemData, err error) {
 	defer catch(&err, "StockItemData_ScriptableObject")
 	mb, err := readMonoBehaviour(o)
 	if err != nil {
@@ -52,6 +72,7 @@ func (e *Env) ReadStockItemData(o *Object) (s StockItemData, err error) {
 	}
 	r := mb.fields
 	s.File = o.File
+	s.ArrayMaterials = arrays
 	s.ShownAll = r.i32s()
 	s.Shown = r.i32s()
 	s.ShownAccessory = r.i32s()
@@ -91,6 +112,15 @@ func (e *Env) ReadStockItemData(o *Object) (s StockItemData, err error) {
 		m.MeshSecondary = r.pptr()
 		m.MaterialSecondary = r.pptr()
 		m.MaterialList = r.pptrs()
+		if s.ArrayMaterials {
+			// Each small field is padded to 4 bytes (measured: 12 bytes for the three).
+			m.TextureIndex = r.u16()
+			r.align()
+			m.SecondTextureIndex = r.u16()
+			r.align()
+			m.ArrayMaterial = r.u8()
+			r.align()
+		}
 	}
 	s.Restock = make([]RestockData, r.count(36))
 	for i := range s.Restock {
@@ -106,7 +136,40 @@ func (e *Env) ReadStockItemData(o *Object) (s StockItemData, err error) {
 		r.flag() // prologue show
 		r.flag() // hide until unlocked
 	}
+	s.MaleCustomerIcons, s.FemaleCustomerIcons = readCustomerIcons(r)
 	return s, nil
+}
+
+// readCustomerIcons reads on from m_GameEventDataList to the customer portraits (the tournament pairing screen's
+// pictures, indexed by character model). Optional: a format change only loses the portraits.
+func readCustomerIcons(r *reader) (male, female []PPtr) {
+	defer func() {
+		if recover() != nil {
+			male, female = nil, nil
+		}
+	}()
+	for n := r.count(36); n > 0; n-- { // GameEventData
+		r.str()
+		r.i32() // format
+		r.i32() // unlock play count
+		r.i32() // host cost
+		r.f32() // base fee
+		r.f32() // min %
+		r.f32() // max %
+		r.i32() // positive price change
+		r.i32() // negative price change
+	}
+	for n := r.count(40); n > 0; n-- { // CollectionPackImageSprite
+		r.i32()
+		r.pptr()
+		r.pptr()
+		r.pptr()
+	}
+	r.f32()   // shelf unlock cost multiplier
+	r.f32()   // shelf upgrade cost multiplier
+	r.i32s()  // ideal quest sequence
+	r.pptrs() // ancient artifacts
+	return r.pptrs(), r.pptrs()
 }
 
 type ShelfCompartment struct {
@@ -165,7 +228,7 @@ func ReadShelf(o *Object) (s Shelf, err error) {
 	}
 	r := mb.fields
 	s.GameObject = mb.GameObject
-	readInteractableObject(r)
+	readInteractableObject(r, o.File.layout())
 	s.ItemNotForSale = r.flag()
 	r.flag() // gamepad quick select reverse
 	s.CompartmentGroups = r.pptrs()
@@ -183,7 +246,7 @@ type InteractableObject struct {
 	PickupMesh, ValidArea, BoxCollider PPtr // MeshFilter, Transform (placement area), BoxCollider
 }
 
-func readInteractableObject(r *reader) (io InteractableObject) {
+func readInteractableObject(r *reader, l ScriptLayout) (io InteractableObject) {
 	io.ObjectType = r.i32()
 	r.i32() // deco object type
 	io.Highlight = r.pptr()
@@ -191,7 +254,15 @@ func readInteractableObject(r *reader) (io InteractableObject) {
 	io.Mesh = r.pptr()
 	io.CullingMesh = r.pptr()
 	r.pptr() // skin mesh
-	r.f32()  // highlight outline width
+	if l.OverrideMeshes {
+		for i, n := 0, r.count(40); i < n; i++ { // InteractableObjectMeshData: mesh filter, renderer, mesh, materials
+			r.pptr()
+			r.pptr()
+			r.pptr()
+			r.pptrs()
+		}
+	}
+	r.f32() // highlight outline width
 	io.IsGeneric = r.flag()
 	// can pickup move, can box up, can scan by counter, place in shop only, place in warehouse only, allow place near shop,
 	// is decoration vertical, can flip, can cat stand on this
@@ -219,7 +290,7 @@ func ReadInteractableObject(o *Object) (io InteractableObject, err error) {
 	if err != nil {
 		return io, err
 	}
-	io = readInteractableObject(mb.fields)
+	io = readInteractableObject(mb.fields, o.File.layout())
 	io.GameObject = mb.GameObject
 	return io, nil
 }
@@ -239,7 +310,7 @@ func ReadSpotGroups(o *Object, class string) (g SpotGroups, err error) {
 		return g, err
 	}
 	r := mb.fields
-	readInteractableObject(r)
+	readInteractableObject(r, o.File.layout())
 	switch class {
 	case "Shelf":
 		r.flag() // item not for sale
@@ -476,7 +547,7 @@ func ReadFurniturePoints(o *Object, class string) (roles map[string][]PointRef, 
 		return roles, err
 	}
 	r := mb.fields
-	readInteractableObject(r)
+	readInteractableObject(r, o.File.layout())
 	ref := func(role string, of RefKind) { roles[role] = append(roles[role], PointRef{r.pptr(), of}) }
 	one := func(role string) { ref(role, RefTransform) }
 	list := func(role string) {

@@ -1,5 +1,5 @@
-// Package art generates pack/box textures and shop icons from the game templates (internal/gameextract). Layouts are in
-// pixels of 1024² textures, origin top-left.
+// Package art generates pack/box textures and shop icons from the game templates (internal/gameextract). Where the faces are
+// in the textures comes from uvmap's face maps.
 package art
 
 import (
@@ -22,6 +22,9 @@ import (
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
+
+	"tcgstudio/internal/imgfile"
+	"tcgstudio/internal/uvmap"
 )
 
 type Options struct {
@@ -57,13 +60,57 @@ type Result struct {
 	BoxIcon     string `json:"boxIcon"`
 }
 
-var (
-	packFront = image.Rect(583, 106, 998, 724)
-	packBack  = image.Rect(193, 106, 580, 724)
-	boxStrip  = image.Rect(0, 0, 178, 305)
-	boxBanner = image.Rect(185, 10, 525, 145)
-	boxFront  = image.Rect(185, 150, 560, 388)
-)
+// faceOf is a face of a model's current layout (uvmap's face maps, the single source of where each face is in the texture).
+func faceOf(kind, id string) uvmap.Face {
+	m, _ := uvmap.ModelFor(kind)
+	for _, f := range m.Faces {
+		if f.ID == id {
+			return f
+		}
+	}
+	return uvmap.Face{}
+}
+
+// packFrontRect is the pack front's area in the 1024² pack texture.
+func packFrontRect() image.Rectangle {
+	r := faceOf("Pack", "front").Targets[0].Rect
+	return image.Rect(int(r[0]), int(r[1]), int(r[2]), int(r[3]))
+}
+
+// faceCanvas is a blank picture of a face seen upright, at the texture's density.
+func faceCanvas(f uvmap.Face) *image.NRGBA {
+	t := f.Targets[0]
+	w, h := t.Rect[2]-t.Rect[0], t.Rect[3]-t.Rect[1]
+	if t.Transpose {
+		w, h = h, w
+	}
+	return image.NewNRGBA(image.Rect(0, 0, int(math.Round(w/(t.Src[2]-t.Src[0]))), int(math.Round(h/(t.Src[3]-t.Src[1])))))
+}
+
+// paintFace copies an upright picture of a face onto every area of it in the texture, each lying as its area does (flipped,
+// on its side, or showing only part of the face).
+func paintFace(dst, face *image.NRGBA, f uvmap.Face) {
+	W, H := face.Bounds().Dx(), face.Bounds().Dy()
+	for _, t := range f.Targets {
+		for y := int(t.Rect[1]); y < int(t.Rect[3]); y++ {
+			for x := int(t.Rect[0]); x < int(t.Rect[2]); x++ {
+				a := (float64(x) + 0.5 - t.Rect[0]) / (t.Rect[2] - t.Rect[0])
+				b := (float64(y) + 0.5 - t.Rect[1]) / (t.Rect[3] - t.Rect[1])
+				if t.FlipX {
+					a = 1 - a
+				}
+				if t.FlipY {
+					b = 1 - b
+				}
+				if t.Transpose {
+					a, b = b, a
+				}
+				s, r := t.Src[0]+a*(t.Src[2]-t.Src[0]), t.Src[1]+b*(t.Src[3]-t.Src[1])
+				dst.SetNRGBA(x, y, face.NRGBAAt(min(int(s*float64(W)), W-1), min(int(r*float64(H)), H-1)))
+			}
+		}
+	}
+}
 
 // DefaultColor picks a stable, saturated color from the set id.
 func DefaultColor(id string) string {
@@ -113,18 +160,17 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	res := Result{PackTexture: pre + "pack_texture.png", PackIcon: pre + "pack_icon.png", BoxTexture: pre + "box_texture.png", BoxIcon: pre + "box_icon.png"}
 	var front image.Image
 	if o.FrontImage != "" {
-		if front, err = loadImage(o.Resolve(o.FrontImage)); err != nil {
+		if front, err = imgfile.Load(o.Resolve(o.FrontImage)); err != nil {
 			return res, fmt.Errorf("front image: %w", err)
 		}
 	}
 
-	// ---- pack texture: printed panels are detected from the template (saturated area) so crimps are never painted over
+	// ---- pack texture: the front and back faces' areas (crimps keep the template's print)
 	pack, err := load("BasicCardPack_texture.png")
 	if err != nil {
 		return res, err
 	}
-	pf := detectPrinted(pack, image.Rect(583, 60, 1024, 780), packFront)
-	pb := detectPrinted(pack, image.Rect(150, 60, 583, 780), packBack)
+	pf := packFrontRect()
 	if front != nil {
 		drawCover(pack, pf, front)
 		if o.Title != "" && o.TitleOnImage {
@@ -138,8 +184,15 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 			drawText(pack, face, "7 CARDS", image.Rect(pf.Min.X+18, pf.Max.Y-90, pf.Max.X-18, pf.Max.Y-30), 34, color.NRGBA{255, 255, 255, 220})
 		}
 	}
-	gradient(pack, pb, dark, shade(base, 0.7))
-	drawIcon(pack, icon, center(pb, 0, 0), 150, 70)
+	backFace := faceOf("Pack", "back")
+	back := faceCanvas(backFace)
+	gradient(back, back.Bounds(), dark, shade(base, 0.7))
+	shown := back.Bounds()
+	if s := backFace.Shown; s != nil { // the face reaches on over texture the model doesn't show
+		shown.Max.X = int(float64(shown.Dx()) * s[2])
+	}
+	drawIcon(back, icon, center(shown, 0, 0), 150, 70)
+	paintFace(pack, back, backFace)
 
 	// ---- pack icon: map the flat front panel onto the rendered pack's printed face (measured from the template)
 	pIcon, err := load("BasicCardPack_icon.png")
@@ -151,28 +204,37 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	warpFront(pIcon, pack.SubImage(pf).(*image.NRGBA), faceMask)
 	packOnly := pIcon.SubImage(faceMask.bounds()).(*image.NRGBA) // just the pack, for box art
 
-	// ---- box texture (the Basic box regions are the ones our box model shows)
+	// ---- box texture: each face drawn upright, then put on it and its opposite (front & back, both sides, top & bottom)
 	box, err := load("BasicCardBox_texture.png")
 	if err != nil {
 		return res, err
 	}
-	for _, r := range []image.Rectangle{boxStrip, boxBanner, boxFront} {
-		gradient(box, r, light, dark)
+	sideFace, topFace, frontFace := faceOf("Box", "right"), faceOf("Box", "top"), faceOf("Box", "front")
+	side, top, panel := faceCanvas(sideFace), faceCanvas(topFace), faceCanvas(frontFace)
+	for _, c := range []*image.NRGBA{side, top, panel} {
+		gradient(c, c.Bounds(), light, dark)
 	}
-	drawIcon(box, icon, center(boxStrip, 0, -40), 110, 235)
-	drawText(box, face, o.Title, image.Rect(boxStrip.Min.X+8, boxStrip.Max.Y-110, boxStrip.Max.X-8, boxStrip.Max.Y-20), 30, color.White)
-	drawIcon(box, icon, image.Pt(boxBanner.Max.X-45, (boxBanner.Min.Y+boxBanner.Max.Y)/2), 70, 235)
-	drawText(box, face, o.Title, image.Rect(boxBanner.Min.X+10, boxBanner.Min.Y+10, boxBanner.Max.X-90, boxBanner.Max.Y-10), 40, color.White)
+	sb, tb, fb := side.Bounds(), top.Bounds(), panel.Bounds()
+	drawIcon(side, icon, center(sb, 0, -80), 220, 235)
+	drawText(side, face, o.Title, image.Rect(16, sb.Max.Y-220, sb.Max.X-16, sb.Max.Y-40), 60, color.White)
+	drawIcon(top, icon, image.Pt(tb.Max.X-110, tb.Max.Y/2), 170, 235)
+	drawText(top, face, o.Title, image.Rect(24, 24, tb.Max.X-220, tb.Max.Y-24), 90, color.White)
 	// Pack stack on the right of the front, logo/title on the left — like the vanilla boxes.
-	stackH := boxFront.Dy() - 16
+	stackH := fb.Dy() - 32
 	stackW := stackH * packOnly.Bounds().Dx() / packOnly.Bounds().Dy()
 	for i := 0; i < 3; i++ {
-		x := boxFront.Max.X - stackW - 16 - (2-i)*18
-		y := boxFront.Min.Y + 8 + (2-i)*2
-		drawScaled(box, image.Rect(x, y, x+stackW, y+stackH), packOnly)
+		x := fb.Max.X - stackW - 32 - (2-i)*36
+		y := 16 + (2-i)*4
+		drawScaled(panel, image.Rect(x, y, x+stackW, y+stackH), packOnly)
 	}
-	drawText(box, face, o.Title, image.Rect(boxFront.Min.X+14, boxFront.Min.Y+20, boxFront.Max.X-stackW-60, boxFront.Min.Y+150), 44, color.White)
-	drawText(box, face, "BOOSTER BOX", image.Rect(boxFront.Min.X+14, boxFront.Min.Y+160, boxFront.Max.X-stackW-60, boxFront.Max.Y-20), 28, color.NRGBA{255, 255, 255, 220})
+	drawText(panel, face, o.Title, image.Rect(28, 40, fb.Max.X-stackW-120, 300), 88, color.White)
+	drawText(panel, face, "BOOSTER BOX", image.Rect(28, 320, fb.Max.X-stackW-120, fb.Max.Y-40), 56, color.NRGBA{255, 255, 255, 220})
+	paintFace(box, side, sideFace)
+	paintFace(box, side, faceOf("Box", "left"))
+	paintFace(box, top, topFace)
+	paintFace(box, top, faceOf("Box", "bottom"))
+	paintFace(box, panel, frontFace)
+	paintFace(box, panel, faceOf("Box", "back"))
 
 	// ---- box icon: recolor, cover the vanilla logo with a title plate and the vanilla packs with ours
 	bIcon, err := load("BasicCardBox_icon.png")
@@ -196,7 +258,7 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 		img *image.NRGBA
 	}{{&res.PackTexture, pack}, {&res.PackIcon, pIcon}, {&res.BoxTexture, box}, {&res.BoxIcon, bIcon}} {
 		rel, file := o.Target(*f.rel)
-		if err := savePNG(file, f.img); err != nil {
+		if err := imgfile.Save(file, f.img); err != nil {
 			return res, err
 		}
 		*f.rel = rel
@@ -474,29 +536,18 @@ func hsl(h, s, l float64) (uint8, uint8, uint8) {
 	return f(h + 1.0/3), f(h), f(h - 1.0/3)
 }
 
-func savePNG(path string, img image.Image) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return err
-	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
-}
-
 // CropPackFront saves the front panel of a pack texture in the vanilla pack layout (e.g. a converted mod's pack) as
 // its own image, to put on a generated box's front.
 func CropPackFront(packTexture, out string) error {
-	src, err := loadImage(packTexture)
+	src, err := imgfile.Load(packTexture)
 	if err != nil {
 		return err
 	}
 	b := src.Bounds()
 	s := float64(b.Dx()) / 1024
-	r := image.Rect(int(float64(packFront.Min.X)*s), int(float64(packFront.Min.Y)*s),
-		int(float64(packFront.Max.X)*s), int(float64(packFront.Max.Y)*s)).Add(b.Min)
+	f := packFrontRect()
+	r := image.Rect(int(float64(f.Min.X)*s), int(float64(f.Min.Y)*s), int(float64(f.Max.X)*s), int(float64(f.Max.Y)*s)).Add(b.Min)
 	dst := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
 	draw.Draw(dst, dst.Bounds(), src, r.Min, draw.Src)
-	return savePNG(out, dst)
+	return imgfile.Save(out, dst)
 }

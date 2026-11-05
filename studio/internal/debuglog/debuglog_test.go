@@ -97,3 +97,11 @@ func TestTruncate(t *testing.T) {
 		t.Errorf("truncated=%v len=%d", r.Truncated, len(r.Log))
 	}
 }
+
+func TestCompatibilityLines(t *testing.T) {
+	log := sampleLog + "[Error  :TCG Custom Cards] Game compatibility: Price-tag icons is off — the tag atlas grid is 32, not 16\r\n"
+	r := Build(Input{GameDir: writeGame(t, log, false), ModVersion: "0.13.3", Home: `D:\Profiles\Alice`})
+	if !hasNote(r, "err", "Switched off for this game version: Price-tag icons (the tag atlas grid is 32, not 16)") {
+		t.Errorf("no compatibility note: %+v", r.Notes)
+	}
+}

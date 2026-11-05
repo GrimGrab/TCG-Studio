@@ -8,10 +8,111 @@ import (
 	"os"
 )
 
+// assembly is the parts of a .NET assembly's metadata (ECMA-335 #~ tables) Studio reads: type and field rows by name.
+type assembly struct {
+	rows          [64]int
+	row           func(table, i int) []byte
+	rd            func(b []byte, n int) int
+	str           func(i int) string
+	idx           func(table int) int
+	strSz, blobSz int
+	fieldListOff  int
+	hasConst      int
+	blob          []byte
+}
+
+// fields: the field rows of type name (first, last+1), ok false when the assembly has no such type.
+func (a *assembly) fields(name string) (first, end int, ok bool) {
+	for i := 1; i <= a.rows[0x02]; i++ {
+		b := a.row(0x02, i)
+		if a.str(a.rd(b[4:], a.strSz)) != name {
+			continue
+		}
+		first = a.rd(b[a.fieldListOff:], a.idx(0x04))
+		end = a.rows[0x04] + 1
+		if i < a.rows[0x02] {
+			end = a.rd(a.row(0x02, i+1)[a.fieldListOff:], a.idx(0x04))
+		}
+		return first, end, true
+	}
+	return 0, 0, false
+}
+
+func (a *assembly) fieldName(f int) string { return a.str(a.rd(a.row(0x04, f)[2:], a.strSz)) }
+
+// HasField reports whether type typeName of a .NET assembly declares field fieldName (e.g. whether the installed game's
+// InteractableObject has a field that changes how its scripts are serialized).
+func HasField(dll, typeName, fieldName string) (ok bool, err error) {
+	defer catch(&err, "fields")
+	a, err := readAssembly(dll)
+	if err != nil {
+		return false, err
+	}
+	first, end, found := a.fields(typeName)
+	if !found {
+		return false, fmt.Errorf("type %s not found in %s", typeName, dll)
+	}
+	for f := first; f < end; f++ {
+		if a.fieldName(f) == fieldName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ReadEnums reads enum members (name → value) from a .NET assembly's metadata (ECMA-335 #~ tables), e.g. the game's
 // EItemType from Managed\Assembly-CSharp.dll, so Studio follows the installed game version instead of a copied list.
 func ReadEnums(dll string, names ...string) (out map[string]map[string]int32, err error) {
 	defer catch(&err, "enums")
+	a, err := readAssembly(dll)
+	if err != nil {
+		return nil, err
+	}
+	// Field row → constant value.
+	consts := map[int]int32{}
+	for i := 1; i <= a.rows[0x0B]; i++ {
+		b := a.row(0x0B, i)
+		parent := a.rd(b[2:], a.hasConst)
+		if parent&3 != 0 { // not a Field
+			continue
+		}
+		v := a.blob[a.rd(b[2+a.hasConst:], a.blobSz):]
+		n := int(v[0])
+		if v[0]&0x80 != 0 {
+			continue
+		}
+		v = v[1:]
+		switch {
+		case n >= 4:
+			consts[parent>>2] = int32(binary.LittleEndian.Uint32(v))
+		case n == 2:
+			consts[parent>>2] = int32(int16(binary.LittleEndian.Uint16(v)))
+		case n == 1:
+			consts[parent>>2] = int32(int8(v[0]))
+		}
+	}
+	out = map[string]map[string]int32{}
+	for _, name := range names {
+		first, end, ok := a.fields(name)
+		if !ok {
+			return nil, fmt.Errorf("enum %s not found in %s", name, dll)
+		}
+		members := map[string]int32{}
+		for f := first; f < end; f++ {
+			if binary.LittleEndian.Uint16(a.row(0x04, f))&0x40 == 0 { // not literal (value__)
+				continue
+			}
+			if v, ok := consts[f]; ok {
+				members[a.fieldName(f)] = v
+			}
+		}
+		out[name] = members
+	}
+	return out, nil
+}
+
+// readAssembly parses a .NET assembly's metadata tables.
+func readAssembly(dll string) (*assembly, error) {
 	raw, err := os.ReadFile(dll)
 	if err != nil {
 		return nil, err
@@ -117,65 +218,6 @@ func ReadEnums(dll string, names ...string) (out map[string]map[string]int32, er
 		return string(strs[i : i+e])
 	}
 	row := func(table, i int) []byte { return tbl[start[table]+(i-1)*sizes[table]:] }
-
-	// Field row → constant value.
-	consts := map[int]int32{}
-	hasConst := coded(2, 0x04, 0x08, 0x17)
-	for i := 1; i <= rows[0x0B]; i++ {
-		b := row(0x0B, i)
-		parent := rd(b[2:], hasConst)
-		if parent&3 != 0 { // not a Field
-			continue
-		}
-		v := blob[rd(b[2+hasConst:], blobSz):]
-		n := int(v[0])
-		if v[0]&0x80 != 0 {
-			continue
-		}
-		v = v[1:]
-		switch {
-		case n >= 4:
-			consts[parent>>2] = int32(binary.LittleEndian.Uint32(v))
-		case n == 2:
-			consts[parent>>2] = int32(int16(binary.LittleEndian.Uint16(v)))
-		case n == 1:
-			consts[parent>>2] = int32(int8(v[0]))
-		}
-	}
-
-	want := map[string]bool{}
-	for _, n := range names {
-		want[n] = true
-	}
-	out = map[string]map[string]int32{}
-	fieldListOff := 4 + 2*strSz + typeDefOrRef
-	for i := 1; i <= rows[0x02]; i++ {
-		b := row(0x02, i)
-		name := str(rd(b[4:], strSz))
-		if !want[name] {
-			continue
-		}
-		first := rd(b[fieldListOff:], idx(0x04))
-		last := rows[0x04] + 1
-		if i < rows[0x02] {
-			last = rd(row(0x02, i+1)[fieldListOff:], idx(0x04))
-		}
-		members := map[string]int32{}
-		for f := first; f < last; f++ {
-			fb := row(0x04, f)
-			if binary.LittleEndian.Uint16(fb)&0x40 == 0 { // not literal (value__)
-				continue
-			}
-			if v, ok := consts[f]; ok {
-				members[str(rd(fb[2:], strSz))] = v
-			}
-		}
-		out[name] = members
-	}
-	for _, n := range names {
-		if out[n] == nil {
-			return nil, fmt.Errorf("enum %s not found in %s", n, dll)
-		}
-	}
-	return out, nil
+	return &assembly{rows: rows, row: row, rd: rd, str: str, idx: idx, strSz: strSz, blobSz: blobSz,
+		fieldListOff: 4 + 2*strSz + typeDefOrRef, hasConst: coded(2, 0x04, 0x08, 0x17), blob: blob}, nil
 }

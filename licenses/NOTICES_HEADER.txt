@@ -36,6 +36,8 @@ WHAT IS INCLUDED IN THE DOWNLOAD
 4. Libraries built into TCG Studio.exe:
    - The Go standard library. BSD-3-Clause. https://go.dev
    - Svelte (the app's user interface). MIT. https://github.com/sveltejs/svelte
+   - animalese.js letter sounds by Josh Simmons (customers' talking sounds, also in the mod). CC BY 4.0, unchanged.
+     https://github.com/acedio/animalese.js
    - AVIF image decoding (Lorcana card art), compiled into the github.com/gen2brain/avif module: libavif (BSD-2-Clause,
      https://github.com/AOMediaCodec/libavif), dav1d (BSD-2-Clause, https://code.videolan.org/videolan/dav1d),
      libaom (BSD-2-Clause, https://aomedia.googlesource.com/aom) and libyuv (BSD-3-Clause,

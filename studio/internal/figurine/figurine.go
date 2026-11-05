@@ -2,9 +2,9 @@
 //
 // Pipeline:
 //
-//	Import (glTF / OBJ) → Scene (parts with materials, right-handed Y-up, UVs with a top-left origin)
+//	ImportWith (glTF / OBJ) → Scene (parts with materials, right-handed Y-up, UVs with a top-left origin)
 //	Combine             → one Mesh + one texture (materials packed into an atlas, untextured colours as swatches)
-//	WriteSource         → images/src/<name>.fig.obj + .png (right-handed, Y up, UV origin bottom-left): what the editor shows
+//	SourceOBJ           → images/src/<name>.fig.obj + .png (right-handed, Y up, UV origin bottom-left): what the editor shows
 //	Bake                → images/<id>_model.obj in Unity space (left-handed: z mirrored, winding swapped), placed in the base
 //	                      toy's mesh space; the mod's Runtime/MeshLoader reads it as-is.
 package figurine

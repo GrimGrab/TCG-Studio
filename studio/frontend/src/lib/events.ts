@@ -11,4 +11,5 @@ export const Ev = {
   TemplatesProgress: 'templates:progress',
   TemplatesReady: 'templates:ready',
   UpdateProgress: 'update:progress',
+  ArtConverted: 'art:converted', // {message, error} (App.BeginArtConversion)
 } as const;

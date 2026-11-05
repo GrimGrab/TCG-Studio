@@ -51,7 +51,6 @@ namespace TCGCustomCards.Patches
         public string Text;
         private Transform _overlay;
         private TextMeshProUGUI _label;
-        private static bool _logged;
         private bool _outlinePending;
 
         private void OnDisable() => Hide();
@@ -107,11 +106,6 @@ namespace TCGCustomCards.Patches
             _label = go.GetComponent<TextMeshProUGUI>();
             _label.raycastTarget = false;
             _outlinePending = true; // set once the label is active (TMP's material isn't ready on an inactive copy)
-            if (!_logged)
-            {
-                _logged = true;
-                Plugin.Log.LogInfo($"Grade label: created for {Ui.name} ('{Text}', font={_label.font?.name}, size={_label.fontSize})");
-            }
         }
     }
 }

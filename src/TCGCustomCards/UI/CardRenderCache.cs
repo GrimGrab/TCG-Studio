@@ -18,7 +18,7 @@ namespace TCGCustomCards.UI
     internal class CardRenderCache : MonoBehaviour
     {
         private const int TileW = 300, TileH = 420, LiveW = 600, LiveH = 840;
-        private const int MaxCached = 160, GridSlots = 4;
+        private const int MaxCached = 160, GridSlots = 1; // pictures per frame: each costs a frame some, so they're spread out
         /// <summary>Holo shader clock for still pictures (with the light sweep placed across the card by the shader): every tile
         /// gets the same good-looking frozen moment instead of a random one (between two sweeps the holo looked absent).</summary>
         private const float FrozenHoloTime = 2f;
@@ -134,7 +134,7 @@ namespace TCGCustomCards.UI
             {
                 if (s.Key == null || s.StagedFrame >= frame) continue;
                 var rt = new RenderTexture(TileW, TileH, 16, RenderTextureFormat.ARGB32) { name = "TCGCC_card_" + s.Key };
-                rt.Create();
+                using (Debug.SpikeWatch.Measure("picture texture")) rt.Create();
                 if (Photograph(s, rt, frozen: true)) Store(s.Key, rt);
                 else { rt.Release(); Destroy(rt); }
                 s.Key = null;
@@ -201,6 +201,10 @@ namespace TCGCustomCards.UI
                 _cam.farClipPlane = 1f;   // only the slot in front of it (slots are 2 units apart)
                 _cam.allowHDR = false;
                 _cam.allowMSAA = false;
+                // Only the slots: by default it also draws everything else on its way, like the shop's whole card canvas.
+                _layer = FreeLayer();
+                _cam.cullingMask = 1 << _layer;
+                _cam.useOcclusionCulling = false;
             }
             // Slots are pooled cards; a scene change destroys them (null) — take new ones then.
             bool broken = _grid.Count < GridSlots || _grid.Exists(s => s.Card == null) || System.Array.Exists(_lanes, l => l.Slot == null || l.Slot.Card == null);
@@ -238,12 +242,18 @@ namespace TCGCustomCards.UI
             card.m_ScaleGrp.localScale = Vector3.one;
             card.m_ScaleGrp.localPosition = Vector3.zero;
             card.m_ScaleGrp.localRotation = Quaternion.identity;
+            // Its own nested canvas: a card changing on the spawner's canvas makes Unity rebuild the batches of every card in the shop.
+            var ui = card.m_CardUI;
+            var shared = ui.GetComponentInParent<Canvas>();
+            if (ui.GetComponent<Canvas>() == null) ui.gameObject.AddComponent<Canvas>();
+            if (Plugin.CustomerDebug.Value) Plugin.Log.LogInfo($"Card pictures: slot's own canvas under {(shared != null ? shared.name : "none")}");
             return new Slot { Card = card, Pos = pos };
         }
 
         /// <summary>Sets a card up on a slot (same setup as PlayCardSet.GetNewCard3d); photographed next frame.</summary>
         private static void StageCard(Slot s, string key, CardData data)
         {
+            using var measured = Debug.SpikeWatch.Measure("card setup");
             s.Key = key;
             s.Data = data;
             s.StagedFrame = Time.frameCount;
@@ -253,16 +263,37 @@ namespace TCGCustomCards.UI
             var ui = card.m_CardUI;
             ui.SetFoilCullListVisibility(isActive: true);
             ui.ResetFarDistanceCull();
-            ui.SetCardUI(data);
+            Runtime.CardBackMesh.Suspended = true;
+            try { ui.SetCardUI(data); }
+            finally { Runtime.CardBackMesh.Suspended = false; }
             ui.SetFoilMaterialListFromSettingData(isWorldView: false);
             ui.SetFoilBlendedMaterialListFromSettingData(isWorldView: false);
             ui.SetBrightness(1f); // shop lighting (night) would darken the picture
             card.EvaluateCardGrade(data);
+            SetLayer(card.transform, _inst._layer); // after the setup: it can add parts
+        }
+
+        private int _layer;
+
+        /// <summary>The last layer the game hasn't named: nothing else is drawn on it.</summary>
+        private static int FreeLayer()
+        {
+            for (int i = 31; i > 7; i--)
+                if (string.IsNullOrEmpty(LayerMask.LayerToName(i))) return i;
+            return 31;
+        }
+
+        private static void SetLayer(Transform t, int layer)
+        {
+            t.gameObject.layer = layer;
+            for (int i = 0; i < t.childCount; i++) SetLayer(t.GetChild(i), layer);
         }
 
         /// <summary>Photographs a slot: camera framed on the card-back mesh (card-shaped, parallel to the face), from the face side.</summary>
         private bool Photograph(Slot s, RenderTexture rt, bool frozen)
         {
+            using var measured = Debug.SpikeWatch.Measure("card picture");
+            Debug.SpikeWatch.Mark($"a picture of a {(s.Data != null ? s.Data.borderType + (s.Data.isFoil ? " foil" : "") : "live")} card ({s.Key})");
             var card = s.Card;
             var ui = card.m_CardUI;
             var rtf = (RectTransform)ui.transform;
@@ -288,7 +319,10 @@ namespace TCGCustomCards.UI
                 Shader.SetGlobalFloat("_TCGCC_HoloTime", FrozenHoloTime);
             }
             _cam.targetTexture = rt;
+            float shadows = QualitySettings.shadowDistance;
+            QualitySettings.shadowDistance = 0f; // the sun's shadows would be worked out again for this shot
             _cam.Render();
+            QualitySettings.shadowDistance = shadows;
             _cam.targetTexture = null;
             if (frozen) Shader.SetGlobalFloat("_TCGCC_HoloFreeze", 0f); // back to live for everything else
             if (backWasActive) card.m_CardBackMesh.SetActive(true);

@@ -40,6 +40,9 @@ const (
 // SaveLibraryDraft stores a page's draft (list = accessories | furniture | decorations). Every entry is checked first: a bad
 // one writes nothing. Deleted entries are kept in the shared catalog first, as before.
 func (a *App) SaveLibraryDraft(list string, d LibraryDraft) (AccessoryView, error) {
+	if a.artConverting.Load() {
+		return AccessoryView{}, errArtConverting
+	}
 	l, err := a.items()
 	if err != nil {
 		return AccessoryView{}, err

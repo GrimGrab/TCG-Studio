@@ -101,6 +101,41 @@ func exportBoth(t *testing.T, h setups.Home, a string) string {
 	return out
 }
 
+// TestItemsKeepArtMark: a shared accessory arrives with its source's mark; one without (older art) is still offered for conversion.
+func TestItemsKeepArtMark(t *testing.T) {
+	h1, a1 := workspaceWith(t)
+	ws1 := workspace.Dir(h1.Root)
+	l, err := ws1.Items(a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Put(setfmt.Accessory{ID: "old", Kind: "Sleeve", Name: "Old"})
+	delete(l.Meta.ArtCurrent, "old")
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "Items"+ItemsExt)
+	if _, err := ExportItems(h1, a1, []Pick{{"accessory", "mat"}, {"accessory", "old"}}, out, "1.0", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	h2 := setups.Home{Root: t.TempDir()}
+	if _, err := h2.Ensure("1.0"); err != nil {
+		t.Fatal(err)
+	}
+	a2 := active(t, h2)
+	if _, err := ImportItems(h2, a2, out, Selection{Source: Source{Name: "Items"}, AddHere: true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := workspace.Dir(h2.Root).Items(a2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Meta.ArtCurrent["mat"] || got.Meta.ArtCurrent["old"] {
+		t.Errorf("marks after import: %v", got.Meta.ArtCurrent)
+	}
+}
+
 func TestItemsRoundTrip(t *testing.T) {
 	h1, a1 := workspaceWith(t)
 	out := exportBoth(t, h1, a1)

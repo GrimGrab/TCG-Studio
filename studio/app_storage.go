@@ -11,12 +11,12 @@ import (
 
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/library"
+	"tcgstudio/internal/migrate"
 	"tcgstudio/internal/project"
-	"tcgstudio/internal/upgrade"
 )
 
 // Storage page (views/Storage.svelte): disk use per set and setup, the player's actions on shared storage (internal/library)
-// and the one-time upgrade from older layouts (internal/upgrade). Nothing here runs unless the player presses its button.
+// and the one-time upgrade from older layouts (internal/migrate/upgrade). Nothing here runs unless the player presses its button.
 // Progress: "storage:progress" events.
 
 // storageState is the one storage task that may run at a time. Its label and last progress live here (not in the page),
@@ -79,15 +79,8 @@ func (a *App) CancelStorage() {
 // errOldMod: the game's mod predates reading content from the workspace (and compressed save files).
 var errOldMod = errors.New("the mod in the game is older than this TCG Studio — update it on the Game & mod page (Install / Repair) first")
 
-// StorageView is the Storage page: the measurements and what "Upgrade storage" would still do (empty once a workspace
-// uses shared storage only).
-type StorageView struct {
-	Report  *library.Report `json:"report"`
-	Upgrade *upgrade.Report `json:"upgrade"`
-}
-
-// StorageReport measures the workspace, every set and setup, the game's copies and what an upgrade would do. Read-only.
-func (a *App) StorageReport() (*StorageView, error) {
+// StorageReport measures the workspace, every set and setup and the game's copies. Read-only.
+func (a *App) StorageReport() (*library.Report, error) {
 	if err := a.setupsErr(); err != nil {
 		return nil, err
 	}
@@ -96,47 +89,14 @@ func (a *App) StorageReport() (*StorageView, error) {
 		return nil, err
 	}
 	defer done()
-	r, err := library.Analyze(ctx, a.home(), a.gameDir(), a.storageProgress)
-	if err != nil {
-		return nil, err
-	}
-	u, err := upgrade.Check(ctx, a.home(), a.gameDir(), a.upgradeProgress)
-	return &StorageView{Report: r, Upgrade: u}, err
+	return library.Analyze(ctx, a.home(), a.gameDir(), a.storageProgress)
 }
-
-func (a *App) upgradeProgress(p upgrade.Progress) { a.storageProgress(library.Progress(p)) }
 
 // StorageResult is what an action did, plus a note about the game's copies.
 type StorageResult struct {
 	Files int    `json:"files"`
 	Freed int64  `json:"freed"`
 	Note  string `json:"note"`
-}
-
-// UpgradeStorage brings the workspace to shared storage (internal/upgrade) with the player's choices for differing copies
-// and named folders (the game reads the shared files once it is pointed at the workspace).
-func (a *App) UpgradeStorage(choices upgrade.Choices) (*StorageResult, error) {
-	if game.IsRunning() {
-		return nil, errGameRunning
-	}
-	return a.storageAction("Upgrading storage", func(ctx context.Context) (int, int64, error) {
-		res, err := upgrade.Run(ctx, a.home(), a.gameDir(), choices, a.upgradeProgress)
-		a.pointGameAtWorkspace()
-		if res == nil {
-			return 0, 0, err
-		}
-		return res.Files, res.Freed, err
-	})
-}
-
-// UpgradePreviewDiffer shows a differing copy's file next to the shared one (key = upgrade.Differ.Key).
-func (a *App) UpgradePreviewDiffer(key string) (*upgrade.Preview, error) {
-	return upgrade.PreviewDiffer(a.home(), key)
-}
-
-// UpgradePreviewNamed shows a named folder's sample file next to the set's shared one.
-func (a *App) UpgradePreviewNamed(set, name, sample string) (*upgrade.Preview, error) {
-	return upgrade.PreviewNamed(a.home(), set, name, sample)
 }
 
 // CompressSaves compresses the mod's save files that are still plain JSON (older mod versions): every setup's parked saves,
@@ -165,8 +125,8 @@ func (a *App) RemoveGameCopies() (*StorageResult, error) {
 	if !game.ModReadsLibrary(gameDir) {
 		return nil, errOldMod
 	}
-	if upgrade.GamePending(a.home(), gameDir) {
-		return nil, errors.New("your setups' content isn't taken over from the game folder yet — restart TCG Studio with the game closed")
+	if migrate.OldLayout(a.home(), gameDir) {
+		return nil, errors.New("your content hasn't been moved out of the game folder yet — open TCG Studio " + legacyRelease + " once first")
 	}
 	var backup string
 	r, err := a.storageAction("Removing the game's copies of set files", func(ctx context.Context) (int, int64, error) {

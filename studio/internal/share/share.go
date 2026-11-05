@@ -23,8 +23,8 @@ import (
 	"tcgstudio/internal/ids"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setups"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 const (
@@ -79,7 +79,7 @@ type located struct {
 }
 
 // exportItems writes the items into z and returns their manifest entries. progress gets (done, total).
-func exportItems(ws workspace.Dir, list []located, z *ziputil.Writer, progress func(done, total int)) ([]Item, error) {
+func exportItems(ws workspace.Dir, list []located, z *sharezip.Writer, progress func(done, total int)) ([]Item, error) {
 	var out []Item
 	for i, l := range list {
 		if err := l.kind.Store.Export(ws, l.root, l.item.ID, prefix(l.kind.ID, l.item.ID), z); err != nil {
@@ -127,7 +127,7 @@ func ExportItems(h setups.Home, activeRoot string, picks []Pick, dest, studioVer
 	if len(list) == 0 {
 		return skipped, errors.New("nothing to export: content converted from another mod stays on this PC (its art belongs to the mod's authors)")
 	}
-	z, err := ziputil.Create(dest)
+	z, err := sharezip.Create(dest)
 	if err != nil {
 		return nil, err
 	}
@@ -168,12 +168,12 @@ func itemIn(ws workspace.Dir, k content.Kind, root, id string) (content.Item, er
 
 // readManifest opens a share file and reads its manifest (format checked by the caller).
 func readManifest(src string) (*zip.ReadCloser, *Manifest, error) {
-	zr, err := ziputil.Open(src)
+	zr, err := sharezip.Open(src)
 	if err != nil {
 		return nil, nil, fmt.Errorf("not a TCG Studio file: %w", err)
 	}
 	m := &Manifest{}
-	found, err := ziputil.ReadJSON(&zr.Reader, manifestFile, m)
+	found, err := sharezip.ReadJSON(&zr.Reader, manifestFile, m)
 	if err != nil || !found {
 		zr.Close()
 		if err == nil {
@@ -258,7 +258,7 @@ func unpack(zr *zip.Reader, dir string, items []Item) (map[Pick]string, error) {
 		want[prefix(it.Kind, it.ID)] = p
 		out[p] = filepath.Join(dir, filepath.FromSlash(prefix(it.Kind, it.ID)))
 	}
-	err := ziputil.ExtractAll(zr, dir, func(name string) bool {
+	err := sharezip.ExtractAll(zr, dir, func(name string) bool {
 		if !strings.HasPrefix(name, itemsDir) {
 			return false
 		}

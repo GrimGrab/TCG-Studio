@@ -12,28 +12,50 @@ import (
 	"tcgstudio/internal/assets"
 	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/origin"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 // Entry stores one list of the accessory library (Field = its JSON name). Entries are handled as JSON objects, so any
 // field of any entry kind is carried; their files are the "assets/…" strings in the entry and its editor layout.
 type Entry struct {
+	Label string // shown for every entry of a list whose items have no name of their own
 	Field string // "accessories", "furniture", "decorations"
 	Sub   string // the entry field shown as sub label ("kind", "type")
+	// Preview is what stands in for an icon: Preview* below, "" = nothing.
+	Preview string
 }
 
+// What an entry without an icon shows.
 const (
-	entryFile  = "entry.json"  // inside an item's zip folder: the entry
-	layoutFile = "layout.json" // its editor layout (studio.json layouts[id])
-	filesDir   = "files/"      // its store files, by store name
+	PreviewPerson    = "person"   // the game character they're built on
+	PreviewClothing  = "clothing" // the print or colour of its first part
+	PreviewAnimation = "animation"
 )
+
+const (
+	entryFile      = "entry.json"  // inside an item's zip folder: the entry
+	layoutFile     = "layout.json" // its editor layout (studio.json layouts[id])
+	artCurrentFile = "art-current" // there when its art is in the current game's layouts (studio.json artCurrent[id])
+	filesDir       = "files/"      // its store files, by store name
+)
+
+type entryPart struct {
+	Tint  string `json:"tint"`
+	Print string `json:"print"`
+}
 
 type entryFields struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Icon string `json:"icon"`
-	Base string `json:"base"` // the vanilla item it is built on (accessories, furniture)
+	// What the people and looks have to show instead of an icon.
+	Portrait string      `json:"portrait"`
+	Model    *int        `json:"model"`
+	Female   bool        `json:"female"`
+	Body     string      `json:"body"`
+	Parts    []entryPart `json:"parts"`
+	Base     string      `json:"base"` // the vanilla item it is built on (accessories, furniture)
 }
 
 func (e Entry) open(ws workspace.Dir, root string) (*accessories.Library, []json.RawMessage, error) {
@@ -68,7 +90,11 @@ func (e Entry) List(ws workspace.Dir, root string) ([]Item, error) {
 		if json.Unmarshal(raw, &f) != nil || f.ID == "" {
 			continue
 		}
-		it := Item{ID: f.ID, Name: f.Name, Icon: f.Icon, Base: f.Base, Converted: accessories.IsConverted(f.ID)}
+		name := f.Name
+		if e.Label != "" {
+			name = e.Label
+		}
+		it := Item{ID: f.ID, Name: name, Icon: firstOf(f.Icon, f.Portrait), Look: lookOf(e.Preview, f.Model, f.Female || f.Body == "female", f.Parts), Refs: refsOf(l, f.ID, raw), Base: f.Base, Converted: accessories.IsConverted(f.ID)}
 		if e.Sub != "" {
 			var m map[string]any
 			_ = json.Unmarshal(raw, &m)
@@ -114,6 +140,11 @@ func (e Entry) Copy(ws workspace.Dir, from, to string, ids []string) ([]string, 
 		} else {
 			delete(dst.Meta.Origins, id)
 		}
+		if src.Meta.ArtCurrent[id] {
+			dst.Meta.ArtCurrent[id] = true
+		} else {
+			delete(dst.Meta.ArtCurrent, id)
+		}
 		done = append(done, id)
 	}
 	if len(done) == 0 {
@@ -154,6 +185,7 @@ func (e Entry) Remove(ws workspace.Dir, root string, ids []string) (int, []strin
 		}
 		delete(l.Meta.Layouts, id)
 		delete(l.Meta.Origins, id)
+		delete(l.Meta.ArtCurrent, id)
 	}
 	n := len(list) - len(kept)
 	if n == 0 {
@@ -176,7 +208,7 @@ func (e Entry) Cleanup(ws workspace.Dir, roots, _, refs []string) []string {
 	return nil
 }
 
-func (e Entry) Export(ws workspace.Dir, root, id, prefix string, z *ziputil.Writer) error {
+func (e Entry) Export(ws workspace.Dir, root, id, prefix string, z *sharezip.Writer) error {
 	l, list, err := e.open(ws, root)
 	if err != nil {
 		return err
@@ -188,9 +220,14 @@ func (e Entry) Export(ws workspace.Dir, root, id, prefix string, z *ziputil.Writ
 	if err := z.Bytes(prefix+entryFile, indent(list[i])); err != nil {
 		return err
 	}
+	if l.Meta.ArtCurrent[id] {
+		if err := z.Bytes(prefix+artCurrentFile, []byte("1")); err != nil {
+			return err
+		}
+	}
 	refs := assets.Refs(list[i])
 	if lay, ok := l.Meta.Layouts[id]; ok {
-		if err := z.Bytes(prefix+layoutFile, ziputil.ScrubJSON(indent(lay))); err != nil {
+		if err := z.Bytes(prefix+layoutFile, sharezip.ScrubJSON(indent(lay))); err != nil {
 			return err
 		}
 		refs = append(refs, assets.Refs(lay)...)
@@ -250,6 +287,9 @@ func (e Entry) Import(ws workspace.Dir, root string, in []In) error {
 		if lay, err := os.ReadFile(filepath.Join(it.Dir, layoutFile)); err == nil {
 			l.Meta.Layouts[it.NewID] = json.RawMessage(fsutil.MapJSONStrings(lay, repoint))
 		}
+		if fsutil.Exists(filepath.Join(it.Dir, artCurrentFile)) {
+			l.Meta.ArtCurrent[it.NewID] = true
+		}
 		if it.Origin != nil {
 			l.Meta.Origins[it.NewID] = *it.Origin
 		} else {
@@ -294,4 +334,51 @@ func OriginOf(o *origin.Origin) *origin.Origin {
 	}
 	c := *o
 	return &c
+}
+
+func firstOf(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// refsOf is the store files an entry and its editor layout refer to, each once.
+func refsOf(l *accessories.Library, id string, raw json.RawMessage) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(b []byte) {
+		for _, r := range assets.Refs(b) {
+			if !seen[r] {
+				seen[r] = true
+				out = append(out, r)
+			}
+		}
+	}
+	add(raw)
+	if layout, ok := l.Meta.Layouts[id]; ok {
+		add(layout)
+	}
+	return out
+}
+
+// lookOf is what an entry of this preview kind can show without an icon of its own.
+func lookOf(preview string, model *int, female bool, parts []entryPart) *Look {
+	switch preview {
+	case PreviewPerson:
+		m := -1
+		if model != nil {
+			m = *model
+		}
+		return &Look{Model: m, Female: female}
+	case PreviewClothing:
+		l := &Look{Model: -1}
+		if len(parts) > 0 {
+			l.Tint, l.Print = parts[0].Tint, parts[0].Print
+		}
+		return l
+	case PreviewAnimation:
+		return &Look{Model: -1, Animation: true}
+	}
+	return nil
 }

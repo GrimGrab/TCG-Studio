@@ -1392,10 +1392,9 @@
       f.mesh = b.mesh; f.texture = b.texture;
       if (!f.icon || layout.autoIcon) { icon = await renderIcon(t?.iconSize ?? [512, 512]); layout.autoIcon = true; }
     } else {
-      // A texture that belonged to a removed model goes with it (older libraries: its fixed file name).
-      const hadModel = !!f.mesh;
+      // A texture that belonged to a removed model goes with it.
+      if (f.mesh) f.texture = '';
       f.mesh = '';
-      if (hadModel || f.texture === `images/${f.id}_texture.png`) f.texture = '';
     }
     // Every spot needs a customer point (customers can't take from a spot without one): refuse to save instead of guessing.
     const missing = (f.spots ?? []).map((q: any, i: number) => (q.customer?.length === 2 ? 0 : i + 1)).filter((n: number) => n);

@@ -22,8 +22,6 @@ namespace TCGCustomCards.Patches
     [HarmonyPatch(typeof(CardUI), nameof(CardUI.SetCardUI))]
     internal static class FullImageFoilGlowPatch
     {
-        private static int _attached;
-
         private static void Postfix(CardUI __instance, CardData cardData)
         {
             var existing = __instance.GetComponent<FullImageFoilGlow>();
@@ -32,7 +30,6 @@ namespace TCGCustomCards.Patches
             if (!Registry.TryGetCard(cardData.monsterType, out var set, out _) || set.Def.RenderMode != Core.RenderMode.FullImage) return;
             if (existing != null) return;
             __instance.gameObject.AddComponent<FullImageFoilGlow>().Ui = __instance;
-            if (_attached++ < 3) Plugin.Log.LogInfo($"Foil glow: attached to {__instance.name} (foil={cardData.isFoil})");
         }
     }
 
@@ -51,9 +48,6 @@ namespace TCGCustomCards.Patches
         private Image _rim;
         /// <summary>Game foil images we disabled while our rim holo shows (re-enabled when it stops).</summary>
         private readonly System.Collections.Generic.List<Image> _suppressed = new System.Collections.Generic.List<Image>();
-        private static bool _logged;
-        private static int _diag;
-        private CardData _lastDiagCard;
 
         private void OnDisable()
         {
@@ -75,16 +69,6 @@ namespace TCGCustomCards.Patches
 
             // Vanilla shows it when the card is foil (FoilGrp active) and not culled; we also need our art to be showing.
             bool on = !holo && Plugin.FullImageFoilGlow.Value && _overlay.gameObject.activeSelf && _src.gameObject.activeInHierarchy;
-            var data = Ui.GetCardData();
-            if (data != null && data.isFoil && _overlay.gameObject.activeSelf && _diag < 8 && _lastDiagCard != data)
-            {
-                _diag++;
-                _lastDiagCard = data;
-                var shine = _src.childCount > 0 ? _src.GetChild(0) : null;
-                Plugin.Log.LogInfo($"Foil glow check: border={data.borderType} on={on} FoilGrp self={Ui.m_FoilGrp.activeSelf} hier={Ui.m_FoilGrp.activeInHierarchy} " +
-                                   $"GlowMask hier={_src.gameObject.activeInHierarchy} shine={shine?.name} active={shine?.gameObject.activeSelf} " +
-                                   $"enabled={shine?.GetComponent<Image>()?.enabled} color={shine?.GetComponent<Image>()?.color} mat={shine?.GetComponent<Image>()?.material?.name}");
-            }
             if (!on) { Hide(); return; }
             if (_copy == null) CreateCopy();
 
@@ -214,13 +198,6 @@ namespace TCGCustomCards.Patches
             go.name = CopyName;
             _copy = go.transform;
             foreach (var g in go.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = false;
-            if (!_logged)
-            {
-                _logged = true;
-                var shine = _src.childCount > 0 ? _src.GetChild(0).GetComponent<Image>() : null;
-                Plugin.Log.LogInfo($"Foil glow: copied {_src.name} ({_src.childCount} children, shine mat={shine?.material?.name}) above the overlay; " +
-                                   $"CardFront children: {string.Join(" | ", Enumerable.Range(0, _overlay.parent.childCount).Select(i => _overlay.parent.GetChild(i).name))}");
-            }
         }
 
         /// <summary>Copies active state and Image state from the original subtree (the game toggles/animates these).</summary>

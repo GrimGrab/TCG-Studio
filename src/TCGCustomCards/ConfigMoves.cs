@@ -17,6 +17,25 @@ namespace TCGCustomCards
     /// </summary>
     internal static class ConfigMoves
     {
+        /// <summary>Every settings change since players first had the setting; Studio's modconfig/migrations.go has the same lists.</summary>
+        public static void Run(ConfigFile cfg, Dictionary<(string section, string key), string> before)
+        {
+            CarryMoved(cfg, before); // migration:settings-moved
+            // migration:settings-bulk-boxes
+            // Game 1.03 replaced the ten Tetramon/Destiny bulk boxes with six by grade: Tetramon designs carry over, Destiny ones go.
+            const string boxes = "Visuals - Game look - Boxes";
+            CarryRenamed(cfg, before, (boxes, "BulkBox_TetramonBaseTexture", "BulkBoxNGTexture"),
+                (boxes, "BulkBox_TetramonBaseGradeHGTexture", "BulkBoxHGTexture"), (boxes, "BulkBox_TetramonBaseGradeMGTexture", "BulkBoxMGTexture"),
+                (boxes, "BulkBox_TetramonBaseGradePGTexture", "BulkBoxPGTexture"), (boxes, "BulkBox_TetramonBaseGradeUGTexture", "BulkBoxUGTexture"));
+            // migration:settings-binder-layout, migration:settings-credit-card, and the bulk boxes above
+            DropRemoved(cfg, ("Binder", "Layout"), ("Debug", "TestDraft"), ("Visuals - Game look", "CreditCardImage"), ("Visuals - Game look", "CreditCardCrop"),
+                (boxes, "BulkBox_TetramonBaseTexture"), (boxes, "BulkBox_TetramonDestinyTexture"),
+                (boxes, "BulkBox_TetramonBaseGradeHGTexture"), (boxes, "BulkBox_TetramonBaseGradeMGTexture"),
+                (boxes, "BulkBox_TetramonBaseGradePGTexture"), (boxes, "BulkBox_TetramonBaseGradeUGTexture"),
+                (boxes, "BulkBox_TetramonDestinyGradeHGTexture"), (boxes, "BulkBox_TetramonDestinyGradeMGTexture"),
+                (boxes, "BulkBox_TetramonDestinyGradePGTexture"), (boxes, "BulkBox_TetramonDestinyGradeUGTexture"));
+        }
+
         /// <summary>Every (section, key) → raw value in the config file as it is on disk now.</summary>
         public static Dictionary<(string section, string key), string> Snapshot(ConfigFile cfg)
         {
@@ -56,6 +75,28 @@ namespace TCGCustomCards
                     Plugin.Log.LogInfo($"Config: moved [{old[0].Key.section}] {def.Key} = {old[0].Value} to [{def.Section}]");
                 }
                 catch (Exception e) { Plugin.Log.LogWarning($"Config: couldn't move {def.Key}: {e.Message}"); }
+            }
+            if (moved > 0) cfg.Save();
+        }
+
+        /// <summary>Settings renamed (new name ← old name, same section): an old value moves to the new setting when the new one
+        /// isn't in the file yet (Studio's modconfig renamedSettings does the same when it opens the file first).</summary>
+        public static void CarryRenamed(ConfigFile cfg, Dictionary<(string section, string key), string> before,
+            params (string section, string from, string to)[] renames)
+        {
+            int moved = 0;
+            foreach (var (section, from, to) in renames)
+            {
+                var def = new ConfigDefinition(section, to);
+                if (before.ContainsKey((section, to)) || !cfg.ContainsKey(def)) continue;
+                if (!before.TryGetValue((section, from), out var value) || string.IsNullOrEmpty(value)) continue;
+                try
+                {
+                    cfg[def].SetSerializedValue(value);
+                    moved++;
+                    Plugin.Log.LogInfo($"Config: [{section}] {from} = {value} carried over to {to}");
+                }
+                catch (Exception e) { Plugin.Log.LogWarning($"Config: couldn't carry {from} over to {to}: {e.Message}"); }
             }
             if (moved > 0) cfg.Save();
         }

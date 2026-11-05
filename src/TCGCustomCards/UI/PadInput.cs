@@ -11,6 +11,13 @@ namespace TCGCustomCards.UI
     internal enum BinderPadButton { None, LeftStickClick, RightStickClick, SelectButton }
 
     /// <summary>
+    /// Controller buttons for the customer actions while walking around the shop. The game's walking map uses the face
+    /// buttons, shoulders, triggers and sticks; Select and the stick clicks share base keys (Enter, R/Ctrl), so the button is a
+    /// setting.
+    /// </summary>
+    internal enum CustomerPadButton { None, LeftStickClick, RightStickClick, SelectButton, DPadUp, DPadDown, DPadLeft, DPadRight }
+
+    /// <summary>
     /// Raw gamepad buttons through the game's own InputManager device (its button reader is private). Only read while the
     /// game says a controller is in use, so a pad lying on the desk never acts during mouse play.
     /// </summary>
@@ -65,6 +72,39 @@ namespace TCGCustomCards.UI
         }
 
         public static bool Down(BinderPadButton b) => b != BinderPadButton.None && Down(ToGame(b));
+
+        public static bool Down(CustomerPadButton b)
+        {
+            var g = Pad;
+            if (g == null) return false;
+            switch (b)
+            {
+                case CustomerPadButton.LeftStickClick: return g.leftStickButton.wasPressedThisFrame;
+                case CustomerPadButton.RightStickClick: return g.rightStickButton.wasPressedThisFrame;
+                case CustomerPadButton.SelectButton: return g.selectButton.wasPressedThisFrame;
+                case CustomerPadButton.DPadUp: return g.dpad.up.wasPressedThisFrame;
+                case CustomerPadButton.DPadDown: return g.dpad.down.wasPressedThisFrame;
+                case CustomerPadButton.DPadLeft: return g.dpad.left.wasPressedThisFrame;
+                case CustomerPadButton.DPadRight: return g.dpad.right.wasPressedThisFrame;
+                default: return false;
+            }
+        }
+
+        /// <summary>Short name of a customer pad button for on-screen hints (Xbox or PlayStation names).</summary>
+        public static string Label(CustomerPadButton b)
+        {
+            switch (b)
+            {
+                case CustomerPadButton.LeftStickClick: return "L3";
+                case CustomerPadButton.RightStickClick: return "R3";
+                case CustomerPadButton.SelectButton: return IsPS ? "Share" : "View";
+                case CustomerPadButton.DPadUp: return "D-pad up";
+                case CustomerPadButton.DPadDown: return "D-pad down";
+                case CustomerPadButton.DPadLeft: return "D-pad left";
+                case CustomerPadButton.DPadRight: return "D-pad right";
+                default: return null;
+            }
+        }
 
         /// <summary>
         /// D-pad or left stick as one of four directions (zero = none). The stick needs 0.5 to start a direction and keeps

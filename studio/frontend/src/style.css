@@ -175,3 +175,32 @@ button.link:hover:not(:disabled) { text-decoration: underline; }
 /* Small stat tiles (.mini > .label + b), pages lay them out. */
 .mini .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .mini b { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The person pages (Customers, Employees). */
+.fwrap.personform { display: flex; flex: 1; min-height: 0; }
+.personform .lside { width: 270px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.personform section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.personform section > .row { flex-wrap: wrap; }
+.personform h3 { font-size: 15px; margin: 0; }
+.personform .lbl { width: 90px; color: var(--muted); font-size: 13px; }
+.personform .lbl.wide { width: 120px; }
+.personform .num { width: 70px; }
+.personform .body { font-size: 22px; color: var(--muted); }
+.personform .portrait { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.personform details.linegroup { border-top: 1px solid var(--line); padding-top: 6px; }
+.personform .linegroup > summary { cursor: pointer; font-size: 13px; }
+.personform .tagn { font-size: 11px; color: var(--muted); background: var(--panel-2); border-radius: 8px; padding: 0 6px; margin-left: 6px; }
+.personform .savedrow { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.personform .face .walk { position: absolute; top: 2px; left: 2px; padding: 0 3px; font-size: 11px; line-height: 16px; margin: 0; }
+.personform .face .walk.off { opacity: 0.45; filter: grayscale(1); text-decoration: line-through; }
+.personform .faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin: 8px 0; max-height: 330px; overflow-y: auto; }
+.personform .face { position: relative; padding: 0; aspect-ratio: 1; overflow: hidden; border: 2px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.personform .face.on { border-color: var(--accent); }
+.personform .face.own { display: flex; }
+.personform .face.own .pick { flex: 1; padding: 0; border: 0; background: none; }
+.personform .face.own .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.personform .face.own > span { left: 3px; right: auto; max-width: calc(100% - 8px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.personform .face.own .noimg { display: grid; place-items: center; height: 100%; font-size: 22px; color: var(--muted); }
+.personform .face .del { position: absolute; top: 2px; right: 2px; padding: 0 5px; font-size: 11px; line-height: 16px; margin: 0; opacity: 0; }
+.personform .face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.personform .face span { position: absolute; right: 3px; bottom: 2px; font-size: 11px; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 0 4px; border-radius: 3px; }

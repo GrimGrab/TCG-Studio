@@ -35,6 +35,15 @@ namespace TCGCustomCards.Hooks
         private static bool _pending; // set between Sit and the DelayStart it triggers
         private static bool _vanilla; // re-entrant vanilla call from SitVanilla
 
+        /// <summary>The table the player last right-clicked to sit at.</summary>
+        public static InteractablePlayTable LastTable { get; private set; }
+
+        /// <summary>
+        /// A game the player played at a table ended (vanilla Tetramon or ours; PlayTableGame.ReportWinner): (opponent customer
+        /// or null, player won, draw).
+        /// </summary>
+        public static event Action<Customer, bool, bool> PlayerMatchEnded;
+
         /// <summary>A session of ours is on (from Sit until the player leaves the table).</summary>
         public static bool Active => _game != null;
 
@@ -55,7 +64,7 @@ namespace TCGCustomCards.Hooks
         }
 
         private static readonly AccessTools.FieldRef<InteractablePlayTable, System.Collections.Generic.List<Customer>> Occupied =
-            AccessTools.FieldRefAccess<InteractablePlayTable, System.Collections.Generic.List<Customer>>("m_OccupiedCustomer");
+            Core.Compat.Field<InteractablePlayTable, System.Collections.Generic.List<Customer>>(typeof(TableSession), "m_OccupiedCustomer");
 
         /// <summary>The customer seated at <paramref name="table"/> waiting for an opponent (the player's opponent), or null.</summary>
         public static Customer WaitingCustomer(InteractablePlayTable table)
@@ -77,9 +86,30 @@ namespace TCGCustomCards.Hooks
         {
             private static bool Prefix(InteractablePlayTable __instance)
             {
+                LastTable = __instance;
                 if (_vanilla || OnSit == null) return true;
                 return !OnSit(__instance);
             }
+        }
+
+        private static readonly AccessTools.FieldRef<PlayCardSetUI, PlayCardSet> UiSet =
+            AccessTools.FieldRefAccess<PlayCardSetUI, PlayCardSet>("m_PlayCardSet");
+
+        /// <summary>
+        /// PlayCardSetUI.Update/LateUpdate read m_PlayCardSet.m_PlayTableGame on their first line, but m_PlayCardSet is only
+        /// set by Init (PlayCardSet :266, when a table game starts): until then the game throws there every frame (~110 000
+        /// NullReferenceExceptions a session in Player.log). Skipped while it isn't set up; nothing else changes.
+        /// </summary>
+        [HarmonyPatch(typeof(PlayCardSetUI), "Update")]
+        private static class PlayCardSetUIUpdatePatch
+        {
+            private static bool Prefix(PlayCardSetUI __instance) => UiSet(__instance)?.m_PlayTableGame != null;
+        }
+
+        [HarmonyPatch(typeof(PlayCardSetUI), "LateUpdate")]
+        private static class PlayCardSetUILateUpdatePatch
+        {
+            private static bool Prefix(PlayCardSetUI __instance) => UiSet(__instance)?.m_PlayTableGame != null;
         }
 
         [HarmonyPatch(typeof(PlayTableGame), "DelayStart")]
@@ -105,6 +135,18 @@ namespace TCGCustomCards.Hooks
                 _game = null;
                 _pending = false;
                 g?.LeaveMidGame();
+            }
+        }
+
+        [HarmonyPatch(typeof(PlayTableGame), nameof(PlayTableGame.ReportWinner))]
+        private static class ResultPatch
+        {
+            private static void Postfix(bool isPlayerWin, bool isDraw)
+            {
+                if (PlayerMatchEnded == null) return;
+                var opponent = LastTable != null ? WaitingCustomer(LastTable) : null;
+                try { PlayerMatchEnded(opponent, isPlayerWin, isDraw); }
+                catch (Exception e) { Plugin.Log.LogError($"Player match result handler failed: {e}"); }
             }
         }
 

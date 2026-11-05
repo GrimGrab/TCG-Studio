@@ -18,7 +18,7 @@ namespace TCGCustomCards.Patches
     internal static class ExpansionPickerOpenPatch
     {
         private static readonly AccessTools.FieldRef<CardExpansionSelectScreen, int> CurrentIndex =
-            AccessTools.FieldRefAccess<CardExpansionSelectScreen, int>("m_CurrentIndex");
+            Core.Compat.Field<CardExpansionSelectScreen, int>(typeof(ExpansionPickerOpenPatch), "m_CurrentIndex");
 
         private static CardExpansionSelectScreen _builtFor;
         private static ButtonGrid _grid;

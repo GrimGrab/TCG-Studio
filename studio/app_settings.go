@@ -25,6 +25,8 @@ type Settings struct {
 	ImageFormat string `json:"imageFormat,omitempty"`
 	// UIScale sizes the whole Studio window's text and controls (1 = 100 %, 0 = unset = 100 %); the frontend applies it.
 	UIScale float64 `json:"uiScale,omitempty"`
+	// LayoutTuner shows the developer panel for face maps in the texture editor (Settings → Developer).
+	LayoutTuner bool `json:"layoutTuner,omitempty"`
 }
 
 func settingsPath() string {

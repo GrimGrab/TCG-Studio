@@ -246,7 +246,7 @@ func (a *App) ShopLook() (ShopLookView, error) {
 		}
 	}
 	for id, file := range shopLayouts {
-		if exists(a.templateFile(gameextract.ShopSignDir, file)) {
+		if fsutil.Exists(a.templateFile(gameextract.ShopSignDir, file)) {
 			v.Layouts[id] = "/signtemplates/" + file
 		}
 	}
@@ -363,7 +363,7 @@ func (a *App) ImportCardBack() (CardBackSource, error) {
 
 // GenerateCardBack makes a card back picture from a colour and an optional title (already card-shaped: the crop is all of it).
 func (a *App) GenerateCardBack(color, title string) (CardBackSource, error) {
-	name, err := a.writeCardBackSource(".png", func(p string) error { return art.GenerateCardBack("", "", color, title, p) })
+	name, err := a.writeCardBackSource(".png", func(p string) error { return art.GenerateCardBack(nil, color, title, p) })
 	if err != nil {
 		return CardBackSource{}, err
 	}
@@ -390,7 +390,7 @@ func (a *App) applyCardBack(s CardBackSave) error {
 		}
 		return nil
 	}
-	if filepath.Base(s.File) != s.File || !strings.HasPrefix(s.File, cardBackPrefix) || !exists(filepath.Join(a.shopSignDir(), s.File)) {
+	if filepath.Base(s.File) != s.File || !strings.HasPrefix(s.File, cardBackPrefix) || !fsutil.Exists(filepath.Join(a.shopSignDir(), s.File)) {
 		return errors.New("card back picture not found: " + s.File)
 	}
 	if len(s.Crop) != 0 && len(s.Crop) != 4 {
@@ -543,45 +543,9 @@ func (a *App) SaveShopLook(s ShopLookSave) (ShopLookView, error) {
 			}
 		}
 	}
-	var kvs [][3]string
-	var replaced []string
-	for slot, ps := range s.Pictures {
-		pic, err := pictureSlot(slot)
-		if err != nil {
-			return ShopLookView{}, err
-		}
-		items := ps.Items
-		if !pic.list {
-			items = []ShopPictureSave{ps}
-		}
-		var names, crops []string
-		for _, it := range items {
-			name, crop := it.File, ""
-			if it.PNG != "" && !pic.list {
-				if name, err = a.writeDesignedPicture(pic, slot, it.PNG, it.Design); err != nil {
-					return ShopLookView{}, err
-				}
-			} else {
-				if name != "" && (filepath.Base(name) != name || strings.Contains(name, listSeparator) || !exists(filepath.Join(a.shopSignDir(), name))) {
-					return ShopLookView{}, errors.New("picture not found: " + name)
-				}
-				if crop, err = cropValue(it.Crop); err != nil {
-					return ShopLookView{}, err
-				}
-			}
-			if name != "" || !pic.list {
-				names, crops = append(names, name), append(crops, crop)
-			}
-		}
-		if old, err := modconfig.Get(p, pic.section, pic.imageKey); err == nil {
-			for _, f := range strings.Split(old.Value, listSeparator) {
-				if !slices.Contains(names, f) {
-					replaced = append(replaced, f)
-				}
-			}
-		}
-		kvs = append(kvs, [3]string{pic.section, pic.cropKey, strings.Join(crops, listSeparator)},
-			[3]string{pic.section, pic.imageKey, strings.Join(names, listSeparator)})
+	kvs, replaced, err := a.pictureSettings(p, s.Pictures)
+	if err != nil {
+		return ShopLookView{}, err
 	}
 	boxKVs, boxReplaced, err := a.saveBoxLooks(p, s.Boxes)
 	if err != nil {
@@ -606,28 +570,17 @@ func (a *App) SaveShopLook(s ShopLookSave) (ShopLookView, error) {
 		kvs = append(kvs, [3]string{shopSignSection, shopSignNameKey, strconv.FormatBool(*s.ShowName)})
 	}
 	if s.Font != nil {
-		if f := *s.Font; f != "" && (filepath.Base(f) != f || !exists(filepath.Join(a.shopSignDir(), f))) {
+		if f := *s.Font; f != "" && (filepath.Base(f) != f || !fsutil.Exists(filepath.Join(a.shopSignDir(), f))) {
 			return ShopLookView{}, errors.New("font not found: " + f)
 		}
 		kvs = append(kvs, [3]string{shopSignTextSection, shopSignFontKey, *s.Font})
 	}
-	if t := s.Text; t != nil {
-		color, err := hexColor(t.Color)
+	if s.Text != nil {
+		textKVs, err := signTextSettings(*s.Text)
 		if err != nil {
 			return ShopLookView{}, err
 		}
-		outColor, err := hexColor(t.OutlineColor)
-		if err != nil {
-			return ShopLookView{}, err
-		}
-		if outColor == "" {
-			outColor = "#000000"
-		}
-		num := func(f, lo, hi float64) string { return strconv.FormatFloat(min(max(f, lo), hi), 'f', -1, 64) }
-		kvs = append(kvs, [3]string{shopSignTextSection, shopSignColorKey, color},
-			[3]string{shopSignTextSection, shopSignSizeKey, num(t.Size, 0.5, 2)},
-			[3]string{shopSignTextSection, shopSignOutlineKey, num(t.Outline, 0, 0.3)},
-			[3]string{shopSignTextSection, shopSignOutColorKey, outColor})
+		kvs = append(kvs, textKVs...)
 	}
 	if len(kvs) > 0 {
 		if _, err := modconfig.SetMany(p, kvs); err != nil {
@@ -648,6 +601,70 @@ func (a *App) SaveShopLook(s ShopLookSave) (ShopLookView, error) {
 	}
 	pruneFiles(a.shopSignDir(), inUse)
 	return a.ShopLook()
+}
+
+// pictureSettings are the settings of the draft's picture slots, and the files they replace. Door sign sides drawn in the page
+// are written here.
+func (a *App) pictureSettings(p string, pictures map[string]ShopPictureSave) (kvs [][3]string, replaced []string, err error) {
+	for slot, ps := range pictures {
+		pic, err := pictureSlot(slot)
+		if err != nil {
+			return nil, nil, err
+		}
+		items := ps.Items
+		if !pic.list {
+			items = []ShopPictureSave{ps}
+		}
+		var names, crops []string
+		for _, it := range items {
+			name, crop := it.File, ""
+			if it.PNG != "" && !pic.list {
+				if name, err = a.writeDesignedPicture(pic, slot, it.PNG, it.Design); err != nil {
+					return nil, nil, err
+				}
+			} else {
+				if name != "" && (filepath.Base(name) != name || strings.Contains(name, listSeparator) || !fsutil.Exists(filepath.Join(a.shopSignDir(), name))) {
+					return nil, nil, errors.New("picture not found: " + name)
+				}
+				if crop, err = cropValue(it.Crop); err != nil {
+					return nil, nil, err
+				}
+			}
+			if name != "" || !pic.list {
+				names, crops = append(names, name), append(crops, crop)
+			}
+		}
+		if old, err := modconfig.Get(p, pic.section, pic.imageKey); err == nil {
+			for _, f := range strings.Split(old.Value, listSeparator) {
+				if !slices.Contains(names, f) {
+					replaced = append(replaced, f)
+				}
+			}
+		}
+		kvs = append(kvs, [3]string{pic.section, pic.cropKey, strings.Join(crops, listSeparator)},
+			[3]string{pic.section, pic.imageKey, strings.Join(names, listSeparator)})
+	}
+	return kvs, replaced, nil
+}
+
+// signTextSettings are the settings of the shop name's colour, size and outline.
+func signTextSettings(t ShopSignText) ([][3]string, error) {
+	color, err := hexColor(t.Color)
+	if err != nil {
+		return nil, err
+	}
+	outColor, err := hexColor(t.OutlineColor)
+	if err != nil {
+		return nil, err
+	}
+	if outColor == "" {
+		outColor = "#000000"
+	}
+	num := func(f, lo, hi float64) string { return strconv.FormatFloat(min(max(f, lo), hi), 'f', -1, 64) }
+	return [][3]string{{shopSignTextSection, shopSignColorKey, color},
+		{shopSignTextSection, shopSignSizeKey, num(t.Size, 0.5, 2)},
+		{shopSignTextSection, shopSignOutlineKey, num(t.Outline, 0, 0.3)},
+		{shopSignTextSection, shopSignOutColorKey, outColor}}, nil
 }
 
 // writeDesignedPicture writes a door sign side drawn in the page and its design; returns the picture's file name. A new name

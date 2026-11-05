@@ -14,9 +14,6 @@ import (
 	"strings"
 )
 
-// Import reads a model file (.glb, .gltf, .obj) and combines it into one mesh + one texture.
-func Import(path string) (*Mesh, *image.NRGBA, []string, error) { return ImportWith(path, nil) }
-
 // TextureSet is a model's textures chosen by the user (a PBR set shared next to the model, e.g. an OBJ without its .mtl). The game
 // draws one colour texture, so the normal map and ambient occlusion are baked into it as shading; other maps aren't used.
 type TextureSet struct {
@@ -26,8 +23,8 @@ type TextureSet struct {
 	AO            image.Image // ambient occlusion (grey, multiplied)
 }
 
-// ImportWith is Import with a texture set chosen by the user laid over the whole model: every part uses it through its own UVs;
-// parts without UVs keep their colour.
+// ImportWith reads a model file (.glb, .gltf, .obj) and combines it into one mesh + one texture. A texture set chosen by the user
+// (nil = none) is laid over the whole model: every part uses it through its own UVs; parts without UVs keep their colour.
 func ImportWith(path string, texture *TextureSet) (*Mesh, *image.NRGBA, []string, error) {
 	var s *Scene
 	var err error
@@ -57,18 +54,7 @@ func ImportWith(path string, texture *TextureSet) (*Mesh, *image.NRGBA, []string
 
 // ---- source files (what the editor shows): right-handed, Y up, UV origin bottom-left
 
-// WriteSource writes <base>.obj and <base>.png.
-func WriteSource(base string, m *Mesh, img image.Image) error {
-	if err := os.MkdirAll(filepath.Dir(base), 0o755); err != nil {
-		return err
-	}
-	if err := writePNG(base+".png", img); err != nil {
-		return err
-	}
-	return writeOBJ(base+".obj", sourceHeader, m)
-}
-
-// ReadSource reads a source OBJ written by WriteSource (one index per vertex, "f a/a/a"), keeping the vertex order; UVs go
+// ReadSource reads a source OBJ made by SourceOBJ (one index per vertex, "f a/a/a"), keeping the vertex order; UVs go
 // back to image space.
 func ReadSource(path string) (*Mesh, error) {
 	fh, err := os.Open(path)
@@ -205,23 +191,18 @@ func Place(src *Mesh, p Placement) (*Mesh, error) {
 	return out, nil
 }
 
-// WriteGame writes the placed model for the mod (Unity space, UV origin bottom-left).
-func WriteGame(path string, m *Mesh) error {
-	return writeOBJ(path, gameHeader, m)
-}
-
 const (
 	sourceHeader = "TCG Studio figurine source (right-handed, Y up, UV origin bottom-left)"
 	gameHeader   = "TCG Studio figurine for TCG Custom Cards (Unity mesh space: left-handed, Y up, UV origin bottom-left)"
 )
 
-// SourceOBJ is a source model as WriteSource writes it (for the shared asset store).
+// SourceOBJ is a source model as stored in the shared asset store.
 func SourceOBJ(m *Mesh) []byte { return encodeOBJ(sourceHeader, m) }
 
-// GameOBJ is a placed model as WriteGame writes it (for the shared asset store).
+// GameOBJ is a placed model for the mod (Unity space, UV origin bottom-left), as stored in the shared asset store.
 func GameOBJ(m *Mesh) []byte { return encodeOBJ(gameHeader, m) }
 
-// PNG encodes an image as WriteSource writes its texture.
+// PNG encodes a model's texture.
 func PNG(img image.Image) ([]byte, error) {
 	var b bytes.Buffer
 	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, img)
@@ -232,21 +213,6 @@ func encodeOBJ(header string, m *Mesh) []byte {
 	var b bytes.Buffer
 	_ = writeOBJTo(&b, header, m)
 	return b.Bytes()
-}
-
-func writeOBJ(path, header string, m *Mesh) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	fh, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if err := writeOBJTo(fh, header, m); err != nil {
-		fh.Close()
-		return err
-	}
-	return fh.Close()
 }
 
 func writeOBJTo(out io.Writer, header string, m *Mesh) error {
@@ -267,18 +233,6 @@ func writeOBJTo(out io.Writer, header string, m *Mesh) error {
 		fmt.Fprintf(w, "f %d/%d/%d %d/%d/%d %d/%d/%d\n", a, a, a, b, b, b, c, c, c)
 	}
 	return w.Flush()
-}
-
-func writePNG(path string, img image.Image) error {
-	fh, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(fh, img); err != nil {
-		fh.Close()
-		return err
-	}
-	return fh.Close()
 }
 
 // useTexture puts the set on every part that has UVs, replacing the materials (and the "not found" warnings about them).

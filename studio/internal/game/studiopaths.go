@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tcgstudio/internal/fsutil"
 )
 
 // StudioPathsFile, next to the mod DLL, names the Studio workspace folders the mod reads all content from — the game folder
@@ -44,7 +46,7 @@ func UpdateStudioPaths(gameDir string, change func(*StudioPaths)) error {
 	change(&p)
 	same := func(a, b string) bool { return (a == "" && b == "") || SameDir(a, b) }
 	if same(p.Library, old.Library) && same(p.Assets, old.Assets) && same(p.Setup, old.Setup) &&
-		exists(filepath.Join(PluginDir(gameDir), StudioPathsFile)) {
+		fsutil.Exists(filepath.Join(PluginDir(gameDir), StudioPathsFile)) {
 		return nil
 	}
 	if err := os.MkdirAll(PluginDir(gameDir), 0o755); err != nil {

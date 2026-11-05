@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -40,6 +42,27 @@ type File struct {
 	byID       map[int64]*Object
 	scripts    []PPtr // script type table: MonoScript refs per MonoBehaviour type
 	externals  []string
+	env        *Env // the environment that opened the file (its script layout)
+}
+
+// ScriptLayout: serialized fields of the game's scripts that some game versions have and others don't. Readers of raw
+// MonoBehaviour data (no type trees) skip them only when the installed game has them.
+type ScriptLayout struct {
+	OverrideMeshes bool // InteractableObject.m_OverrideMeshDataList (game update of 2026-10-29)
+}
+
+// ScriptLayoutOf reads the script layout from the game's assembly (Managed\Assembly-CSharp.dll).
+func ScriptLayoutOf(dll string) (ScriptLayout, error) {
+	ok, err := HasField(dll, "InteractableObject", "m_OverrideMeshDataList")
+	return ScriptLayout{OverrideMeshes: ok}, err
+}
+
+// layout is the script layout of the file's game version (the zero layout for files not opened through an Env).
+func (sf *File) layout() ScriptLayout {
+	if sf == nil || sf.env == nil {
+		return ScriptLayout{}
+	}
+	return sf.env.Scripts
 }
 
 type fileType struct {
@@ -193,12 +216,13 @@ func (o *Object) Name() (name string, err error) {
 	return string(r.take(n)), nil
 }
 
-func (sf *File) String() string { return sf.Name }
-
 // Env is the game's data folder (<game>\Card Shop Simulator_Data) or an asset bundle: files opened on demand and
 // references resolved across them.
 type Env struct {
-	Dir     string
+	Dir string
+	// Scripts: how the game's own scripts are laid out in this game version (from its assembly: ScriptLayoutOf); the zero
+	// value is the layout before the 2026-10-29 game update.
+	Scripts ScriptLayout
 	bundle  *Bundle // set: files and .resS data come from this bundle instead of Dir
 	mu      sync.Mutex
 	files   map[string]*File
@@ -232,6 +256,7 @@ func (e *Env) File(name string) (*File, error) {
 		if err != nil {
 			return nil, err
 		}
+		f.env = e
 		e.files[name] = f
 		return f, nil
 	}
@@ -247,6 +272,7 @@ func (e *Env) File(name string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+	f.env = e
 	e.files[name] = f
 	return f, nil
 }
@@ -335,4 +361,48 @@ func (e *Env) FindScripts(f *File, classes ...string) []*Object {
 		}
 	}
 	return out
+}
+
+// Names lists the data folder's files whose names start with prefix and end with suffix, in the game's own numbering
+// (level2 before level10). Empty for an environment over a bundle.
+func (e *Env) Names(prefix, suffix string) []string {
+	if e.bundle != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(e.Dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, en := range entries {
+		n := strings.ToLower(en.Name())
+		if en.IsDir() || !strings.HasPrefix(n, prefix) || !strings.HasSuffix(n, suffix) {
+			continue
+		}
+		if _, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(n, prefix), suffix)); err != nil {
+			continue // level2.resS and the like
+		}
+		out = append(out, n)
+	}
+	num := func(n string) int {
+		v, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(n, prefix), suffix))
+		return v
+	}
+	sort.Slice(out, func(i, j int) bool { return num(out[i]) < num(out[j]) })
+	return out
+}
+
+// AtLeast reports whether the file was written by Unity major.minor or later ("2021.3.38f1", "6000.0.66f2"). Field layouts
+// that changed between versions read through this (the game moved from 2021.3 to Unity 6 in its 2026-10-27 update).
+func (sf *File) AtLeast(major, minor int) bool {
+	parts := strings.SplitN(sf.Unity, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	ma, err1 := strconv.Atoi(parts[0])
+	mi, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return ma > major || (ma == major && mi >= minor)
 }

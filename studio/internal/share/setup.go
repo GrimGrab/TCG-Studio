@@ -11,8 +11,8 @@ import (
 	"tcgstudio/internal/content"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setups"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 // A setup file (version 3) = manifest.json + setup/setup.json (installed sets) + setup/game/… (the mod's settings, the
@@ -43,7 +43,7 @@ func ExportSetup(h setups.Home, id, dest, studioVersion string, progress func(do
 			}
 		}
 	}
-	z, err := ziputil.Create(dest)
+	z, err := sharezip.Create(dest)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func ExportSetup(h setups.Home, id, dest, studioVersion string, progress func(do
 
 // exportGame adds a setup's game folder: the mod's settings (absolute paths blanked), card back, Game look pictures.
 // Content older Studio versions parked there (Sets, Accessories, Library) stays on this PC.
-func exportGame(dir, zipDir string, z *ziputil.Writer) error {
+func exportGame(dir, zipDir string, z *sharezip.Writer) error {
 	return filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if os.IsNotExist(err) {
 			return filepath.SkipAll
@@ -107,9 +107,9 @@ func exportGame(dir, zipDir string, z *ziputil.Writer) error {
 		}
 		switch strings.ToLower(path.Ext(rel)) {
 		case ".cfg":
-			b = ziputil.ScrubCfg(b)
+			b = sharezip.ScrubCfg(b)
 		case ".json":
-			b = ziputil.ScrubJSON(b)
+			b = sharezip.ScrubJSON(b)
 		}
 		return z.Bytes(zipDir+rel, b)
 	})
@@ -184,7 +184,7 @@ func ImportSetup(h setups.Home, src, studioVersion string) (string, string, erro
 		}
 		defer done()
 		// setup.json and game\ come straight from the file.
-		if err := ziputil.ExtractAll(&zr.Reader, tmp, func(n string) bool { return strings.HasPrefix(n, setupDir) }); err != nil {
+		if err := sharezip.ExtractAll(&zr.Reader, tmp, func(n string) bool { return strings.HasPrefix(n, setupDir) }); err != nil {
 			return err
 		}
 		if err := moveInto(filepath.Join(tmp, strings.TrimSuffix(setupDir, "/")), dir); err != nil {

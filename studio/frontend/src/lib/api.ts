@@ -78,7 +78,7 @@ export function rarityName(set: any, id: string): string {
  * The game rarity the mod uses for a rarity where the game only knows its 4 (rarity icon, fame): by its place
  * in the list — the n-th of up to four is the n-th game rarity, longer lists spread evenly (mirrors setfmt.TierOf).
  */
-export function rarityTier(set: any, id: string): string {
+function rarityTier(set: any, id: string): string {
   const list = setRarities(set);
   const i = Math.max(0, list.findIndex((r) => r.id === id));
   if (!set?.rarities?.length) return RARITY_COLORS[id] ? id : 'Common';

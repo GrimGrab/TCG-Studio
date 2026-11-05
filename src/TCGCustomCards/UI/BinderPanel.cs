@@ -33,7 +33,6 @@ namespace TCGCustomCards.UI
         // Template look
         private static TMP_FontAsset _font;
         private static Color _textColor = Color.white;
-        private static Sprite _rounded;
         private static float _u; // layout unit (≈ a text line)
 
         // State being edited
@@ -635,24 +634,7 @@ namespace TCGCustomCards.UI
         /// <summary>Rounded-rectangle look for panels, buttons and fields (a small 9-sliced sprite made once).</summary>
         private static void Round(Image img, Color color)
         {
-            if (_rounded == null)
-            {
-                const int size = 32, r = 10;
-                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-                for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = Mathf.Max(0f, Mathf.Max(r - x - 0.5f, x + 0.5f - (size - r))),
-                          dy = Mathf.Max(0f, Mathf.Max(r - y - 0.5f, y + 0.5f - (size - r)));
-                    float alpha = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
-                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
-                }
-                tex.Apply();
-                _rounded = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
-                    SpriteMeshType.FullRect, new Vector4(r + 1, r + 1, r + 1, r + 1));
-                _rounded.name = "TCGCC_Rounded";
-            }
-            img.sprite = _rounded;
+            img.sprite = GameStyle.Rounded(10);
             img.type = Image.Type.Sliced;
             img.pixelsPerUnitMultiplier = 1.2f;
             img.color = color;

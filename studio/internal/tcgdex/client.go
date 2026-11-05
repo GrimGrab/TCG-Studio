@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"tcgstudio/internal/webapi"
 )
 
 const (
@@ -324,7 +326,7 @@ func (c *Client) do(ctx context.Context, u, accept string) (*http.Response, erro
 		resp, err := c.http.Do(req)
 		if err != nil {
 			if attempt < 4 && ctx.Err() == nil {
-				sleep(ctx, backoff)
+				webapi.Sleep(ctx, backoff)
 				backoff *= 2
 				continue
 			}
@@ -340,7 +342,7 @@ func (c *Client) do(ctx context.Context, u, accept string) (*http.Response, erro
 			if ra, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && ra > 0 {
 				wait = time.Duration(ra) * time.Second
 			}
-			sleep(ctx, wait)
+			webapi.Sleep(ctx, wait)
 			backoff *= 2
 			continue
 		}
@@ -362,11 +364,4 @@ func (c *Client) wait() {
 		time.Sleep(d)
 	}
 	c.last = time.Now()
-}
-
-func sleep(ctx context.Context, d time.Duration) {
-	select {
-	case <-ctx.Done():
-	case <-time.After(d):
-	}
 }

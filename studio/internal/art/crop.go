@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 
+	"tcgstudio/internal/imgfile"
+
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -28,7 +30,7 @@ func cropped(src image.Image, crop []float64, aspect float64) image.Image {
 // CropToFile writes the part of the picture at srcPath a crop box picked (see cropped) as a PNG. size: the result's pixels;
 // a zero size keeps the cropped part's own size, at most maxSide on its longer side.
 func CropToFile(srcPath string, crop []float64, aspect float64, size image.Point, maxSide int, out string) error {
-	src, err := loadImage(srcPath)
+	src, err := imgfile.Load(srcPath)
 	if err != nil {
 		return fmt.Errorf("picture: %w", err)
 	}
@@ -41,5 +43,5 @@ func CropToFile(srcPath string, crop []float64, aspect float64, size image.Point
 	}
 	img := image.NewNRGBA(image.Rectangle{Max: size})
 	drawCover(img, img.Bounds(), part)
-	return savePNG(out, img)
+	return imgfile.Save(out, img)
 }

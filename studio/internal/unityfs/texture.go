@@ -44,19 +44,28 @@ func ReadTexture2D(o *Object) (t Texture2D, err error) {
 		return t, err
 	}
 	t.file = o.File
+	unity6 := o.File.AtLeast(6000, 0)
 	t.Name = r.str()
-	r.i32()  // forced fallback format
-	r.bool() // downscale fallback
-	r.bool() // alpha channel optional
-	r.align()
+	if unity6 {
+		r.skip(4) // downscale fallback, alpha channel optional (+ align); measured on the game's Unity 6 files
+	} else {
+		r.i32()  // forced fallback format
+		r.bool() // downscale fallback
+		r.bool() // alpha channel optional
+		r.align()
+	}
 	t.Width = int(r.i32())
 	t.Height = int(r.i32())
 	r.i32() // complete image size
 	r.i32() // mips stripped
 	t.Format = int(r.i32())
 	t.MipCount = int(r.i32())
-	r.skip(4) // readable, preprocessed, ignore master texture limit, streaming mipmaps
+	r.skip(4) // readable, preprocessed, ignore mipmap limit, streaming mipmaps
 	r.align()
+	if unity6 {
+		r.str() // mipmap limit group name
+		r.i32() // (Unity 6: one more int, 0 on every texture of the game)
+	}
 	r.i32()       // streaming priority
 	r.i32()       // image count
 	r.i32()       // dimension

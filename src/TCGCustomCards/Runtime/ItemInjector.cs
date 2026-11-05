@@ -27,7 +27,7 @@ namespace TCGCustomCards.Runtime
             var inv = Object.FindObjectOfType<InventoryBase>();
             if (inv == null || inv.m_StockItemData_SO == null) return;
             var so = inv.m_StockItemData_SO;
-            if (_injectedInto == so) return;
+            if (_injectedInto == so) { Hooks.ItemVisuals.UseOurArt(); return; } // a loaded save's scene brings vanilla materials back
             _injectedInto = so; // also with no custom items: the hide-vanilla toggles filter these lists (VanillaFilter.Capture below)
 
             int nextItem = Mathf.Max(so.m_ItemDataList.Count, so.m_ItemMeshDataList.Count, (int)EItemType.Max);
@@ -108,6 +108,9 @@ namespace TCGCustomCards.Runtime
 
             EnsurePlayerListSizes();
             VanillaFilter.Capture(so);
+            BoxLook.AddBulkSlices();
+            Hooks.ItemVisuals.CommitArt();
+            Hooks.ItemVisuals.AddPriceTagIcons(so);
             Plugin.Log.LogInfo($"Injected {Registry.Packs.Count} custom pack(s) and {Registry.Accessories.Count(a => a.Item != EItemType.None)} accessor(ies): " +
                                $"items up to {nextItem - 1}, restock rows up to {so.m_RestockDataList.Count - 1}");
         }
@@ -197,7 +200,7 @@ namespace TCGCustomCards.Runtime
         {
             var md = Clone(vanilla);
             md.materialList = vanilla.materialList != null ? new List<Material>(vanilla.materialList) : null;
-            var tex = string.IsNullOrEmpty(def.Texture) ? null : ImageCache.Get(Core.StudioPaths.ItemFile(def.FolderPath, def.Texture))?.texture;
+            var texPath = string.IsNullOrEmpty(def.Texture) ? null : Core.StudioPaths.ItemFile(def.FolderPath, def.Texture);
 
             // Own model (figurines, board games, card supplies): one mesh, one material (the base item's material with our texture); no
             // secondary parts.
@@ -209,6 +212,11 @@ namespace TCGCustomCards.Runtime
                 md.meshSecondary = null;
                 md.materialSecondary = null;
                 md.materialList = null;
+                if (md.arrayMaterialType == ItemMeshData.ItemShareTexture2DArrayMaterial.BothMeshes
+                    || md.arrayMaterialType == ItemMeshData.ItemShareTexture2DArrayMaterial.FirstMeshArraySecondDefault)
+                    md.arrayMaterialType = ItemMeshData.ItemShareTexture2DArrayMaterial.FirstMesh; // no secondary part any more
+                if (Hooks.ItemVisuals.ApplyArt(md, vanilla.material, texPath)) return md;
+                var tex = texPath == null ? null : ImageCache.Get(texPath)?.texture;
                 md.material = baseMat == null ? null : new Material(baseMat) { name = $"TCGCC_{def.Id}", hideFlags = HideFlags.DontUnloadUnusedAsset };
                 if (md.material != null)
                 {
@@ -222,7 +230,10 @@ namespace TCGCustomCards.Runtime
                 }
                 return md;
             }
-            if (tex == null || vanilla.material == null) return md;
+            if (texPath == null || vanilla.material == null) return md;
+            if (Hooks.ItemVisuals.ApplyArt(md, vanilla.material, texPath)) return md; // the secondary material isn't an array: stays
+            var mainArt = ImageCache.Get(texPath)?.texture;
+            if (mainArt == null) return md;
 
             var copies = new Dictionary<Material, Material>();
             Material Swap(Material m)
@@ -233,8 +244,8 @@ namespace TCGCustomCards.Runtime
                 if (old == null && m != vanilla.material) return copies[m] = m;
                 c = new Material(m) { name = $"TCGCC_{def.Id}_{m.name}", hideFlags = HideFlags.DontUnloadUnusedAsset };
                 foreach (var prop in c.GetTexturePropertyNames())
-                    if (c.GetTexture(prop) == old && old != null) c.SetTexture(prop, tex);
-                c.mainTexture = tex;
+                    if (c.GetTexture(prop) == old && old != null) c.SetTexture(prop, mainArt);
+                c.mainTexture = mainArt;
                 return copies[m] = c;
             }
             // Other slots only switch when they share the base material's texture (e.g. a secondary material with a different print stays).
@@ -268,9 +279,23 @@ namespace TCGCustomCards.Runtime
             int i = (int)item;
             if (so.m_ItemDataList.Count != i || so.m_ItemMeshDataList.Count != i)
                 Plugin.Log.LogError($"Item list out of step at {i} (data={so.m_ItemDataList.Count}, mesh={so.m_ItemMeshDataList.Count})");
+            DropUnusedSecondaryMaterial(mesh);
             so.m_ItemDataList.Add(data);
             so.m_ItemMeshDataList.Add(mesh);
             CustomItemData.Add(data);
+        }
+
+        /// <summary>
+        /// A one-mesh texture-array item never draws its secondary material (the game reads it only for
+        /// FirstMeshArraySecondDefault), yet BasicCardPack carries one. Item.SetMesh's generic branch (restores from a save, auto
+        /// pack opener) turns such data into a second material slot on the main mesh; vanilla packs skip that branch by type,
+        /// ours don't. The pooled object keeps that slot, so when it comes back as a card box the box is drawn again with the
+        /// pack material (the set's pack art on the box).
+        /// </summary>
+        private static void DropUnusedSecondaryMaterial(ItemMeshData md)
+        {
+            if (md != null && md.arrayMaterialType == ItemMeshData.ItemShareTexture2DArrayMaterial.FirstMesh && md.meshSecondary == null)
+                md.materialSecondary = null;
         }
 
         private static int AddRow(StockItemData_ScriptableObject so, RestockData template, EItemType item, string name, int level, float price)
@@ -296,10 +321,10 @@ namespace TCGCustomCards.Runtime
         private static ItemMeshData MeshData(ItemMeshData vanilla, string name, string texturePath)
         {
             var md = Clone(vanilla);
-            var tex = string.IsNullOrEmpty(texturePath) ? null : ImageCache.Get(texturePath)?.texture;
-            if (tex != null && vanilla.material != null)
+            if (!string.IsNullOrEmpty(texturePath) && !Hooks.ItemVisuals.ApplyArt(md, vanilla.material, texturePath) && vanilla.material != null)
             {
-                md.material = new Material(vanilla.material) { name = $"TCGCC_{name}", mainTexture = tex, hideFlags = HideFlags.DontUnloadUnusedAsset };
+                var tex = ImageCache.Get(texturePath)?.texture;
+                if (tex != null) md.material = new Material(vanilla.material) { name = $"TCGCC_{name}", mainTexture = tex, hideFlags = HideFlags.DontUnloadUnusedAsset };
             }
             md.materialList = vanilla.materialList != null ? new List<Material>(vanilla.materialList) : null;
             return md;

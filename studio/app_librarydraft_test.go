@@ -9,6 +9,7 @@ import (
 
 	"tcgstudio/internal/accessories"
 	astore "tcgstudio/internal/assets"
+	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 )
 
@@ -80,11 +81,11 @@ func TestApplyLibraryDraftRejects(t *testing.T) {
 }
 
 func TestFreshName(t *testing.T) {
-	a := freshName("images/p1_pack_texture.png")
+	a := project.FreshName("images/p1_pack_texture.png")
 	if !strings.HasPrefix(a, "images/p1_pack_texture.v") || !strings.HasSuffix(a, ".png") {
-		t.Fatalf("freshName = %q", a)
+		t.Fatalf("FreshName = %q", a)
 	}
-	if b := freshName(a); strings.Count(b, ".v") != 1 || !strings.HasPrefix(b, "images/p1_pack_texture.v") {
-		t.Fatalf("a second freshName stacks marks: %q", b)
+	if b := project.FreshName(a); strings.Count(b, ".v") != 1 || !strings.HasPrefix(b, "images/p1_pack_texture.v") {
+		t.Fatalf("a second FreshName stacks marks: %q", b)
 	}
 }

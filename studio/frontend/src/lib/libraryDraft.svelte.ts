@@ -4,7 +4,7 @@
 // the page's own working copy until it is parked.
 
 // problem: why the entry couldn't be finished when the page left it (e.g. a poster without a picture); Save opens it and says so.
-export type Parked = { item: any; layout: string; texture?: string; icon?: string; problem?: string };
+type Parked = { item: any; layout: string; texture?: string; icon?: string; problem?: string };
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 

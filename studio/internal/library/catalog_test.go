@@ -16,7 +16,7 @@ import (
 func TestCatalogKeepsArtAndAssets(t *testing.T) {
 	h, _ := newHome(t)
 	c := catalog.For(h.Root)
-	ws := c.Sets()
+	ws := workspace.Dir(c.Workspace).Projects(c.Root)
 	p, err := ws.Create("dom", "Dominaria")
 	if err != nil {
 		t.Fatal(err)

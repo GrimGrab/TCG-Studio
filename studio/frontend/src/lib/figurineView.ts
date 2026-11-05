@@ -29,11 +29,6 @@ export function loadGeom(url: string, unity: boolean): Promise<Geom> {
   return cache.get(key)!;
 }
 
-export function forgetGeom(url: string) {
-  cache.delete(`u|${url}`);
-  cache.delete(`r|${url}`);
-}
-
 function parseObj(text: string, unity: boolean): Geom {
   const zs = unity ? -1 : 1;
   const v: number[] = [], vt: number[] = [], vn: number[] = [];
@@ -104,7 +99,7 @@ export function point(m: Mat, p: number[]): number[] {
   return [0, 1, 2].map((r) => m[r] * p[0] + m[4 + r] * p[1] + m[8 + r] * p[2] + m[12 + r]);
 }
 /** Geometry from interleaved position(3) normal(3) uv(2) data (bounds computed). */
-export function geomOf(data: number[]): Geom {
+function geomOf(data: number[]): Geom {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < data.length; i += 8) for (let q = 0; q < 3; q++) { min[q] = Math.min(min[q], data[i + q]); max[q] = Math.max(max[q], data[i + q]); }
   return { data: new Float32Array(data), count: data.length / 8, min, max };

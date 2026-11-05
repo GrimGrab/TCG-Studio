@@ -43,7 +43,7 @@ const GAME_ALIASES: Record<string, string[]> = {
 const ALIASES = new Map(Object.entries(GAME_ALIASES).map(([g, a]) => [fold(g), a.join(' ')]));
 
 /** Lower case without accents (é → e, ß → ss). */
-export function fold(s: string): string {
+function fold(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss').toLowerCase();
 }
 

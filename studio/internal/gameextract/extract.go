@@ -7,19 +7,18 @@ package gameextract
 import (
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/unityfs"
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 17
+const Version = 27
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {
@@ -48,7 +47,16 @@ func Stamp(gameDir string) (string, error) {
 		return "", err
 	}
 	var parts []string
-	for _, n := range []string{"globalgamemanagers", "globalgamemanagers.assets", "sharedassets0.assets", "sharedassets1.assets", "resources.assets", `Managed\Assembly-CSharp.dll`} {
+	names := []string{"globalgamemanagers", "globalgamemanagers.assets", "resources.assets", `Managed\Assembly-CSharp.dll`}
+	if entries, err := os.ReadDir(data); err == nil {
+		for _, e := range entries { // every scene and shared-assets file: an update that adds one changes the stamp
+			n := strings.ToLower(e.Name())
+			if !e.IsDir() && (strings.HasPrefix(n, "sharedassets") && strings.HasSuffix(n, ".assets") || strings.HasPrefix(n, "level") && !strings.Contains(n, ".")) {
+				names = append(names, e.Name())
+			}
+		}
+	}
+	for _, n := range names {
 		st, err := os.Stat(filepath.Join(data, n))
 		if err != nil {
 			continue
@@ -59,6 +67,7 @@ func Stamp(gameDir string) (string, error) {
 }
 
 type extractor struct {
+	scenes    map[string]*unityfs.File // sceneWith's finds by class
 	env       *unityfs.Env
 	dir, acc  string
 	itemNames map[int32]string
@@ -91,6 +100,9 @@ func Extract(gameDir, outDir string, progress func(string)) (info Info, err erro
 		return info, err
 	}
 	defer env.Close()
+	if env.Scripts, err = unityfs.ScriptLayoutOf(filepath.Join(data, "Managed", "Assembly-CSharp.dll")); err != nil {
+		return info, err
+	}
 
 	tmp := outDir + ".new"
 	os.RemoveAll(tmp)
@@ -141,23 +153,34 @@ func (x *extractor) warn(format string, a ...any) {
 
 func (x *extractor) run() error {
 	x.progress("Reading the game's item list…")
-	var soObj *unityfs.Object
-	for _, name := range []string{"sharedassets1.assets", "sharedassets0.assets", "resources.assets"} {
+	// The files can hold more than one item list (since the 2026-10-27 update an old copy sits next to the one the game
+	// uses): the one with the most items is the game's.
+	var so unityfs.StockItemData
+	var firstErr error
+	found := false
+	for _, name := range x.assetFiles() {
 		f, err := x.env.File(name)
 		if err != nil || f == nil {
 			continue
 		}
-		if found := x.env.FindScripts(f, "StockItemData_ScriptableObject"); len(found) > 0 {
-			soObj = found[0]
-			break
+		for _, o := range x.env.FindScripts(f, "StockItemData_ScriptableObject") {
+			s, err := x.env.ReadStockItemData(o)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if !found || len(s.Items) > len(so.Items) {
+				so, found = s, true
+			}
 		}
 	}
-	if soObj == nil {
+	if !found {
+		if firstErr != nil {
+			return firstErr
+		}
 		return fmt.Errorf("the game's item list (StockItemData) wasn't found")
-	}
-	so, err := x.env.ReadStockItemData(soObj)
-	if err != nil {
-		return err
 	}
 	if len(so.Items) != len(so.Meshes) || len(so.Items) == 0 {
 		return fmt.Errorf("item list looks wrong (%d items, %d meshes) — the game's format may have changed", len(so.Items), len(so.Meshes))
@@ -208,6 +231,18 @@ func (x *extractor) run() error {
 	if err := x.boxes(); err != nil {
 		x.warn("boxes: %v", err) // optional: only the Game look box editor
 	}
+	x.progress("Extracting customer portraits…")
+	if err := x.customerIcons(); err != nil {
+		x.warn("customers: %v", err) // optional: only the Customers page previews
+	}
+	x.progress("Extracting customer clothes…")
+	if err := x.clothes(); err != nil {
+		x.warn("clothes: %v", err) // optional: only Game look → Clothes and outfits
+	}
+	x.progress("Extracting customer characters…")
+	if err := x.characters(); err != nil {
+		x.warn("characters: %v", err) // optional: only the Customers page's face editor
+	}
 	acc := map[string]any{"version": 2, "items": items, "tables": tables, "itemPrefab": prefab, "shelves": shelves}
 	if err := writeJSON(filepath.Join(x.acc, "accessories.json"), acc); err != nil {
 		return err
@@ -242,19 +277,6 @@ func writeJSON(path string, v any) error {
 	return os.WriteFile(path, b, 0o644)
 }
 
-func savePNG(path string, img image.Image) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	enc := png.Encoder{CompressionLevel: png.BestSpeed}
-	if err := enc.Encode(f, img); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
-}
-
 // texture resolves a texture reference and returns its header (cached).
 func (x *extractor) texture(from *unityfs.File, p unityfs.PPtr) (*unityfs.Object, unityfs.Texture2D, bool) {
 	o, err := x.env.Resolve(from, p)
@@ -276,7 +298,7 @@ func (x *extractor) texture(from *unityfs.File, p unityfs.PPtr) (*unityfs.Object
 func (x *extractor) saveTexture(t unityfs.Texture2D, path string) bool {
 	img, err := x.env.TextureImage(t)
 	if err == nil {
-		err = savePNG(path, img)
+		err = imgfile.SaveFast(path, img)
 	}
 	if err != nil {
 		x.warn("texture %s: %v", t.Name, err)
@@ -297,7 +319,7 @@ func (x *extractor) saveSprite(from *unityfs.File, p unityfs.PPtr, path string) 
 	}
 	img, err := x.env.SpriteImage(s)
 	if err == nil {
-		err = savePNG(path, img)
+		err = imgfile.SaveFast(path, img)
 	}
 	if err != nil {
 		x.warn("icon %s: %v", s.Name, err)
@@ -318,6 +340,36 @@ func (x *extractor) material(from *unityfs.File, p unityfs.PPtr) (*unityfs.Objec
 		return nil, nil
 	}
 	return o, &m
+}
+
+// itemTexture is an item's texture for its first (second = false) or second mesh: the slice of the shared texture array
+// its material draws from when ItemMeshData says so (game update 2026-10-27: packs and boxes), else the material's main
+// texture.
+func (x *extractor) itemTexture(from *unityfs.File, md unityfs.ItemMeshData, second bool) (*unityfs.Object, unityfs.Texture2D, bool) {
+	mat, index, array := md.Material, md.TextureIndex, md.ArrayMaterial == 1 || md.ArrayMaterial == 3 || md.ArrayMaterial == 4
+	if second {
+		mat, index, array = md.MaterialSecondary, md.SecondTextureIndex, md.ArrayMaterial == 2 || md.ArrayMaterial == 3
+	}
+	if array {
+		if mo, m := x.material(from, mat); m != nil {
+			for _, k := range m.Order {
+				o, err := x.env.Resolve(mo.File, m.Textures[k].Texture)
+				if err != nil || o == nil || o.ClassID != unityfs.ClassTexture2DArray {
+					continue
+				}
+				arr, err := unityfs.ReadTexture2DArray(o)
+				if err == nil {
+					var t unityfs.Texture2D
+					if t, err = arr.SliceTexture(int(index)); err == nil {
+						return o, t, true
+					}
+				}
+				x.warn("texture array %s: %v", m.Name, err)
+				return nil, unityfs.Texture2D{}, false
+			}
+		}
+	}
+	return x.mainTexture(from, mat)
 }
 
 // mainTexture of a material reference.

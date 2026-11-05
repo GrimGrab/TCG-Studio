@@ -62,7 +62,9 @@ var (
 // Build reads the log of the last game session and works out what it says.
 func Build(in Input) Report {
 	r := Report{Path: filepath.Join(in.GameDir, filepath.FromSlash(logRel))}
-	note := func(level, format string, a ...any) { r.Notes = append(r.Notes, Note{level, fmt.Sprintf(format, a...)}) }
+	note := func(level, format string, a ...any) {
+		r.Notes = append(r.Notes, Note{level, fmt.Sprintf(format, a...)})
+	}
 
 	info, err := os.Stat(r.Path)
 	if in.GameDir == "" || err != nil {
@@ -119,7 +121,13 @@ func analyse(r *Report, text string, in Input, logTime time.Time, note func(leve
 	if r.Errors > 0 {
 		note("warn", "%d error line(s) in the log.", r.Errors)
 	}
+	// The mod switches a feature off when the game no longer matches it (Core/Compat): "Game compatibility: <feature> is off — <why>".
+	for _, m := range compatRe.FindAllStringSubmatch(text, -1) {
+		note("err", "Switched off for this game version: %s (%s). A mod update is needed for it.", m[1], strings.TrimSpace(m[2]))
+	}
 }
+
+var compatRe = regexp.MustCompile(`Game compatibility: (.+?) is off — ([^\r\n]*)`)
 
 func header(r Report, in Input) string {
 	var b strings.Builder

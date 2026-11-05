@@ -18,21 +18,21 @@ namespace TCGCustomCards.Patches
         private const int PerPage = 12;
 
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, ECardExpansionType> ExpRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, ECardExpansionType>("m_ExpansionType");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, ECardExpansionType>(typeof(EnhancedBinderPatches), "m_ExpansionType");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> GradedRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_IsGradedCardAlbum");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(EnhancedBinderPatches), "m_IsGradedCardAlbum");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, int> IndexRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, int>("m_Index");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, int>(typeof(EnhancedBinderPatches), "m_Index");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, int> MaxIndexRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, int>("m_MaxIndex");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, int>(typeof(EnhancedBinderPatches), "m_MaxIndex");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> CanUpdateSortRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_CanUpdateSort");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(EnhancedBinderPatches), "m_CanUpdateSort");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> BookOpenRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_IsBookOpen");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(EnhancedBinderPatches), "m_IsBookOpen");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> CanFlipRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_CanFlip");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(EnhancedBinderPatches), "m_CanFlip");
         private static readonly AccessTools.FieldRef<CollectionBinderUI, int> MaxCollectRef =
-            AccessTools.FieldRefAccess<CollectionBinderUI, int>("m_MaxCardCollectionCount");
+            Core.Compat.Field<CollectionBinderUI, int>(typeof(EnhancedBinderPatches), "m_MaxCardCollectionCount");
         private static readonly System.Action<CollectionBinderFlipAnimCtrl> SyncColliders =
             AccessTools.MethodDelegate<System.Action<CollectionBinderFlipAnimCtrl>>(
                 AccessTools.Method(typeof(CollectionBinderFlipAnimCtrl), "UpdateCurrentInteractableCard3dList"));
@@ -41,7 +41,7 @@ namespace TCGCustomCards.Patches
                 AccessTools.Method(typeof(CollectionBinderFlipAnimCtrl), "OnSortingMethodUpdated"));
 
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, System.Collections.Generic.List<int>> SortedRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, System.Collections.Generic.List<int>>("m_SortedIndexList");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, System.Collections.Generic.List<int>>(typeof(EnhancedBinderPatches), "m_SortedIndexList");
         private static readonly System.Action<CollectionBinderFlipAnimCtrl, int, int> FillGraded =
             AccessTools.MethodDelegate<System.Action<CollectionBinderFlipAnimCtrl, int, int>>(
                 AccessTools.Method(typeof(CollectionBinderFlipAnimCtrl), "UpdateBinderGradedCardUI"));

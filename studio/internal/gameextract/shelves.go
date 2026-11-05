@@ -12,7 +12,6 @@ import (
 
 // Prefab files: shelves and the shop item prefab live here. Shelves in a save's shop are clones of these, so they aren't
 // needed (and would only describe one player's shop).
-var prefabFiles = []string{"sharedassets1.assets", "sharedassets0.assets", "resources.assets"}
 
 type compartment struct {
 	Path               string     `json:"path"`
@@ -76,7 +75,7 @@ func (x *extractor) shelves() (prefab any, out []shelf, tables []any, err error)
 	tables = []any{}
 	seen := map[string]bool{}
 	meshes := x.newMeshSet("")
-	for _, name := range prefabFiles {
+	for _, name := range x.assetFiles() {
 		f, err := x.env.File(name)
 		if err != nil || f == nil {
 			continue

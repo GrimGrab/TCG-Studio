@@ -57,7 +57,7 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 	if err := c.SaveSet(p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(c.Sets().Folder("dom"), "images", "c1.png")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(c.ws().Projects(c.Root).Folder("dom"), "images", "c1.png")); !os.IsNotExist(err) {
 		t.Fatal("card art copied into the catalog (should stay in the library)")
 	}
 
@@ -96,7 +96,7 @@ func TestSetTemplateAddAndIndependence(t *testing.T) {
 	if pa, _ := wsA.Load("dom"); pa.Set.Name != "Dominaria" {
 		t.Fatalf("A changed: %q", pa.Set.Name)
 	}
-	if pt, _ := c.Sets().Load("dom"); pt.Set.Name != "Dominaria" {
+	if pt, _ := c.ws().Projects(c.Root).Load("dom"); pt.Set.Name != "Dominaria" {
 		t.Fatalf("template changed: %q", pt.Set.Name)
 	}
 
@@ -171,13 +171,13 @@ func TestKeepSetupBeforeDelete(t *testing.T) {
 	if err := h.Delete(filepath.Base(b)); err != nil {
 		t.Fatal(err)
 	}
-	if ids := c.SetIDs(); len(ids) != 1 || ids[0] != "neo" {
+	if ids := c.IDs(KindSet, c.Root); len(ids) != 1 || ids[0] != "neo" {
 		t.Fatalf("set templates %v", ids)
 	}
 	if cat, _ := c.Items(); cat.FurnitureIndex("bin") < 0 {
 		t.Fatal("furniture not kept")
 	}
-	if err := c.Remove(KindSet, "neo"); err != nil || len(c.SetIDs()) != 0 {
+	if err := c.Remove(KindSet, "neo"); err != nil || len(c.IDs(KindSet, c.Root)) != 0 {
 		t.Fatalf("remove: %v", err)
 	}
 }

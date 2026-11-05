@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"tcgstudio/internal/assets"
+	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/ids"
 	"tcgstudio/internal/origin"
@@ -32,6 +33,10 @@ type Meta struct {
 	Layouts map[string]json.RawMessage `json:"layouts"`
 	// Origins: where converted accessories and furniture came from (by id).
 	Origins map[string]origin.Origin `json:"origins,omitempty"`
+	// migration:art-layouts-1.03
+	// ArtCurrent: accessories (by id) whose art is in the current game's texture layouts. Missing = made for the game 1.02
+	// models (relayout converts it). New accessories get it from Put, copies and shared files keep their source's.
+	ArtCurrent map[string]bool `json:"artCurrent,omitempty"`
 }
 
 type Library struct {
@@ -65,6 +70,9 @@ func Open(root string, store assets.Store) (*Library, error) {
 	if l.Meta.Origins == nil {
 		l.Meta.Origins = map[string]origin.Origin{}
 	}
+	if l.Meta.ArtCurrent == nil {
+		l.Meta.ArtCurrent = map[string]bool{}
+	}
 	if l.Lib.Accessories == nil {
 		l.Lib.Accessories = []setfmt.Accessory{}
 	}
@@ -84,7 +92,7 @@ func (l *Library) SaveMeta() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(l.Folder, MetaFile), b, 0o644)
+	return fsutil.WriteAtomic(filepath.Join(l.Folder, MetaFile), b)
 }
 
 func (l *Library) Index(id string) int {
@@ -103,29 +111,6 @@ const ConvertedPrefix = "eplmod-"
 // IsConverted reports an accessory or furniture id made by a mod conversion.
 func IsConverted(id string) bool { return strings.HasPrefix(id, ConvertedPrefix) }
 
-// FillConvertedOrigins gives converted entries without an origin (converted before origins were recorded) one with only
-// the kind known. Reports whether it added any.
-func (l *Library) FillConvertedOrigins() bool {
-	var ids []string
-	for _, a := range l.Lib.Accessories {
-		ids = append(ids, a.ID)
-	}
-	for _, f := range l.Lib.Furniture {
-		ids = append(ids, f.ID)
-	}
-	for _, d := range l.Lib.Decorations {
-		ids = append(ids, d.ID)
-	}
-	changed := false
-	for _, id := range ids {
-		if _, ok := l.Meta.Origins[id]; !ok && IsConverted(id) {
-			l.Meta.Origins[id] = origin.Origin{Kind: origin.KindEPL}
-			changed = true
-		}
-	}
-	return changed
-}
-
 // NewID makes a random id for a new accessory, furniture piece or decoration (internal/ids: unique across players and
 // setups, never derived from the name), free in every list of this library.
 func (l *Library) NewID() string {
@@ -139,6 +124,7 @@ func (l *Library) Put(a setfmt.Accessory) {
 		return
 	}
 	l.Lib.Accessories = append(l.Lib.Accessories, a)
+	l.Meta.ArtCurrent[a.ID] = true
 }
 
 // Delete removes an accessory and its layout. Its files stay in the shared store (other setups may use them; the
@@ -149,6 +135,7 @@ func (l *Library) Delete(id string) {
 	}
 	delete(l.Meta.Layouts, id)
 	delete(l.Meta.Origins, id)
+	delete(l.Meta.ArtCurrent, id)
 }
 
 // FurnitureIndex is the position of a furniture piece in the library (-1 = none).
@@ -181,7 +168,47 @@ func (l *Library) DeleteFurniture(id string) {
 
 // HasItem reports an accessory, furniture piece or decoration with this id.
 func (l *Library) HasItem(id string) bool {
-	return l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0
+	return l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0 || l.CustomerIndex(id) >= 0 || l.ClothingIndex(id) >= 0 || l.FaceIndex(id) >= 0 || l.AnimationIndex(id) >= 0
+}
+
+// AnimationIndex is the position of a customer animation in the library (-1 = none).
+func (l *Library) AnimationIndex(id string) int {
+	for i, a := range l.Lib.Animations {
+		if a.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// FaceIndex is the position of a saved face in the library (-1 = none).
+func (l *Library) FaceIndex(id string) int {
+	for i, f := range l.Lib.Faces {
+		if f.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// CustomerIndex is the position of a customer in the library (-1 = none).
+func (l *Library) CustomerIndex(id string) int {
+	for i, c := range l.Lib.Customers {
+		if c.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// ClothingIndex is the position of a clothing look in the library (-1 = none).
+func (l *Library) ClothingIndex(id string) int {
+	for i, c := range l.Lib.Clothes {
+		if c.ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // DecorationIndex is the position of a decoration in the library (-1 = none).
@@ -242,9 +269,6 @@ func (l *Library) WriteImage(id, suffix string, png []byte) (string, error) {
 	return l.Assets.Put(png, ".png")
 }
 
-// CopySource stores a user-picked file (layer image, painted texture, replacement texture…) and returns its path.
-func (l *Library) CopySource(src string) (string, error) { return l.Assets.PutFile(src) }
-
 // WriteSource stores image bytes made in the studio (straightened photos…); name only gives the extension.
 func (l *Library) WriteSource(name string, b []byte) (string, error) {
 	ext := filepath.Ext(name)
@@ -287,6 +311,21 @@ func (l *Library) FilesWhere(keep func(id string) bool) []string {
 			for _, rel := range d.Files() {
 				add(rel)
 			}
+		}
+	}
+	for _, c := range l.Lib.Customers {
+		if ok(c.ID) {
+			add(c.Portrait)
+		}
+	}
+	for _, e := range l.Lib.Employees {
+		if ok(e.ID) {
+			add(e.Portrait)
+		}
+	}
+	for _, f := range l.Lib.Faces {
+		if ok(f.ID) {
+			add(f.Portrait)
 		}
 	}
 	for id, raw := range l.Meta.Layouts {
@@ -368,22 +407,6 @@ func (l *Library) Entry(id string) (kind string, entry any, ok bool) {
 	return "", nil, false
 }
 
-// ItemRefs is the shared-store files entry id refers to (the entry and its editor layout).
-func (l *Library) ItemRefs(id string) []string {
-	_, entry, ok := l.Entry(id)
-	if !ok {
-		return nil
-	}
-	var refs []string
-	if b, err := json.Marshal(entry); err == nil {
-		refs = append(refs, assets.Refs(b)...)
-	}
-	if raw, ok := l.Meta.Layouts[id]; ok {
-		refs = append(refs, assets.Refs(raw)...)
-	}
-	return refs
-}
-
 // CopyEntry copies entry id with its editor layout and origin from src into l. False when src has no such entry.
 func (l *Library) CopyEntry(src *Library, id string) bool {
 	_, entry, ok := src.Entry(id)
@@ -403,6 +426,11 @@ func (l *Library) CopyEntry(src *Library, id string) bool {
 	}
 	if o, ok := src.Meta.Origins[id]; ok {
 		l.Meta.Origins[id] = o
+	}
+	if src.Meta.ArtCurrent[id] {
+		l.Meta.ArtCurrent[id] = true
+	} else {
+		delete(l.Meta.ArtCurrent, id)
 	}
 	return true
 }

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tcgstudio/internal/art"
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 )
@@ -22,7 +22,7 @@ func TestBakeSetPictures(t *testing.T) {
 			img.Set(x, y, color.NRGBA{uint8(x), uint8(y), 90, 255})
 		}
 	}
-	if err := art.SavePNG(filepath.Join(lib, "images", "photo.png"), img); err != nil {
+	if err := imgfile.Save(filepath.Join(lib, "images", "photo.png"), img); err != nil {
 		t.Fatal(err)
 	}
 	p := &project.Project{ID: "s", LibFolder: lib,

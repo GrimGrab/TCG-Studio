@@ -13,6 +13,9 @@ namespace TCGCustomCards.Runtime
     /// texture is both _MainTex and _EmissionMap (it glows at night). The shop name is a separate world-space text
     /// (<c>LightManager.m_BillboardText</c>) drawn over it. We put the player's banner image into a copy of the vanilla texture
     /// (MaterialPropertyBlock, so clearing the setting restores vanilla) and keep the frame.
+    /// Since the Unity 6 update the shop uses an optimized sign: mesh <c>BillboardMeshOptimized</c>, material
+    /// <c>BillboardOptimized</c> (_MainTex <c>Billboard_albedo</c>, 2048², the whole banner as one strip at the top, the frame's
+    /// parts below; plus a lighting map and a lightmap we leave alone). Both versions are recognised.
     /// </summary>
     internal static class ShopSign
     {
@@ -21,11 +24,15 @@ namespace TCGCustomCards.Runtime
         // The rest of the texture (u > 0.82) is the frame and edges.
         private static readonly Rect LeftHalfUv = Rect.MinMaxRect(0.0027f, 0.505f, 0.823f, 0.9937f);
         private static readonly Rect RightHalfUv = Rect.MinMaxRect(0.0084f, 0.0051f, 0.812f, 0.4934f);
+        // The optimized sign's banner (BillboardMeshOptimized's front panel, game files 2026-10-29): pixels x 35–2026, y 36–550
+        // of 2048 (top-left origin), read left→right and upright.
+        private static readonly Rect BannerUv = Rect.MinMaxRect(35 / 2048f, 1 - 550 / 2048f, 2026 / 2048f, 1 - 36 / 2048f);
         /// <summary>World width ÷ height of the sign face (4.645 × 1.2 mesh units, scaled 1.348 × 1.270 in the scene).</summary>
         internal const float FaceAspect = 4.11f;
 
         private static LightManager _lights;
         private static readonly List<Renderer> Renderers = new List<Renderer>();
+        private static bool _optimized; // the renderers are the optimized sign (one banner strip)
         private static readonly PictureCache<Texture2D> Texture = new PictureCache<Texture2D>();
         private static bool _hidName;
 
@@ -36,11 +43,17 @@ namespace TCGCustomCards.Runtime
             {
                 _lights = __instance;
                 Renderers.Clear();
+                _optimized = false;
                 foreach (var r in Object.FindObjectsOfType<MeshRenderer>())
                 {
                     var mat = r.sharedMaterial;
                     var mesh = r.GetComponent<MeshFilter>()?.sharedMesh;
-                    if (mat != null && mat.name == "Billboard" && mesh != null && mesh.name == "BillboardMesh") Renderers.Add(r);
+                    if (mat == null || mesh == null) continue;
+                    bool optimized = mat.name == "BillboardOptimized" && mesh.name == "BillboardMeshOptimized";
+                    if (!optimized && !(mat.name == "Billboard" && mesh.name == "BillboardMesh")) continue;
+                    if (Renderers.Count > 0 && optimized != _optimized) continue; // one version (the first found)
+                    _optimized = optimized;
+                    Renderers.Add(r);
                 }
                 if (Renderers.Count == 0) Plugin.Log.LogWarning("Shop sign: billboard renderer not found; ShopSignImage has no effect");
                 _hidName = false;
@@ -78,8 +91,8 @@ namespace TCGCustomCards.Runtime
             foreach (var r in Renderers) ShopPicture.SetTexture(r, tex);
         }
 
-        /// <summary>The cropped banner's two halves written into a copy of the vanilla texture; null = vanilla.</summary>
-        private static Texture2D TextureFor(string path, string crop) => Texture.Get(path + "|" + crop, () =>
+        /// <summary>The cropped banner written into a copy of the vanilla texture (the old sign: as two halves); null = vanilla.</summary>
+        private static Texture2D TextureFor(string path, string crop) => Texture.Get(path + "|" + crop + "|" + _optimized, () =>
         {
             var vanilla = Renderers.Count > 0 && Renderers[0] != null ? MaterialTex.Main(Renderers[0].sharedMaterial) : null;
             if (path == null || vanilla == null) return null;
@@ -88,6 +101,11 @@ namespace TCGCustomCards.Runtime
             var c = ShopPicture.Crop(crop, "ShopSignCrop", src, FaceAspect);
             var tex = ShopPicture.Compose(vanilla, "TCGCC_ShopSign", (px, w, h) =>
             {
+                if (_optimized)
+                {
+                    ShopPicture.Paint(px, w, h, src, c, BannerUv);
+                    return;
+                }
                 ShopPicture.Paint(px, w, h, src, new Rect(c.x, c.y, c.width / 2, c.height), LeftHalfUv);
                 ShopPicture.Paint(px, w, h, src, new Rect(c.x + c.width / 2, c.y, c.width / 2, c.height), RightHalfUv);
             });
@@ -186,7 +204,7 @@ namespace TCGCustomCards.Runtime
             if (path == null) return null;
             if (!File.Exists(path))
             {
-                Plugin.Log.LogWarning($"Shop sign font not found: {path}");
+                Plugin.Log.LogInfo($"Shop sign font: {path} is not there, using the game's own");
                 return null;
             }
             Font source = null;

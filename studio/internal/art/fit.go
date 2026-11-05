@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
-	"io"
 	"math"
-	"os"
+
+	"tcgstudio/internal/imgfile"
 
 	xdraw "golang.org/x/image/draw"
 )
@@ -19,35 +18,6 @@ func printed(c color.NRGBA) bool {
 	}
 	_, s, l := toHSL(c)
 	return s >= 0.2 && l > 0.08 && l < 0.95
-}
-
-// detectPrinted returns the bounding box of printed pixels inside search, or fallback if too few are found.
-func detectPrinted(img *image.NRGBA, search image.Rectangle, fallback image.Rectangle) image.Rectangle {
-	search = search.Intersect(img.Bounds())
-	minX, minY, maxX, maxY, n := search.Max.X, search.Max.Y, search.Min.X, search.Min.Y, 0
-	for y := search.Min.Y; y < search.Max.Y; y++ {
-		row := 0
-		for x := search.Min.X; x < search.Max.X; x++ {
-			if printed(img.NRGBAAt(x, y)) {
-				row++
-			}
-		}
-		// A row counts when it is mostly printed (ignores stray coloured pixels in the crimps).
-		if row < search.Dx()/3 {
-			continue
-		}
-		for x := search.Min.X; x < search.Max.X; x++ {
-			if printed(img.NRGBAAt(x, y)) {
-				minX, maxX = min(minX, x), max(maxX, x)
-			}
-		}
-		minY, maxY = min(minY, y), max(maxY, y)
-		n++
-	}
-	if n < 50 {
-		return fallback
-	}
-	return image.Rect(minX, minY, maxX+1, maxY+1)
 }
 
 // faceMask describes the printed face of the rendered pack in the pack icon, measured per row and per column so the
@@ -183,16 +153,6 @@ func fillRounded(img *image.NRGBA, r image.Rectangle, rad int, c color.NRGBA) {
 	}
 }
 
-func loadImage(path string) (image.Image, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	img, _, err := image.Decode(f)
-	return img, err
-}
-
 // ---------------------------------------------------------------- card backs
 
 // Card backs are stored as plain card-shaped art in the proportions of the game's card-back art window (T_CardBackMesh:
@@ -204,27 +164,24 @@ var backArt = image.Rect(0, 0, 718, 1006)
 func ComposeCardBack(src image.Image, out string) error {
 	img := image.NewNRGBA(backArt)
 	drawCover(img, backArt, trimBorders(src))
-	return savePNG(out, img)
+	return imgfile.Save(out, img)
 }
 
-// GenerateCardBack makes a card back from a colour, the set icon and a title (icon read inside projectFolder).
-func GenerateCardBack(projectFolder, iconRel, colorHex, title, out string) error {
-	return GenerateCardBackFrom(InFolder(projectFolder), iconRel, colorHex, title, out)
-}
-
-// GenerateCardBackFrom is GenerateCardBack with the icon found through resolve (e.g. Project.ImagePath).
-func GenerateCardBackFrom(resolve func(string) string, iconRel, colorHex, title, out string) error {
+// GenerateCardBack makes a card back from a colour, a title and the set icon, found through resolve (nil = no icon).
+func GenerateCardBack(resolve func(string) string, colorHex, title, out string) error {
 	base, err := parseHex(colorHex)
 	if err != nil {
 		return err
 	}
 	art := image.NewNRGBA(backArt)
 	gradient(art, art.Bounds(), shade(base, 1.2), shade(base, 0.5))
-	drawIcon(art, loadIcon(resolve, iconRel), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
+	if resolve != nil {
+		drawIcon(art, loadIcon(resolve, ""), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
+	}
 	if title != "" {
 		drawText(art, func(s float64) fontFace { return newFace(s) }, title, image.Rect(40, art.Bounds().Dy()-250, art.Bounds().Dx()-40, art.Bounds().Dy()-70), 70, color.White)
 	}
-	return savePNG(out, art)
+	return imgfile.Save(out, art)
 }
 
 // trimBorders crops away uniform (or transparent) margins, e.g. the black/white padding around a scanned card.
@@ -314,18 +271,18 @@ func CardBackAutoCrop(src image.Image) []float64 {
 // CardBackFromCrop writes the part of an image file a crop box shows ([x, y, w] fractions; the height follows from the
 // card shape; nil = the largest box in the middle) as a card back.
 func CardBackFromCrop(srcPath string, crop []float64, out string) error {
-	src, err := loadImage(srcPath)
+	src, err := imgfile.Load(srcPath)
 	if err != nil {
 		return fmt.Errorf("card back image: %w", err)
 	}
 	img := image.NewNRGBA(backArt)
 	drawCover(img, backArt, cropped(src, crop, CardBackAspect))
-	return savePNG(out, img)
+	return imgfile.Save(out, img)
 }
 
 // ImageCardBackAutoCrop is CardBackAutoCrop of an image file.
 func ImageCardBackAutoCrop(path string) ([]float64, error) {
-	src, err := loadImage(path)
+	src, err := imgfile.Load(path)
 	if err != nil {
 		return nil, fmt.Errorf("card back image: %w", err)
 	}
@@ -338,9 +295,3 @@ func absInt(v int) int {
 	}
 	return v
 }
-
-// SavePNG writes an image as PNG (creating the folder).
-func SavePNG(path string, img image.Image) error { return savePNG(path, img) }
-
-// EncodePNG writes an image as PNG.
-func EncodePNG(w io.Writer, img image.Image) error { return png.Encode(w, img) }

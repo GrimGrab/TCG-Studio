@@ -2,7 +2,7 @@
 // placeholder keeps the page layout (and the scroll positions of the scrolling parents are restored), so nothing below the
 // view moves. Canvases inside resize through their own ResizeObservers.
 
-export interface FullWindow {
+interface FullWindow {
   readonly on: boolean;
   set(v: boolean): void;
   toggle(): void;

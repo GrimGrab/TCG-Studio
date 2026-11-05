@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"tcgstudio/internal/fsutil"
 	gamepkg "tcgstudio/internal/game"
 )
 
@@ -64,8 +65,6 @@ type loader struct {
 
 func abs(game, rel string) string { return filepath.Join(game, filepath.FromSlash(rel)) }
 
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
-
 func sameFile(path string, want []byte) bool {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -80,17 +79,17 @@ var doorstopTarget = regexp.MustCompile(`(?mi)^\s*target_assembly\s*=\s*(.+)$`)
 func detectLoader(game string) loader {
 	var l loader
 	core := abs(game, "BepInEx/core")
-	l.bep6 = exists(filepath.Join(core, "BepInEx.Core.dll")) || exists(filepath.Join(core, "BepInEx.Unity.Mono.dll")) ||
-		exists(filepath.Join(core, "BepInEx.Unity.IL2CPP.dll"))
-	l.melon = exists(abs(game, "MelonLoader")) || exists(abs(game, "version.dll"))
-	hasCore := exists(filepath.Join(core, "BepInEx.dll"))
+	l.bep6 = fsutil.Exists(filepath.Join(core, "BepInEx.Core.dll")) || fsutil.Exists(filepath.Join(core, "BepInEx.Unity.Mono.dll")) ||
+		fsutil.Exists(filepath.Join(core, "BepInEx.Unity.IL2CPP.dll"))
+	l.melon = fsutil.Exists(abs(game, "MelonLoader")) || fsutil.Exists(abs(game, "version.dll"))
+	hasCore := fsutil.Exists(filepath.Join(core, "BepInEx.dll"))
 	if !hasCore || l.bep6 {
 		return l
 	}
-	if !exists(filepath.Join(core, "BepInEx.Preloader.dll")) {
+	if !fsutil.Exists(filepath.Join(core, "BepInEx.Preloader.dll")) {
 		l.problems = append(l.problems, "BepInEx.Preloader.dll is missing")
 	}
-	if !exists(abs(game, proxyDLL)) {
+	if !fsutil.Exists(abs(game, proxyDLL)) {
 		l.problems = append(l.problems, "winhttp.dll (the loader hook) is missing")
 	}
 	if b, err := os.ReadFile(abs(game, doorstopIni)); err != nil {
@@ -126,7 +125,7 @@ func strayModCopies(game string) []string {
 // Inspect reports what is installed and what Repair would do.
 func Inspect(game string, p Payload, havePayload, running bool) State {
 	s := State{GameDir: game, Running: running, Version: p.Version, Payload: havePayload}
-	s.Found = game != "" && exists(abs(game, "Card Shop Simulator_Data"))
+	s.Found = game != "" && fsutil.Exists(abs(game, "Card Shop Simulator_Data"))
 	if !s.Found {
 		s.Items = append(s.Items, Item{"game", "Game folder", Missing, "TCG Card Shop Simulator wasn't found — pick its folder."})
 		return s
@@ -150,14 +149,14 @@ func Inspect(game string, p Payload, havePayload, running bool) State {
 		add("loader", "Mod loader (BepInEx 5)", Missing, "BepInEx 5 will be installed.")
 	}
 
-	if exists(abs(game, cfgMgrRel)) || findFile(abs(game, "BepInEx/plugins"), "ConfigurationManager.dll") {
+	if fsutil.Exists(abs(game, cfgMgrRel)) || findFile(abs(game, "BepInEx/plugins"), "ConfigurationManager.dll") {
 		add("configmgr", "Settings menu (F1)", OK, "ConfigurationManager is installed.")
 	} else {
 		add("configmgr", "Settings menu (F1)", Missing, "ConfigurationManager (the in-game F1 settings menu) will be installed.")
 	}
 
 	switch {
-	case !exists(abs(game, modDLLRel)):
+	case !fsutil.Exists(abs(game, modDLLRel)):
 		add("mod", "TCG Custom Cards mod", Missing, "The mod will be installed.")
 	case !havePayload:
 		add("mod", "TCG Custom Cards mod", OK, "The mod is installed (this build can't check its version).")
@@ -171,7 +170,7 @@ func Inspect(game string, p Payload, havePayload, running bool) State {
 		add("stray", "Duplicate mod copies", Conflict, "Extra copies would load the mod twice and will be backed up: "+strings.Join(stray, ", "))
 	}
 
-	if exists(abs(game, legacyTemplatesRel)) {
+	if fsutil.Exists(abs(game, legacyTemplatesRel)) {
 		add("templates", "Old art templates", Outdated, "Exported in game by an older mod version and no longer used (TCG Studio reads the game files) — Install / Repair removes them.")
 	}
 	add("sets", "Card sets", Info, fmt.Sprintf("%d set(s) installed. Import sets in Import, then Install.", installedSets(game)))
@@ -220,13 +219,13 @@ func (s *session) say(format string, a ...any) {
 // moveToBackup moves a game-relative file/folder into TCGStudio_backup_<time>/ (same relative path).
 func (s *session) moveToBackup(rel string) error {
 	src := abs(s.game, rel)
-	if !exists(src) {
+	if !fsutil.Exists(src) {
 		return nil
 	}
 	if s.backup == "" {
 		base := filepath.Join(s.game, "TCGStudio_backup_"+time.Now().Format("20060102-150405"))
 		s.backup = base
-		for i := 2; exists(s.backup); i++ { // another run in the same second
+		for i := 2; fsutil.Exists(s.backup); i++ { // another run in the same second
 			s.backup = fmt.Sprintf("%s-%d", base, i)
 		}
 	}
@@ -247,7 +246,7 @@ func (s *session) writeFile(rel string, data []byte) error {
 	if sameFile(dst, data) {
 		return nil
 	}
-	if exists(dst) {
+	if fsutil.Exists(dst) {
 		if err := s.moveToBackup(rel); err != nil {
 			return err
 		}
@@ -273,7 +272,7 @@ func (s *session) extract(zipData []byte, include func(rel string) bool, keep fu
 		if f.FileInfo().IsDir() || rel == "" || strings.Contains(rel, "..") || !include(rel) {
 			continue
 		}
-		if keep != nil && keep(rel) && exists(abs(s.game, rel)) {
+		if keep != nil && keep(rel) && fsutil.Exists(abs(s.game, rel)) {
 			continue
 		}
 		rc, err := f.Open()
@@ -294,7 +293,7 @@ func (s *session) extract(zipData []byte, include func(rel string) bool, keep fu
 
 // Repair installs/repairs everything that isn't OK. Other plugins and existing configs are kept.
 func Repair(game string, p Payload, running bool, log func(string)) (backupDir string, err error) {
-	if !exists(abs(game, "Card Shop Simulator_Data")) {
+	if !fsutil.Exists(abs(game, "Card Shop Simulator_Data")) {
 		return "", fmt.Errorf("that folder isn't a TCG Card Shop Simulator install")
 	}
 	if running {
@@ -334,7 +333,7 @@ func Repair(game string, p Payload, running bool, log func(string)) (backupDir s
 			return s.backup, err
 		}
 	}
-	if !(exists(abs(game, cfgMgrRel)) || findFile(abs(game, "BepInEx/plugins"), "ConfigurationManager.dll")) {
+	if !(fsutil.Exists(abs(game, cfgMgrRel)) || findFile(abs(game, "BepInEx/plugins"), "ConfigurationManager.dll")) {
 		s.say("Installing ConfigurationManager (F1 menu)")
 		if err = s.extract(p.BepInExZip,
 			func(rel string) bool { return strings.HasPrefix(rel, "BepInEx/plugins/ConfigurationManager/") },
@@ -360,14 +359,15 @@ func Repair(game string, p Payload, running bool, log func(string)) (backupDir s
 			return s.backup, err
 		}
 	}
-	if exists(abs(game, pluginRel+"/TCGCustomCards.pdb")) {
+	if fsutil.Exists(abs(game, pluginRel+"/TCGCustomCards.pdb")) {
 		if err = s.moveToBackup(pluginRel + "/TCGCustomCards.pdb"); err != nil {
 			return s.backup, err
 		}
 	}
+	// migration:installer-templates
 	// Older mod versions exported art templates in game; TCG Studio now reads them from the game files. Generated data, so it
 	// is deleted rather than backed up.
-	if exists(abs(game, legacyTemplatesRel)) {
+	if fsutil.Exists(abs(game, legacyTemplatesRel)) {
 		s.say("Removing the old in-game template export (no longer used)")
 		if err = os.RemoveAll(abs(game, legacyTemplatesRel)); err != nil {
 			return s.backup, err

@@ -95,3 +95,40 @@ func TestAddMissingDropsRemoved(t *testing.T) {
 		t.Errorf("removed setting not dropped cleanly:\n%s", b)
 	}
 }
+
+// A renamed setting takes the old one's value; the old entry and dropped siblings go (game 1.03 bulk boxes).
+func TestAddMissingRenamed(t *testing.T) {
+	block := func(key, value string) string {
+		return "\r\n## Box.\r\n# Setting type: String\r\n# Default value:\r\n" + key + " = " + value + "\r\n"
+	}
+	sec := "[Visuals - Game look - Boxes]\r\n"
+	file := sec + block("BulkBox_TetramonBaseTexture", "box_a.png") + block("BulkBox_TetramonDestinyTexture", "box_d.png") +
+		block("BulkBox_TetramonBaseGradeHGTexture", "")
+	defaults := sec + block("BulkBoxNGTexture", "") + block("BulkBoxHGTexture", "") + block("BulkBoxOGTexture", "")
+	p := filepath.Join(t.TempDir(), FileName)
+	if err := os.WriteFile(p, []byte(file), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := addMissing(p, []byte(defaults)); err != nil {
+		t.Fatal(err)
+	}
+	secs, err := Read(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range secs {
+		for _, e := range s.Entries {
+			got[e.Key] = e.Value
+		}
+	}
+	want := map[string]string{"BulkBoxNGTexture": "box_a.png", "BulkBoxHGTexture": "", "BulkBoxOGTexture": ""}
+	if len(got) != len(want) {
+		t.Errorf("entries %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+}

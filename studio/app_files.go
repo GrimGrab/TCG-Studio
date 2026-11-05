@@ -40,6 +40,15 @@ var fileRoutes = []fileRoute{
 	{"boxtemplates/", 1, func(a *App, rel string) string {
 		return safeJoin(a.templatesDir(), gameextract.BoxesDir, rel)
 	}},
+	{"clothtemplates/", 1, func(a *App, rel string) string {
+		return safeJoin(a.templatesDir(), gameextract.ClothesDir, rel)
+	}},
+	{"chartemplates/", 1, func(a *App, rel string) string {
+		return safeJoin(a.templatesDir(), gameextract.CharactersDir, rel)
+	}},
+	{"custtemplates/", 1, func(a *App, rel string) string {
+		return safeJoin(a.templatesDir(), gameextract.CustomersDir, rel)
+	}},
 	// accessory, furniture and decoration files: the shared store
 	{"acc/", 0, func(a *App, rel string) string {
 		if !astore.IsAsset(rel) {

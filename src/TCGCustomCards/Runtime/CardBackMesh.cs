@@ -15,7 +15,7 @@ namespace TCGCustomCards.Runtime
     internal static class CardBackMesh
     {
         private static readonly AccessTools.FieldRef<CardUI, Card3dUIGroup> Group =
-            AccessTools.FieldRefAccess<CardUI, Card3dUIGroup>("m_Card3dUIGroup");
+            Core.Compat.Field<CardUI, Card3dUIGroup>(typeof(CardBackMesh), "m_Card3dUIGroup");
 
         /// <summary>Composed mesh texture per back image file (null = failed to load).</summary>
         private static readonly Dictionary<string, Texture2D> Textures = new Dictionary<string, Texture2D>();
@@ -29,12 +29,17 @@ namespace TCGCustomCards.Runtime
         {
             foreach (var t in Textures.Values) if (t != null) Object.Destroy(t);
             Textures.Clear();
+            _basePixels = null;
             foreach (var r in Overridden) if (r != null) r.SetPropertyBlock(null);
             Overridden.Clear();
         }
 
+        /// <summary>While set, cards aren't given a back: the card pictures hide it for the shot, and composing a double-faced card's costs over 100 ms of pixel work.</summary>
+        public static bool Suspended;
+
         public static void Apply(CardUI ui, CardData data)
         {
+            if (Suspended) return;
             var group = Group(ui);
             if (group == null || group.m_CardBackMesh == null) return;
             var renderer = group.m_CardBackMesh.GetComponentInChildren<Renderer>(true);
@@ -80,6 +85,8 @@ namespace TCGCustomCards.Runtime
         {
             if (Textures.TryGetValue(path, out var cached)) return cached;
             Texture2D result = null;
+            Debug.SpikeWatch.Mark("building a card back");
+            using var measured = Debug.SpikeWatch.Measure("card back");
             try { result = Compose(path, renderer); }
             catch (System.Exception e) { Plugin.Log.LogWarning($"Card back mesh texture for {path} failed: {e.Message}"); }
             Textures[path] = result;
@@ -100,13 +107,12 @@ namespace TCGCustomCards.Runtime
         {
             var vanilla = MaterialTex.Main(renderer.sharedMaterial);
             if (vanilla == null) return null;
-            var baseTex = TextureReadback.Read(vanilla, new RectInt(0, 0, vanilla.width, vanilla.height));
-            if (baseTex == null) return null;
+            if (!BasePixels(vanilla)) return null;
             var src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!src.LoadImage(File.ReadAllBytes(path))) { Object.Destroy(src); Object.Destroy(baseTex); return null; }
+            if (!src.LoadImage(File.ReadAllBytes(path))) { Object.Destroy(src); return null; }
 
             // Source region (UV, bottom-up): legacy square backs → their art window; otherwise the whole image, cropped to cover.
-            int w = baseTex.width, h = baseTex.height;
+            int w = _baseW, h = _baseH;
             float k = w / 1024f;
             float scale = Mathf.Clamp(Plugin.CardBackScale.Value, 0.9f, 1.25f);
             float cx = ArtTopDown.center.x, cy = 1024 - ArtTopDown.center.y;
@@ -123,7 +129,9 @@ namespace TCGCustomCards.Runtime
                 srcUv = have > want ? new Rect((1 - want / have) / 2, 0, want / have, 1) : new Rect(0, (1 - have / want) / 2, 1, have / want);
             }
 
-            var px = baseTex.GetPixels32();
+            var px = (Color32[])_basePixels.Clone();
+            var from = src.GetPixels32();
+            int sw = src.width, sh = src.height;
             int rad = Mathf.RoundToInt(ArtCornerRadius * k * scale);
             for (int y = art.yMin; y < art.yMax; y++)
                 for (int x = art.xMin; x < art.xMax; x++)
@@ -131,9 +139,7 @@ namespace TCGCustomCards.Runtime
                     if (!InsideRounded(x, y, art, rad)) continue;
                     float u = srcUv.x + srcUv.width * ((x + 0.5f - art.xMin) / art.width);
                     float v = srcUv.y + srcUv.height * ((y + 0.5f - art.yMin) / art.height);
-                    Color c = src.GetPixelBilinear(u, v);
-                    Color b = px[y * w + x];
-                    px[y * w + x] = Color.Lerp(b, new Color(c.r, c.g, c.b, 1f), c.a);
+                    px[y * w + x] = Over(px[y * w + x], Bilinear(from, sw, sh, u, v));
                 }
 
             var dst = new Texture2D(w, h, TextureFormat.RGBA32, true) { name = Path.GetFileNameWithoutExtension(path) + "_backmesh", wrapMode = TextureWrapMode.Clamp };
@@ -141,8 +147,47 @@ namespace TCGCustomCards.Runtime
             dst.Apply(updateMipmaps: true, makeNoLongerReadable: true);
             dst.hideFlags = HideFlags.DontUnloadUnusedAsset;
             Object.Destroy(src);
-            Object.Destroy(baseTex);
             return dst;
+        }
+
+        private static Color32[] _basePixels;
+        private static int _baseW, _baseH;
+
+        /// <summary>The vanilla back's pixels, read from the graphics card once (a read makes the game wait for it).</summary>
+        private static bool BasePixels(Texture vanilla)
+        {
+            if (_basePixels != null) return true;
+            var read = TextureReadback.Read(vanilla, new RectInt(0, 0, vanilla.width, vanilla.height));
+            if (read == null) return false;
+            _basePixels = read.GetPixels32();
+            _baseW = read.width;
+            _baseH = read.height;
+            Object.Destroy(read);
+            return true;
+        }
+
+        /// <summary>Texture2D.GetPixelBilinear's result on a plain pixel array, clamped at the edges; that call per pixel took over 100 ms for one back.</summary>
+        private static Color32 Bilinear(Color32[] px, int w, int h, float u, float v)
+        {
+            float fx = u * w - 0.5f, fy = v * h - 0.5f;
+            int x0 = (int)System.Math.Floor(fx), y0 = (int)System.Math.Floor(fy);
+            int tx = (int)((fx - x0) * 256f), ty = (int)((fy - y0) * 256f);
+            int x1 = x0 + 1 >= w ? w - 1 : x0 + 1, y1 = y0 + 1 >= h ? h - 1 : y0 + 1;
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            Color32 a = px[y0 * w + x0], b = px[y0 * w + x1], c = px[y1 * w + x0], d = px[y1 * w + x1];
+            int ix = 256 - tx, iy = 256 - ty;
+            return new Color32(
+                (byte)(((a.r * ix + b.r * tx) * iy + (c.r * ix + d.r * tx) * ty) >> 16),
+                (byte)(((a.g * ix + b.g * tx) * iy + (c.g * ix + d.g * tx) * ty) >> 16),
+                (byte)(((a.b * ix + b.b * tx) * iy + (c.b * ix + d.b * tx) * ty) >> 16),
+                (byte)(((a.a * ix + b.a * tx) * iy + (c.a * ix + d.a * tx) * ty) >> 16));
+        }
+
+        private static Color32 Over(Color32 under, Color32 over)
+        {
+            int a = over.a, ia = 255 - a;
+            return new Color32((byte)((under.r * ia + over.r * a) / 255), (byte)((under.g * ia + over.g * a) / 255), (byte)((under.b * ia + over.b * a) / 255), (byte)((under.a * ia + 255 * a) / 255));
         }
 
         private static bool InsideRounded(int x, int y, RectInt r, int rad)

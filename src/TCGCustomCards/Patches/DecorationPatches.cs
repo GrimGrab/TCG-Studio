@@ -119,7 +119,8 @@ namespace TCGCustomCards.Patches
 
         private static bool Prefix(object __instance)
         {
-            if (!VanillaFilter.HidePosters && !VanillaFilter.HideDecoObjects && !VanillaFilter.HideSurfaces) return true;
+            // A built-in decoration is sold elsewhere: never in the buy app, and on the decorate screen only while one is owned.
+            if (!VanillaFilter.HidePosters && !VanillaFilter.HideDecoObjects && !VanillaFilter.HideSurfaces && !Registry.Decorations.Exists(d => d.Def.BuiltIn)) return true;
             var t = Traverse.Create(__instance);
             bool buy = __instance is ShopBuyDecoUIScreen;
             bool surfaces = t.Field<bool>("m_IsShopWallFloorCeiling").Value;
@@ -145,6 +146,11 @@ namespace TCGCustomCards.Patches
                 for (int i = 0; i < itemList.Count; i++)
                 {
                     var deco = itemList[i];
+                    if (Registry.GetDecoration(deco)?.Def.BuiltIn == true)
+                    {
+                        if (!buy && Owned(deco)) visible.Add(i);
+                        continue;
+                    }
                     if (!hide || Registry.GetDecoration(deco) != null || (!buy && Owned(deco))) visible.Add(i);
                 }
             }

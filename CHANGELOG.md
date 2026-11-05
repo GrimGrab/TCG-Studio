@@ -3,6 +3,27 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.0.0 - 2026-11-05
+
+TCG Studio 2.0.0: works with the game's Unity 6 update (1.03 and later), and brings living customers and your own employees.
+
+- Changed: Made for the new game version (Unity 6, the Halloween update and later). Pack, box and accessory art is drawn on the game's new models. Studio offers a one-time conversion of your existing art to the new layouts. Read the warnings before converting. It can't be undone, so convert before you make new art.
+- Changed: Workspaces still using the storage layout from before v1.14.0 are no longer upgraded by this version. Studio points you to v1.14.0, which upgrades them, then you can update again.
+- New: Customer personalities (Mod settings → Customers → Personalities, off by default). Some customers come back as regulars with full names, traits and perks. They talk, chat with each other, gossip, trade binder cards, make friends and rivals, rip packs and react to big pulls, read your whiteboard, and get impatient. Collectors show off their prized card and offer to sell you binder cards. Regulars earn a loyalty status, and some earn nicknames for what they do. Shoplifting is on by default when personalities are on: left click stops a thief, and the kick key (K) sends a customer out.
+- New: Look at a customer to see a panel in the game's style with their traits, patience, loyalty and best card (Customers → InspectOnLook).
+- New: Shop whiteboard. Buy it boxed in MY DIY and hang it on a wall. Click it for tabs showing your regulars' records, legends, drama, a wall of shame and a guide. Rename regulars or give them nicknames there. Regulars stop to read it.
+- New: Customers page in Studio. Create regulars with their own face, outfit, voice, traits and animations. Edit customer lines and the names list. Make clothes on Game look → Clothes.
+- New: Customer animations. 12 built-in gestures (clap, wave, facepalm, foot stomp…), an animation editor in Studio, and pack rips with the pack in hand and cards brought up to look at.
+- New: Customer voices (Customers - Behaviour → TalkSounds, off by default): short chirpy speech sounds with a pitch and tone per regular.
+- New: Your own employees (Studio → Employees). They appear in the hire app after the game's workers and have their own stats, perks, look, outfit, voice and lines. Content → ShowVanillaEmployees hides the game's own staff. Employees can talk at the till (Customers - Employees → EmployeeTalk, off by default).
+- New: Tournament slots mostly go to your regulars (Customers → TournamentRegularChance).
+- New: Add, change, rotate or remove a card's back image on a set's Cards tab.
+- Fixed: The last card of a big pack now shrinks with the others in the final layout.
+- Fixed: Card boxes no longer show the set's pack art after loading a save or using the auto pack opener.
+- Fixed: Hide vanilla packs also hides the Ascension card box.
+- Fixed: Customers opening packs at the same time no longer get the same cards.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v1.14.0 - 2026-10-24
 
 TCG Studio 1.14.0: 45 more card games to import, a preview before you import, and a fresh look across Studio.

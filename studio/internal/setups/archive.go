@@ -14,8 +14,8 @@ import (
 	"tcgstudio/internal/assets"
 	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/setfmt"
+	"tcgstudio/internal/sharezip"
 	"tcgstudio/internal/workspace"
-	"tcgstudio/internal/ziputil"
 )
 
 // Ext is the file extension of an exported setup (a zip).
@@ -27,6 +27,7 @@ const (
 	manifestFile = "manifest.json"
 	// Format is the manifest's "format" of a setup file.
 	Format = "tcgsetup"
+	// migration:setup-archive-v2
 	// LegacyVersion is the newest format version Import reads (newer files go through internal/share).
 	LegacyVersion = 2
 	// libraryEntry is the zip folder of the exported sets' files.
@@ -95,7 +96,7 @@ func manifestOf(zr *zip.Reader) (*Manifest, error) {
 
 // cleanEntry validates a zip entry name and returns it as a safe slash path, or "" to skip it.
 func cleanEntry(name string) (string, error) {
-	n, err := ziputil.Clean(name)
+	n, err := sharezip.Clean(name)
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +114,7 @@ func (h Home) Import(src, studioVersion string) (id string, kept []string, err e
 	if err != nil {
 		return "", nil, err
 	}
-	zr, err := ziputil.Open(src)
+	zr, err := sharezip.Open(src)
 	if err != nil {
 		return "", nil, fmt.Errorf("not a setup file: %w", err)
 	}
@@ -139,7 +140,7 @@ func (h Home) Import(src, studioVersion string) (id string, kept []string, err e
 		if rel == "" {
 			continue
 		}
-		if err := ziputil.Extract(f, filepath.Join(tmp, filepath.FromSlash(rel))); err != nil {
+		if err := sharezip.Extract(f, filepath.Join(tmp, filepath.FromSlash(rel))); err != nil {
 			return fail(err)
 		}
 	}

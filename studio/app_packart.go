@@ -10,13 +10,10 @@ import (
 	"errors"
 	"fmt"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"os"
 	"path"
-	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"tcgstudio/internal/art"
@@ -43,18 +40,6 @@ func packFilePrefix(packID string) (string, error) {
 	return packID + "_", nil
 }
 
-// freshName gives a file the editor writes for a set a new name each time ("images/x_texture.png" →
-// "images/x_texture.v<time>.png"; an earlier ".v…" mark is replaced): the game keeps reading the file set.json names until
-// the set is saved with the new one, so nothing changes in the game before Save. Older versions stay until the Storage
-// page deletes unused files.
-func freshName(rel string) string {
-	ext := path.Ext(rel)
-	base := freshMark.ReplaceAllString(strings.TrimSuffix(rel, ext), "")
-	return base + ".v" + strconv.FormatInt(time.Now().UnixMilli(), 36) + ext
-}
-
-var freshMark = regexp.MustCompile(`\.v[0-9a-z]+$`)
-
 // packArtPrefix is packFilePrefix inside the set's images folder.
 func packArtPrefix(packID string) (string, error) {
 	pre, err := packFilePrefix(packID)
@@ -62,7 +47,7 @@ func packArtPrefix(packID string) (string, error) {
 }
 
 // SavePackArt writes the editor's composed texture and icon (data URLs) for which = "pack" | "box" of a pack under new names
-// (freshName) and returns their paths; the caller assigns them to the pack, and the set's Save puts them in the game.
+// (project.FreshName) and returns their paths; the caller assigns them to the pack, and the set's Save puts them in the game.
 func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackArtFiles, error) {
 	if !setfmt.SafeID(id) {
 		return PackArtFiles{}, errBadID
@@ -78,7 +63,7 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 	if err != nil {
 		return PackArtFiles{}, err
 	}
-	out := PackArtFiles{Texture: freshName(pre + which + "_texture.png"), Icon: freshName(pre + which + "_icon.png")}
+	out := PackArtFiles{Texture: project.FreshName(pre + which + "_texture.png"), Icon: project.FreshName(pre + which + "_icon.png")}
 	for _, f := range []struct {
 		data string
 		rel  *string
@@ -115,7 +100,7 @@ func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return p.WriteFile(freshName(pre+which+"_base.png"), b)
+	return p.WriteFile(project.FreshName(pre+which+"_base.png"), b)
 }
 
 // ---------------------------------------------------------------- product photos (TCGplayer)
@@ -176,7 +161,7 @@ func (a *App) UseProductPhoto(id string, p importer.SealedProduct) (string, erro
 		return "", err
 	}
 	var buf bytes.Buffer
-	if err := art.EncodePNG(&buf, img); err != nil {
+	if err := png.Encode(&buf, img); err != nil {
 		return "", err
 	}
 	return a.writeIntoProject(id, path.Base(rel), buf.Bytes())
@@ -313,7 +298,13 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 		}
 	}
 
-	// Cards, best first: real price (the higher of normal and foil), then rarity.
+	out.Cards = bestArtCards(p, cards)
+	return out, nil
+}
+
+// bestArtCards are the three cards with the best art for a pack (all cards when the set is empty): highest real price (the
+// higher of normal and foil), then rarity.
+func bestArtCards(p *project.Project, cards map[string]bool) []SmartArtCard {
 	price := func(cid string) float64 {
 		m, ok := p.Meta.Cards[cid]
 		if !ok {
@@ -339,17 +330,18 @@ func (a *App) SmartArtSources(id, packID string, choice SmartChoice) (SmartArtSo
 		}
 		return p.Set.RankOf(list[i].Rarity) > p.Set.RankOf(list[j].Rarity)
 	})
+	out := []SmartArtCard{}
 	for _, c := range list {
-		if len(out.Cards) == 3 {
+		if len(out) == 3 {
 			break
 		}
 		w, h := 0, 0
 		if cfg, err := readImageConfig(p.ImagePath(c.Image)); err == nil {
 			w, h = cfg.Width, cfg.Height
 		}
-		out.Cards = append(out.Cards, SmartArtCard{Name: c.Name, Image: c.Image, Window: art.ArtWindow(p.Meta.Source, w, h)})
+		out = append(out, SmartArtCard{Name: c.Name, Image: c.Image, Window: art.ArtWindow(p.Meta.Source, w, h)})
 	}
-	return out, nil
+	return out
 }
 
 // SaveAutoArt stores an image Smart generate made (data URL) as images/auto_<pack>_<part>_<time>.png (a new name each time,

@@ -433,6 +433,7 @@
   });
 
   onMount(async () => {
+    // migration:import-page-paths
     // Paths older versions remembered.
     try { localStorage.removeItem('import.epl'); localStorage.removeItem('import.share'); } catch {}
     loadCatalog();

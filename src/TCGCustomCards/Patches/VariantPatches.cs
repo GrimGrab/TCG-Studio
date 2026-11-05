@@ -31,20 +31,20 @@ namespace TCGCustomCards.Patches
         // ------------------------------------------------------------------ binder
 
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, List<int>> SortedRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, List<int>>("m_SortedIndexList");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, List<int>>(typeof(VariantPatches), "m_SortedIndexList");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, ECardExpansionType> ExpRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, ECardExpansionType>("m_ExpansionType");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, ECardExpansionType>(typeof(VariantPatches), "m_ExpansionType");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, bool> GradedRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, bool>("m_IsGradedCardAlbum");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, bool>(typeof(VariantPatches), "m_IsGradedCardAlbum");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, int> MaxIndexRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, int>("m_MaxIndex");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, int>(typeof(VariantPatches), "m_MaxIndex");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, int> IndexRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, int>("m_Index");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, int>(typeof(VariantPatches), "m_Index");
         private static readonly AccessTools.FieldRef<CollectionBinderFlipAnimCtrl, CollectionBinderUI> UiRef =
-            AccessTools.FieldRefAccess<CollectionBinderFlipAnimCtrl, CollectionBinderUI>("m_CollectionBinderUI");
+            Core.Compat.Field<CollectionBinderFlipAnimCtrl, CollectionBinderUI>(typeof(VariantPatches), "m_CollectionBinderUI");
 
         private static readonly AccessTools.FieldRef<CollectionBinderUI, int> MaxCollectRef =
-            AccessTools.FieldRefAccess<CollectionBinderUI, int>("m_MaxCardCollectionCount");
+            Core.Compat.Field<CollectionBinderUI, int>(typeof(VariantPatches), "m_MaxCardCollectionCount");
 
         /// <summary>Enhanced binder's one-slot-per-card layout lists versions itself (<see cref="Binder.BinderIndex"/>).</summary>
         private static CustomSet BinderSet(CollectionBinderFlipAnimCtrl c) =>
@@ -120,11 +120,11 @@ namespace TCGCustomCards.Patches
         internal static class CheckPricePatch
         {
             private static readonly AccessTools.FieldRef<CheckPriceScreen, ECardExpansionType> Exp =
-                AccessTools.FieldRefAccess<CheckPriceScreen, ECardExpansionType>("m_CurrentExpansionType");
+                Core.Compat.Field<CheckPriceScreen, ECardExpansionType>(typeof(CheckPricePatch), "m_CurrentExpansionType");
             private static readonly AccessTools.FieldRef<CheckPriceScreen, int> Page =
-                AccessTools.FieldRefAccess<CheckPriceScreen, int>("m_CardPageIndex");
+                Core.Compat.Field<CheckPriceScreen, int>(typeof(CheckPricePatch), "m_CardPageIndex");
             private static readonly AccessTools.FieldRef<CheckPriceScreen, int> PageMax =
-                AccessTools.FieldRefAccess<CheckPriceScreen, int>("m_CardPageMaxIndex");
+                Core.Compat.Field<CheckPriceScreen, int>(typeof(CheckPricePatch), "m_CardPageMaxIndex");
 
             private static void Postfix(CheckPriceScreen __instance)
             {

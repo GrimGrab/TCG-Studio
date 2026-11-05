@@ -103,7 +103,7 @@ type furnitureArea struct {
 
 // shelfData reads the game's furniture list (ShelfData_ScriptableObject).
 func (x *extractor) shelfData() (unityfs.ShelfData, error) {
-	for _, name := range prefabFiles {
+	for _, name := range x.assetFiles() {
 		f, err := x.env.File(name)
 		if err != nil || f == nil {
 			continue
@@ -517,7 +517,7 @@ type uiScreen struct{ extent, scale [2]float64 }
 // uiScreens reads the till, card and pack-opener screen prefabs (WorldCanvasUIManager / AutoCardOpenerUISpawner in the shop scene).
 func (x *extractor) uiScreens() map[string]uiScreen {
 	out := map[string]uiScreen{}
-	f, _ := x.env.File("level1")
+	f, _ := x.shopScene()
 	if f == nil {
 		x.warn("shop scene not found: no screen previews")
 		return out

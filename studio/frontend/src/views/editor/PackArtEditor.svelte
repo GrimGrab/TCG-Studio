@@ -142,7 +142,8 @@
     editor?.addFills(which === 'pack'
       ? [{ face: 'back', ...grad, name: `${TINT} (back)` }, { face: 'edges', ...grad, name: `${TINT} (edges)` },
          { face: 'seam', ...grad, name: `${TINT} (seam)` }]
-      : [{ face: 'right', ...grad, name: `${TINT} (sides)` }, { face: 'top', color: c.top, name: `${TINT} (top)` }], TINT);
+      : [{ face: 'right', ...grad, name: `${TINT} (right)` }, { face: 'left', ...grad, name: `${TINT} (left)` },
+         { face: 'top', color: c.top, name: `${TINT} (top)` }, { face: 'bottom', color: c.top, name: `${TINT} (bottom)` }], TINT);
   }
 
   /** "Match colours": tints from the topmost visible image layer. */
@@ -283,7 +284,7 @@
     {#if which === 'pack'}
       The crimps and the back print show on both sides of the pack; the pack torn open in the opening animation uses the same texture.
     {:else}
-      The box is a simple block: the front print is also on the back, the side print on both sides, the top print on the bottom.
+      The box is a simple block with six faces of its own: Smart generate puts the same art on opposite sides, and you can change each one.
     {/if}
     "Current art" starts from the pack's current images (e.g. ones you chose yourself).
   </p>

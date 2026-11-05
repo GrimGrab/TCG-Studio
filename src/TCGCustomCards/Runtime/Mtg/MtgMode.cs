@@ -209,7 +209,7 @@ namespace TCGCustomCards.Runtime.Mtg
         public static bool HasMtg(CustomSet s) => s.Def.Cards.Any(c => ToMtg(s.Def, c) != null);
 
         /// <summary>A set counts as licensed when any restock row of one of its packs is unlocked in the shop.</summary>
-        private static bool IsLicensed(CustomSet s)
+        public static bool IsLicensed(CustomSet s)
         {
             var list = CPlayerData.m_IsItemLicenseUnlocked;
             return list != null && Registry.Packs.Any(p => p.Set == s && p.RestockRows.Any(i => i >= 0 && i < list.Count && list[i]));

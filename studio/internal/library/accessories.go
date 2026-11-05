@@ -4,28 +4,29 @@ import (
 	"os"
 	"path/filepath"
 
-	"tcgstudio/internal/accessories"
+	"tcgstudio/internal/content"
+	"tcgstudio/internal/workspace"
 )
 
-// itemsOf lists a setup's accessories, furniture and decorations with the size of their shared files.
-func itemsOf(l *accessories.Library) []ItemInfo {
+// itemsOf lists everything in a setup's item library with the size of its shared files (some kinds, like animations, have none).
+func itemsOf(ws workspace.Dir, root string) []ItemInfo {
 	out := []ItemInfo{}
-	sizes := func(rels ...string) (n int64) {
-		for _, rel := range rels {
-			if rel != "" {
-				n += size(l.Resolve(rel))
-			}
+	store := ws.Store()
+	for _, k := range content.LibraryKinds() {
+		items, err := k.Store.List(ws, root)
+		if err != nil {
+			continue
 		}
-		return
-	}
-	for _, a := range l.Lib.Accessories {
-		out = append(out, ItemInfo{ID: a.ID, Name: a.Name, Kind: a.Kind, Shared: sizes(a.Texture, a.Icon, a.Mesh)})
-	}
-	for _, f := range l.Lib.Furniture {
-		out = append(out, ItemInfo{ID: f.ID, Name: f.Name, Kind: "Furniture", Shared: sizes(f.Files()...)})
-	}
-	for _, d := range l.Lib.Decorations {
-		out = append(out, ItemInfo{ID: d.ID, Name: d.Name, Kind: "Decoration", Shared: sizes(d.Files()...)})
+		for _, it := range items {
+			info := ItemInfo{ID: it.ID, Name: it.Name, Kind: k.Title}
+			if it.Sub != "" {
+				info.Kind += " · " + it.Sub
+			}
+			for _, ref := range it.Refs {
+				info.Shared += size(store.Path(ref))
+			}
+			out = append(out, info)
+		}
 	}
 	return out
 }

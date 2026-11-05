@@ -22,7 +22,7 @@ namespace TCGCustomCards.Hooks
         public static Action<Transform> PackTargetRun { get; set; }
 
         private static readonly AccessTools.FieldRef<InteractionPlayerController, List<Item>> HoldList =
-            AccessTools.FieldRefAccess<InteractionPlayerController, List<Item>>("m_HoldItemList");
+            Core.Compat.Field<InteractionPlayerController, List<Item>>(typeof(PlayerItems), "m_HoldItemList");
         private static readonly Action<InteractionPlayerController, Item> RemoveHoldItem =
             AccessTools.MethodDelegate<Action<InteractionPlayerController, Item>>(AccessTools.Method(typeof(InteractionPlayerController), "RemoveHoldItem"));
 
@@ -33,9 +33,6 @@ namespace TCGCustomCards.Hooks
         }
 
         public static int HeldCount(Func<EItemType, bool> match) => Held().Count(i => i != null && match(i.GetItemType()));
-
-        /// <summary>Types of the held items, front first.</summary>
-        public static List<EItemType> HeldTypes() => Held().Where(i => i != null).Select(i => i.GetItemType()).ToList();
 
         /// <summary>Uses up to <paramref name="n"/> matching held items for good (front first); returns their types.</summary>
         public static List<EItemType> ConsumeHeld(Func<EItemType, bool> match, int n)
@@ -145,12 +142,31 @@ namespace TCGCustomCards.Hooks
             _instance = go.AddComponent<HooksRunner>();
         }
 
-        private void Update() => Patches.CardFlip.Tick();
+        /// <summary>Runs a coroutine on the runner (survives scene loads; stop it with <see cref="Stop"/>).</summary>
+        public static Coroutine Run(System.Collections.IEnumerator routine)
+        {
+            Ensure();
+            return _instance.StartCoroutine(routine);
+        }
+
+        public static void Stop(Coroutine routine)
+        {
+            if (routine != null && _instance != null) _instance.StopCoroutine(routine);
+        }
+
+        private void Update()
+        {
+            Patches.CardFlip.Tick();
+            UI.WhiteboardPanel.Tick();
+            UI.CustomerNameplates.Tick();
+        }
 
         private void OnGUI()
         {
             PlayerItems.DrawHint();
             Patches.CardFlip.DrawHint();
+            UI.CustomerNameplates.Draw();
+            UI.WhiteboardPanel.Draw();
         }
     }
 }

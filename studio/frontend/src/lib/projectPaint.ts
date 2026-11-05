@@ -5,7 +5,7 @@
 import { compileProgram, cropToContent, orbitMatrices, uploadTexture, type Mat } from './meshView';
 
 /** Blend modes the editor offers (AccessoryEditor BLENDS), in shader order. */
-export const BLEND_MODES: GlobalCompositeOperation[] = ['source-over', 'multiply', 'screen', 'overlay', 'color', 'soft-light'];
+const BLEND_MODES: GlobalCompositeOperation[] = ['source-over', 'multiply', 'screen', 'overlay', 'color', 'soft-light'];
 
 /** At most this many layer textures per draw (groups of normal layers share one). */
 export const MAX_LAYER_TEXTURES = 7; // + the base = 8, the texture units WebGL guarantees
@@ -21,7 +21,7 @@ interface PaintMesh {
 
 const meshCache = new Map<string, Promise<PaintMesh>>();
 
-export function loadPaintMesh(url: string): Promise<PaintMesh> {
+function loadPaintMesh(url: string): Promise<PaintMesh> {
   if (!meshCache.has(url)) {
     meshCache.set(url, fetch(url).then(async (r) => {
       if (!r.ok) throw new Error(`model not found: ${url}`);

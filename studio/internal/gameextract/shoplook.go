@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/unityfs"
 )
 
@@ -82,16 +83,16 @@ func (x *extractor) shopLook() error {
 			errs = append(errs, fmt.Errorf("%s: %w", what, err))
 		}
 	}
-	if f, err := x.env.File("level1"); err != nil || f == nil {
-		errs = append(errs, fmt.Errorf("level1 not found"))
+	if f, err := x.shopScene(); err != nil {
+		errs = append(errs, err)
 	} else {
 		g := newGraph(x.env, f)
 		try("phone", x.phoneLayout(f, g.scriptNode("UI_PhoneScreen")))
 		try("open/closed sign", x.doorLayout(f, g.scriptNode("InteractableOpenCloseSign")))
 		try("credit card", x.cardLayout(f, g.scriptNode("InteractableCustomerCash")))
 	}
-	if f, err := x.env.File("level0"); err != nil || f == nil {
-		errs = append(errs, fmt.Errorf("level0 not found"))
+	if f, err := x.sceneWith("TitleScreen"); err != nil {
+		errs = append(errs, err)
 	} else {
 		g := newGraph(x.env, f)
 		try("main menu", x.screenLayout(f, g.scriptNode("TitleScreen"), "menu", nil))
@@ -210,7 +211,7 @@ func (w *uiWalker) sprite(p unityfs.PPtr) string {
 	if !w.saved[file] {
 		path := filepath.Join(w.x.dir, ShopSignDir, filepath.FromSlash(file))
 		img, err := w.x.env.SpriteImage(s)
-		if err != nil || os.MkdirAll(filepath.Dir(path), 0o755) != nil || savePNG(path, img) != nil {
+		if err != nil || os.MkdirAll(filepath.Dir(path), 0o755) != nil || imgfile.SaveFast(path, img) != nil {
 			return ""
 		}
 		w.saved[file] = true
@@ -342,7 +343,7 @@ func (x *extractor) doorLayout(f *unityfs.File, sign *node) error {
 		!boardColour(img, DoorBoards["closed"], func(r, g, b uint8) bool { return r > 150 && g < 80 && b < 80 }) {
 		return fmt.Errorf("the sign texture changed (boards not at the measured places)")
 	}
-	if err := savePNG(filepath.Join(x.dir, ShopSignDir, "door.png"), img); err != nil {
+	if err := imgfile.SaveFast(filepath.Join(x.dir, ShopSignDir, "door.png"), img); err != nil {
 		return err
 	}
 	return writeJSON(filepath.Join(x.dir, ShopSignDir, "door.json"), DoorLayout{Texture: "door.png", Boards: DoorBoards, Screws: DoorScrews})
@@ -376,7 +377,7 @@ func (x *extractor) cardLayout(f *unityfs.File, cash *node) error {
 		chroma(CardChip[0]+CardChip[2]+40, CardChip[1]+CardChip[3]/2) < 70 {
 		return fmt.Errorf("the card texture changed (chip not at the measured place)")
 	}
-	if err := savePNG(filepath.Join(x.dir, ShopSignDir, "card.png"), img); err != nil {
+	if err := imgfile.SaveFast(filepath.Join(x.dir, ShopSignDir, "card.png"), img); err != nil {
 		return err
 	}
 	return writeJSON(filepath.Join(x.dir, ShopSignDir, "card.json"), CardLayout{Texture: "card.png", Aspect: CardAspect, Chip: CardChip, Print: CardPrint})

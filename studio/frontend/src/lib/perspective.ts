@@ -4,7 +4,7 @@
 export type Pt = [number, number];
 
 /** Homography H (3×3, row-major, h33 = 1) mapping the four `from` points onto the four `to` points. */
-export function homography(from: Pt[], to: Pt[]): number[] {
+function homography(from: Pt[], to: Pt[]): number[] {
   // Solve the 8×8 system A·h = b.
   const A: number[][] = [], b: number[] = [];
   for (let i = 0; i < 4; i++) {

@@ -40,7 +40,7 @@ func TestApplyAccessoriesLadder(t *testing.T) {
 func TestPlaymatCurveMonotonic(t *testing.T) {
 	prev := 0.0
 	for lvl := 1.0; lvl <= 90; lvl++ {
-		p := playmatPriceAt(lvl)
+		p := priceAt("Playmat", lvl)
 		if p < prev {
 			t.Fatalf("price drops at level %v: %v < %v", lvl, p, prev)
 		}

@@ -13,7 +13,7 @@ namespace TCGCustomCards.UI
     {
         public static IEnumerator ShowWhenInShop()
         {
-            while (SceneManager.GetActiveScene().name != "Start") yield return new WaitForSeconds(1f);
+            while (!GameScene.InShop) yield return new WaitForSeconds(1f);
             yield return new WaitForSeconds(3f); // let the shop finish loading
             while (ChoicePopup.IsOpen) yield return new WaitForSeconds(1f);
             ChoicePopup.Show(

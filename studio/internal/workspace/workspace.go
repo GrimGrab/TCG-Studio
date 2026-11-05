@@ -16,8 +16,8 @@ type Dir string
 // Library is the shared card-art folder.
 func (w Dir) Library() string { return project.LibraryDir(string(w)) }
 
-// Kept is where the storage upgrade puts files it would otherwise delete or overwrite (anything that isn't an exact copy
-// of a file that stays), one folder per run; the Storage page shows and deletes it.
+// Kept is where the storage upgrade of TCG Studio up to v1.14.0 put files it would otherwise have deleted; the Storage page
+// shows and deletes it.
 func (w Dir) Kept() string { return filepath.Join(string(w), "upgrade-kept") }
 
 // Store is the shared item-file store.

@@ -17,13 +17,19 @@ type Target struct {
 	// before FlipX/FlipY, which act in texture space).
 	Transpose bool `json:"transpose,omitempty"`
 	Bleed     bool `json:"bleed,omitempty"`
+	// Part: the piece's name in the editor's guides. Shape: its outline in texture pixels when it isn't a plain rectangle (only
+	// inside it is painted); face maps (facemap.go).
+	Part  string       `json:"part,omitempty"`
+	Shape [][2]float64 `json:"shape,omitempty"`
 }
 
 type Face struct {
-	ID     string     `json:"id"`
-	Label  string     `json:"label"`
-	Net    [4]float64 `json:"net"`              // x, y, w, h in the net (object units)
-	Hidden bool       `json:"hidden,omitempty"` // mostly not visible in game (still painted)
+	// ArtFrom: a face the game 1.02 layout didn't have; older art for it comes from this face of that layout (relayout).
+	ArtFrom string     `json:"-"`
+	ID      string     `json:"id"`
+	Label   string     `json:"label"`
+	Net     [4]float64 `json:"net"`              // x, y, w, h in the net (object units)
+	Hidden  bool       `json:"hidden,omitempty"` // mostly not visible in game (still painted)
 	// Shown: the part of the face the item shows (x, y, w, h fractions of Net); nil = all of it. The rest covers texture the
 	// meshes don't show (the pack's outer strips): the editor places and fits art on the shown part.
 	Shown   *[4]float64 `json:"shown,omitempty"`
@@ -58,6 +64,8 @@ type Model struct {
 	// place in its view (Preview[0] is the .bin of gameextract/furniture_paint.go). Density: atlas pixels per net unit.
 	// NetMoves: how the net changed in a later NetVersion (layouts made before it get their layers moved, MigrateLayout).
 	NetMoves  []NetMove `json:"-"`
+	NetCopies []NetCopy `json:"-"`               // a face split in a later NetVersion (layouts made before it get their layers on both)
+	Exact     bool      `json:"exact,omitempty"` // a face map: its areas are used exactly as written (facemap.go)
 	Projected bool      `json:"projected,omitempty"`
 	Views     []View    `json:"views,omitempty"`
 	Density   float64   `json:"density,omitempty"`
@@ -73,56 +81,6 @@ type Base struct {
 }
 
 var full = [4]float64{0, 0, 1, 1}
-
-// inclusive returns a copy of m whose target rects take in one more texel on every side: at a UV edge the GPU blends the
-// texels on both sides of it (more at smaller mip levels), so a texel left unpainted next to an area showed as a 1 px seam
-// of vanilla colour. A side stays where another target covers that texel (a neighbouring area keeps its own first/last
-// column or row) or at the texture's edge. Palettes stay exact: their swatches touch. Bases (where vanilla art is read
-// from) are unchanged.
-func inclusive(m Model) Model {
-	if m.Palette || len(m.Faces) == 0 {
-		return m
-	}
-	var all [][4]float64
-	for _, f := range m.Faces {
-		for _, t := range f.Targets {
-			all = append(all, t.Rect)
-		}
-	}
-	// taken reports whether any other target covers part of the strip x0..x1 × y0..y1.
-	taken := func(self [4]float64, x0, y0, x1, y1 float64) bool {
-		for _, r := range all {
-			if r != self && r[0] < x1 && r[2] > x0 && r[1] < y1 && r[3] > y0 {
-				return true
-			}
-		}
-		return false
-	}
-	size := float64(m.TextureSize)
-	faces := make([]Face, len(m.Faces))
-	for i, f := range m.Faces {
-		f.Targets = append([]Target(nil), f.Targets...)
-		for j, t := range f.Targets {
-			r := t.Rect
-			if r[0] > 0 && !taken(r, r[0]-1, r[1], r[0], r[3]) {
-				t.Rect[0] = r[0] - 1
-			}
-			if r[1] > 0 && !taken(r, r[0], r[1]-1, r[2], r[1]) {
-				t.Rect[1] = r[1] - 1
-			}
-			if r[2] < size && !taken(r, r[2], r[1], r[2]+1, r[3]) {
-				t.Rect[2] = r[2] + 1
-			}
-			if r[3] < size && !taken(r, r[0], r[3], r[2], r[3]+1) {
-				t.Rect[3] = r[3] + 1
-			}
-			f.Targets[j] = t
-		}
-		faces[i] = f
-	}
-	m.Faces = faces
-	return m
-}
 
 // edgeSwatch: a thin strip at the middle of a face's left edge — the colour that small swatches of a part's card edges take.
 var edgeSwatch = [4]float64{0.01, 0.4, 0.05, 0.6}
@@ -405,33 +363,6 @@ func boxBases() []Base {
 	return out
 }
 
-// ModelFor returns the editable layout for an accessory kind (see setfmt.AccessoryKinds), its areas inclusive (see
-// inclusive).
-func ModelFor(kind string) (Model, bool) {
-	m, ok := modelFor(kind)
-	return inclusive(m), ok
-}
-
-func modelFor(kind string) (Model, bool) {
-	switch kind {
-	case "Deckbox":
-		return deckbox, true
-	case "Playmat":
-		return playmat, true
-	case "Sleeve":
-		return sleeve, true
-	case "Comic":
-		return comic, true
-	case "Binder":
-		return binder, true
-	case "Dice":
-		return dice, true
-	case "BattleDeck":
-		return battleDeck, true
-	case "Pack":
-		return pack, true
-	case "Box":
-		return box, true
-	}
-	return Model{}, false
-}
+// ModelFor returns the editable layout for an accessory kind (see setfmt.AccessoryKinds): its face map (facemap.go).
+// Game look boxes too ("restockBig", "restockSmall", "furnitureBox", "gradedBox", "bulk", "bag", "streetBillboard").
+func ModelFor(kind string) (Model, bool) { return faceMapOf(kind) }

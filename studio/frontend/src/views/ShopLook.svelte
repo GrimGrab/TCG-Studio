@@ -19,6 +19,7 @@
   import FontPicker from './FontPicker.svelte';
   import TextStyle from './TextStyle.svelte';
   import BoxLookTab from './BoxLookTab.svelte';
+  import ClothesTab from './ClothesTab.svelte';
   import SaveBar from './SaveBar.svelte';
 
   let { notify }: { notify: (t: string, k?: string) => void } = $props();
@@ -75,10 +76,13 @@
   // Boxes: the tab keeps its own draft (layouts + finished textures) and hands it to Save through `pending()`.
   let boxTab = $state<BoxLookTab | null>(null);
   let boxDirty = $state(false);
+  // Clothes: library content (not mod settings); the tab's draft is stored by App.SaveClothes in the same Save.
+  let clothesTab = $state<ClothesTab | null>(null);
+  let clothesDirty = $state(false);
 
   const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
   $effect(() => {
-    dirty = !!draft && !!look && (!same(draft, stored(look)) || doorDirty.open || doorDirty.closed || boxDirty);
+    dirty = !!draft && !!look && (!same(draft, stored(look)) || doorDirty.open || doorDirty.closed || boxDirty || clothesDirty);
   });
 
   // One tab per part of the game. Every tab stays mounted (only hidden), so switching keeps each tab's unsaved edits; Save
@@ -92,12 +96,13 @@
     { id: 'loading', title: 'Loading screen', fields: ['loading', 'loadCard', 'choices'] },
     { id: 'menu', title: 'Main menu', fields: ['menu'] },
     { id: 'boxes', title: 'Textures', fields: [] },
+    { id: 'clothes', title: 'Clothes', fields: [] },
   ];
   // Left nav: an icon and a one-line hint per picture.
   const NAV: Record<string, [string, string]> = {
     sign: ['🪧', 'Above the entrance'], door: ['🚪', 'Flipped at the door'], wallpaper: ['📱', 'Home screen background'],
     back: ['🂠', 'Back of your cards'], card: ['💳', 'Customers pay with it'], loading: ['⏳', 'While the shop loads'],
-    menu: ['🏠', 'Behind the main menu'], boxes: ['📦', 'Boxes, bags, billboards'],
+    menu: ['🏠', 'Behind the main menu'], boxes: ['📦', 'Boxes, bags, billboards'], clothes: ['👕', 'What customers wear'],
   };
   let tab = $state<string>((() => { try { return localStorage.getItem('shoplook.tab') || 'sign'; } catch { return 'sign'; } })());
   function setTab(id: string) {
@@ -109,6 +114,7 @@
     if (!draft || !look) return false;
     if (id === 'door') return doorDirty.open || doorDirty.closed;
     if (id === 'boxes') return boxDirty;
+    if (id === 'clothes') return clothesDirty;
     const st = stored(look), fields = TABS.find((t) => t.id === id)?.fields ?? [];
     return fields.some((f) => !same(draft![f], st[f]));
   }
@@ -142,11 +148,16 @@
     }
     saving = true;
     try {
+      let warns: string[] = [];
+      if (clothesDirty && clothesTab) {
+        warns = (await App.SaveClothes((await clothesTab.pending()) as any)) ?? [];
+        await clothesTab.saved();
+      }
       if (boxDirty && boxTab) req.boxes = await boxTab.pending();
       look = await App.SaveShopLook(req);
       for (const side of sides) editors[side]?.discard(); // the editors now start from the stored designs
       boxTab?.discard();
-      notify('Game look saved.', 'ok');
+      notify(warns.length ? `Game look saved. ${warns.join(' ')}` : 'Game look saved.', warns.length ? 'warn' : 'ok');
     } catch (e) { notify(errText(e), 'error'); }
     saving = false;
   }
@@ -155,6 +166,7 @@
     if (look) draft = stored(look);
     for (const side of sides) editors[side]?.discard();
     boxTab?.discard();
+    clothesTab?.discard();
   }
 
   async function pickFont(source: string, id: string) {
@@ -383,6 +395,17 @@
       </header>
       <div class="block">
       <BoxLookTab bind:this={boxTab} boxes={look.boxes ?? []} {notify} bind:dirty={boxDirty} />
+      </div>
+    </section>
+    <section class="pane wide" hidden={tab !== 'clothes'}>
+      <header class="pane-hero">
+        <span class="bigglyph">{NAV['clothes'][0]}</span>
+        <div class="grow"><h1>Clothes</h1><p class="muted">New looks for the clothes customers wear: pick a piece (a T-shirt, a hoodie, sneakers…), give it
+        your colours and paint a print on it, like your shop's logo. Customers wear your looks as often as you set, and you can dress your
+        regulars in them on the Customers page.</p></div>
+      </header>
+      <div class="block">
+      <ClothesTab bind:this={clothesTab} {notify} bind:dirty={clothesDirty} />
       </div>
     </section>
     </div>

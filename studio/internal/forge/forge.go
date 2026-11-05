@@ -40,16 +40,16 @@ const (
 
 // Release files the desktop game doesn't need (Adventure mode + editors, ~106 MB).
 var skipFiles = map[string]bool{
-	"adventure-editor-jar-with-dependencies.jar":            true,
-	mobileJar: true,
-	"gdx-particle-editor.jar":                               true,
-	"forge-adventure.exe":                                   true,
-	"forge-adventure.cmd":                                   true,
-	"forge-adventure.sh":                                    true,
-	"forge-adventure.command":                               true,
-	"adventure-editor.cmd":                                  true,
-	"adventure-editor.sh":                                   true,
-	"adventure-editor.command":                              true,
+	"adventure-editor-jar-with-dependencies.jar": true,
+	mobileJar:                  true,
+	"gdx-particle-editor.jar":  true,
+	"forge-adventure.exe":      true,
+	"forge-adventure.cmd":      true,
+	"forge-adventure.sh":       true,
+	"forge-adventure.command":  true,
+	"adventure-editor.cmd":     true,
+	"adventure-editor.sh":      true,
+	"adventure-editor.command": true,
 }
 
 // ManifestData is tcgforge.json. Paths are relative to the TCGForge folder.

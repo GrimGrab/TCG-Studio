@@ -18,7 +18,13 @@ type Assets struct {
 	materials map[string]*unityfs.Object
 	meshes    map[string]*unityfs.Object
 	objects   map[string]*unityfs.Object // GameObjects (prefab roots)
+	unity6    bool                       // built with the game's current Unity
 }
+
+// BuiltForCurrentGame reports whether the bundle was built with Unity 6, as the game has been since its 2026-10-27 update
+// (which gave packs, boxes and accessories new texture layouts). An older bundle's art is taken to be in the earlier layouts:
+// the bundle doesn't say which layout its art is in, and this is the only sign there is.
+func (a *Assets) BuiltForCurrentGame() bool { return a.unity6 }
 
 // OpenAssets opens a bundle and indexes it.
 func OpenAssets(path string) (*Assets, error) {
@@ -35,6 +41,7 @@ func OpenAssets(path string) (*Assets, error) {
 		return nil, err
 	}
 	for _, f := range files {
+		a.unity6 = a.unity6 || f.AtLeast(6000, 0)
 		for _, o := range f.Objects {
 			var m map[string]*unityfs.Object
 			switch o.ClassID {
@@ -74,10 +81,6 @@ func OpenAssets(path string) (*Assets, error) {
 // Close releases the bundle.
 func (a *Assets) Close() { a.bundle.Close() }
 
-// Env is the bundle's object environment (for meshes and prefab hierarchies).
-func (a *Assets) Env() *unityfs.Env { return a.env }
-
-func (a *Assets) Mesh(name string) *unityfs.Object       { return a.meshes[strings.ToLower(name)] }
 func (a *Assets) GameObject(name string) *unityfs.Object { return a.objects[strings.ToLower(name)] }
 
 // SpriteSize returns a sprite's size without decoding it, or an error saying why it can't be imported (missing, packed

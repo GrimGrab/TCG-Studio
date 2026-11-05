@@ -13,20 +13,23 @@
   import { splitter } from '../lib/splitter';
   import { createHistory } from '../lib/history.svelte';
   import { accFile, templateFile } from '../lib/urls';
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { App, errText, ask } from '../lib/api';
   import {
     type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, renderTexture, composeIcon,
     recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon, pickableFaces, previewUrl, layerTextures,
-    shownArea, shownNet, isMapLayer, uvOutlines, faceArea, placeIn, placeRect, placeStacked, areaFills, loadIslands, wholeFaceFill, faceFillsToRects, layersToInclusive,
+    shownArea, shownNet, isMapLayer, uvOutlines, traceShape, faceArea, placeIn, placeRect, placeStacked, areaFills, wholeFaceFill,
   } from '../lib/accessoryArt';
+  import { faceFillsToRects } from '../lib/migrations';
+  import { LayoutTunerState, TUNE_HANDLES } from '../lib/layoutTuner.svelte';
   import { ProjectPainter, MAX_LAYER_TEXTURES, renderPaintIcon, type LayerTexture } from '../lib/projectPaint';
   import { MeshView } from '../lib/meshView';
   import Straighten from './Straighten.svelte';
+  import LayoutTuner from './editor/LayoutTuner.svelte';
 
   let {
     kind, base = '', vanillaUrl, vanillaIconUrl = '', layout = $bindable(), iconSize = [512, 512], notify, onchange,
-    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true, onbaseline,
+    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true, onbaseline, underColor = '',
   }: {
     kind: string;
     givenModel?: Model;                 // a model made elsewhere (furniture paint templates); default: the accessory kind's
@@ -44,9 +47,22 @@
     pickImage?: () => Promise<string>;  // lets the user add an image, returns its path for imageUrl (default: accessory library)
     saveImage?: (name: string, dataUrl: string) => Promise<string>; // stores a made image (straightened), returns its path
     defaultText?: string;               // text of a new text layer
+    underColor?: string;                // shown under the texture (Texture view, 3D) without becoming part of it: a print
+                                        // (transparent texture) over the cloth colour it is laid on in game
   } = $props();
 
   let model = $state<Model | null>(null);
+  // The layout tuner (face maps). textureCanvas stays the real art, which is what a save takes.
+  let tunerOn = $state(false);
+  const tuner = new LayoutTunerState({
+    model: () => model,
+    redraw: () => redraw(),
+    toSpace,
+    pixelsPerScreen: () => viewPx() / space().s,
+    outlines: () => outlines,
+    setCursor: (c) => (netCursor = c),
+    onOpen: async () => { guides = 'on'; view = 'texture'; await tick(); },
+  });
   /** Faces offered in the pickers (fit, wrap, copy to, fill): projected models offer their views. */
   let pickFaces = $derived(model ? pickableFaces(model) : []);
   let S = 300;
@@ -69,7 +85,7 @@
   let onlyCanvas: HTMLCanvasElement | null = null;
   const onlyNet: HTMLCanvasElement = document.createElement('canvas');
   const guidesOnly = () => guides === 'only' && !!model && !model.projected && !model.palette;
-  const shownTexture = () => (guidesOnly() && onlyCanvas) || textureCanvas;
+  const shownTexture = () => tuner.pattern || (guidesOnly() && onlyCanvas) || textureCanvas;
 
   // Zoom and pan of the Texture and Views canvases (overlay = guides and handles in screen pixels).
   let zpTex: ZoomPan | null = null, zpNet: ZoomPan | null = null;
@@ -93,8 +109,25 @@
     if (!makeTexture) return;
     textureCanvas = makeTexture();
     makeTexture = null;
-    mesh?.setTexture(textureCanvas);
+    mesh?.setTexture(under(tuner.pattern || textureCanvas));
   }
+
+  /** The texture with underColor beneath it (display only). */
+  function under(c: HTMLCanvasElement): HTMLCanvasElement {
+    if (!underColor) return c;
+    const t = document.createElement('canvas');
+    t.width = c.width; t.height = c.height;
+    const g = t.getContext('2d')!;
+    g.fillStyle = underColor;
+    g.fillRect(0, 0, t.width, t.height);
+    g.drawImage(c, 0, 0);
+    return t;
+  }
+  // A new cloth colour only changes what is shown.
+  $effect(() => {
+    void underColor;
+    untrack(() => { if (textureCanvas) { mesh?.setTexture(under(textureCanvas)); drawTexView(); } });
+  });
 
   const accUrl = (rel: string) => imageUrl ? imageUrl(rel) : accFile(rel);
   let sel = $derived(layout?.layers.find((l) => l.id === selected));
@@ -141,6 +174,7 @@
         drawNetView();
         ensureTexture(); // the 3D preview beside either tab shows it
         if (view !== 'net') drawTexView();
+        if (tuner.on) tuner.rev++; // the tuner's picture of the face follows
       } while (again);
     } catch (e) { notify(errText(e), 'error'); }
     rendering = false;
@@ -239,6 +273,7 @@
     if (texView.width !== src.width || texView.height !== src.height) { texView.width = src.width; texView.height = src.height; }
     const ctx = texView.getContext('2d')!;
     ctx.clearRect(0, 0, texView.width, texView.height);
+    if (underColor) { ctx.fillStyle = underColor; ctx.fillRect(0, 0, texView.width, texView.height); }
     ctx.drawImage(src, 0, 0);
     if (zpTex) zpTex.layout(); else drawTexOverlay(); // layout redraws the overlay
   }
@@ -257,10 +292,17 @@
       ctx.stroke();
       ctx.font = `bold ${13 * px}px Nunito, sans-serif`;
       for (const f of model.faces) for (const t of f.targets) {
-        if (t.bleed) continue;
-        ctx.strokeStyle = f.hidden ? 'rgba(255,255,255,0.4)' : '#ffd24a';
-        ctx.lineWidth = 2 * px;
-        ctx.strokeRect(t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k);
+        ctx.strokeStyle = tuner.picked === t ? '#ff4fd8' : f.hidden ? 'rgba(255,255,255,0.4)' : '#ffd24a';
+        ctx.lineWidth = (tuner.picked === t ? 3 : 2) * px;
+        if (tuner.on && tuner.picked === t) { // its resize handles (the frame itself is drawn below)
+          ctx.fillStyle = '#ff4fd8';
+          for (const [hx, hy] of TUNE_HANDLES) {
+            const q = 5 * px;
+            ctx.fillRect(((t.rect[0] + t.rect[2]) / 2 + (hx * (t.rect[2] - t.rect[0])) / 2) * k - q, ((t.rect[1] + t.rect[3]) / 2 + (hy * (t.rect[3] - t.rect[1])) / 2) * k - q, 2 * q, 2 * q);
+          }
+        }
+        if (t.shape) { traceShape(ctx, t.shape, k); ctx.stroke(); }
+        else ctx.strokeRect(t.rect[0] * k, t.rect[1] * k, (t.rect[2] - t.rect[0]) * k, (t.rect[3] - t.rect[1]) * k);
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         const label = targetLabel(f, t);
         const tw = ctx.measureText(label).width;
@@ -332,7 +374,7 @@
     ownLayout = l;
     untrack(() => {
       if (!l.layers.some((x) => x.id === selected)) selected = '';
-      if (mapModel()) { paintedToLayer(); fillsToRects(); edgesToInclusive(); } // the reloaded design in the editor's form, as on opening
+      toEditorForm(); // the reloaded design, as on opening
       hist.reset();
       redraw();
     });
@@ -652,6 +694,7 @@
     if (t?.closest?.('.backdrop')) return; // a dialog is open
     const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
     const act = (f: () => void) => { e.preventDefault(); f(); };
+    if (tuner.onKey(e, k, ctrl, act)) return;
     if (ctrl && k === 'z' && !e.shiftKey) act(undo);
     else if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) act(redo);
     else if (ctrl && k === 'c' && sel) act(copyLayer);
@@ -875,6 +918,7 @@
   }
 
   function onDown(e: PointerEvent) {
+    if (tuner.on && mapView()) { if (canPoint()) tuner.pointerDown(e); return; }
     if (!canPoint()) return;
     const p = toSpace(e), target = e.currentTarget as HTMLElement;
     const hi = handleAt(p);
@@ -918,7 +962,6 @@
       tol = 0.006 * t;
       xs.push(0, t / 2, t); ys.push(0, t / 2, t);
       for (const f of model.faces) for (const tg of f.targets) {
-        if (tg.bleed) continue;
         xs.push(tg.rect[0], (tg.rect[0] + tg.rect[2]) / 2, tg.rect[2]);
         ys.push(tg.rect[1], (tg.rect[1] + tg.rect[3]) / 2, tg.rect[3]);
       }
@@ -934,6 +977,7 @@
   }
 
   function onMove(e: PointerEvent) {
+    if (tuner.on && mapView()) { if (canPoint()) tuner.pointerMove(e); return; }
     if (!drag) {
       // Hover: resize cursors over the handles.
       const hi = canPoint() ? handleAt(toSpace(e)) : -1;
@@ -983,6 +1027,7 @@
   }
 
   function onUp() {
+    tuner.pointerUp();
     if (drag?.mode === 'face') {
       // Dropped on another face: the fill moves there (an all-faces fill becomes that face's).
       if (sel && fillOver && fillOver !== fillFrom) { sel.face = fillOver; onchange?.(); redraw(); }
@@ -1039,7 +1084,7 @@
     const parts = ((model as any).preview ?? []).map((p: any) => ({
       url: previewUrl(p), texture: p.texture, glass: p.glass, secondaryUrl: base ? tpl(`${base}_texture2.png`) : undefined,
     }));
-    mv.load(parts).then(() => { ensureTexture(); if (textureCanvas) mv.setTexture(textureCanvas); })
+    mv.load(parts).then(() => { ensureTexture(); if (textureCanvas) mv.setTexture(under(textureCanvas)); })
       .catch((e) => (meshError = errText(e) + " — the game templates aren't available yet (Settings → Game)"));
     const ro = new ResizeObserver(() => mv.draw()); // e.g. full view on/off
     ro.observe(c);
@@ -1101,21 +1146,29 @@
   onMount(async () => {
     try {
       model = givenModel ?? ((await App.AccessoryModelFor(kind, base)) as unknown as Model); // tabletop items: per base
+      tunerOn = !!(await App.GetSettings()).layoutTuner;
       S = netScale(model);
       // Face-net models: the Faces or the Texture tab, as last used (Faces by default).
       view = model.palette || model.projected ? '3d' : readPref('texEditor.view') === 'texture' ? 'texture' : 'net';
+      // migration:editor-layout-v1
       if (!layout || layout.version !== 2) layout = newLayout();
       ownLayout = layout;
       hist.reset();
       if (!model.palette && !model.projected) {
         uvOutlines(model).then((o) => { outlines = o; drawTexView(); }).catch(() => {});
-        await loadIslands(model).catch(() => []); // face areas take in their rims (placement buttons, new layers)
       }
       await loadVanilla();
-      if (!model.palette && !model.projected) { paintedToLayer(); fillsToRects(); edgesToInclusive(); }
+      toEditorForm();
     } catch (e) { notify(errText(e), 'error'); }
     markLoaded();
   });
+
+  /** A design in the form the texture view edits. */
+  function toEditorForm() {
+    if (!mapModel() || model!.palette) return;
+    paintedToLayer();
+    fillsToRects();
+  }
 
   /** Face-net models: a painted texture (Import painted texture…, or an EPL mod's own texture) is an ordinary image layer at
    *  the bottom, covering the whole texture — it shows in every guides mode and can be moved, hidden or covered like any
@@ -1142,14 +1195,6 @@
     if (!out) return;
     layout.layers = out;
     if (!layout.layers.some((l) => l.id === selected)) selected = '';
-    converted();
-  }
-
-  /** Face-net models: texture layers placed on an area before areas were inclusive reach its edge again (no 1 px seam). */
-  function edgesToInclusive() {
-    const out = mapModel() ? layersToInclusive(model!, layout.layers) : null;
-    if (!out) return;
-    layout.layers = out;
     converted();
   }
 
@@ -1360,6 +1405,11 @@
     {/if}
 
     <div class="side">
+      {#if model.exact && tunerOn}
+        <button class="small" onclick={tuner.toggle}>{tuner.on ? 'Close' : 'Open'} layout tuner</button>
+        {#if tuner.on}<LayoutTuner {model} {notify} bind:picked={tuner.picked} bind:pattern={tuner.usePattern} bind:adding={tuner.adding} bind:hold={tuner.hold} rev={tuner.rev} faceImage={(f) => ({ canvas: net, ...faceRect(model!, f, S) })} onchange={tuner.retune}
+          canUndo={tuner.undoList.length > 0} canRedo={tuner.redoList.length > 0} canPaste={!!tuner.clip} onundo={tuner.undo} onredo={tuner.redo} oncopy={tuner.copy} onpaste={tuner.paste} />{/if}
+      {/if}
       {#if ws}<button class="sect" onclick={() => togglePanel('layers')}>{panels.layers ? '▾' : '▸'} Layers</button>{/if}
       {#if !ws || panels.layers}
       <div class="row wrap">

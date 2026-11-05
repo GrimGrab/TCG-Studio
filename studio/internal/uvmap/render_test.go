@@ -1,6 +1,8 @@
 package uvmap
 
 import (
+	"bufio"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -8,6 +10,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"golang.org/x/image/font"
@@ -26,29 +30,20 @@ func TestRenderOrientation(t *testing.T) {
 	dir := templatesDir(t)
 	kinds := []string{"Pack", "Box"}
 	if k := os.Getenv("RENDER_KIND"); k == "tabletop" {
-		kinds = TabletopBases()
+		kinds = tabletopBases()
 	} else if k == "boxes" {
-		kinds = BoxLooks()
+		kinds = []string{"restockBig", "restockSmall", "furnitureBox", "gradedBox", "bulk", "bag", "streetBillboard"}
 	} else if k != "" {
 		kinds = []string{k}
 	}
 	for _, kind := range kinds {
 		m, ok := ModelFor(kind)
 		meshDir := dir
-		if b, isBox := BoxLook(kind); isBox { // Game look boxes: templatesoxes
-			m, ok, meshDir = b, true, filepath.Join(filepath.Dir(dir), "boxes")
+		if os.Getenv("RENDER_KIND") == "boxes" { // Game look boxes: in the templates' boxes folder
+			meshDir = filepath.Join(filepath.Dir(dir), "boxes")
 		}
 		if !ok { // a tabletop base: its own model
 			m = tabletop[kind]
-		}
-		if kind == "LegendaryCardBox" { // a box base: its targets on its own mesh
-			m, _ = ModelFor("Box")
-			b := m.Bases[3]
-			faces := append([]Face(nil), m.Faces...)
-			for i := range faces {
-				faces[i].Targets = b.Targets[faces[i].ID]
-			}
-			m.Faces, m.Mesh = faces, "CardBoxMesh_4"
 		}
 		mesh, err := LoadOBJ(filepath.Join(meshDir, m.Mesh+".obj"))
 		if err != nil {
@@ -195,4 +190,66 @@ func savePNGTest(path string, img image.Image) {
 	}
 	defer f.Close()
 	png.Encode(f, img)
+}
+
+func sub(a, b Vec3) Vec3 { return Vec3{a[0] - b[0], a[1] - b[1], a[2] - b[2]} }
+func cross(a, b Vec3) Vec3 {
+	return Vec3{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
+}
+
+type Vec3 [3]float64
+type Vec2 [2]float64
+
+type Mesh struct {
+	Pos  []Vec3
+	UV   []Vec2
+	Norm []Vec3
+	Tris [][3]int // indices into Pos/UV/Norm (the exporter writes one index per vertex)
+}
+
+// LoadOBJ parses the subset of OBJ the mod writes (v/vt/vn and f a/a/a with equal indices).
+func LoadOBJ(path string) (*Mesh, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	m := &Mesh{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	num := func(s string) float64 { v, _ := strconv.ParseFloat(s, 64); return v }
+	for sc.Scan() {
+		fs := strings.Fields(sc.Text())
+		if len(fs) == 0 {
+			continue
+		}
+		switch fs[0] {
+		case "v":
+			m.Pos = append(m.Pos, Vec3{num(fs[1]), num(fs[2]), num(fs[3])})
+		case "vt":
+			m.UV = append(m.UV, Vec2{num(fs[1]), num(fs[2])})
+		case "vn":
+			m.Norm = append(m.Norm, Vec3{num(fs[1]), num(fs[2]), num(fs[3])})
+		case "f":
+			if len(fs) < 4 {
+				continue
+			}
+			var t [3]int
+			for k := 0; k < 3; k++ {
+				i, err := strconv.Atoi(strings.SplitN(fs[1+k], "/", 2)[0])
+				if err != nil {
+					return nil, fmt.Errorf("bad face %q", sc.Text())
+				}
+				t[k] = i - 1
+			}
+			m.Tris = append(m.Tris, t)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if len(m.UV) != len(m.Pos) {
+		return nil, fmt.Errorf("mesh has no per-vertex UVs")
+	}
+	return m, nil
 }

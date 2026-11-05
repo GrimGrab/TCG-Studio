@@ -142,15 +142,6 @@ func Get(path, section, key string) (Entry, error) {
 // that both read the file before either wrote it lose one of the changes.
 var writeMu sync.Mutex
 
-// Set replaces one entry's value (validated against its type/range/options) and writes the file back.
-func Set(path, section, key, value string) (Entry, error) {
-	out, err := SetMany(path, [][3]string{{section, key, value}})
-	if err != nil {
-		return Entry{}, err
-	}
-	return out[0], nil
-}
-
 // SetMany replaces several entries ({section, key, value}) in a single write, so the game's live reload never sees half of
 // a change. Nothing is written when any value is invalid.
 func SetMany(path string, kvs [][3]string) ([]Entry, error) {

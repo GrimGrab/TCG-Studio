@@ -152,7 +152,7 @@ func (a *App) PickAccessoryImage() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return l.CopySource(file)
+	return l.Assets.PutFile(file)
 }
 
 // SaveTemplateImage asks where to save a painting template (PNG data URL from the editor) and writes it. Returns the path,
@@ -182,17 +182,6 @@ func (a *App) SaveAccessorySourceImage(name, dataURL string) (string, error) {
 		return "", err
 	}
 	return l.WriteSource(name, b)
-}
-
-func (a *App) InstallAccessories() (AccessoryView, error) {
-	l, err := a.items()
-	if err != nil {
-		return AccessoryView{}, err
-	}
-	if !game.IsGameDir(a.gameDir()) {
-		return a.accView(l), errNoGame
-	}
-	return a.saveLibrary(l)
 }
 
 // ---------------------------------------------------------------- accessory gamify (one ladder, library order)

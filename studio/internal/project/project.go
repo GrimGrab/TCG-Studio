@@ -13,6 +13,7 @@ import (
 
 	"tcgstudio/internal/fsutil"
 	"tcgstudio/internal/game"
+	"tcgstudio/internal/migrate/designs"
 	"tcgstudio/internal/origin"
 	"tcgstudio/internal/setfmt"
 )
@@ -45,6 +46,24 @@ type Meta struct {
 	// Pictures: set files cut from a picture with Studio's crop box (the set's card back, pack/box textures and icons) by
 	// slot ("cardBack", "pack/<pack id>/<field>"); saving the set makes each file again when its picture or crop changed.
 	Pictures map[string]PictureSource `json:"pictures,omitempty"`
+	// migration:art-layouts-1.03
+	// ArtKinds: the models ("Box", "Pack") whose art here is in the current game's texture layouts. Missing = made for the game
+	// 1.02 models (relayout converts it). Written with the art, so it can't disagree with it; copies and shared files keep it.
+	ArtKinds []string `json:"artKinds,omitempty"`
+}
+
+// CurrentArtKinds: what a set made by this version has in the current layouts (Workspace.Save stamps it on a new set).
+var CurrentArtKinds = []string{"Box", "Pack"}
+
+// ReadArtKinds is the ArtKinds of a stored set, without loading the set (none when unreadable).
+func (w Workspace) ReadArtKinds(id string) []string {
+	var m struct {
+		ArtKinds []string `json:"artKinds"`
+	}
+	if b, err := os.ReadFile(filepath.Join(w.Folder(id), MetaFile)); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	return m.ArtKinds
 }
 
 // PictureSource is the picture a set file was cut from and the part used.
@@ -255,8 +274,8 @@ func (w Workspace) Load(id string) (*Project, error) {
 		}
 	}
 	p := &Project{ID: id, Folder: folder, LibFolder: w.LibFolder(id), Set: set, Meta: meta}
-	FillMtg(p)        // older imports: saved (and installed) with the project's next save/install
-	MigratePackArt(p) // pack editor layouts made for an older net
+	FillMtg(p)                    // older imports: saved (and installed) with the project's next save/install
+	designs.PackArt(meta.PackArt) // pack editor layouts made for an older net
 	return p, nil
 }
 
@@ -265,6 +284,10 @@ func (w Workspace) Save(p *Project) error {
 	if err := os.MkdirAll(p.Folder, 0o755); err != nil {
 		return err
 	}
+	// A set saved for the first time was made by this version (copies and shared files arrive as files, with their own mark).
+	if _, err := os.Stat(filepath.Join(p.Folder, SetFile)); os.IsNotExist(err) && p.Meta != nil && p.Meta.ArtKinds == nil {
+		p.Meta.ArtKinds = append([]string(nil), CurrentArtKinds...)
+	}
 	if err := p.Set.Save(filepath.Join(p.Folder, SetFile)); err != nil {
 		return err
 	}
@@ -272,7 +295,7 @@ func (w Workspace) Save(p *Project) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(p.Folder, MetaFile), b, 0o644)
+	return fsutil.WriteAtomic(filepath.Join(p.Folder, MetaFile), b)
 }
 
 // Create makes a new empty project; fails if the id is taken.

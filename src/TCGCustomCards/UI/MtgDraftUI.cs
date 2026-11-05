@@ -68,7 +68,7 @@ namespace TCGCustomCards.UI
         }
 
         private static readonly AccessTools.FieldRef<InteractionPlayerController, bool> InUIMode =
-            AccessTools.FieldRefAccess<InteractionPlayerController, bool>("m_IsInUIMode");
+            Core.Compat.Field<InteractionPlayerController, bool>(typeof(MtgDraftUI), "m_IsInUIMode");
 
         /// <summary>UI mode on while open: a vanilla screen that just closed (e.g. the choice popup) turns it off 0.05 s later.</summary>
         private static void EnsureUiMode()

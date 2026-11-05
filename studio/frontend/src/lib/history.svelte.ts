@@ -5,7 +5,7 @@
 const BURST_MS = 600;
 const LIMIT = 100;
 
-export interface History {
+interface History {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   /** The state after the last edit. */

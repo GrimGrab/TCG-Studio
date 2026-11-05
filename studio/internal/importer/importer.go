@@ -345,6 +345,7 @@ func NeedsNames(p *project.Project) bool {
 
 // FillNames downloads the set's card list and fills the missing Scryfall names/layouts (and a front-face mana cost) in
 // studio.json, then the MTG export data. Unlike RefreshMeta it leaves prices alone. Returns how many cards were filled.
+// migration:set-sync
 func FillNames(ctx context.Context, sf *scryfall.Client, p *project.Project) (int, error) {
 	cards, err := sf.SetCards(ctx, p.Meta.ScryfallCode, nil)
 	if err != nil {

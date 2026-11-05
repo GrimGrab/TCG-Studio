@@ -2,15 +2,19 @@ package gameextract
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
 
+	xdraw "golang.org/x/image/draw"
+
+	"tcgstudio/internal/imgfile"
 	"tcgstudio/internal/unityfs"
 )
 
 // Game look boxes (BoxesDir): the cardboard boxes (RestockManager's four package box prefabs), the bulk card boxes
-// (items BulkBox_*), the paper shopping bags and the street billboards, each as its preview mesh + vanilla texture, listed
+// (items BulkBoxNG…OG), the paper shopping bags and the street billboards, each as its preview mesh + vanilla texture, listed
 // in boxes.json. The editor paints over the vanilla UVs, so the mod only swaps the texture.
 
 // BoxesDir is the templates sub folder of the box looks.
@@ -56,9 +60,9 @@ func (x *extractor) boxes() error {
 }
 
 func (x *extractor) cardboardBoxes(dir string, meshes *meshSet, out *[]Box) error {
-	f, _ := x.env.File("level1")
-	if f == nil {
-		return fmt.Errorf("level1 not found")
+	f, err := x.shopScene()
+	if err != nil {
+		return err
 	}
 	rm := x.env.FindScripts(f, "RestockManager")
 	if len(rm) == 0 {
@@ -166,23 +170,30 @@ func (x *extractor) meshOf(n *node) unityfs.PPtr {
 	return unityfs.PPtr{}
 }
 
-// bulkBoxes: every BulkBox_* item (one mesh, a texture per variant).
+// bulkBoxes: the bulk box items the game uses (since the 2026-10-27 update BulkBoxNG…OG, slices of one 1024² texture array;
+// the earlier BulkBox_Tetramon* items are still listed but unused). Each texture is saved at 512², the size of the bulk
+// layout (the same mesh and UVs as before; the mod scales a design into the array).
 func (x *extractor) bulkBoxes(dir string, meshes *meshSet, out *[]Box) error {
 	f := x.so.File
 	n := 0
 	for i := 0; i < x.count(); i++ {
 		name := x.itemNames[int32(i)]
-		if !strings.HasPrefix(name, "BulkBox_") {
+		if !strings.HasPrefix(name, "BulkBox") || strings.Contains(name, "_") {
 			continue
 		}
 		md := x.so.Meshes[i]
 		file, m := meshes.export(f, md.Mesh)
-		_, t, ok := x.mainTexture(f, md.Material)
-		if m == nil || !ok || !x.saveTexture(t, filepath.Join(dir, name+".png")) {
+		_, t, ok := x.itemTexture(f, md, false)
+		var img image.Image
+		var err error
+		if ok {
+			img, err = x.env.TextureImage(t)
+		}
+		if m == nil || !ok || err != nil || imgfile.SaveFast(filepath.Join(dir, name+".png"), scaledTo(img, bulkSize)) != nil {
 			x.warn("bulk box %s: mesh or texture missing", name)
 			continue
 		}
-		*out = append(*out, Box{ID: name, Kind: "bulk", TextureName: t.Name, Texture: name + ".png", Size: [2]int{t.Width, t.Height}, Mesh: file})
+		*out = append(*out, Box{ID: name, Kind: "bulk", TextureName: t.Name, Texture: name + ".png", Size: [2]int{bulkSize, bulkSize}, Mesh: file})
 		n++
 	}
 	if n == 0 {
@@ -192,22 +203,24 @@ func (x *extractor) bulkBoxes(dir string, meshes *meshSet, out *[]Box) error {
 }
 
 // The shop scene's looks found by object name: the bag customers carry out (on every customer's hand), the open bag on
-// the cashier counter (also under the play tables) and the street billboards of building 32. The billboards' shown LOD is
-// static-batched (a combined scene mesh), so the preview takes the LOD 1 copy of the same model; its first submesh holds the
-// ads, the second the metal frame (another texture), left out of the preview.
+// the cashier counter (also under the play tables) and the street billboards of building 32. Up to game 1.02 the billboards'
+// shown LOD is static-batched (a combined scene mesh), so the preview takes the LOD 1 copy of the same model; its first
+// submesh holds the ads, the second the metal frame (another texture), left out of the preview. Since then they are part of
+// the building, drawn from the street atlas (streetads.go).
 var sceneLooks = []struct {
 	id, kind, object string
 	adsOnly          bool
+	optional         bool // not every game version has it (the billboards' own model is gone since the 2026-10-27 update)
 }{
-	{"shoppingBag", "bag", "PaperBagClosed", false},
-	{"shoppingBagOpen", "bag", "PaperBagOpen", false},
-	{"streetBillboard", "street", "mcp_building_32_billboards", true},
+	{"shoppingBag", "bag", "PaperBagClosed", false, false},
+	{"shoppingBagOpen", "bag", "PaperBagOpen", false, false},
+	{"streetBillboard", "street", "mcp_building_32_billboards", true, true},
 }
 
 func (x *extractor) sceneLooks(dir string, meshes *meshSet, out *[]Box) error {
-	f, _ := x.env.File("level1")
-	if f == nil {
-		return fmt.Errorf("level1 not found")
+	f, err := x.shopScene()
+	if err != nil {
+		return err
 	}
 	g := newGraph(x.env, f)
 	var missing []string
@@ -254,7 +267,13 @@ func (x *extractor) sceneLooks(dir string, meshes *meshSet, out *[]Box) error {
 				break
 			}
 		}
-		if !found {
+		if !found && s.id == "streetBillboard" {
+			var b Box
+			if b, found = x.streetBillboardFromAtlas(f, g, meshes, dir); found {
+				*out = append(*out, b)
+			}
+		}
+		if !found && !s.optional {
 			missing = append(missing, s.id)
 		}
 	}
@@ -262,4 +281,17 @@ func (x *extractor) sceneLooks(dir string, meshes *meshSet, out *[]Box) error {
 		return fmt.Errorf("not found: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// bulkSize is the bulk layout's texture size (uvmap faceMapLookBulk).
+const bulkSize = 512
+
+// scaledTo is img resized to size² (bilinear).
+func scaledTo(img image.Image, size int) image.Image {
+	if b := img.Bounds(); b.Dx() == size && b.Dy() == size {
+		return img
+	}
+	out := image.NewNRGBA(image.Rect(0, 0, size, size))
+	xdraw.BiLinear.Scale(out, out.Bounds(), img, img.Bounds(), xdraw.Src, nil)
+	return out
 }

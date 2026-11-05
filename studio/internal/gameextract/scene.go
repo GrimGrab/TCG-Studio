@@ -118,6 +118,38 @@ func (n *node) activeInHierarchy() bool {
 }
 
 // path is Transform path from the hierarchy root ("Root/Child/...").
+// named is the object whose name is one of names and whose path contains under ("" = anywhere): a shown one (active with
+// all its parents) before a hidden one, then the first in path order, so the result doesn't change between runs. The
+// game's Unity 6 build moved objects around and replaced some with hidden originals left in place ("Billboard" switched
+// off, "OptimizedBillboard" shown), so lookups go by name, not by full path.
+func (g *graph) named(under string, names ...string) *node {
+	var best *node
+	shown := func(n *node) bool {
+		for p := n; p != nil; p = p.parent {
+			if !p.active {
+				return false
+			}
+		}
+		return true
+	}
+	for _, n := range g.byGO {
+		ok := false
+		for _, want := range names {
+			if n.name == want {
+				ok = true
+				break
+			}
+		}
+		if !ok || (under != "" && !strings.Contains(n.path(), under)) {
+			continue
+		}
+		if best == nil || shown(n) && !shown(best) || shown(n) == shown(best) && n.path() < best.path() {
+			best = n
+		}
+	}
+	return best
+}
+
 func (n *node) path() string {
 	parts := []string{}
 	for p := n; p != nil; p = p.parent {

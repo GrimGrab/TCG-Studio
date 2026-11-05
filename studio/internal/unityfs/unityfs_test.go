@@ -40,38 +40,40 @@ func TestReadBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer env.Close()
-	f, err := env.File("sharedassets1.assets")
-	if err != nil {
-		t.Fatal(err)
-	}
 	var meshes, texs int
-	for _, o := range f.Objects {
-		name, _ := o.Name()
-		switch {
-		case o.ClassID == ClassMesh && name == "PiggyA_Mesh":
-			m, err := ReadMesh(env, o)
-			if err != nil {
-				t.Fatal(err)
+	for _, fn := range env.Names("sharedassets", ".assets") { // the shop's file moved from sharedassets1 to 2 in the 2026-10-27 update
+		f, err := env.File(fn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range f.Objects {
+			name, _ := o.Name()
+			switch {
+			case o.ClassID == ClassMesh && name == "PiggyA_Mesh":
+				m, err := ReadMesh(env, o)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("mesh %s: %d vertices, %d uv, %d normals, submeshes %d, bounds %v", m.Name, len(m.Pos), len(m.UV), len(m.Normal), len(m.Subs), m.Bounds())
+				meshes++
+			case o.ClassID == ClassTexture2D && name == "T_PiggyA":
+				tx, err := ReadTexture2D(o)
+				if err != nil {
+					t.Fatal(err)
+				}
+				img, err := env.TextureImage(tx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("texture %s %dx%d fmt %d colorspace %d, pixel(1024,1024)=%v", tx.Name, tx.Width, tx.Height, tx.Format, tx.ColorSpace, img.NRGBAAt(1024, 1024))
+				texs++
 			}
-			t.Logf("mesh %s: %d vertices, %d uv, %d normals, submeshes %d, bounds %v", m.Name, len(m.Pos), len(m.UV), len(m.Normal), len(m.Subs), m.Bounds())
-			meshes++
-		case o.ClassID == ClassTexture2D && name == "T_PiggyA":
-			tx, err := ReadTexture2D(o)
-			if err != nil {
-				t.Fatal(err)
-			}
-			img, err := env.TextureImage(tx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("texture %s %dx%d fmt %d colorspace %d, pixel(1024,1024)=%v", tx.Name, tx.Width, tx.Height, tx.Format, tx.ColorSpace, img.NRGBAAt(1024, 1024))
-			texs++
 		}
 	}
 	if meshes == 0 || texs == 0 {
 		t.Fatalf("found %d meshes, %d textures", meshes, texs)
 	}
-	for _, name := range []string{"globalgamemanagers.assets", "sharedassets0.assets", "sharedassets1.assets", "resources.assets"} {
+	for _, name := range append([]string{"globalgamemanagers.assets", "resources.assets"}, env.Names("sharedassets", ".assets")...) {
 		f, err := env.File(name)
 		if err != nil {
 			t.Fatal(err)
@@ -91,14 +93,22 @@ func TestStockItemData(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer env.Close()
-	f, _ := env.File("sharedassets1.assets")
-	so := env.FindScripts(f, "StockItemData_ScriptableObject")
-	if len(so) != 1 {
-		t.Fatalf("found %d item databases", len(so))
+	// The game's item list is the biggest one (since the 2026-10-27 update an old copy sits next to it).
+	var s StockItemData
+	for _, fn := range env.Names("sharedassets", ".assets") {
+		f, _ := env.File(fn)
+		for _, o := range env.FindScripts(f, "StockItemData_ScriptableObject") {
+			got, err := env.ReadStockItemData(o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Items) > len(s.Items) {
+				s = got
+			}
+		}
 	}
-	s, err := env.ReadStockItemData(so[0])
-	if err != nil {
-		t.Fatal(err)
+	if len(s.Items) == 0 {
+		t.Fatal("no item database found")
 	}
 	t.Logf("items %d, meshes %d, restock %d, shown figurines %v", len(s.Items), len(s.Meshes), len(s.Restock), s.ShownFigurine)
 	for _, i := range []int{0, 33, 70, 127} {
@@ -108,5 +118,21 @@ func TestStockItemData(t *testing.T) {
 	}
 	if len(s.Restock) > 0 {
 		t.Logf("restock[0] %+v, last %+v", s.Restock[0], s.Restock[len(s.Restock)-1])
+	}
+}
+
+// TestHasField reads a field list from the installed game's assembly (skipped without the game).
+func TestHasField(t *testing.T) {
+	dll := filepath.Join(gameData(t), "Managed", "Assembly-CSharp.dll")
+	ok, err := HasField(dll, "InteractableObject", "m_ObjectType")
+	if err != nil || !ok {
+		t.Fatalf("m_ObjectType: %v %v", ok, err)
+	}
+	if ok, _ := HasField(dll, "InteractableObject", "m_NoSuchField"); ok {
+		t.Error("found a field that doesn't exist")
+	}
+	enums, err := ReadEnums(dll, "EItemType")
+	if err != nil || enums["EItemType"]["BasicCardPack"] != 0 || enums["EItemType"]["Max"] < 130 {
+		t.Errorf("ReadEnums after the refactor: %v %v", err, enums["EItemType"]["Max"])
 	}
 }

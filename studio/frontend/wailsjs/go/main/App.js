@@ -34,8 +34,8 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
-export function AutoUpgrade() {
-  return window['go']['main']['App']['AutoUpgrade']();
+export function ArtLayoutStatus() {
+  return window['go']['main']['App']['ArtLayoutStatus']();
 }
 
 export function BakeDecorationModel(arg1, arg2, arg3, arg4) {
@@ -52,6 +52,10 @@ export function BakeFurnitureModel(arg1, arg2, arg3, arg4) {
 
 export function BakePoster(arg1, arg2) {
   return window['go']['main']['App']['BakePoster'](arg1, arg2);
+}
+
+export function BeginArtConversion() {
+  return window['go']['main']['App']['BeginArtConversion']();
 }
 
 export function BoxFromPack(arg1, arg2) {
@@ -92,6 +96,10 @@ export function CheckForUpdate() {
 
 export function CheckModLoaded() {
   return window['go']['main']['App']['CheckModLoaded']();
+}
+
+export function ClothingModel(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ClothingModel'](arg1, arg2, arg3);
 }
 
 export function Collections() {
@@ -302,10 +310,6 @@ export function ImportSources() {
   return window['go']['main']['App']['ImportSources']();
 }
 
-export function InstallAccessories() {
-  return window['go']['main']['App']['InstallAccessories']();
-}
-
 export function InstallForge() {
   return window['go']['main']['App']['InstallForge']();
 }
@@ -338,6 +342,18 @@ export function ListSetups() {
   return window['go']['main']['App']['ListSetups']();
 }
 
+export function LoadClothes() {
+  return window['go']['main']['App']['LoadClothes']();
+}
+
+export function LoadCustomersPage() {
+  return window['go']['main']['App']['LoadCustomersPage']();
+}
+
+export function LoadEmployeesPage() {
+  return window['go']['main']['App']['LoadEmployeesPage']();
+}
+
 export function LoadProject(arg1) {
   return window['go']['main']['App']['LoadProject'](arg1);
 }
@@ -360,6 +376,14 @@ export function MoveSetup(arg1, arg2) {
 
 export function NewAccessory(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewAccessory'](arg1, arg2, arg3);
+}
+
+export function NewClothingID() {
+  return window['go']['main']['App']['NewClothingID']();
+}
+
+export function NewCustomerID() {
+  return window['go']['main']['App']['NewCustomerID']();
 }
 
 export function NewDecoration(arg1, arg2) {
@@ -478,10 +502,6 @@ export function RemoveForge() {
   return window['go']['main']['App']['RemoveForge']();
 }
 
-export function RemoveFromCatalog(arg1, arg2) {
-  return window['go']['main']['App']['RemoveFromCatalog'](arg1, arg2);
-}
-
 export function RemoveGameCopies() {
   return window['go']['main']['App']['RemoveGameCopies']();
 }
@@ -510,8 +530,20 @@ export function SaveBoxImage(arg1, arg2) {
   return window['go']['main']['App']['SaveBoxImage'](arg1, arg2);
 }
 
+export function SaveClothes(arg1) {
+  return window['go']['main']['App']['SaveClothes'](arg1);
+}
+
+export function SaveCustomers(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['SaveCustomers'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function SaveDebugReport() {
   return window['go']['main']['App']['SaveDebugReport']();
+}
+
+export function SaveEmployees(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['SaveEmployees'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function SaveLibraryDraft(arg1, arg2) {
@@ -602,6 +634,10 @@ export function SourceSets(arg1, arg2, arg3) {
   return window['go']['main']['App']['SourceSets'](arg1, arg2, arg3);
 }
 
+export function StartupUpdate() {
+  return window['go']['main']['App']['StartupUpdate']();
+}
+
 export function StorageReport() {
   return window['go']['main']['App']['StorageReport']();
 }
@@ -632,18 +668,6 @@ export function UninstallProject(arg1) {
 
 export function UpdateSetup(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateSetup'](arg1, arg2, arg3);
-}
-
-export function UpgradePreviewDiffer(arg1) {
-  return window['go']['main']['App']['UpgradePreviewDiffer'](arg1);
-}
-
-export function UpgradePreviewNamed(arg1, arg2, arg3) {
-  return window['go']['main']['App']['UpgradePreviewNamed'](arg1, arg2, arg3);
-}
-
-export function UpgradeStorage(arg1) {
-  return window['go']['main']['App']['UpgradeStorage'](arg1);
 }
 
 export function UseProductPhoto(arg1, arg2) {

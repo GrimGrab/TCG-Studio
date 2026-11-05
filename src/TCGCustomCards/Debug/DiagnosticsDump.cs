@@ -54,12 +54,10 @@ namespace TCGCustomCards.Debug
             ShownList(sb, "m_ShownMegabotList", mso.m_ShownMegabotList);
             ShownList(sb, "m_ShownFantasyRPGList", mso.m_ShownFantasyRPGList);
             ShownList(sb, "m_ShownCatJobList", mso.m_ShownCatJobList);
-            ShownList(sb, "m_ShownPOCGList", mso.m_ShownPOCGList);
             DataList(sb, "m_DataList", mso.m_DataList);
             DataList(sb, "m_MegabotDataList", mso.m_MegabotDataList);
             DataList(sb, "m_FantasyRPGDataList", mso.m_FantasyRPGDataList);
             DataList(sb, "m_CatJobDataList", mso.m_CatJobDataList);
-            DataList(sb, "m_POCGDataList", mso.m_POCGDataList);
 
             Section(sb, "Per-expansion asset lists");
             sb.AppendLine($"m_CardUISettingList={Count(mso.m_CardUISettingList)} m_CardBackImageList={Count(mso.m_CardBackImageList)} " +

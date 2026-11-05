@@ -43,9 +43,6 @@ func For(workspace string) Catalog {
 	return Catalog{Root: filepath.Join(workspace, DirName), Workspace: workspace}
 }
 
-// Sets is the catalog's set templates as a project workspace (card art in the shared library).
-func (c Catalog) Sets() project.Workspace { return c.ws().Projects(c.Root) }
-
 // Items opens the catalog's accessory-library templates.
 func (c Catalog) Items() (*accessories.Library, error) { return c.ws().Items(c.Root) }
 
@@ -110,6 +107,7 @@ type Entry struct {
 	Cover      string     `json:"cover"`  // sets: a card image path (relative to the set) for the thumbnail
 	Icon       string     `json:"icon"`   // library entries: shop icon path (accessories.Library relative)
 	Base       string     `json:"base"`   // library entries: the vanilla item it is built on ("" = the kind's default)
+	Look       *content.Look `json:"look,omitempty"` // library entries with no picture: what to show instead
 }
 
 // FromRoot is the folder the entry is read from (the catalog, or the setup that has it).
@@ -187,7 +185,7 @@ func (c Catalog) collect(h setups.Home, activeRoot, kindID string, withActive bo
 			seen[it.ID] = len(out)
 			e := Entry{Kind: kindID, Key: it.ID, ID: it.ID, Name: it.Name, Sub: it.Sub, Detail: it.Detail, Source: it.Source,
 				Converted: it.Converted, Saved: src.saved, From: src.name, fromRoot: src.root, Cover: it.Cover, Icon: it.Icon,
-				Base: it.Base, Here: have[it.ID], UsedBy: usedBy[it.ID]}
+				Base: it.Base, Look: it.Look, Here: have[it.ID], UsedBy: usedBy[it.ID]}
 			if o := it.Origin; o != nil {
 				e.Origin, e.OriginKind, e.Author = o.Name(), o.Kind, o.Author
 			}
@@ -259,9 +257,6 @@ func (c Catalog) Remove(kindID, id string) error {
 	_, _, err = k.Store.Remove(c.ws(), c.Root, []string{id})
 	return err
 }
-
-// SetIDs lists the catalog's set templates (the Storage page keeps their card art).
-func (c Catalog) SetIDs() []string { return c.IDs(KindSet, c.Root) }
 
 // IDs lists the ids of a kind in a root.
 func (c Catalog) IDs(kindID, root string) []string {

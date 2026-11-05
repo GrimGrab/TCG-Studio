@@ -11,6 +11,7 @@ import (
 	"tcgstudio/internal/accessories"
 	"tcgstudio/internal/assets"
 	"tcgstudio/internal/catalog"
+	"tcgstudio/internal/content"
 	"tcgstudio/internal/project"
 	"tcgstudio/internal/setfmt"
 	"tcgstudio/internal/setups"
@@ -151,46 +152,35 @@ func unusedEntries(h setups.Home, bySet map[string][]loc, list []setups.Summary)
 		out = append(out, UnusedEntry{Kind: UnusedCatalogSet, ID: id, Name: name, Size: n, Files: files, InCatalog: true})
 	}
 
-	// Accessories and furniture only the catalog keeps, then store files nothing refers to.
-	store := workspace.Dir(h.Root).Store()
+	// Items only the catalog keeps, then store files nothing refers to.
+	ws := workspace.Dir(h.Root)
+	store := ws.Store()
 	setupItems := map[string]bool{}
 	for _, s := range list {
-		if l, err := accessories.Open(s.Folder, store); err == nil {
-			for _, a := range l.Lib.Accessories {
-				setupItems[a.ID] = true
-			}
-			for _, f := range l.Lib.Furniture {
-				setupItems[f.ID] = true
-			}
-			for _, d := range l.Lib.Decorations {
-				setupItems[d.ID] = true
+		for _, k := range content.LibraryKinds() {
+			items, _ := k.Store.List(ws, s.Folder)
+			for _, it := range items {
+				setupItems[it.ID] = true
 			}
 		}
 	}
 	setupRefs := accessories.StoreRefs(setups.Folders(list)...)
-	if cat, err := catalog.For(h.Root).Items(); err == nil {
-		add := func(id, name string) {
-			if setupItems[id] {
-				return
+	catRoot := catalog.For(h.Root).Root
+	for _, k := range content.LibraryKinds() {
+		items, _ := k.Store.List(ws, catRoot)
+		for _, it := range items {
+			if setupItems[it.ID] {
+				continue
 			}
 			var n int64
 			files := 0
-			for _, ref := range cat.ItemRefs(id) {
+			for _, ref := range it.Refs {
 				if !setupRefs[ref] {
 					n += size(store.Path(ref))
 					files++
 				}
 			}
-			out = append(out, UnusedEntry{Kind: UnusedCatalogItem, ID: id, Name: name, Size: n, Files: files, InCatalog: true})
-		}
-		for _, a := range cat.Lib.Accessories {
-			add(a.ID, a.Name)
-		}
-		for _, f := range cat.Lib.Furniture {
-			add(f.ID, f.Name)
-		}
-		for _, d := range cat.Lib.Decorations {
-			add(d.ID, d.Name)
+			out = append(out, UnusedEntry{Kind: UnusedCatalogItem, ID: it.ID, Name: it.Name, Size: n, Files: files, InCatalog: true})
 		}
 	}
 	// Each store file nothing refers to (earlier versions of edited textures, deleted items' files), by file.
@@ -305,16 +295,11 @@ func deleteEntry(h setups.Home, libRoot string, e UnusedEntry, bySet map[string]
 		freed += e.Size
 	case UnusedCatalogItem:
 		c := catalog.For(h.Root)
-		cat, err := c.Items()
-		if err != nil {
-			return freed, err
-		}
-		k, _, ok := cat.Entry(e.ID)
+		kindID, refs, ok := catalogItem(workspace.Dir(h.Root), c.Root, e.ID)
 		if !ok {
-			k = catalog.KindAccessory
+			return freed, nil // gone from the catalog already
 		}
-		refs := cat.ItemRefs(e.ID)
-		if err := c.Remove(k, e.ID); err != nil {
+		if err := c.Remove(kindID, e.ID); err != nil {
 			return freed, err
 		}
 		still := accessories.StoreRefs(append(setups.Folders(list), catalog.For(h.Root).Root)...) // its files go unless something else still refers to them
@@ -349,4 +334,17 @@ func storeFileType(rel string) string {
 		return "Model material"
 	}
 	return "File"
+}
+
+// catalogItem finds an item the catalog keeps: its kind and the store files it refers to.
+func catalogItem(ws workspace.Dir, root, id string) (kindID string, refs []string, ok bool) {
+	for _, k := range content.LibraryKinds() {
+		items, _ := k.Store.List(ws, root)
+		for _, it := range items {
+			if it.ID == id {
+				return k.ID, it.Refs, true
+			}
+		}
+	}
+	return "", nil, false
 }

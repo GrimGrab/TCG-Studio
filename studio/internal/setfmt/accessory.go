@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tcgstudio/internal/fsutil"
 )
 
 const AccessorySchemaVersion = 1
@@ -84,6 +86,15 @@ type AccessoryLibrary struct {
 	Accessories   []Accessory  `json:"accessories"`
 	Furniture     []Furniture  `json:"furniture,omitempty"`
 	Decorations   []Decoration `json:"decorations,omitempty"`
+	Customers     []Customer   `json:"customers,omitempty"`
+	Employees     []Employee   `json:"employees,omitempty"`
+	Clothes       []Clothing   `json:"clothes,omitempty"`
+	Faces         []SavedFace  `json:"faces,omitempty"`
+	Animations    []Animation  `json:"animations,omitempty"`
+	// MomentAnims are animations (ids) added per moment (a line situation or AnimationMoments), on top of the built-in ones;
+	// MomentOff are built-in ones switched off. One of a moment's animations plays at random.
+	MomentAnims map[string][]string `json:"momentAnims,omitempty"`
+	MomentOff   map[string][]string `json:"momentOff,omitempty"`
 }
 
 type Accessory struct {
@@ -157,7 +168,7 @@ func (l *AccessoryLibrary) Save(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return fsutil.WriteAtomic(path, b)
 }
 
 // Validate mirrors AccessoryLoader: errors reject an accessory in game; folder is used to check image files.

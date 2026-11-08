@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.0.1 - 2026-11-08
+
+MTG fix: colorless mana is counted again.
+
+- Fixed: In Magic games at the table, floating colorless mana (from Wastes, Sol Ring, Signets and similar) now shows in your mana pool at the bottom like the coloured mana, and you can click it to spend it.
+
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.0.0 - 2026-11-05
 
 TCG Studio 2.0.0: works with the game's Unity 6 update (1.03 and later), and brings living customers and your own employees.

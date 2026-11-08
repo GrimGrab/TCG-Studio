@@ -1,6 +1,7 @@
 package tcgcc.bridge;
 
 import forge.card.MagicColor;
+import forge.card.mana.ManaAtom;
 import forge.game.Game;
 import forge.game.GameEntityView;
 import forge.game.card.Card;
@@ -57,7 +58,8 @@ final class StateWriter {
             putMana(mana, "B", p.getMana(MagicColor.BLACK));
             putMana(mana, "R", p.getMana(MagicColor.RED));
             putMana(mana, "G", p.getMana(MagicColor.GREEN));
-            putMana(mana, "C", p.getMana((byte) MagicColor.COLORLESS));
+            // Floating colourless mana is kept under ManaAtom.COLORLESS (32); MagicColor.COLORLESS is 0 and always counts nothing.
+            putMana(mana, "C", p.getMana((byte) ManaAtom.COLORLESS));
             pm.put("mana", mana);
             boolean mine = me != null && p.getId() == me.getId();
             if (mine) pm.put("hand", cards(p.getHand(), me));

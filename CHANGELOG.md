@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.0.2 - 2026-11-08
+
+Fixes the missing mouse cursor in casual Magic games.
+
+- Fixed: after picking your deck (and Best of 1 / Best of 3) for a Magic game at a normal table, the mouse cursor disappeared until you pressed Esc twice. It now stays visible from the start of the match.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.0.1 - 2026-11-08
 
 MTG fix: colorless mana is counted again.

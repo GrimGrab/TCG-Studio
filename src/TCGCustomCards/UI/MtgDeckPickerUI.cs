@@ -95,11 +95,18 @@ namespace TCGCustomCards.UI
             enabled = false;
             var ipc = CSingleton<InteractionPlayerController>.Instance;
             ipc?.m_WalkerCtrl?.SetStopMovement(isStop: false);
-            ipc?.ExitUIMode();
-            if (pick == null) { SoundManager.GenericCancel(); return; }
+            if (pick == null) { ipc?.ExitUIMode(); SoundManager.GenericCancel(); return; }
             SoundManager.GenericConfirm();
+            // The pick usually sits down at the table, whose SetPlayTable enters UI mode itself. Leaving UI mode first would
+            // start vanilla's DelaySetUIModeFalse, which switches it off again 0.05 s into the match (cursor gone until Esc).
+            // So UI mode is only left when no table game started (window mode, refused sit, Commander/tournament toasts).
             try { _onPick?.Invoke(pick.Choice); }
             catch (Exception e) { Plugin.Log.LogError($"Deck picker action failed: {e}"); }
+            finally
+            {
+                var table = CSingleton<PlayCardGameManager>.Instance?.m_PlayTableGame;
+                if (table == null || !table.IsPlayTableGameMode()) ipc?.ExitUIMode();
+            }
         }
 
         private static readonly HarmonyLib.AccessTools.FieldRef<InteractionPlayerController, bool> InUIMode =

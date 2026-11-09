@@ -87,20 +87,16 @@ namespace TCGCustomCards.Debug
                     else
                     {
                         Add(set, pos, ECardBorderType.Base, false);
-                        Add(set, pos, (ECardBorderType)Random.Range(0, CardStore.BordersPerCard), Random.value < 0.5f);
+                        var (border, foil) = CardVersions.RollAny(set.Expansion, () => Random.value);
+                        Add(set, pos, border, foil);
                         added += 2;
                     }
                 }
             Plugin.Log.LogInfo($"Granted {added} custom cards");
         }
 
+        /// <summary>The "all variants" grant passes every version on purpose (a test of all 12 slots); the random one rolls with <see cref="CardVersions"/>.</summary>
         private static void Add(CustomSet set, int pos, ECardBorderType border, bool foil) =>
-            CPlayerData.AddCard(new CardData
-            {
-                expansionType = set.Expansion,
-                monsterType = set.Shown[pos],
-                borderType = border,
-                isFoil = foil
-            }, 1);
+            CPlayerData.AddCard(new CardData { expansionType = set.Expansion, monsterType = set.Shown[pos], borderType = border, isFoil = foil }, 1);
     }
 }

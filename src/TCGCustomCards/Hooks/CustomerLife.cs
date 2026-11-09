@@ -127,6 +127,13 @@ namespace TCGCustomCards.Hooks
 
         public static bool HasCheckedOut(Customer c) => CheckedOutFlag(c);
 
+        /// <summary>
+        /// Inside the shop. At <see cref="ExitingShop"/> this says whether they came in at all this visit: vanilla sets the flag
+        /// on the way in and clears it only once they walk out (Customer.cs:3776/:3784), while someone who found the shop closed
+        /// gives up outside (ShopNotOpen → Idle → ExitShop) without ever having it.
+        /// </summary>
+        public static bool IsInsideShop(Customer c) => c != null && InsideShop(c);
+
         public static bool IsTournamentEntrant(Customer c) => c.GetCustomerTournamentData()?.m_IsTournamentCustomer == true;
 
         /// <summary>

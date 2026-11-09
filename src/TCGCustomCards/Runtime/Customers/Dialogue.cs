@@ -158,6 +158,7 @@ namespace TCGCustomCards.Runtime.Customers
             CustomerLife.ExitDecided += c =>
             {
                 if (!On || Shoplifting.IsStealing(c) || CustomerStates.Of(c) != null) return; // staying a while says goodbye later
+                if (!CustomerLife.IsInsideShop(c)) return; // gave up outside a closed shop: no "nothing for me" goodbye
                 Say(c, CustomerLife.PaidThisVisit(c) > 0f ? "leaveHappy" : "leaveEmpty", null, 0.25f, 0.5f);
             };
         }

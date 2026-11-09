@@ -61,9 +61,11 @@ namespace TCGCustomCards.Runtime
                 card.isDestiny = false;
                 card.isChampionCard = false;
                 card.cardGrade = 0;
+                // Border by the pack's odds (only borders the set has); foil by the pack's foil chance when the border exists
+                // both ways, else the one way it exists.
                 card.borderType = RollBorder(def, set.Def);
-                card.isFoil = Random.Range(0f, 100f) < def.FoilChance;
-                if (!set.Def.Allows(card.borderType, card.isFoil)) card.isFoil = !card.isFoil; // this border only exists the other way
+                bool plain = set.Def.Allows(card.borderType, false), foil = set.Def.Allows(card.borderType, true);
+                card.isFoil = plain && foil ? Random.Range(0f, 100f) < def.FoilChance : foil;
                 anyFoil |= card.isFoil;
                 output.Add(card);
             }
@@ -130,20 +132,6 @@ namespace TCGCustomCards.Runtime
             for (int b = 0; b < CardStore.BordersPerCard; b++)
                 if (HasBorder(set, (ECardBorderType)b)) return (ECardBorderType)b;
             return ECardBorderType.Base;
-        }
-
-        /// <summary>
-        /// A version the set has, as close as possible to the one asked for: as is, else the same border the other way
-        /// (foil/normal), else a random allowed version. For cards the game makes up (trade customers).
-        /// </summary>
-        public static (ECardBorderType border, bool foil) FitVariant(SetDef set, ECardBorderType border, bool foil)
-        {
-            if (set.Allows(border, foil)) return (border, foil);
-            if (set.Allows(border, !foil)) return (border, !foil);
-            var allowed = new List<int>();
-            for (int i = 0; i < CardStore.SlotsPerCard; i++) if (set.VariantMask[i]) allowed.Add(i);
-            int pick = allowed[Random.Range(0, allowed.Count)];
-            return ((ECardBorderType)(pick % CardStore.BordersPerCard), pick >= CardStore.BordersPerCard);
         }
     }
 }

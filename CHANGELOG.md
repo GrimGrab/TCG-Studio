@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.0.3 - 2026-11-09
+
+Fixes for card versions and customer loyalty.
+
+- Fixed: Sets with some card versions switched off (Studio → Set → Card versions) now keep to that everywhere. Customers' own cards (their prized card, show-offs, cards they offer to sell you, trades between customers) and the cards trade customers bring only come in versions the set has. Cards customers already carried before this update stay as they are.
+- Fixed: Regulars no longer lose loyalty, or drop to "Soured", when they come by while the shop is closed (before opening or after closing) and leave without coming in.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.0.2 - 2026-11-08
 
 Fixes the missing mouse cursor in casual Magic games.

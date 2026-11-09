@@ -13,12 +13,7 @@ namespace TCGCustomCards.Patches
     internal static class VariantPatches
     {
         /// <summary>The custom set of an expansion when it has some versions switched off; null otherwise (vanilla too).</summary>
-        internal static CustomSet Limited(ECardExpansionType exp)
-        {
-            if (!Registry.IsCustom(exp)) return null;
-            var set = Registry.Get(exp);
-            return set != null && !set.Def.AllVariants ? set : null;
-        }
+        internal static CustomSet Limited(ECardExpansionType exp) => CardVersions.Limited(exp);
 
         /// <summary>Whether this save index of the expansion is a version the set has.</summary>
         internal static bool Allowed(CustomSet set, int saveIndex) =>
@@ -168,7 +163,8 @@ namespace TCGCustomCards.Patches
         /// <summary>
         /// Trade customers pick a random save index for the card they bring (and for the card they ask for when the player has
         /// nothing that fits): every version equally likely. The made-up card is fitted to the set's versions right where
-        /// it's made, so its price, the matching card and the screen all follow. A version the player owns is left as is.
+        /// it's made, so its price, the matching card and the screen all follow. A card asked from the player is left as is when
+        /// the player owns that version.
         /// </summary>
         [HarmonyPatch(typeof(CustomerTradeCardScreen), nameof(CustomerTradeCardScreen.SetCustomer))]
         internal static class TradeCardPatch
@@ -180,10 +176,12 @@ namespace TCGCustomCards.Patches
 
             private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
             {
+                // The first card call is the card the customer brings (CustomerTradeCardScreen.cs:417): never kept as a switched-off
+                // version (the player owning one doesn't make the customer have it). Later calls are cards asked from the player.
                 int n = 0;
                 foreach (var ci in instructions)
                 {
-                    if (ci.Calls(GetCard)) { ci.operand = AccessTools.Method(typeof(TradeCardPatch), nameof(Card)); n++; }
+                    if (ci.Calls(GetCard)) { ci.operand = AccessTools.Method(typeof(TradeCardPatch), n == 0 ? nameof(Brought) : nameof(Card)); n++; }
                     else if (ci.Calls(GetGraded)) { ci.operand = AccessTools.Method(typeof(TradeCardPatch), nameof(Graded)); n++; }
                     yield return ci;
                 }
@@ -191,18 +189,22 @@ namespace TCGCustomCards.Patches
             }
 
             public static CardData Card(int index, ECardExpansionType exp, bool isDestiny) =>
-                Fit(CPlayerData.GetCardData(index, exp, isDestiny), owned: true);
+                InLimits(CPlayerData.GetCardData(index, exp, isDestiny), owned: true);
 
-            public static CardData Graded(CompactCardDataAmount data) => Fit(CPlayerData.GetGradedCardData(data), owned: false);
+            public static CardData Brought(int index, ECardExpansionType exp, bool isDestiny) =>
+                InLimits(CPlayerData.GetCardData(index, exp, isDestiny), owned: false);
 
-            private static CardData Fit(CardData card, bool owned)
+            public static CardData Graded(CompactCardDataAmount data) => InLimits(CPlayerData.GetGradedCardData(data), owned: false);
+
+            /// <summary>
+            /// Vanilla's random save index = a random card and one of its 12 versions, all equally likely. The version is drawn
+            /// again, equally, from the versions the set has: the same odds vanilla would give if it only rolled those.
+            /// </summary>
+            private static CardData InLimits(CardData card, bool owned)
             {
-                var set = card == null ? null : Limited(card.expansionType);
-                if (set == null || set.Def.Allows(card.borderType, card.isFoil)) return card;
+                if (CardVersions.IsAllowed(card)) return card;
                 if (owned && CPlayerData.GetCardAmount(card) > 0) return card; // the player has this one: a fair trade target
-                var (border, foil) = PackRoller.FitVariant(set.Def, card.borderType, card.isFoil);
-                card.borderType = border;
-                card.isFoil = foil;
+                (card.borderType, card.isFoil) = CardVersions.RollAny(card.expansionType, () => UnityEngine.Random.value);
                 return card;
             }
         }

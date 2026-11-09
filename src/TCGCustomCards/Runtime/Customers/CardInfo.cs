@@ -84,10 +84,23 @@ namespace TCGCustomCards.Runtime.Customers
                 if ((roll -= Weight(k.step)) < 0) { pick = k.key; break; }
             var card = FromKey(pick);
             if (card == null) return null;
-            card.isFoil = rng.NextDouble() < 0.1;
-            double b = rng.NextDouble();
-            card.borderType = b < 0.02 ? ECardBorderType.Gold : b < 0.08 ? ECardBorderType.Silver : b < 0.25 ? ECardBorderType.FirstEdition : ECardBorderType.Base;
+            (card.borderType, card.isFoil) = CardVersions.Roll(card.expansionType, OwnedWeight, rng.NextDouble);
             return card;
+        }
+
+        /// <summary>Mostly base versions: 10% foil; borders Base 75%, 1st Edition 17%, Silver 6%, Gold 2% (none EX/Full Art).</summary>
+        private static double OwnedWeight(ECardBorderType border, bool foil)
+        {
+            double b;
+            switch (border)
+            {
+                case ECardBorderType.Base: b = 0.75; break;
+                case ECardBorderType.FirstEdition: b = 0.17; break;
+                case ECardBorderType.Silver: b = 0.06; break;
+                case ECardBorderType.Gold: b = 0.02; break;
+                default: b = 0; break;
+            }
+            return b * (foil ? 0.1 : 0.9);
         }
 
         private static double Weight(int rarityStep) => 1.0 / System.Math.Pow(1 + rarityStep, 2.2);

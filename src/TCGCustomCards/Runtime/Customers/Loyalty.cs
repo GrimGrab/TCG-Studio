@@ -85,6 +85,8 @@ namespace TCGCustomCards.Runtime.Customers
             // As they turn for the door, while you can still see them. A thief or someone thrown out has lost more than this already.
             CustomerLife.ExitingShop += c =>
             {
+                // Found the shop closed (before opening, after closing) and gave up outside: not a visit.
+                if (!CustomerLife.IsInsideShop(c)) return;
                 // Playing at a table or trading with you is what they came for, even with nothing bought.
                 if (CustomerLife.PaidThisVisit(c) > 0f || CustomerLife.PlayedAtTable(c) || CustomerLife.TradedWithYou(c)) return;
                 if (!KickOut.WasKicked(c) && !Shoplifting.IsStealing(c)) Change(Cast.Of(c), LeftEmpty, "left empty-handed");

@@ -66,13 +66,18 @@ namespace TCGCustomCards.Runtime
             return ImageCache.GetTrimmedCard(path, Mathf.Clamp(Plugin.PrintedBorderMax.Value, 0f, 0.2f), out _);
         }
 
-        /// <summary>Shallow copy of the template expansion's CardUISetting (frame sprites are shared, read-only).</summary>
+        /// <summary>
+        /// Shallow copy of the template expansion's CardUISetting (frame sprites are shared, read-only). Edition names always
+        /// come from the standard list (<see cref="StandardEditionNames"/>): the Ascension and Ghost templates name editions
+        /// their own way (Ascension calls 1st Edition "Silver Edition"), which made a custom card's label disagree with its look.
+        /// </summary>
         public CardUISetting UISetting
         {
             get
             {
                 if (_uiSetting != null) return _uiSetting;
-                var t = CSingleton<InventoryBase>.Instance.m_MonsterData_SO.m_CardUISettingList[(int)Def.FrameTemplate];
+                var so = CSingleton<InventoryBase>.Instance.m_MonsterData_SO;
+                var t = so.m_CardUISettingList[(int)Def.FrameTemplate];
                 _uiSetting = new CardUISetting
                 {
                     expansionType = Expansion,
@@ -82,10 +87,53 @@ namespace TCGCustomCards.Runtime
                     iconIndex = 0,
                     bgIndex = 0,
                     previousEvoStageIconExpansion = ECardExpansionType.None,
-                    cardUISettingDataList = t.cardUISettingDataList
+                    cardUISettingDataList = WithStandardNames(t.cardUISettingDataList, so)
                 };
                 return _uiSetting;
             }
+        }
+
+        private static readonly System.Reflection.MethodInfo CloneMethod =
+            HarmonyLib.AccessTools.Method(typeof(object), "MemberwiseClone");
+
+        /// <summary>
+        /// Copies of the template's data entries (vanilla cards keep theirs untouched) carrying the standard edition name lists,
+        /// one name per ECardBorderType. Falls back to the template's own entries when the standard list isn't usable.
+        /// </summary>
+        private List<CardUISettingData> WithStandardNames(List<CardUISettingData> template, MonsterData_ScriptableObject so)
+        {
+            var (shortNames, fullNames) = StandardEditionNames(so);
+            if (shortNames == null) return template;
+            var copies = new List<CardUISettingData>(template.Count);
+            foreach (var d in template)
+            {
+                if (d == null) { copies.Add(null); continue; }
+                var c = (CardUISettingData)CloneMethod.Invoke(d, null);
+                c.cardBorderNameList = shortNames;
+                c.cardBorderFullNameList = fullNames;
+                copies.Add(c);
+            }
+            if (Def.FrameTemplate != ECardExpansionType.Tetramon)
+                Plugin.Log.LogInfo($"Card versions: {Def.Label} uses the standard edition names (frame template {Def.FrameTemplate})");
+            return copies;
+        }
+
+        /// <summary>
+        /// The standard edition names (Basic, 1st Edition, Silver, Gold, EX, Full Art = I2 terms): Tetramon's normal-border data
+        /// entry, the only list that names all six editions in ECardBorderType order. Null when the game changed that.
+        /// </summary>
+        private static (List<string> shortNames, List<string> fullNames) StandardEditionNames(MonsterData_ScriptableObject so)
+        {
+            var list = so.m_CardUISettingList?.Count > 0 ? so.m_CardUISettingList[0]?.cardUISettingDataList : null;
+            var d = list?.Count > 0 ? list[0] : null;
+            int n = (int)ECardBorderType.FullArt + 1;
+            if (d?.cardBorderNameList == null || d.cardBorderFullNameList == null ||
+                d.cardBorderNameList.Count < n || d.cardBorderFullNameList.Count < n)
+            {
+                Compat.Report("Standard edition names", "Tetramon's edition name lists no longer have one name per edition - custom sets keep their frame template's names");
+                return (null, null);
+            }
+            return (d.cardBorderNameList, d.cardBorderFullNameList);
         }
 
         /// <summary>Optional card back shared by every custom set that doesn't set its own (the setup's, written by TCG Studio).</summary>

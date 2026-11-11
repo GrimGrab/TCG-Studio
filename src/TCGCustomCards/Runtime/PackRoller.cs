@@ -27,9 +27,6 @@ namespace TCGCustomCards.Runtime
             return w;
         }
 
-        private static readonly ECardBorderType[] BorderCheckOrder =
-            { ECardBorderType.FullArt, ECardBorderType.EX, ECardBorderType.Gold, ECardBorderType.Silver, ECardBorderType.FirstEdition };
-
         /// <summary>Fills <paramref name="pool"/> entries [0..count) and appends them to <paramref name="output"/>. Returns true if any card is foil.</summary>
         public static bool Roll(CustomPack pack, List<CardData> pool, List<CardData> output)
         {
@@ -52,6 +49,7 @@ namespace TCGCustomCards.Runtime
                     for (int i = 0; i < s.Count; i++) slotWeights.Add(w);
                 }
 
+            var versionWeights = CardVersions.PackWeights(set.Expansion, def.BorderOdds, def.FoilChance);
             for (int j = 0; j < slotWeights.Count && j < pool.Count; j++)
             {
                 int pos = PickCard(pack, buckets, slotWeights[j]);
@@ -61,11 +59,8 @@ namespace TCGCustomCards.Runtime
                 card.isDestiny = false;
                 card.isChampionCard = false;
                 card.cardGrade = 0;
-                // Border by the pack's odds (only borders the set has); foil by the pack's foil chance when the border exists
-                // both ways, else the one way it exists.
-                card.borderType = RollBorder(def, set.Def);
-                bool plain = set.Def.Allows(card.borderType, false), foil = set.Def.Allows(card.borderType, true);
-                card.isFoil = plain && foil ? Random.Range(0f, 100f) < def.FoilChance : foil;
+                // Version (edition + foil) in one draw among the versions the set has, by the pack's edition and foil odds.
+                (card.borderType, card.isFoil) = CardVersions.Roll(set.Expansion, versionWeights, () => Random.value);
                 anyFoil |= card.isFoil;
                 output.Add(card);
             }
@@ -110,28 +105,6 @@ namespace TCGCustomCards.Runtime
             int pos = bucket[idx];
             if (!pack.Def.AllowDuplicates) bucket.RemoveAt(idx);
             return pos;
-        }
-
-        /// <summary>
-        /// Border by the pack's odds, among the borders the set has (set.json "variants"); otherwise its lowest border
-        /// (Base, unless the set has no Base version).
-        /// </summary>
-        private static ECardBorderType RollBorder(PackDef def, SetDef set)
-        {
-            if (def.BorderOdds != null)
-                foreach (var border in BorderCheckOrder)
-                    if (HasBorder(set, border) && def.BorderOdds.TryGetValue(border.ToString(), out float pct) && Random.Range(0f, 100f) < pct)
-                        return border;
-            return LowestBorder(set);
-        }
-
-        private static bool HasBorder(SetDef set, ECardBorderType b) => set.Allows(b, false) || set.Allows(b, true);
-
-        private static ECardBorderType LowestBorder(SetDef set)
-        {
-            for (int b = 0; b < CardStore.BordersPerCard; b++)
-                if (HasBorder(set, (ECardBorderType)b)) return (ECardBorderType)b;
-            return ECardBorderType.Base;
         }
     }
 }

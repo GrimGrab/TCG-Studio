@@ -60,6 +60,53 @@ namespace TCGCustomCards.Runtime
         public static (ECardBorderType border, bool foil) RollAny(ECardExpansionType exp, Func<double> next01) =>
             Roll(exp, (b, f) => 1, next01);
 
+        /// <summary>Editions a pack checks, rarest first (each with its own % from the pack's borderOdds).</summary>
+        private static readonly ECardBorderType[] EditionCheckOrder =
+            { ECardBorderType.FullArt, ECardBorderType.EX, ECardBorderType.Gold, ECardBorderType.Silver, ECardBorderType.FirstEdition };
+
+        /// <summary>
+        /// A pack's chance for each version, for <see cref="Roll"/> (one draw). The foil % keeps its meaning: how often a pulled
+        /// card is foil (when the set has plain and foil versions; otherwise every card is the one kind it has). Within plain or
+        /// foil, the editions follow the pack's edition % checked rarest first among the editions that exist that way, and the
+        /// rest goes to the lowest one that exists. A set with every edition on or off both ways gets exactly the old odds
+        /// (edition % × foil %); an edition that exists only as foil is now as rare as a foil, never forced to foil.
+        /// </summary>
+        public static Func<ECardBorderType, bool, double> PackWeights(ECardExpansionType exp, System.Collections.Generic.IDictionary<string, float> editionOdds, float foilChance)
+        {
+            var w = new double[CardStore.SlotsPerCard];
+            bool hasPlain = false, hasFoil = false;
+            for (int b = 0; b < CardStore.BordersPerCard; b++)
+            {
+                hasPlain |= IsAllowed(exp, (ECardBorderType)b, false);
+                hasFoil |= IsAllowed(exp, (ECardBorderType)b, true);
+            }
+            double fc = Math.Min(1, Math.Max(0, foilChance / 100.0));
+            double pFoil = hasPlain && hasFoil ? fc : hasFoil ? 1 : 0;
+            Editions(exp, false, 1 - pFoil, editionOdds, w);
+            Editions(exp, true, pFoil, editionOdds, w);
+            return (b, f) => w[(int)b + (f ? CardStore.BordersPerCard : 0)];
+        }
+
+        /// <summary>Spreads <paramref name="share"/> over the editions that exist plain (or foil) by the pack's edition %.</summary>
+        private static void Editions(ECardExpansionType exp, bool foil, double share, System.Collections.Generic.IDictionary<string, float> odds, double[] w)
+        {
+            int lowest = -1;
+            for (int b = 0; b < CardStore.BordersPerCard && lowest < 0; b++)
+                if (IsAllowed(exp, (ECardBorderType)b, foil)) lowest = b;
+            if (lowest < 0 || share <= 0) return;
+            int off = foil ? CardStore.BordersPerCard : 0;
+            double left = 1;
+            if (odds != null)
+                foreach (var b in EditionCheckOrder)
+                {
+                    if (!IsAllowed(exp, b, foil) || !odds.TryGetValue(b.ToString(), out float pct)) continue;
+                    double p = left * Math.Min(1, Math.Max(0, pct / 100.0));
+                    w[(int)b + off] += share * p;
+                    left -= p;
+                }
+            w[lowest + off] += share * left;
+        }
+
         private static (ECardBorderType border, bool foil) Version(int i) =>
             ((ECardBorderType)(i % CardStore.BordersPerCard), i >= CardStore.BordersPerCard);
     }

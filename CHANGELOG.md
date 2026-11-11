@@ -3,6 +3,15 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.0.4 - 2026-11-11
+
+Card versions now come out right when a set has some versions switched off.
+
+- Fixed: cards on the Ascension frame template showed the wrong edition name (a 1st Edition card said "Silver Edition"); every custom set now uses the standard names (1st Edition, Silver, Gold, EX, Full Art) on the card, in Check Price and on price tags.
+- Fixed: when an edition is switched on only as a foil, packs gave it its full edition odds, so edition foils were about a third of all cards. The pack's foil % is now exact and edition foils are rarer foils (with default odds, 1st Edition foil is about 0.87% per card).
+- Changed: sets with every version on (or each edition fully on or off) keep exactly the same pack odds.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.0.3 - 2026-11-09
 
 Fixes for card versions and customer loyalty.

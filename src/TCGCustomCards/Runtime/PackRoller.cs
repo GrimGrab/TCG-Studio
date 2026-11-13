@@ -49,7 +49,7 @@ namespace TCGCustomCards.Runtime
                     for (int i = 0; i < s.Count; i++) slotWeights.Add(w);
                 }
 
-            var versionWeights = CardVersions.PackWeights(set.Expansion, def.BorderOdds, def.FoilChance);
+            var versionWeights = new Dictionary<bool[], System.Func<ECardBorderType, bool, double>>(); // per card version list
             for (int j = 0; j < slotWeights.Count && j < pool.Count; j++)
             {
                 int pos = PickCard(pack, buckets, slotWeights[j]);
@@ -59,8 +59,9 @@ namespace TCGCustomCards.Runtime
                 card.isDestiny = false;
                 card.isChampionCard = false;
                 card.cardGrade = 0;
-                // Version (edition + foil) in one draw among the versions the set has, by the pack's edition and foil odds.
-                (card.borderType, card.isFoil) = CardVersions.Roll(set.Expansion, versionWeights, () => Random.value);
+                // Version (edition + foil) in one draw among the versions the card has, by the pack's edition and foil odds.
+                (card.borderType, card.isFoil) = CardVersions.RollPackCard(set.Expansion, card.monsterType, def.BorderOdds, def.FoilChance,
+                    versionWeights, () => Random.value);
                 anyFoil |= card.isFoil;
                 output.Add(card);
             }

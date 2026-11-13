@@ -1,5 +1,6 @@
 <script lang="ts">
   import { App, projectFile, setRarities, splitWeights, BORDERS, BORDER_LABELS, ask, money } from '../../lib/api';
+  import { anyCardHas } from '../../lib/cardVersions';
   import { packSlot, pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
   import PictureSlot from '../PictureSlot.svelte';
   import PackArtEditor from './PackArtEditor.svelte';
@@ -36,14 +37,8 @@
   // Plain data ($state.raw): a deep $state proxy can't go through structuredClone (it threw, so presets did nothing).
   let presets = $state.raw<Preset[]>(GAME_STYLE);
 
-  /** Whether the set has a version (Set tab → Card versions): border null = any border, foil null = normal or foil. */
-  function hasVersion(border: string | null, foil: boolean | null): boolean {
-    const v: string[] | undefined = project.set.variants;
-    if (!v?.length) return true;
-    const on = new Set(v.map((x) => x.toLowerCase()));
-    return BORDERS.some((b: string) => (border == null || b === border) &&
-      [false, true].some((f) => (foil == null || f === foil) && on.has((f ? `${b}_foil` : b).toLowerCase())));
-  }
+  /** Whether any card has a version (set default or a card's own list): border null = any border, foil null = normal or foil. */
+  const hasVersion = (border: string | null, foil: boolean | null) => anyCardHas(project.set, border, foil);
   App.PackPresets().then((list: any[]) => { presets = [...(list ?? []), ...GAME_STYLE]; }).catch(() => {});
   const presetGames = $derived([...new Set(presets.map((p) => p.game))]);
 

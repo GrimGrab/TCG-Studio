@@ -15,9 +15,20 @@ namespace TCGCustomCards.Patches
         /// <summary>The custom set of an expansion when it has some versions switched off; null otherwise (vanilla too).</summary>
         internal static CustomSet Limited(ECardExpansionType exp) => CardVersions.Limited(exp);
 
-        /// <summary>Whether this save index of the expansion is a version the set has.</summary>
-        internal static bool Allowed(CustomSet set, int saveIndex) =>
-            set.Def.VariantMask[saveIndex % CardStore.SlotsPerCard];
+        /// <summary>Whether this save index of the expansion is a version its card has (save index = card × 12 + version).</summary>
+        internal static bool Allowed(CustomSet set, int saveIndex)
+        {
+            int pos = saveIndex / CardStore.SlotsPerCard;
+            return pos >= set.Def.Cards.Count || set.Def.MaskOf(pos)[saveIndex % CardStore.SlotsPerCard];
+        }
+
+        /// <summary>Versions listed in the binder's "x / N": each card's own count.</summary>
+        internal static int TotalVersions(CustomSet set)
+        {
+            int total = 0;
+            for (int pos = 0; pos < set.Shown.Count && pos < set.Def.Cards.Count; pos++) total += set.Def.VersionCount(pos);
+            return total;
+        }
 
         /// <summary>A slot is listed when the set has that version or the player owns one (bought before it was switched off).</summary>
         internal static bool Listed(CustomSet set, ECardExpansionType exp, int saveIndex) =>
@@ -67,7 +78,7 @@ namespace TCGCustomCards.Patches
                 list.RemoveAll(i => !Listed(set, exp, i));
                 if (Logged.Add(set.Def.Id)) // once per set and session
                     Plugin.Log.LogInfo($"Card versions: binder {set.Def.Label} ({__originalMethod.Name}) lists {list.Count} of {before} slots " +
-                                       $"({set.Def.VariantMask.Count(v => v)} versions per card)");
+                                       $"({TotalVersions(set)} versions over {set.Shown.Count} cards)");
             }
         }
 
@@ -84,7 +95,7 @@ namespace TCGCustomCards.Patches
                 {
                     // "x / N": N counts only the versions the set has. Set here (not by patching SetMaxCardCollectCount: the
                     // runtime inlines that one-line setter, so a patch on it never ran) and the text written again.
-                    int total = set.Shown.Count * set.Def.VariantMask.Count(v => v);
+                    int total = TotalVersions(set);
                     if (MaxCollectRef(ui0) != total)
                     {
                         MaxCollectRef(ui0) = total;
@@ -204,7 +215,7 @@ namespace TCGCustomCards.Patches
             {
                 if (CardVersions.IsAllowed(card)) return card;
                 if (owned && CPlayerData.GetCardAmount(card) > 0) return card; // the player has this one: a fair trade target
-                (card.borderType, card.isFoil) = CardVersions.RollAny(card.expansionType, () => UnityEngine.Random.value);
+                (card.borderType, card.isFoil) = CardVersions.RollAny(card.expansionType, card.monsterType, () => UnityEngine.Random.value);
                 return card;
             }
         }

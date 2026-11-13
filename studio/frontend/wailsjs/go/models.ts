@@ -3874,6 +3874,8 @@ export namespace setfmt {
 	    number?: string;
 	    image: string;
 	    backImage?: string;
+	    variants?: string[];
+	    versionImages?: Record<string, string>;
 	    price: CardPrice;
 	    play: Play;
 	    mtg?: CardMtg;
@@ -3892,6 +3894,8 @@ export namespace setfmt {
 	        this.number = source["number"];
 	        this.image = source["image"];
 	        this.backImage = source["backImage"];
+	        this.variants = source["variants"];
+	        this.versionImages = source["versionImages"];
 	        this.price = this.convertValues(source["price"], CardPrice);
 	        this.play = this.convertValues(source["play"], Play);
 	        this.mtg = this.convertValues(source["mtg"], CardMtg);

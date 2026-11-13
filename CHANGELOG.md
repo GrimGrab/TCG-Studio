@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.1.0 - 2026-11-13
+
+Card versions per card, and a different picture for each version.
+
+- New: each card can have its own card versions (border × foil). The Set tab's Card versions grid is now the default for every card; a card can change it in its Versions block, and several selected cards can be changed together (Follow set, All on, Only versions with own art). The Set tab shows how many cards have their own versions and can reset them all.
+- New: a picture per version — give a card's Gold, Full Art, foil… versions their own art (up to 12 per card). Base is the card's main image. A foil without its own picture uses that border's normal picture (Gold foil → Gold), then the main image. Works for full-image and framed sets.
+- Changed: packs, trade customers and customers' binders only make versions the card has; the binder and Check Price list each card's own versions, and the binder total adds them up.
+- Changed: cards with their own versions or version pictures get a small badge in the Cards tab.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.0.4 - 2026-11-11
 
 Card versions now come out right when a set has some versions switched off.

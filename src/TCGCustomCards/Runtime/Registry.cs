@@ -27,6 +27,29 @@ namespace TCGCustomCards.Runtime
         public string ImagePath(CardDef card) => string.IsNullOrEmpty(card.Image) ? null : Def.Resolve(card.Image);
         public Sprite CardImage(int pos) => ImageCache.Get(ImagePath(Card(pos)));
 
+        /// <summary>
+        /// The card's own picture for this version (set.json "versionImages"), or null when that version shows the main image.
+        /// A foil without one uses the same border's normal picture (Gold foil → Gold), then the main image.
+        /// </summary>
+        public string VersionImagePath(int pos, ECardBorderType border, bool foil)
+        {
+            var bySlot = Card(pos).VersionImageBySlot;
+            if (bySlot == null) return null;
+            string rel = bySlot[(int)border + (foil ? CardStore.BordersPerCard : 0)];
+            if (string.IsNullOrEmpty(rel) && foil) rel = bySlot[(int)border];
+            return string.IsNullOrEmpty(rel) ? null : Def.Resolve(rel);
+        }
+
+        /// <summary>The picture of this version: its own one, else the main image.</summary>
+        public string ImagePath(int pos, ECardBorderType border, bool foil) =>
+            VersionImagePath(pos, border, foil) ?? ImagePath(Card(pos));
+
+        /// <summary>Whether any of the card's versions has a picture of its own.</summary>
+        public bool HasVersionImages(int pos) => Card(pos).VersionImageBySlot != null;
+
+        /// <summary>The picture of this version, untrimmed (Framed art, thumbnails of that version).</summary>
+        public Sprite CardImage(int pos, ECardBorderType border, bool foil) => ImageCache.Get(ImagePath(pos, border, foil));
+
         private bool _trimLogged;
         private int _trimSeen, _trimNone, _trimSum;
 
@@ -34,10 +57,15 @@ namespace TCGCustomCards.Runtime
         /// The card as drawn on full-image cards: without the scan's printed border when [Visuals] HidePrintedBorders is on
         /// (SetCardUIPatch stretches it back to the texture's shape). CardImage stays whole for thumbnails and Framed art.
         /// </summary>
-        public Sprite CardFace(int pos)
+        public Sprite CardFace(int pos) => Face(ImagePath(Card(pos)));
+
+        /// <summary><see cref="CardFace(int)"/> for one version: its own picture, else the main image.</summary>
+        public Sprite CardFace(int pos, ECardBorderType border, bool foil) => Face(ImagePath(pos, border, foil));
+
+        private Sprite Face(string path)
         {
-            if (!Plugin.HidePrintedBorders.Value) return CardImage(pos);
-            var sprite = ImageCache.GetTrimmedCard(ImagePath(Card(pos)), Mathf.Clamp(Plugin.PrintedBorderMax.Value, 0f, 0.2f), out int b);
+            if (!Plugin.HidePrintedBorders.Value) return ImageCache.Get(path);
+            var sprite = ImageCache.GetTrimmedCard(path, Mathf.Clamp(Plugin.PrintedBorderMax.Value, 0f, 0.2f), out int b);
             if (!_trimLogged && sprite != null)
             {
                 _trimSeen++;

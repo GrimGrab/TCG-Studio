@@ -142,7 +142,7 @@ func cardImages(p *project.Project) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, c := range p.Set.Cards {
-		for _, img := range []string{c.Image, c.BackImage} {
+		for _, img := range c.Images() {
 			if img != "" && !seen[img] {
 				seen[img] = true
 				out = append(out, img)

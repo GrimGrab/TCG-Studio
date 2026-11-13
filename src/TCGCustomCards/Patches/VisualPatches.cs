@@ -31,10 +31,23 @@ namespace TCGCustomCards.Patches
             CardBackMesh.Apply(__instance, cardData); // also clears our back for vanilla cards on reused CardUIs
             if (!Registry.IsCustom(cardData.expansionType)) return;
             if (!Registry.TryGetCard(cardData.monsterType, out var set, out int pos)) return;
-            if (set.Def.RenderMode != Core.RenderMode.FullImage) return;
+            if (set.Def.RenderMode != Core.RenderMode.FullImage)
+            {
+                // Framed: the game put the main art (MonsterData.GetIcon) in the frame; a version with its own picture swaps it.
+                // Vanilla sets the sprite again on every SetCardUI, so reused CardUIs need no reset.
+                if (set.HasVersionImages(pos) && __instance.m_CenterFrameImage != null &&
+                    set.VersionImagePath(pos, cardData.borderType, cardData.isFoil) != null)
+                {
+                    var art = set.CardImage(pos, cardData.borderType, cardData.isFoil);
+                    if (art != null) __instance.m_CenterFrameImage.sprite = art;
+                }
+                return;
+            }
 
-            // MTG table: a transformed double-faced card shows its back face (MtgCardFaces marks that copy)
-            var sprite = Runtime.Mtg.MtgCardFaces.IsBack(cardData) && set.HasBackFace(pos) ? set.BackFace(pos) ?? set.CardFace(pos) : set.CardFace(pos);
+            // MTG table: a transformed double-faced card shows its back face (MtgCardFaces marks that copy).
+            // Otherwise the version's own picture (set.json "versionImages"), else the main image.
+            var front = set.CardFace(pos, cardData.borderType, cardData.isFoil);
+            var sprite = Runtime.Mtg.MtgCardFaces.IsBack(cardData) && set.HasBackFace(pos) ? set.BackFace(pos) ?? front : front;
             if (sprite == null) return;
             var overlay = Find(__instance) ?? Create(__instance);
             overlay.sprite = sprite;

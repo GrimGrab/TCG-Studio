@@ -87,7 +87,7 @@ namespace TCGCustomCards.Debug
                     else
                     {
                         Add(set, pos, ECardBorderType.Base, false);
-                        var (border, foil) = CardVersions.RollAny(set.Expansion, () => Random.value);
+                        var (border, foil) = CardVersions.RollAny(set.Expansion, set.Shown[pos], () => Random.value);
                         Add(set, pos, border, foil);
                         added += 2;
                     }

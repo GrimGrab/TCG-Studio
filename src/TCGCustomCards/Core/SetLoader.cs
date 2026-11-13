@@ -67,6 +67,7 @@ namespace TCGCustomCards.Core
             if (set.Cards == null || set.Cards.Count == 0) errors.Add("no cards");
             bool defaultList = ValidateRarities(set, errors);
             ValidateVariants(set, errors);
+            set.AllVariants = set.VariantMask.All(v => v); // ValidateCardVersions clears it for a card with its own list
 
             var ids = new HashSet<string>();
             foreach (var c in set.Cards ?? new List<CardDef>())
@@ -90,6 +91,7 @@ namespace TCGCustomCards.Core
                 else if (!File.Exists(set.Resolve(c.Image))) MissingImage(set, $"{where}: image not found '{c.Image}'", ref missing);
                 if (!string.IsNullOrEmpty(c.BackImage) && !File.Exists(set.Resolve(c.BackImage)))
                     MissingImage(set, $"{where}: back image not found '{c.BackImage}'", ref missing);
+                ValidateCardVersions(set, c, where, errors, ref missing);
             }
             if (missing > MissingShown)
                 Plugin.Log.LogWarning($"Set {set.Label}: {missing - MissingShown} more card images not found (files are read from {set.LibraryPath ?? "nowhere: no set library"})");
@@ -141,24 +143,70 @@ namespace TCGCustomCards.Core
         /// <summary>Fills <see cref="SetDef.VariantMask"/> from "variants" (empty = all 12).</summary>
         private static void ValidateVariants(SetDef set, List<string> errors)
         {
+            set.VariantMask = set.Variants == null || set.Variants.Count == 0
+                ? Enumerable.Repeat(true, 12).ToArray()
+                : ParseVersions(set.Variants, "variants", errors);
+        }
+
+        /// <summary>
+        /// A card's own "variants" (absent = the set's) and "versionImages" (keys = version names, files must exist).
+        /// AllVariants is worked out here, after the set's own list.
+        /// </summary>
+        private static void ValidateCardVersions(SetDef set, CardDef c, string where, List<string> errors, ref int missing)
+        {
+            c.VariantMask = null;
+            if (c.Variants != null)
+            {
+                if (c.Variants.Count == 0) errors.Add($"{where}: variants: at least one version is needed (leave the field out to use the set's)");
+                else c.VariantMask = ParseVersions(c.Variants, $"{where}: variants", errors);
+            }
+            if (c.VariantMask != null && !c.VariantMask.All(v => v)) set.AllVariants = false;
+
+            c.VersionImageBySlot = null;
+            if (c.VersionImages == null) return;
+            foreach (var kv in c.VersionImages)
+            {
+                if (!TryParseVersion(kv.Key, out int slot))
+                {
+                    errors.Add($"{where}: versionImages: unknown version '{kv.Key}' ({VersionNames})");
+                    continue;
+                }
+                if (string.IsNullOrEmpty(kv.Value)) continue;
+                if (!File.Exists(set.Resolve(kv.Value)))
+                {
+                    MissingImage(set, $"{where}: {kv.Key} image not found '{kv.Value}' (main image shown)", ref missing);
+                    continue;
+                }
+                (c.VersionImageBySlot ?? (c.VersionImageBySlot = new string[12]))[slot] = kv.Value;
+            }
+        }
+
+        private const string VersionNames = "Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil";
+
+        /// <summary>A version name ("Gold", "gold_foil") → slot offset (border + 6 if foil).</summary>
+        private static bool TryParseVersion(string v, out int slot)
+        {
+            slot = -1;
+            string name = v ?? "";
+            bool foil = name.EndsWith("_foil", StringComparison.OrdinalIgnoreCase);
+            if (foil) name = name.Substring(0, name.Length - 5);
+            if (!Enum.TryParse(name, true, out ECardBorderType border) || !Enum.IsDefined(typeof(ECardBorderType), border) || (int)border > 5)
+                return false;
+            slot = (int)border + (foil ? 6 : 0);
+            return true;
+        }
+
+        /// <summary>A list of version names → mask (all on when nothing valid is left, with an error).</summary>
+        private static bool[] ParseVersions(List<string> list, string what, List<string> errors)
+        {
             var mask = new bool[12];
-            if (set.Variants == null || set.Variants.Count == 0)
+            foreach (var v in list)
             {
-                for (int i = 0; i < 12; i++) mask[i] = true;
-                set.VariantMask = mask;
-                return;
+                if (TryParseVersion(v, out int slot)) mask[slot] = true;
+                else errors.Add($"{what}: unknown version '{v}' ({VersionNames})");
             }
-            foreach (var v in set.Variants)
-            {
-                string name = v ?? "";
-                bool foil = name.EndsWith("_foil", System.StringComparison.OrdinalIgnoreCase);
-                if (foil) name = name.Substring(0, name.Length - 5);
-                if (!System.Enum.TryParse(name, true, out ECardBorderType border) || !System.Enum.IsDefined(typeof(ECardBorderType), border) || (int)border > 5)
-                    errors.Add($"variants: unknown version '{v}' (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)");
-                else mask[(int)border + (foil ? 6 : 0)] = true;
-            }
-            if (!mask.Any(x => x)) { errors.Add("variants: at least one version is needed"); for (int i = 0; i < 12; i++) mask[i] = true; }
-            set.VariantMask = mask;
+            if (!mask.Any(x => x)) { errors.Add($"{what}: at least one version is needed"); for (int i = 0; i < 12; i++) mask[i] = true; }
+            return mask;
         }
 
         private static bool ValidateRarities(SetDef set, List<string> errors)

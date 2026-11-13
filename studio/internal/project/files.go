@@ -52,8 +52,9 @@ func (p *Project) Files() []string {
 	}
 	add(p.Set.CardBack)
 	for _, c := range p.Set.Cards {
-		add(c.Image)
-		add(c.BackImage)
+		for _, img := range c.Images() {
+			add(img)
+		}
 	}
 	for _, pk := range p.Set.Packs {
 		add(pk.PackTexture)
@@ -92,8 +93,7 @@ func (p *Project) RepointFiles(to func(rel string) string) {
 	}
 	re(&p.Set.CardBack)
 	for i := range p.Set.Cards {
-		re(&p.Set.Cards[i].Image)
-		re(&p.Set.Cards[i].BackImage)
+		p.Set.Cards[i].RepointImages(re)
 	}
 	for i := range p.Set.Packs {
 		pk := &p.Set.Packs[i]

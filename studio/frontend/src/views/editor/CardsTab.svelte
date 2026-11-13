@@ -4,6 +4,7 @@
   import CardDetail from './CardDetail.svelte';
   import BulkEdit from './BulkEdit.svelte';
   import CardViewer from './CardViewer.svelte';
+  import { cardVersions, hasOwnVersions, versionsWithArt } from '../../lib/cardVersions';
 
   let { project, notify, imgBust }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
@@ -260,6 +261,8 @@
             {#if selected.includes(c.id)}<span class="tick">✓</span>{/if}
             <span class="flags">
               {#if c.backImage}<span title="Double-faced card (double-click to see both sides)">⇄</span>{/if}
+              {#if hasOwnVersions(c)}<span title="Own versions: {cardVersions(project.set, c).size} of 12 (the set's default doesn't apply)">◧</span>{/if}
+              {#if c.versionImages}<span title="{versionsWithArt(c).size} version(s) with their own picture">🖼</span>{/if}
               {#if meta(c.id).locked}<span title="Price locked">🔒</span>{/if}
             </span>
             {#if c.number}<span class="num">#{c.number}</span>{/if}

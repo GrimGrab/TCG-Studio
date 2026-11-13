@@ -84,7 +84,7 @@ namespace TCGCustomCards.Runtime.Customers
                 if ((roll -= Weight(k.step)) < 0) { pick = k.key; break; }
             var card = FromKey(pick);
             if (card == null) return null;
-            (card.borderType, card.isFoil) = CardVersions.Roll(card.expansionType, OwnedWeight, rng.NextDouble);
+            (card.borderType, card.isFoil) = CardVersions.Roll(card.expansionType, card.monsterType, OwnedWeight, rng.NextDouble);
             return card;
         }
 

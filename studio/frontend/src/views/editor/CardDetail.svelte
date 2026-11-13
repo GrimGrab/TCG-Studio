@@ -1,5 +1,8 @@
 <script lang="ts">
   import { App, projectFile, money, setRarities, rarityName, rarityColor, ELEMENTS, BORDERS, BORDER_LABELS, LANES, errText } from '../../lib/api';
+  import VersionGrid from './VersionGrid.svelte';
+  import { cardVersions, followSet, hasOwnVersions, setVersionImage, versionImage, versionLabel, versionsWithArt, writeCardVersions,
+    ALL_VERSIONS, MAIN_VERSION, fallbackImage } from '../../lib/cardVersions';
 
   let { project, card, imgBust, notify, ondelete, onzoom }: {
     project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void;
@@ -67,20 +70,52 @@
     showBack = false;
   }
 
+  // Double-faced cards: which side the preview shows (back faces come from the Scryfall import / "Download back faces").
+  let showBack = $state(false);
   let rotating = $state(false);
-  // Turns the side the preview shows.
+  // Turns the picture the preview shows (back, a version's own picture or the main image).
   async function rotate(turns: number) {
     rotating = true;
     try {
-      const back = showBack && !!card.backImage, rel = back ? card.backImage : card.image;
+      const back = showBack && !!card.backImage, ver = !back ? shownVersionArt : undefined;
+      const rel = back ? card.backImage : ver ?? card.image;
       const turned = await App.RotateCardImages(project.id, [rel], turns, false);
       if (turned[rel]) { // a new file: the game sees it once the set is saved
         if (back) card.backImage = turned[rel];
+        else if (ver) setVersionImage(card, shownVersion, turned[rel]);
         else card.image = turned[rel];
       }
     } catch (e) { notify(errText(e), 'error'); }
     rotating = false;
   }
+
+  // Card versions: the card's own list or the set's, and a picture per version (set.json "variants", "versionImages").
+  const versionsOn = $derived(cardVersions(project.set, card));
+  const ownVersions = $derived(hasOwnVersions(card));
+  const withArt = $derived(versionsWithArt(card));
+  /** The version whose own picture the preview shows ('' = the main image). */
+  let shownVersion = $state('');
+  const shownVersionArt = $derived(shownVersion ? versionImage(card, shownVersion) : undefined);
+
+  function toggleVersion(k: string) {
+    const next = new Set(versionsOn);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    writeCardVersions(project.set, card, next);
+  }
+
+  async function pickVersionImage(k: string) {
+    try {
+      const rel = await App.PickCardImage(project.id);
+      if (rel) { setVersionImage(card, k, rel); shownVersion = k; showBack = false; }
+    } catch (e) { notify(errText(e), 'error'); }
+  }
+
+  function removeVersionImage(k: string) {
+    setVersionImage(card, k, undefined);
+    if (shownVersion === k) shownVersion = '';
+  }
+
+  const previewImage = $derived(showBack && card.backImage ? card.backImage : shownVersionArt ?? card.image);
 
   // Cards imported from a card database or image folder can fetch their art again (e.g. after it was overwritten).
   const canRedownload = $derived(!!(meta?.scryfallId || meta?.sourceId) && project.meta?.source !== 'epl');
@@ -109,23 +144,24 @@
       return [b, o[b] ?? Math.max(min, card.price.base * bm), o[b + '_foil'] ?? Math.max(min, card.price.base * bm * fm)];
     })
   );
-  // Double-faced cards: which side the preview shows (back faces come from the Scryfall import / "Download back faces").
-  let showBack = $state(false);
   let lastCardId = '';
-  $effect(() => { if (card.id !== lastCardId) { lastCardId = card.id; showBack = false; } });
+  $effect(() => { if (card.id !== lastCardId) { lastCardId = card.id; showBack = false; shownVersion = ''; } });
   const LANE_COLORS: Record<string, string> = { Fire: '#ff7a45', Earth: '#c9a227', Water: '#4fa3ff', Wind: '#3ecf8e' };
 </script>
 
 <div class="detail">
   <div class="preview" class:framed={project.set.renderMode === 'Framed'} style="--rc:{rarityColor(project.set, card.rarity)}">
     {#if card.image}
-      <button class="zoom" title="View full screen" onclick={onzoom}><img src={projectFile(project.id, showBack && card.backImage ? card.backImage : card.image, imgBust)} alt={card.name} /></button>
+      <button class="zoom" title="View full screen" onclick={onzoom}><img src={projectFile(project.id, previewImage, imgBust)} alt={card.name} /></button>
     {:else}
       <button class="noimg" onclick={changeImage}>No image — choose one…</button>
     {/if}
     {#if card.backImage}
       <button class="flip small" onclick={() => (showBack = !showBack)} title="Show the other side">
         ⇄ {showBack ? 'Front' : 'Back'}</button>
+    {/if}
+    {#if shownVersionArt && !showBack}
+      <button class="vshown small" onclick={() => (shownVersion = '')} title="Show the main image">{versionLabel(shownVersion)} picture · ✕</button>
     {/if}
   </div>
   {#if card.backImage && showBack && card.mtg?.backName}<div class="muted small center">Back: {card.mtg.backName}</div>{/if}
@@ -145,6 +181,7 @@
   </div>
   {#if card.image}<div class="muted path" title={card.image}>{card.image}</div>{/if}
   {#if card.backImage}<div class="muted path" title={card.backImage}>Back: {card.backImage}</div>{/if}
+  {#if shownVersionArt && !showBack}<div class="muted path" title={shownVersionArt}>{versionLabel(shownVersion)}: {shownVersionArt}</div>{/if}
 
   <div class="head">
     <input class="title" bind:value={card.name} aria-label="Card name" placeholder="Card name" />
@@ -155,6 +192,45 @@
       <span class="code" title="Card id (stable)">{card.id}</span>
     </div>
   </div>
+
+  <section>
+    <div class="shead"><h4>Versions</h4>
+      <span class="muted small">{ownVersions ? 'own list' : 'follows the set'} · {versionsOn.size} of 12{withArt.size ? ` · ${withArt.size} with own picture` : ''}</span>
+      <span class="grow"></span>
+      {#if ownVersions}<button class="small" onclick={() => followSet(card)} title="Use the set's versions (Set tab → Card versions)">Follow set</button>{/if}
+      <button class="small" disabled={versionsOn.size === 12} onclick={() => writeCardVersions(project.set, card, new Set(ALL_VERSIONS))}>All on</button>
+    </div>
+    <VersionGrid on={versionsOn} ontoggle={toggleVersion}>
+      {#snippet extra(k)}
+        {@const rel = versionImage(card, k)}
+        {#if k === MAIN_VERSION}
+          <!-- Base / normal = the card's main image: the picture every other version falls back to. -->
+          {#if card.image}
+            <button class="vthumb" class:cur={!shownVersionArt && !showBack} onclick={() => { shownVersion = ''; showBack = false; }}
+              title="Main image: {card.image} — the Base version, and every version without its own picture">
+              <img src={projectFile(project.id, card.image, imgBust)} alt="" /></button>
+          {/if}
+          <button class="small vadd" onclick={changeImage} title="Change the main image (the Base version)">{card.image ? 'Change' : '+ art'}</button>
+        {:else if rel}
+          <button class="vthumb" class:cur={shownVersion === k} onclick={() => { shownVersion = k; showBack = false; }}
+            title="{versionLabel(k)}: {rel} — click to show it">
+            <img src={projectFile(project.id, rel, imgBust)} alt="" /></button>
+          <button class="small vx" onclick={() => removeVersionImage(k)} title="Remove the {versionLabel(k)} picture ({k.endsWith('_foil') && fallbackImage(card, k) ? 'its normal picture' : 'the main image'} shows)">✕</button>
+        {:else}
+          {@const from = fallbackImage(card, k)}
+          {#if from}
+            <!-- A foil without its own picture shows its border's normal picture (the game does the same). -->
+            <span class="vthumb ghost" title="Uses the {versionLabel(k.slice(0, -5))} picture: {from}">
+              <img src={projectFile(project.id, from, imgBust)} alt="" /></span>
+          {/if}
+          <button class="small vadd" onclick={() => pickVersionImage(k)} title="Give the {versionLabel(k)} version its own picture">+ art</button>
+        {/if}
+      {/snippet}
+    </VersionGrid>
+    <div class="muted small">Base is the main image. A foil without its own picture shows its border's normal picture (Gold foil → Gold), and
+      that falls back to the main image. Versions that are off never come out of
+      packs and don't take binder slots.</div>
+  </section>
 
   <section>
     <h4>Card</h4>
@@ -239,6 +315,12 @@
   .noimg { width: 170px; height: 238px; border-style: dashed; color: var(--muted); background: transparent; }
   .flip { position: absolute; bottom: 8px; right: 8px; background: rgba(12, 14, 18, 0.85); }
   .center { text-align: center; }
+  .vshown { position: absolute; bottom: 8px; left: 8px; background: rgba(12, 14, 18, 0.85); }
+  .vthumb { flex: 0 0 auto; padding: 0; width: 22px; height: 30px; border-radius: 3px; overflow: hidden; background: var(--panel); }
+  .vthumb.cur { outline: 2px solid var(--accent); }
+  .vthumb.ghost { opacity: 0.45; border: 1px dashed var(--line); }
+  .vthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .vx, .vadd { flex: 0 0 auto; padding: 2px 5px; font-size: 11px; }
   .imgtools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; margin-top: -4px; }
   .head { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }

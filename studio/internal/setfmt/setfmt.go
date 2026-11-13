@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -53,7 +54,11 @@ type Card struct {
 	Number      string    `json:"number,omitempty"`
 	Image       string    `json:"image"`
 	BackImage   string    `json:"backImage,omitempty"` // double-faced cards: the back face's picture (mod shows it once transformed)
-	Price       CardPrice `json:"price"`
+	// Variants: the card's own versions (same names as Set.Variants); empty = the set's list. Mirrors the mod's CardDef.Variants.
+	Variants []string `json:"variants,omitempty"`
+	// VersionImages: a picture per version ("Gold_foil" → relative path); a version without one shows Image.
+	VersionImages map[string]string `json:"versionImages,omitempty"`
+	Price         CardPrice         `json:"price"`
 	Play        Play      `json:"play"`
 	Mtg         *CardMtg  `json:"mtg,omitempty"`
 }
@@ -379,6 +384,18 @@ func (s *Set) Validate(folders ...string) []Issue {
 		if c.BackImage != "" && fileMissing(c.BackImage) {
 			add("warning", w, "back image not found %q", c.BackImage)
 		}
+		for _, v := range c.Variants {
+			if !IsVariant(v) {
+				add("error", w, "variants: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", v)
+			}
+		}
+		for _, k := range sortedKeys(c.VersionImages) {
+			if !IsVariant(k) {
+				add("error", w, "versionImages: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
+			} else if rel := c.VersionImages[k]; rel != "" && fileMissing(rel) {
+				add("warning", w, "%s image not found %q (main image shown)", k, rel)
+			}
+		}
 	}
 	for _, c := range s.Cards {
 		if c.Play.EvolvesFrom != "" && !ids[c.Play.EvolvesFrom] {
@@ -447,6 +464,52 @@ func IsVariant(v string) bool {
 		}
 	}
 	return false
+}
+
+// Images lists every picture the card uses (main, back, one per version; each once, empty ones left out). The one list
+// Storage, sharing and file moves go through.
+func (c *Card) Images() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(rel string) {
+		if rel != "" && !seen[rel] {
+			seen[rel] = true
+			out = append(out, rel)
+		}
+	}
+	add(c.Image)
+	add(c.BackImage)
+	for _, k := range sortedKeys(c.VersionImages) {
+		add(c.VersionImages[k])
+	}
+	return out
+}
+
+// RepointImages rewrites every picture path of the card through re (see Images).
+func (c *Card) RepointImages(re func(*string)) {
+	re(&c.Image)
+	re(&c.BackImage)
+	for k, v := range c.VersionImages {
+		re(&v)
+		c.VersionImages[k] = v
+	}
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// CardAllowsVariant reports whether the card has this version: its own list, else the set's.
+func (s *Set) CardAllowsVariant(c *Card, border string, foil bool) bool {
+	if len(c.Variants) == 0 {
+		return s.AllowsVariant(border, foil)
+	}
+	return (&Set{Variants: c.Variants}).AllowsVariant(border, foil)
 }
 
 // AllowsVariant reports whether the set has this version (no list = all 12).

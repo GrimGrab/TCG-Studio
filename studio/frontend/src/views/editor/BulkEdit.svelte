@@ -1,5 +1,7 @@
 <script lang="ts">
   import { App, projectFile, setRarities, rarityName, ELEMENTS, LANES, money, errText } from '../../lib/api';
+  import VersionGrid from './VersionGrid.svelte';
+  import { ALL_VERSIONS, MAIN_VERSION, cardVersions, followSet, hasOwnVersions, versionsWithArt, writeCardVersions } from '../../lib/cardVersions';
 
   let { project, cards, notify, ondelete, imgBust = 0 }: {
     project: any; cards: any[]; notify: (t: string, k?: string) => void; ondelete: () => void; imgBust?: number;
@@ -45,6 +47,37 @@
     project.meta.cards ??= {};
     for (const c of cards) project.meta.cards[c.id] = { ...(project.meta.cards[c.id] ?? {}), locked: v };
     notify(v ? `Locked ${cards.length} card(s)` : `Unlocked ${cards.length} card(s)`, 'ok');
+  }
+
+  // Card versions of the selected cards: on = every one has it, mixed = some have it. Clicking a version gives it to all of
+  // them (or takes it from all when every one has it); a card left with its set's list follows the set again.
+  const lists = $derived(cards.map((c) => cardVersions(project.set, c)));
+  const allHave = $derived(new Set(ALL_VERSIONS.filter((k) => lists.every((l) => l.has(k)))));
+  const someHave = $derived(new Set(ALL_VERSIONS.filter((k) => lists.some((l) => l.has(k)))));
+  const ownCount = $derived(cards.filter(hasOwnVersions).length);
+  const artCount = $derived(cards.filter((c) => versionsWithArt(c).size > 0).length);
+
+  function toggleVersion(k: string) {
+    const take = allHave.has(k);
+    let skipped = 0;
+    for (const c of cards) {
+      const next = new Set(cardVersions(project.set, c));
+      if (take) next.delete(k); else next.add(k);
+      if (next.size === 0) { skipped++; continue; } // a card keeps at least one version
+      writeCardVersions(project.set, c, next);
+    }
+    if (skipped) notify(`${skipped} card(s) kept ${k.replace('_foil', ' foil')}: it is their only version.`);
+  }
+
+  function onlyWithArt() {
+    let n = 0;
+    for (const c of cards) {
+      const art = versionsWithArt(c);
+      if (!art.size) continue;
+      writeCardVersions(project.set, c, new Set([MAIN_VERSION, ...art])); // Base = the main image
+      n++;
+    }
+    notify(n ? `${n} card(s) now have only the versions with their own picture.` : 'None of the selected cards has version pictures.', 'ok');
   }
 
   function addToPack() {
@@ -107,6 +140,17 @@
       <select class="grow" bind:value={element}><option value="">Element…</option>{#each ELEMENTS as e}<option>{e}</option>{/each}</select>
       <button disabled={!element} onclick={() => apply(`Element ${element}`, (c) => (c.play.element = element))}>Apply</button>
     </div>
+  </section>
+
+  <section>
+    <h4>Card versions <span class="muted small">{ownCount} with own list · {artCount} with version pictures</span></h4>
+    <VersionGrid on={allHave} mixed={someHave} ontoggle={toggleVersion} keepOne={false} />
+    <div class="row">
+      <button class="small" disabled={!ownCount} onclick={() => apply('Follow the set versions', followSet)}>Follow set</button>
+      <button class="small" onclick={() => apply('All 12 versions', (c) => writeCardVersions(project.set, c, new Set(ALL_VERSIONS)))}>All on</button>
+      <button class="small" disabled={!artCount} onclick={onlyWithArt} title="Each card keeps Base (its main image) and the versions that have a picture of their own">Only versions with own art</button>
+    </div>
+    <div class="muted small">The set's default is on the Set tab. Pictures per version are added one card at a time.</div>
   </section>
 
   {#if project.set.packs.length}

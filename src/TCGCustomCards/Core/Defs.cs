@@ -59,8 +59,17 @@ namespace TCGCustomCards.Core
         [JsonProperty("variants")] public List<string> Variants = new List<string>();
         /// <summary>Allowed versions by slot offset (border + 6 if foil, like the save index); filled by SetLoader.</summary>
         [JsonIgnore] public bool[] VariantMask = Enumerable.Repeat(true, 12).ToArray();
-        [JsonIgnore] public bool AllVariants => VariantMask.All(v => v);
-        public bool Allows(ECardBorderType border, bool foil) => VariantMask[(int)border + (foil ? 6 : 0)];
+        /// <summary>Every card has every version (the set's list is all 12 and no card has its own list). Filled by SetLoader.</summary>
+        [JsonIgnore] public bool AllVariants = true;
+
+        /// <summary>The versions a card has, by slot offset: its own "variants" when it has one, else the set's.</summary>
+        public bool[] MaskOf(int pos) => Cards[pos].VariantMask ?? VariantMask;
+        public bool Allows(int pos, ECardBorderType border, bool foil) => MaskOf(pos)[(int)border + (foil ? 6 : 0)];
+        /// <summary>How many of the 12 versions the card has.</summary>
+        public int VersionCount(int pos) => MaskOf(pos).Count(v => v);
+
+        /// <summary>A version's key as set.json names it: "Gold", "Gold_foil".</summary>
+        public static string VersionKey(ECardBorderType border, bool foil) => foil ? border + "_foil" : border.ToString();
 
         [JsonProperty("packs")] public List<PackDef> Packs = new List<PackDef>();
         [JsonProperty("cards")] public List<CardDef> Cards = new List<CardDef>();
@@ -118,6 +127,18 @@ namespace TCGCustomCards.Core
         [JsonProperty("image")] public string Image;
         /// <summary>Double-faced cards: the back face's picture (relative path like <see cref="Image"/>), shown once transformed.</summary>
         [JsonProperty("backImage")] public string BackImage;
+
+        /// <summary>
+        /// The card's own versions (same names as the set's "variants"). Absent = the set's list. Never empty once loaded.
+        /// </summary>
+        [JsonProperty("variants")] public List<string> Variants;
+        /// <summary>Own mask by slot offset (border + 6 if foil); null = follow the set. Filled by SetLoader.</summary>
+        [JsonIgnore] public bool[] VariantMask;
+
+        /// <summary>A picture per version ("Gold_foil" → path like <see cref="Image"/>). A version without one shows <see cref="Image"/>.</summary>
+        [JsonProperty("versionImages")] public Dictionary<string, string> VersionImages;
+        /// <summary>Version pictures by slot offset (null entries = main image); null when the card has none. Filled by SetLoader.</summary>
+        [JsonIgnore] public string[] VersionImageBySlot;
 
         [JsonProperty("price")] public CardPrice Price = new CardPrice();
         [JsonProperty("play")] public PlayDef Play = new PlayDef();

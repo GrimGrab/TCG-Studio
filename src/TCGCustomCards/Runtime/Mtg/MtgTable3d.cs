@@ -9,9 +9,9 @@ namespace TCGCustomCards.Runtime.Mtg
     /// P2 board: the MTG game as real 3D cards on the play table, rendered by the game's own card renderer (Card3dUISpawner +
     /// InteractableCard3d, like PlayCardSet.GetNewCard3d) and moved with its LerpToTransform. Layout is derived from each side's
     /// vanilla PlayCardSet lane lines, measured from the table midline between the two players (Arena-style): an open combat zone
-    /// in the middle (attackers and their blockers slide into it), creatures in the front row, and a back row with lands on the
-    /// left and other permanents (artifacts, unattached enchantments, planeswalkers) on the right, command-zone effects/emblems
-    /// smaller at its right end; my hand at the bottom of the
+    /// in the middle (attackers and their blockers slide into it), creatures in the front row with planeswalkers/battles at its
+    /// right end, a back row with lands on the left and artifacts/unattached enchantments on the right, command-zone
+    /// effects/emblems smaller in a column beside the table at the left; identical cards lie in piles; my hand at the bottom of the
     /// view. Row depths shrink (<see cref="_fit"/>) when the camera can't show them all. The stack top pops up on the centre show
     /// spot. Clicks/hover come from each card's projected screen rect (<see cref="Visible"/>, drawn by MtgTableUI).
     /// </summary>
@@ -32,6 +32,9 @@ namespace TCGCustomCards.Runtime.Mtg
             public bool Covered;       // mostly hidden behind a nearer card: no overlay labels/frames
             public bool Unknown;       // no matching in-game card (token etc.): shown as a stand-in, labelled by the overlay
             public CardData Data;      // the face its CardUI shows (null = the stand-in back card)
+            public int PileCount;      // > 1 on the top copy of a pile of identical cards (the overlay shows "×N")
+            public Entry PileBase;     // the bottom copy of its pile (null = not in a pile)
+            public int PileIndex;      // place in its pile, 0 = bottom
         }
 
         public static bool IsUnknown(Entry e) => e.Unknown;
@@ -64,7 +67,12 @@ namespace TCGCustomCards.Runtime.Mtg
         // Row depths from the table midline toward each owner, in lane spacings (lane lines are ~1.6 spacings apart).
         private const float CombatDepth = 0.65f, FrontDepth = 2.0f, BackDepth = 3.25f, HandGap = 1.15f;
         private const float FrontWidth = 5.2f, BackWidth = 5.8f, BackGap = 0.5f;
-        private const float CommandScale = 0.75f, CommandMaxShare = 0.3f; // command-zone cards at the back row's right end
+        // Emblems/effects: a column beside the table at the camera-left, CommandOffset spacings from the middle (the back row
+        // reaches 2.9), from CommandStart toward the owner, CommandStep apart.
+        private const float CommandScale = 0.75f, CommandOffset = 3.5f, CommandStart = 0.9f, CommandStep = 1.15f;
+        // Identical cards lie in one pile, each extra copy PileFan of a card further along (at most PileSteps steps).
+        private const float PileFan = 0.12f;
+        private const int PileSteps = 4;
         private float _fit = 1f;        // row-depth factor so everything stays on screen (0.7..1)
         private float _cardScale = 1f;  // board card scale that goes with it (0.85..1)
         private float _fitLogged = -1f;
@@ -251,8 +259,13 @@ namespace TCGCustomCards.Runtime.Mtg
             // Command zone: effects and emblems (Channel's pay-life mana ability is clicked there). Commanders stay in the HUD row.
             var commanders = new HashSet<int>((p["commanders"] as JArray)?.OfType<JObject>().Select(c => (int?)c["id"] ?? -1) ?? Enumerable.Empty<int>());
             var command = (p["command"] as JArray)?.OfType<JObject>().Where(c => !commanders.Contains((int?)c["id"] ?? -1)).ToList() ?? new List<JObject>();
-            Row(creatures, side, meId, side.Front, side.Spacing * FrontWidth);
-            BackRow(lands, support, command, side, meId);
+            // Arena's zones: planeswalkers/battles at the right end of the creature row, the rest of the non-creature
+            // permanents in the back row next to the lands, emblems/effects in a column beside the table.
+            var walkers = support.Where(IsWalker).ToList();
+            support = support.Where(c => !IsWalker(c)).ToList();
+            FrontRow(creatures, walkers, side, meId);
+            BackRow(lands, support, side, meId);
+            CommandColumn(command, side, meId);
 
             // My hand: a row on the table at my edge of the camera view. (Vanilla's hand slots follow its on-screen hand buttons,
             // which we don't use.) The opponent's hand and both libraries aren't put on the table — counts are in the HUD.
@@ -266,82 +279,170 @@ namespace TCGCustomCards.Runtime.Mtg
             // The graveyard isn't put on the table either (face-up cards there read as "in play"); it's in the HUD's viewer.
         }
 
-        private void Row(List<JObject> cards, Side side, int meId, Vector3 center, float width)
+        private static bool IsWalker(JObject c)
         {
-            if (cards.Count == 0) return;
-            float pitch = Mathf.Min(side.Spacing * _cardScale, width / cards.Count);
-            float scale = Mathf.Clamp(pitch / side.Spacing, 0.45f, 1f);
-            float start = -(cards.Count - 1) * pitch / 2f;
-            // The owner's left is -AxisX for the far side: keep reading order left→right from the camera for both.
-            for (int i = 0; i < cards.Count; i++)
+            string t = (string)c["type"] ?? "";
+            return t.Contains("Planeswalker") || t.Contains("Battle");
+        }
+
+        // ------------------------------------------------------------------ piles of identical cards (Arena-style)
+
+        /// <summary>
+        /// Groups identical cards (same name, state, counters; no attachments, not in combat) into piles, keeping the order
+        /// of each pile's first card. Anything that makes a card different on the table keeps it on its own.
+        /// </summary>
+        private List<List<JObject>> Piles(List<JObject> cards)
+        {
+            var piles = new List<List<JObject>>();
+            var byKey = new Dictionary<string, List<JObject>>();
+            foreach (var c in cards)
             {
-                var c = cards[i];
-                float x = start + i * pitch;
-                if (B(c, "attacking"))
-                {
-                    // Slides forward into the combat zone, keeping its slot along the row (and at a readable size).
-                    PlaceBoard(c, meId, side, side.Combat + side.AxisX * x, Mathf.Max(scale, 0.8f));
-                    _inCombat.Add((int?)c["id"] ?? -1);
-                }
-                else PlaceBoard(c, meId, side, center + side.AxisX * x, scale);
+                string key = PileKey(c);
+                if (key != null && byKey.TryGetValue(key, out var pile)) { pile.Add(c); continue; }
+                pile = new List<JObject> { c };
+                piles.Add(pile);
+                if (key != null) byKey[key] = pile;
+            }
+            return piles;
+        }
+
+        private string PileKey(JObject c)
+        {
+            int id = (int?)c["id"] ?? -1;
+            if (B(c, "attacking") || B(c, "blocking") || _blockerOf.ContainsKey(id) || _attachCount.ContainsKey(id)) return null;
+            return string.Join("|", (string)c["name"], (string)c["set"], (string)c["text"], (string)c["power"], (string)c["toughness"],
+                (string)c["loyalty"], (string)c["damage"], B(c, "tapped"), B(c, "sick"), B(c, "token"), B(c, "faceDown"),
+                B(c, "emblem"), B(c, "manaAbility"), c["counters"]?.ToString(Newtonsoft.Json.Formatting.None),
+                c["source"]?.ToString(Newtonsoft.Json.Formatting.None));
+        }
+
+        /// <summary>Width of a pile in card widths: one card plus a small step per extra copy (at most <see cref="PileSteps"/>).</summary>
+        private static float Units(List<JObject> pile) => 1f + PileFan * Mathf.Min(pile.Count - 1, PileSteps);
+        private static float Units(List<List<JObject>> piles) => piles.Sum(p => Units(p));
+
+        /// <summary>
+        /// Lays a pile's copies centred on <paramref name="center"/>, each a step further toward +AxisX and a hair higher, so
+        /// the last copy is on top (its label carries the count; the ones under it are covered and get none).
+        /// </summary>
+        private void PlacePile(List<JObject> pile, Side side, int meId, Vector3 center, float cardWidth, float scale, bool board)
+        {
+            int n = pile.Count, steps = Mathf.Min(n - 1, PileSteps);
+            Entry bottom = null;
+            for (int i = 0; i < n; i++)
+            {
+                float step = Mathf.Min(i, steps) - steps / 2f;
+                var pos = center + side.AxisX * (step * PileFan * cardWidth) + Vector3.up * 0.0005f * i;
+                var e = board ? PlaceBoard(pile[i], meId, side, pos, scale)
+                              : Place(pile[i], meId, side, side.LaneRef, pos, scale, tapped: false, faceDown: false);
+                if (i == 0) bottom = e;
+                e.PileCount = i == n - 1 && n > 1 ? n : 0;
+                e.PileBase = n > 1 ? bottom : null;
+                e.PileIndex = i;
             }
         }
 
         /// <summary>
-        /// Back row: lands packed from the camera-left end, other permanents from the camera-right end with a gap between
-        /// (Arena-style), so a first artifact doesn't shuffle the lands. When crowded the width is shared by card count.
-        /// Command-zone cards take a smaller group at the very camera-right end (up to <see cref="CommandMaxShare"/> of the row),
-        /// a gap apart from the permanents, which share what is left.
+        /// Lays piles side by side over <paramref name="width"/>, centred on <paramref name="center"/> (align 0), or packed
+        /// inward from the camera-left (+1) / camera-right (-1) end of that span. Order stays left→right from the camera.
+        /// Attackers slide forward into the combat zone, keeping their slot along the row.
         /// </summary>
-        private void BackRow(List<JObject> lands, List<JObject> support, List<JObject> command, Side side, int meId)
+        private void Lay(List<List<JObject>> piles, Side side, int meId, Vector3 center, float width, int align)
         {
-            int nl = lands.Count, ns = support.Count;
-            float s = side.Spacing, width = s * BackWidth, gap = s * BackGap, natural = s * _cardScale;
-            var leftEdge = side.Back - side.AxisX * (width / 2f);
-            var rightEdge = side.Back + side.AxisX * (width / 2f);
-            if (command.Count > 0)
+            if (piles.Count == 0 || width <= 0f) return;
+            float units = Units(piles);
+            float pitch = Mathf.Min(side.Spacing * _cardScale, width / units);
+            float scale = Mathf.Clamp(pitch / side.Spacing, 0.45f, 1f);
+            float used = units * pitch;
+            float x = align == 0 ? -used / 2f : align > 0 ? -width / 2f : width / 2f - used;
+            foreach (var pile in piles)
             {
-                float cw = Mathf.Min(command.Count * natural * CommandScale, s * BackWidth * CommandMaxShare);
-                float cp = cw / command.Count;
-                float cs = Mathf.Clamp(cp / s, 0.45f, CommandScale);
-                for (int i = 0; i < command.Count; i++)
-                    Place(command[i], meId, side, side.LaneRef, rightEdge - side.AxisX * ((command.Count - 1 - i + 0.5f) * cp), cs, tapped: false, faceDown: false);
-                rightEdge -= side.AxisX * (cw + gap);
-                width -= cw + gap;
+                float w = Units(pile) * pitch;
+                float mid = x + w / 2f;
+                x += w;
+                var c = pile[0];
+                if (pile.Count == 1 && B(c, "attacking"))
+                {
+                    var e = PlaceBoard(c, meId, side, side.Combat + side.AxisX * mid, Mathf.Max(scale, 0.8f));
+                    e.PileCount = 0;
+                    _inCombat.Add((int?)c["id"] ?? -1);
+                }
+                else PlacePile(pile, side, meId, center + side.AxisX * mid, pitch, scale, board: true);
             }
-            if (nl + ns == 0) return;
-            float wl, ws;
-            if (ns == 0) { wl = width; ws = 0f; }
-            else if (nl == 0) { wl = 0f; ws = width; }
-            else if ((nl + ns) * natural + gap <= width) { wl = nl * natural; ws = ns * natural; }
-            else { wl = (width - gap) * nl / (nl + ns); ws = width - gap - wl; }
-            PackFromEdge(lands, side, meId, leftEdge, +1, wl);
-            PackFromEdge(support, side, meId, rightEdge, -1, ws);
         }
 
-        /// <summary>Lays cards side by side inward from <paramref name="edge"/> (dir +1 = toward +AxisX), keeping their order
-        /// left→right from the camera.</summary>
-        private void PackFromEdge(List<JObject> cards, Side side, int meId, Vector3 edge, int dir, float width)
+        /// <summary>
+        /// Splits a row of <paramref name="width"/> between a left and a right group a gap apart: both at natural size when
+        /// they fit, else shared by their size in card widths (so neither side overlaps much more than the other).
+        /// </summary>
+        private static (float left, float right) Share(float leftUnits, float rightUnits, float width, float gap, float natural)
         {
-            int n = cards.Count;
-            if (n == 0) return;
-            float pitch = Mathf.Min(side.Spacing * _cardScale, width / n);
-            float scale = Mathf.Clamp(pitch / side.Spacing, 0.45f, 1f);
-            for (int i = 0; i < n; i++)
-            {
-                int slot = dir > 0 ? i : n - 1 - i;
-                PlaceBoard(cards[i], meId, side, edge + side.AxisX * (dir * (slot + 0.5f) * pitch), scale);
-            }
+            if (rightUnits <= 0f) return (width, 0f);
+            if (leftUnits <= 0f) return (0f, width);
+            if ((leftUnits + rightUnits) * natural + gap <= width) return (leftUnits * natural, rightUnits * natural);
+            float l = (width - gap) * leftUnits / (leftUnits + rightUnits);
+            return (l, width - gap - l);
+        }
+
+        /// <summary>
+        /// Front row: creatures, and (as in Arena) planeswalkers/battles packed from the camera-right end a gap apart.
+        /// Creatures are centred in the part the walkers leave; with no walkers that is the whole row, as before.
+        /// </summary>
+        private void FrontRow(List<JObject> creatures, List<JObject> walkers, Side side, int meId)
+        {
+            float s = side.Spacing, width = s * FrontWidth, gap = s * BackGap, natural = s * _cardScale;
+            var cp = Piles(creatures);
+            var wp = Piles(walkers);
+            var (_, ww) = Share(Units(cp), Units(wp), width, gap, natural);
+            if (wp.Count == 0) { Lay(cp, side, meId, side.Front, width, 0); return; }
+            // walkers: the right-hand span of ww; creatures: centred in what is left of it
+            Lay(wp, side, meId, side.Front + side.AxisX * (width / 2f - ww / 2f), ww, -1);
+            float rest = width - ww - gap;
+            Lay(cp, side, meId, side.Front + side.AxisX * (-width / 2f + rest / 2f), rest, 0);
+        }
+
+        /// <summary>
+        /// Back row: lands packed from the camera-left end, artifacts/enchantments from the camera-right end with a gap
+        /// between (Arena-style), so a first artifact doesn't shuffle the lands. When crowded the width is shared by size.
+        /// </summary>
+        private void BackRow(List<JObject> lands, List<JObject> support, Side side, int meId)
+        {
+            float s = side.Spacing, width = s * BackWidth, gap = s * BackGap, natural = s * _cardScale;
+            var lp = Piles(lands);
+            var sp = Piles(support);
+            if (lp.Count + sp.Count == 0) return;
+            var (wl, ws) = Share(Units(lp), Units(sp), width, gap, natural);
+            Lay(lp, side, meId, side.Back + side.AxisX * (-width / 2f + wl / 2f), wl, +1);
+            Lay(sp, side, meId, side.Back + side.AxisX * (width / 2f - ws / 2f), ws, -1);
+        }
+
+        /// <summary>
+        /// Emblems and command-zone effects: a column beside the table at the camera-left (the stack lies at the right), on the
+        /// owner's half from near the middle outward, smaller than board cards. Identical emblems are one pile with a count;
+        /// when there are many piles they overlap downward instead of leaving the table.
+        /// </summary>
+        private void CommandColumn(List<JObject> command, Side side, int meId)
+        {
+            if (command.Count == 0) return;
+            var piles = Piles(command);
+            float s = side.Spacing, scale = CommandScale * _cardScale;
+            float first = CommandStart * s, last = Mathf.Max(first, BackDepth * s * _fit);
+            float step = piles.Count > 1 ? Mathf.Min(CommandStep * s, (last - first) / (piles.Count - 1)) : 0f;
+            var mid = (_me.Center + _opp.Center) / 2f;
+            var column = mid - _me.AxisX * (s * CommandOffset); // _me.AxisX = camera-right for both sides
+            for (int i = 0; i < piles.Count; i++)
+                PlacePile(piles[i], side, meId, column + side.ToOwner * (first + i * step) + Vector3.up * 0.003f * i,
+                          s * scale, scale, board: false); // later piles a bit higher: when they overlap, each one's top edge shows
         }
 
         /// <summary>Places a battlefield card and registers it as a possible host for attachments. A card with attachments is
         /// lifted so they can sit under it without sinking into the playmat.</summary>
-        private void PlaceBoard(JObject c, int meId, Side side, Vector3 pos, float scale)
+        private Entry PlaceBoard(JObject c, int meId, Side side, Vector3 pos, float scale)
         {
             int id = (int?)c["id"] ?? -1;
             if (_attachCount.TryGetValue(id, out int under)) pos += Vector3.up * AttachLift * under;
-            Place(c, meId, side, side.LaneRef, pos, scale, B(c, "tapped"), faceDown: false);
+            var e = Place(c, meId, side, side.LaneRef, pos, scale, B(c, "tapped"), faceDown: false);
             _hosts[id] = (pos, side, scale);
+            return e;
         }
 
         /// <summary>
@@ -507,7 +608,7 @@ namespace TCGCustomCards.Runtime.Mtg
 
         // ------------------------------------------------------------------ card objects
 
-        private void Place(JObject json, int meId, Side side, Transform reference, Vector3 pos, float scale, bool tapped, bool faceDown)
+        private Entry Place(JObject json, int meId, Side side, Transform reference, Vector3 pos, float scale, bool tapped, bool faceDown)
         {
             string key = "card:" + (int)json["id"];
             bool hidden = B(json, "faceDown"); // morph/manifest etc.: never give it a face, show the back
@@ -519,8 +620,12 @@ namespace TCGCustomCards.Runtime.Mtg
             if (data != null && !SameCard(e.Data, data)) Reskin(e, data);
             e.Unknown = data == null && !hidden;
             e.Json = json;
+            e.PileCount = 0; // PlacePile sets these for pile copies
+            e.PileBase = null;
+            e.PileIndex = 0;
             // No matching in-game card (tokens etc.): show a card back; the overlay prints its name and stats on it.
             Aim(e, reference, pos, scale, tapped, faceDown || hidden || e.Unknown, side);
+            return e;
         }
 
         private static bool SameCard(CardData a, CardData b) =>
@@ -636,6 +741,11 @@ namespace TCGCustomCards.Runtime.Mtg
                 e.Depth = cam.WorldToScreenPoint(mid / n).z;
                 e.OnScreen = e.ScreenRect.width > 2 && e.ScreenRect.height > 2 && e.ScreenRect.width < Screen.width * 0.95f;
             }
+            // Copies in a pile are only a hair apart in height, so their measured distances can put a lower copy in front
+            // (each is shifted sideways). Their order in the pile decides: the bottom copy's distance, a tiny bit nearer per copy.
+            foreach (var e in _cards.Values)
+                if (e.PileBase != null && e.PileIndex > 0 && e.PileBase.OnScreen)
+                    e.Depth = e.PileBase.Depth - e.PileIndex * 1e-4f;
             // A card more than half hidden behind a nearer one (e.g. the big card being played) gets no overlay labels.
             // Attachments (Equipment, Auras) lie under their host by design (LayoutAttachments lifts the host), but their centre
             // can measure nearer to the tilted camera — they never count as covering the card they're attached to, or the
@@ -647,7 +757,8 @@ namespace TCGCustomCards.Runtime.Mtg
                 float area = e.ScreenRect.width * e.ScreenRect.height;
                 foreach (var f in shown)
                 {
-                    if (f == e || f.Depth >= e.Depth - 0.001f || IsAttachedUnder(f, e)) continue;
+                    bool samePile = e.PileBase != null && f.PileBase == e.PileBase;
+                    if (f == e || (samePile ? f.PileIndex < e.PileIndex : f.Depth >= e.Depth - 0.001f) || IsAttachedUnder(f, e)) continue;
                     if (Overlap(e.ScreenRect, f.ScreenRect) > area * 0.5f) { e.Covered = true; break; }
                 }
             }

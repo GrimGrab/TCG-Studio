@@ -766,10 +766,14 @@ namespace TCGCustomCards.UI
                 var lines = new List<string>();
                 if (c["power"] != null) lines.Add($"<b>{I(c, "power")}/{I(c, "toughness")}</b>" + (I(c, "damage") > 0 ? $" <color=#ff6060>-{I(c, "damage")}</color>" : ""));
                 if (S(c, "loyalty") != null) lines.Add($"Loyalty {S(c, "loyalty")}");
-                if (c["counters"] is JObject cnt) foreach (var p in cnt.Properties()) lines.Add($"{p.Value}× {p.Name}");
+                if (c["counters"] is JObject cnt)
+                    foreach (var p in cnt.Properties())
+                        if (S(c, "loyalty") == null || !p.Name.Equals("loyalty", System.StringComparison.OrdinalIgnoreCase)) // already the line above
+                            lines.Add($"{p.Value}× {p.Name}");
                 if (B(c, "attacking") && _attackTo.TryGetValue(id, out var at)) lines.Add($"<color=#ffb0b0>{at.label}</color>");
                 bool command = S(c, "zone") == "Command";
                 if (MtgTable3d.IsUnknown(e)) lines.Insert(0, $"<b>{S(c, "name")}</b>");
+                if (e.PileCount > 1) lines.Insert(0, $"<b><size=16>×{e.PileCount}</size></b>"); // top copy of a pile of identical cards
                 if (command) lines.Insert(0, B(c, "emblem") ? "<i>Emblem</i>" : "<i>Effect</i>"); // shown with its source card's art
                 if (B(c, "faceDown")) lines.Insert(0, "<i>Face-down</i>");
                 // Tags only for permanents (battlefield) and command-zone effects: not when hidden behind a nearer card, not in

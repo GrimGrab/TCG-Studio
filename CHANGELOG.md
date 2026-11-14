@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.2.1 - 2026-11-14
+
+Magic tables now lay out cards like MTG Arena, so crowded boards stay readable.
+
+- Changed: Planeswalkers and battles now sit at the right end of the creature row instead of being squeezed into the back row.
+- Changed: Emblems and other command-zone effects sit in their own column beside the table, on the left.
+- New: Identical cards (basic lands, tokens, duplicate emblems) lie in one pile with a ×N count. A card leaves the pile when it becomes different (tapped, counters, equipped, in combat).
+- Fixed: Planeswalker labels no longer show their loyalty twice.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.2.0 - 2026-11-14
 
 Card shaders: write your own card effects in TCG Studio and see them on your cards in the game.

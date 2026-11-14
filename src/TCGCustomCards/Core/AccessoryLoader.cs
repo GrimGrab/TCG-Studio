@@ -82,6 +82,34 @@ namespace TCGCustomCards.Core
             return result;
         }
 
+        /// <summary>Card shaders from the same library file (id → shader). One without a compiled bundle is left out.</summary>
+        public static Dictionary<string, ShaderDef> LoadShaders(string setupDir)
+        {
+            var result = new Dictionary<string, ShaderDef>();
+            if (setupDir == null) return result;
+            string dir = Path.Combine(setupDir, FolderName);
+            string file = Path.Combine(dir, FileName);
+            if (!File.Exists(file)) return result;
+            AccessoryLibraryDef lib;
+            try { lib = JsonConvert.DeserializeObject<AccessoryLibraryDef>(File.ReadAllText(file)); }
+            catch (Exception) { return result; } // already reported by Load
+            if (lib?.Shaders == null || lib.SchemaVersion > AccessoryLibraryDef.CurrentSchemaVersion) return result;
+            foreach (var s in lib.Shaders)
+            {
+                if (s == null || string.IsNullOrWhiteSpace(s.Id) || result.ContainsKey(s.Id)) continue;
+                if (string.IsNullOrEmpty(s.Bundle))
+                {
+                    Plugin.Log.LogWarning($"Card shader {s.Label} has not been compiled for the game (open TCG Studio's Shaders page and save it): cards using it are drawn normally");
+                    continue;
+                }
+                s.FolderPath = dir;
+                if (s.Params == null) s.Params = new List<ShaderParamDef>();
+                result[s.Id] = s;
+            }
+            if (result.Count > 0) Plugin.Log.LogInfo($"Loaded {result.Count} card shader{(result.Count == 1 ? "" : "s")} from {file}");
+            return result;
+        }
+
         /// <summary>Employees from the same library file.</summary>
         public static List<EmployeeDef> LoadEmployees(string setupDir)
         {

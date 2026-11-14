@@ -61,6 +61,174 @@ export namespace art {
 
 }
 
+export namespace cardshader {
+	
+	export class StarterParam {
+	    name: string;
+	    kind: string;
+	    value?: number[];
+	    min?: number;
+	    max?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new StarterParam(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.value = source["value"];
+	        this.min = source["min"];
+	        this.max = source["max"];
+	    }
+	}
+	export class Starter {
+	    name: string;
+	    about: string;
+	    code: string;
+	    params: StarterParam[];
+	    draws?: string;
+	    mix?: string;
+	    mixStrength?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Starter(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.about = source["about"];
+	        this.code = source["code"];
+	        this.params = this.convertValues(source["params"], StarterParam);
+	        this.draws = source["draws"];
+	        this.mix = source["mix"];
+	        this.mixStrength = source["mixStrength"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class StockShader {
+	    id: string;
+	    name: string;
+	    border: string;
+	    code: string;
+	    params: StarterParam[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StockShader(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.border = source["border"];
+	        this.code = source["code"];
+	        this.params = this.convertValues(source["params"], StarterParam);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TutorialStep {
+	    title: string;
+	    why: string;
+	    try?: string;
+	    add?: string;
+	    where?: string;
+	    code: string;
+	    params?: StarterParam[];
+	    draws?: string;
+	    uses: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TutorialStep(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.why = source["why"];
+	        this.try = source["try"];
+	        this.add = source["add"];
+	        this.where = source["where"];
+	        this.code = source["code"];
+	        this.params = this.convertValues(source["params"], StarterParam);
+	        this.draws = source["draws"];
+	        this.uses = source["uses"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Wrapping {
+	    head: string;
+	    tail: string;
+	    bridge: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Wrapping(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.head = source["head"];
+	        this.tail = source["tail"];
+	        this.bridge = source["bridge"];
+	    }
+	}
+
+}
+
 export namespace catalog {
 	
 	export class AddResult {
@@ -2792,6 +2960,144 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ShaderChoice {
+	    id: string;
+	    name: string;
+	    code: string;
+	    params: setfmt.ShaderParam[];
+	    builtIn: boolean;
+	    border?: string;
+	    draws?: string;
+	    mix?: string;
+	    mixStrength?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShaderChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.code = source["code"];
+	        this.params = this.convertValues(source["params"], setfmt.ShaderParam);
+	        this.builtIn = source["builtIn"];
+	        this.border = source["border"];
+	        this.draws = source["draws"];
+	        this.mix = source["mix"];
+	        this.mixStrength = source["mixStrength"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ShaderProblem {
+	    id: string;
+	    name: string;
+	    messages: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShaderProblem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.messages = source["messages"];
+	    }
+	}
+	export class ShaderSaveResult {
+	    shaders: setfmt.Shader[];
+	    problems: ShaderProblem[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ShaderSaveResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.shaders = this.convertValues(source["shaders"], setfmt.Shader);
+	        this.problems = this.convertValues(source["problems"], ShaderProblem);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ShadersPage {
+	    shaders: setfmt.Shader[];
+	    starters: cardshader.Starter[];
+	    tutorial: cardshader.TutorialStep[];
+	    stock: cardshader.StockShader[];
+	    maxValues: number;
+	    maxImages: number;
+	    noTemplate: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShadersPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.shaders = this.convertValues(source["shaders"], setfmt.Shader);
+	        this.starters = this.convertValues(source["starters"], cardshader.Starter);
+	        this.tutorial = this.convertValues(source["tutorial"], cardshader.TutorialStep);
+	        this.stock = this.convertValues(source["stock"], cardshader.StockShader);
+	        this.maxValues = source["maxValues"];
+	        this.maxImages = source["maxImages"];
+	        this.noTemplate = source["noTemplate"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ShopFile {
 	    file: string;
 	    name: string;
@@ -3876,6 +4182,9 @@ export namespace setfmt {
 	    backImage?: string;
 	    variants?: string[];
 	    versionImages?: Record<string, string>;
+	    versionShaders?: Record<string, string>;
+	    shaderMask?: string;
+	    shaderParams?: Record<string, Array<number>>;
 	    price: CardPrice;
 	    play: Play;
 	    mtg?: CardMtg;
@@ -3896,6 +4205,9 @@ export namespace setfmt {
 	        this.backImage = source["backImage"];
 	        this.variants = source["variants"];
 	        this.versionImages = source["versionImages"];
+	        this.versionShaders = source["versionShaders"];
+	        this.shaderMask = source["shaderMask"];
+	        this.shaderParams = source["shaderParams"];
 	        this.price = this.convertValues(source["price"], CardPrice);
 	        this.play = this.convertValues(source["play"], Play);
 	        this.mtg = this.convertValues(source["mtg"], CardMtg);
@@ -4697,6 +5009,7 @@ export namespace setfmt {
 	    rarities?: Rarity[];
 	    priceDefaults: PriceDefaults;
 	    variants?: string[];
+	    versionShaders?: Record<string, string>;
 	    packs: Pack[];
 	    cards: Card[];
 	
@@ -4718,8 +5031,80 @@ export namespace setfmt {
 	        this.rarities = this.convertValues(source["rarities"], Rarity);
 	        this.priceDefaults = this.convertValues(source["priceDefaults"], PriceDefaults);
 	        this.variants = source["variants"];
+	        this.versionShaders = source["versionShaders"];
 	        this.packs = this.convertValues(source["packs"], Pack);
 	        this.cards = this.convertValues(source["cards"], Card);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ShaderParam {
+	    name: string;
+	    kind: string;
+	    value?: number[];
+	    min?: number;
+	    max?: number;
+	    image?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShaderParam(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.kind = source["kind"];
+	        this.value = source["value"];
+	        this.min = source["min"];
+	        this.max = source["max"];
+	        this.image = source["image"];
+	    }
+	}
+	export class Shader {
+	    id: string;
+	    name: string;
+	    code: string;
+	    params?: ShaderParam[];
+	    draws?: string;
+	    mix?: string;
+	    mixStrength?: number;
+	    bundle?: string;
+	    built?: string;
+	    icon?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Shader(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.code = source["code"];
+	        this.params = this.convertValues(source["params"], ShaderParam);
+	        this.draws = source["draws"];
+	        this.mix = source["mix"];
+	        this.mixStrength = source["mixStrength"];
+	        this.bundle = source["bundle"];
+	        this.built = source["built"];
+	        this.icon = source["icon"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

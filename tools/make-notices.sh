@@ -52,6 +52,11 @@ section() { printf '\n----- %s -----\n\n' "$1"; tr -d '\r' < "$lic/$2"; printf '
   section "libaom (BSD-2-Clause; inside github.com/gen2brain/avif)" aom-BSD-2-Clause.txt
   section "libyuv (BSD-3-Clause; inside github.com/gen2brain/avif)" libyuv-BSD-3-Clause.txt
   section "crunch (zlib; inside decoders.wasm)" crunch-Zlib.txt
+  section "glslang (inside glsl2hlsl.wasm)" glslang-LICENSE.txt
+  section "SPIRV-Cross (Apache-2.0; inside glsl2hlsl.wasm)" SPIRV-Cross-Apache-2.0.txt
+  section "LLVM libc++ and libc++abi (Apache-2.0 with LLVM exceptions; inside glsl2hlsl.wasm)" libcxx-LICENSE.txt
+  section "wasi-libc (inside glsl2hlsl.wasm)" wasi-libc-LICENSE.txt
+  section "CodeMirror, Lezer, style-mod, w3c-keyname, crelt (MIT)" CodeMirror-MIT.txt
   printf '%s' "$texts"
 } > "$out"
 echo "Wrote $out ($(wc -l < "$out") lines)"

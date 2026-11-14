@@ -91,6 +91,7 @@ type AccessoryLibrary struct {
 	Clothes       []Clothing   `json:"clothes,omitempty"`
 	Faces         []SavedFace  `json:"faces,omitempty"`
 	Animations    []Animation  `json:"animations,omitempty"`
+	Shaders       []Shader     `json:"shaders,omitempty"`
 	// MomentAnims are animations (ids) added per moment (a line situation or AnimationMoments), on top of the built-in ones;
 	// MomentOff are built-in ones switched off. One of a moment's animations plays at random.
 	MomentAnims map[string][]string `json:"momentAnims,omitempty"`

@@ -168,7 +168,17 @@ func (l *Library) DeleteFurniture(id string) {
 
 // HasItem reports an accessory, furniture piece or decoration with this id.
 func (l *Library) HasItem(id string) bool {
-	return l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0 || l.CustomerIndex(id) >= 0 || l.ClothingIndex(id) >= 0 || l.FaceIndex(id) >= 0 || l.AnimationIndex(id) >= 0
+	return l.Index(id) >= 0 || l.FurnitureIndex(id) >= 0 || l.DecorationIndex(id) >= 0 || l.CustomerIndex(id) >= 0 || l.ClothingIndex(id) >= 0 || l.FaceIndex(id) >= 0 || l.AnimationIndex(id) >= 0 || l.ShaderIndex(id) >= 0
+}
+
+// ShaderIndex is the position of a card shader in the library (-1 = none).
+func (l *Library) ShaderIndex(id string) int {
+	for i, s := range l.Lib.Shaders {
+		if s.ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // AnimationIndex is the position of a customer animation in the library (-1 = none).

@@ -124,6 +124,9 @@ func ExportItems(h setups.Home, activeRoot string, picks []Pick, dest, studioVer
 		}
 		list = append(list, located{k, e.FromRoot(), it})
 	}
+	if list, err = withSetShaders(h, activeRoot, list); err != nil {
+		return nil, err
+	}
 	if len(list) == 0 {
 		return skipped, errors.New("nothing to export: content converted from another mod stays on this PC (its art belongs to the mod's authors)")
 	}
@@ -141,6 +144,55 @@ func ExportItems(h setups.Home, activeRoot string, picks []Pick, dest, studioVer
 		return nil, err
 	}
 	return skipped, z.Close()
+}
+
+// withSetShaders adds the card shaders the listed sets name (the player's own; the stock ones come with the mod), so a
+// set arrives with the look it has here. A shader that is gone or was converted from another mod is left out: its
+// cards are then drawn normally.
+func withSetShaders(h setups.Home, activeRoot string, list []located) ([]located, error) {
+	const setKind, shaderKind = "set", "shader"
+	k, ok := content.Get(shaderKind)
+	if !ok {
+		return list, nil
+	}
+	ws := workspace.Dir(h.Root)
+	have := map[string]bool{}
+	for _, l := range list {
+		if l.kind.ID == shaderKind {
+			have[l.item.ID] = true
+		}
+	}
+	var entries []catalog.Entry
+	for _, l := range list {
+		if l.kind.ID != setKind {
+			continue
+		}
+		p, err := ws.Projects(l.root).Load(l.item.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range p.Set.ShaderIDs() {
+			if have[id] {
+				continue
+			}
+			if entries == nil {
+				if entries, err = catalog.For(h.Root).All(h, activeRoot, shaderKind); err != nil {
+					return nil, err
+				}
+			}
+			e, ok := findEntry(entries, id)
+			if !ok || e.Converted {
+				continue
+			}
+			it, err := itemIn(ws, k, e.FromRoot(), id)
+			if err != nil {
+				return nil, err
+			}
+			have[id] = true
+			list = append(list, located{k, e.FromRoot(), it})
+		}
+	}
+	return list, nil
 }
 
 func findEntry(list []catalog.Entry, id string) (catalog.Entry, bool) {
@@ -274,6 +326,12 @@ func unpack(zr *zip.Reader, dir string, items []Item) (map[Pick]string, error) {
 // importInto imports unpacked items into root, kind by kind in registry order (each kind keeps the file's order).
 // originOf gives each item's origin.
 func importInto(ws workspace.Dir, root string, items []Item, dirs, newID map[Pick]string, originOf func(Item, string) *origin.Origin) error {
+	renamed := map[string]string{}
+	for _, it := range items {
+		if id := newID[Pick{it.Kind, it.ID}]; id != it.ID {
+			renamed[it.ID] = id
+		}
+	}
 	for _, k := range content.Kinds {
 		var in []content.In
 		for _, it := range items {
@@ -281,7 +339,7 @@ func importInto(ws workspace.Dir, root string, items []Item, dirs, newID map[Pic
 				continue
 			}
 			p := Pick{it.Kind, it.ID}
-			in = append(in, content.In{Dir: dirs[p], NewID: newID[p], Origin: originOf(it, newID[p])})
+			in = append(in, content.In{Dir: dirs[p], NewID: newID[p], Origin: originOf(it, newID[p]), Renamed: renamed})
 		}
 		if len(in) > 0 {
 			if err := k.Store.Import(ws, root, in); err != nil {

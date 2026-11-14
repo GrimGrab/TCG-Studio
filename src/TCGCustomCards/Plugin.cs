@@ -65,6 +65,7 @@ namespace TCGCustomCards
         internal static readonly ConfigEntry<int>[] MtgAiDeckColorWeights = new ConfigEntry<int>[5];
         internal static ConfigEntry<float> FullImageInset;
         internal static ConfigEntry<bool> FullImageFoilGlow;
+        internal static ConfigEntry<bool> CardShaders;
         internal static ConfigEntry<bool> HidePrintedBorders;
         internal static ConfigEntry<float> PrintedBorderMax;
         internal static ConfigEntry<string> ShopSignImage, ShopSignCrop;
@@ -82,11 +83,6 @@ namespace TCGCustomCards
         internal static ConfigEntry<float> GradeLabelSize;
         internal static ConfigEntry<bool> HoloFoil;
         internal static ConfigEntry<bool> HoloFoilRim;
-        internal static ConfigEntry<float> HoloFoilMotion;
-        internal static ConfigEntry<float> HoloFoilViewReact;
-        internal static readonly ConfigEntry<UnityEngine.Color>[] HoloFoilColor = new ConfigEntry<UnityEngine.Color>[6];
-        internal static readonly ConfigEntry<float>[] HoloFoilStrength = new ConfigEntry<float>[6];
-        internal static readonly ConfigEntry<HoloPattern>[] HoloFoilPattern = new ConfigEntry<HoloPattern>[6];
         internal static ConfigEntry<bool> EnhancedBinder;
         /// <summary>The removed [Binder] Layout setting was Classic (first load of a save without its own layout).</summary>
         internal static bool OldClassicLayout;
@@ -291,6 +287,9 @@ namespace TCGCustomCards
                 new AcceptableValueRange<float>(0f, 0.2f)));
             FullImageFoilGlow = Config.Bind("Visuals", "FullImageFoilGlow", true,
                 "Full-image foil cards: draw the game's foil glow over the artwork, like vanilla does over monster art. Applies live.");
+            CardShaders = Config.Bind("Visuals", "CardShaders", true,
+                "Draw card versions with the shaders given to them in TCG Studio (Shaders page; a set's Set tab and a card's Shader " +
+                "tab), and foil cards with the stock holo (Foil). Off = every card is drawn normally. Applies live.");
             ShopSignImage = Config.Bind("Visuals", "ShopSignImage", "",
                 "Your own picture for the sign above the shop entrance: a file name in the active setup's Game look folder (TCG Studio's " +
                 "Game look page copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
@@ -392,33 +391,11 @@ namespace TCGCustomCards
                 "Full-image cards: size of the grade label (1 = the game's size). Applies live.",
                 new AcceptableValueRange<float>(0.3f, 4f)));
             HoloFoil = Config.Bind("Foil", "HoloFoil", true,
-                "Full-image foil cards: our own holographic foil over the artwork, a different look per grade (needs tcgcc_foil next to the DLL). Applies live.");
+                "Full-image foil cards: a foil version that has no shader chosen in TCG Studio is drawn with the stock holo of its " +
+                "border (a different look per border; TCG Studio lists them on the Shaders page, where a copy can be changed). " +
+                "Off = the game's own foil glow. Applies to newly shown cards.");
             HoloFoilRim = Config.Bind("Foil", "HoloFoilRim", true,
-                "Full-image foil cards: use the same holo on the border rim instead of the game's foil (needs HoloFoil). Applies live.");
-            HoloFoilMotion = Config.Bind("Foil", "HoloFoilMotion", 1.49f, new ConfigDescription(
-                "Speed of the holo's own animation (drifting bands + light sweep), like the game's foil. 0 = still. Applies live.",
-                new AcceptableValueRange<float>(0f, 3f)));
-            HoloFoilViewReact = Config.Bind("Foil", "HoloFoilViewReact", 0f, new ConfigDescription(
-                "How much the holo reacts to the camera angle (0 = not at all, like the game's foil; 1 = shifts as you move/look around). Applies live.",
-                new AcceptableValueRange<float>(0f, 1f)));
-            HoloFoilMotion.SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
-            HoloFoilViewReact.SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
-            string[] grades = { "Base", "FirstEdition", "Silver", "Gold", "EX", "FullArt" };
-            string[] gradeNames = { "Base", "First edition", "Silver", "Gold", "EX", "Full art" };
-            for (int g = 0; g < grades.Length; g++)
-            {
-                var preset = Runtime.HoloFoil.Presets[g];
-                string foilSection = "Foil - " + gradeNames[g];
-                HoloFoilColor[g] = Config.Bind(foilSection, $"{grades[g]}Color", preset.Color,
-                    $"{grades[g]} foil colour (default: {preset.Name}). Applies live.");
-                HoloFoilStrength[g] = Config.Bind(foilSection, $"{grades[g]}Strength", preset.Strength, new ConfigDescription(
-                    $"{grades[g]} foil strength (0 = off). Applies live.", new AcceptableValueRange<float>(0f, 1.5f)));
-                HoloFoilPattern[g] = Config.Bind(foilSection, $"{grades[g]}Pattern", preset.Pattern,
-                    $"{grades[g]} foil pattern: None, Sparkle, Etched (lines that catch the light) or Cosmos (nebula + sparkles). Applies live.");
-                HoloFoilColor[g].SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
-                HoloFoilStrength[g].SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
-                HoloFoilPattern[g].SettingChanged += (_, __) => Runtime.HoloFoil.Invalidate();
-            }
+                "Full-image foil cards: draw the stock holo on the border rim too, instead of the game's foil (needs HoloFoil). Applies live.");
             MtgModeEnabled = Config.Bind("MTG", "MtgMode", true,
                 "Offer Magic: The Gathering (played in Forge against the AI) when you sit at a play table with a deck that contains " +
                 "MTG cards. Needs TCG Studio > Setup > Install MTG mode.");

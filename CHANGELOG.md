@@ -3,6 +3,18 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.2.0 - 2026-11-14
+
+Card shaders: write your own card effects in TCG Studio and see them on your cards in the game.
+
+- New: a **Shaders** page in TCG Studio. Write a card effect in GLSL (Shadertoy-style code works too) with a live preview and adjustable parameters (numbers, colours, pictures). Starters include Dissolve and Glitch.
+- New: pick a shader per card version, for a whole set or per card, on the Set tab and on each card. Each card can also have its own mask picture and its own parameter values.
+- New: a shader can draw over the card picture, over the whole card front, or "see-through", which hides the rest of the card front so the effect can show what is behind the card.
+- New: shaders know which card they are on (border, foil, rarity, grade), when the card appeared, and when the pointer is over it, so effects can react.
+- New: sets you export or share bring their shaders with them.
+- Changed: holo foil on full-image cards now uses six built-in foil shaders, one per border. The old per-border holo colour settings are gone. Foil → HoloFoil and Foil → HoloFoilRim still switch it on and off, and Visuals → CardShaders switches all card shaders off.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.1.0 - 2026-11-13
 
 Card versions per card, and a different picture for each version.

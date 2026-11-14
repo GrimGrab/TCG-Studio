@@ -401,3 +401,66 @@ func TestSetupRoundTrip(t *testing.T) {
 	check(other, false) // another PC: ids kept
 	check(h, true)      // this PC: every id is taken, so all are new
 }
+
+// A set's card shaders travel with it, and the set follows a shader that gets a new id on the other PC.
+func TestSetBringsItsShaders(t *testing.T) {
+	h1, a1 := workspaceWith(t)
+	ws1 := workspace.Dir(h1.Root)
+	l, err := ws1.Items(a1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, _ := l.PutBytes([]byte("compiled"), ".shaderbundle")
+	l.Lib.Shaders = []setfmt.Shader{{ID: "glow", Name: "Glow", Code: "vec4 card(vec2 uv) { return art(uv); }", Bundle: bundle}}
+	if err := l.Save(); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := ws1.Projects(a1).Load("dom")
+	p.Set.VersionShaders = map[string]string{"Gold_foil": "glow", "Base_foil": "tcgcc-holo-base", "EX": ""}
+	p.Set.Cards[0].VersionShaders = map[string]string{"Base": "glow"}
+	if err := ws1.Projects(a1).Save(p); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "set"+ItemsExt)
+	if _, err := ExportItems(h1, a1, []Pick{{"set", "dom"}}, out, "1.0", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Another PC, where "glow" is already something else.
+	h2 := setups.Home{Root: t.TempDir()}
+	if _, err := h2.Ensure("1.0"); err != nil {
+		t.Fatal(err)
+	}
+	a2 := active(t, h2)
+	ws2 := workspace.Dir(h2.Root)
+	l2, _ := ws2.Items(a2)
+	l2.Lib.Shaders = []setfmt.Shader{{ID: "glow", Name: "Mine"}}
+	if err := l2.Save(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := ImportItems(h2, a2, out, Selection{AddHere: true}, nil)
+	if err != nil || len(res.Items) != 2 {
+		t.Fatalf("import: %+v %v", res, err)
+	}
+	var shader string
+	for _, it := range res.Items {
+		if it.Kind == "shader" {
+			shader = it.ID
+		}
+	}
+	if shader == "" || shader == "glow" {
+		t.Fatalf("the shader did not come along under a new id: %+v", res.Items)
+	}
+	q, err := ws2.Projects(a2).Load("dom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Set.VersionShaders["Gold_foil"] != shader || q.Set.Cards[0].VersionShaders["Base"] != shader ||
+		q.Set.VersionShaders["Base_foil"] != "tcgcc-holo-base" || q.Set.VersionShaders["EX"] != "" {
+		t.Fatalf("set shaders: %v, card %v (shader now %s)", q.Set.VersionShaders, q.Set.Cards[0].VersionShaders, shader)
+	}
+	l2, _ = ws2.Items(a2)
+	if i := l2.ShaderIndex(shader); i < 0 || read(t, l2.Resolve(l2.Lib.Shaders[i].Bundle)) != "compiled" {
+		t.Fatalf("imported shader: %+v", l2.Lib.Shaders)
+	}
+}

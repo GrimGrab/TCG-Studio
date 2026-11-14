@@ -34,6 +34,11 @@ namespace TCGCustomCards
                 (boxes, "BulkBox_TetramonBaseGradePGTexture"), (boxes, "BulkBox_TetramonBaseGradeUGTexture"),
                 (boxes, "BulkBox_TetramonDestinyGradeHGTexture"), (boxes, "BulkBox_TetramonDestinyGradeMGTexture"),
                 (boxes, "BulkBox_TetramonDestinyGradePGTexture"), (boxes, "BulkBox_TetramonDestinyGradeUGTexture"));
+            // migration:settings-foil-looks
+            // The holo foil became stock card shaders: its look settings are those shaders' parameters now.
+            DropRemoved(cfg, ("Foil", "HoloFoilMotion"), ("Foil", "HoloFoilViewReact"));
+            foreach (var (grade, name) in new[] { ("Base", "Base"), ("FirstEdition", "First edition"), ("Silver", "Silver"), ("Gold", "Gold"), ("EX", "EX"), ("FullArt", "Full art") })
+                DropRemoved(cfg, ("Foil - " + name, grade + "Color"), ("Foil - " + name, grade + "Strength"), ("Foil - " + name, grade + "Pattern"));
         }
 
         /// <summary>Every (section, key) → raw value in the config file as it is on disk now.</summary>

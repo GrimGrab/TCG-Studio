@@ -19,6 +19,7 @@ import {gamify} from '../models';
 import {share} from '../models';
 import {customers} from '../models';
 import {installer} from '../models';
+import {cardshader} from '../models';
 
 export function Accessories():Promise<main.AccessoryView>;
 
@@ -190,6 +191,8 @@ export function ListProjects():Promise<Array<project.Summary>>;
 
 export function ListSetups():Promise<main.SetupsView>;
 
+export function ListShaders():Promise<Array<main.ShaderChoice>>;
+
 export function LoadClothes():Promise<main.ClothesPage>;
 
 export function LoadCustomersPage():Promise<main.CustomersPage>;
@@ -197,6 +200,8 @@ export function LoadCustomersPage():Promise<main.CustomersPage>;
 export function LoadEmployeesPage():Promise<main.EmployeesPage>;
 
 export function LoadProject(arg1:string):Promise<project.Project>;
+
+export function LoadShadersPage():Promise<main.ShadersPage>;
 
 export function LocateGame():Promise<game.Status>;
 
@@ -215,6 +220,8 @@ export function NewCustomerID():Promise<string>;
 export function NewDecoration(arg1:string,arg2:string):Promise<setfmt.Decoration>;
 
 export function NewFurniture(arg1:string,arg2:string,arg3:string):Promise<setfmt.Furniture>;
+
+export function NewShaderID():Promise<string>;
 
 export function OpenFolder(arg1:string):Promise<void>;
 
@@ -246,6 +253,8 @@ export function PickSetPicture(arg1:string,arg2:string):Promise<main.SetPictureS
 
 export function PickSetupFile():Promise<share.SetupInfo>;
 
+export function PickShaderImage():Promise<string>;
+
 export function PickShareFile():Promise<string>;
 
 export function PreviewEPL(arg1:string,arg2:boolean):Promise<importer.EPLPreview>;
@@ -265,6 +274,8 @@ export function ProjectInstallState(arg1:string):Promise<string>;
 export function RedownloadCardImages(arg1:string,arg2:Array<string>):Promise<Record<string, importer.CardImages>>;
 
 export function RefreshPrices(arg1:string):Promise<string>;
+
+export function RefreshShaders():Promise<number>;
 
 export function RefreshTemplates(arg1:boolean):Promise<main.TemplatesStatus>;
 
@@ -304,6 +315,8 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
+export function SaveShaders(arg1:Array<setfmt.Shader>):Promise<main.ShaderSaveResult>;
+
 export function SaveShopLook(arg1:main.ShopLookSave):Promise<main.ShopLookView>;
 
 export function SaveTemplateImage(arg1:string,arg2:string):Promise<string>;
@@ -319,6 +332,8 @@ export function SetupRepair():Promise<string>;
 export function SetupState():Promise<installer.State>;
 
 export function SetupUninstall(arg1:boolean):Promise<string>;
+
+export function ShaderWrapping(arg1:Array<setfmt.ShaderParam>,arg2:string,arg3:number):Promise<cardshader.Wrapping>;
 
 export function SharePath(arg1:string):Promise<string>;
 

@@ -35,8 +35,11 @@ type Set struct {
 	// Variants: the card versions the set has ("Base", "Base_foil", "FullArt_foil", …); empty = all 12. Mirrors the mod's
 	// SetDef.Variants: others are never generated and are left out of the binder and Check Price unless owned.
 	Variants []string `json:"variants,omitempty"`
-	Packs    []Pack   `json:"packs"`
-	Cards    []Card   `json:"cards"`
+	// VersionShaders: the card shader (library id) each version's picture is drawn with ("Gold_foil" → id), for every card
+	// that doesn't say otherwise. Full-image sets only. Mirrors the mod's SetDef.VersionShaders.
+	VersionShaders map[string]string `json:"versionShaders,omitempty"`
+	Packs          []Pack            `json:"packs"`
+	Cards          []Card            `json:"cards"`
 }
 
 type PriceDefaults struct {
@@ -46,21 +49,29 @@ type PriceDefaults struct {
 }
 
 type Card struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Artist      string    `json:"artist"`
-	Rarity      string    `json:"rarity"` // id from Set.Rarities (vanilla name when the set has none)
-	Number      string    `json:"number,omitempty"`
-	Image       string    `json:"image"`
-	BackImage   string    `json:"backImage,omitempty"` // double-faced cards: the back face's picture (mod shows it once transformed)
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Artist      string `json:"artist"`
+	Rarity      string `json:"rarity"` // id from Set.Rarities (vanilla name when the set has none)
+	Number      string `json:"number,omitempty"`
+	Image       string `json:"image"`
+	BackImage   string `json:"backImage,omitempty"` // double-faced cards: the back face's picture (mod shows it once transformed)
 	// Variants: the card's own versions (same names as Set.Variants); empty = the set's list. Mirrors the mod's CardDef.Variants.
 	Variants []string `json:"variants,omitempty"`
 	// VersionImages: a picture per version ("Gold_foil" → relative path); a version without one shows Image.
 	VersionImages map[string]string `json:"versionImages,omitempty"`
-	Price         CardPrice         `json:"price"`
-	Play        Play      `json:"play"`
-	Mtg         *CardMtg  `json:"mtg,omitempty"`
+	// VersionShaders: the card's own shader per version; "" = none for that version even when the set has a default.
+	VersionShaders map[string]string `json:"versionShaders,omitempty"`
+	// ShaderMask: a picture painted over the card's (white = shader effects, black = none), which shaders read as
+	// cardMask(uv); the stock holo foils show only where it is white. Mirrors the mod's CardDef.ShaderMask.
+	ShaderMask string `json:"shaderMask,omitempty"`
+	// ShaderParams: this card's own values for parameters of the shaders it is drawn with, by parameter name (1, 2 or 4
+	// numbers, like the parameter's kind). A shader without a parameter of that name ignores the entry.
+	ShaderParams map[string][]float64 `json:"shaderParams,omitempty"`
+	Price        CardPrice            `json:"price"`
+	Play         Play                 `json:"play"`
+	Mtg          *CardMtg             `json:"mtg,omitempty"`
 }
 
 // SetMtg marks a set as real Magic: The Gathering cards.
@@ -290,6 +301,11 @@ func (s *Set) Validate(folders ...string) []Issue {
 			add("error", "set", "unknown card version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", v)
 		}
 	}
+	for _, k := range sortedKeys(s.VersionShaders) {
+		if !IsVariant(k) {
+			add("error", "set", "versionShaders: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
+		}
+	}
 	fileMissing := func(rel string) bool {
 		if rel == "" {
 			return false
@@ -396,6 +412,19 @@ func (s *Set) Validate(folders ...string) []Issue {
 				add("warning", w, "%s image not found %q (main image shown)", k, rel)
 			}
 		}
+		for _, k := range sortedKeys(c.VersionShaders) {
+			if !IsVariant(k) {
+				add("error", w, "versionShaders: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
+			}
+		}
+		if fileMissing(c.ShaderMask) {
+			add("warning", w, "shader mask not found %q (effects show everywhere)", c.ShaderMask)
+		}
+		for name, v := range c.ShaderParams {
+			if n := len(v); n != 1 && n != 2 && n != 4 {
+				add("error", w, "shaderParams: %q needs 1, 2 or 4 numbers", name)
+			}
+		}
 	}
 	for _, c := range s.Cards {
 		if c.Play.EvolvesFrom != "" && !ids[c.Play.EvolvesFrom] {
@@ -482,6 +511,7 @@ func (c *Card) Images() []string {
 	for _, k := range sortedKeys(c.VersionImages) {
 		add(c.VersionImages[k])
 	}
+	add(c.ShaderMask)
 	return out
 }
 
@@ -489,6 +519,7 @@ func (c *Card) Images() []string {
 func (c *Card) RepointImages(re func(*string)) {
 	re(&c.Image)
 	re(&c.BackImage)
+	re(&c.ShaderMask)
 	for k, v := range c.VersionImages {
 		re(&v)
 		c.VersionImages[k] = v
@@ -527,4 +558,41 @@ func (s *Set) AllowsVariant(border string, foil bool) bool {
 		}
 	}
 	return false
+}
+
+// ShaderIDs lists the card shaders the set and its cards name (each once, in a stable order; "" = "none" left out).
+func (s *Set) ShaderIDs() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(m map[string]string) {
+		for _, k := range sortedKeys(m) {
+			if id := m[k]; id != "" && !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	add(s.VersionShaders)
+	for i := range s.Cards {
+		add(s.Cards[i].VersionShaders)
+	}
+	return out
+}
+
+// RenameShaders points the set's and its cards' shader choices at new ids (old id → new id).
+func (s *Set) RenameShaders(renamed map[string]string) {
+	if len(renamed) == 0 {
+		return
+	}
+	re := func(m map[string]string) {
+		for k, id := range m {
+			if to, ok := renamed[id]; ok {
+				m[k] = to
+			}
+		}
+	}
+	re(s.VersionShaders)
+	for i := range s.Cards {
+		re(s.Cards[i].VersionShaders)
+	}
 }

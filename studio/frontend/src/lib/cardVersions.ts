@@ -79,6 +79,59 @@ export function setVersionImage(card: any, key: string, rel: string | undefined)
   card.versionImages = Object.keys(next).length ? next : undefined;
 }
 
+// ---- card shaders (set.json "versionShaders" on the set and on a card; ids of the setup's shaders)
+
+const entryOf = (map: Record<string, string> | undefined, key: string): string | undefined => {
+  if (!map) return undefined;
+  const want = key.toLowerCase();
+  for (const [k, v] of Object.entries(map)) if (k.toLowerCase() === want) return v;
+  return undefined;
+};
+const withEntry = (map: Record<string, string> | undefined, key: string, v: string | undefined) => {
+  const k = canonical(key) ?? key;
+  const next: Record<string, string> = {};
+  for (const [x, old] of Object.entries(map ?? {})) if (x.toLowerCase() !== k.toLowerCase()) next[x] = old;
+  if (v !== undefined) next[k] = v;
+  return Object.keys(next).length ? next : undefined;
+};
+
+/**
+ * The stock holo a foil version is drawn with when nothing was chosen for it (the mod's [Foil] HoloFoil, on by default):
+ * "tcgcc-holo-<border>". Undefined for normal versions.
+ */
+export const stockShader = (key: string): string | undefined => {
+  const k = canonical(key) ?? key;
+  return k.endsWith('_foil') ? `tcgcc-holo-${k.slice(0, -5).toLowerCase()}` : undefined;
+};
+/** The set's choice for a version: a shader id, '' (no shader) or undefined (nothing chosen: foil = the stock holo). */
+export const setShader = (set: any, key: string): string | undefined => entryOf(set.versionShaders, key);
+/** Sets the set's choice for a version (undefined = nothing chosen). */
+export function writeSetShader(set: any, key: string, id: string | undefined) {
+  set.versionShaders = withEntry(set.versionShaders, key, id);
+}
+/** A card's own choice for a version: a shader id, '' (no shader even when the set has one) or undefined (the set's). */
+export const cardShader = (card: any, key: string): string | undefined => entryOf(card.versionShaders, key);
+/** Sets a card's own choice (undefined = follow the set). */
+export function writeCardShader(card: any, key: string, id: string | undefined) {
+  card.versionShaders = withEntry(card.versionShaders, key, id);
+}
+/** The shader chosen for a card's version by the card or the set: an id, '' (none) or undefined (nothing chosen). */
+export const chosenShader = (set: any, card: any, key: string): string | undefined => cardShader(card, key) ?? setShader(set, key);
+/** The shader the game draws a card's version with ('' = none): the choice, else the stock holo of a foil version. */
+export const shownShader = (set: any, card: any, key: string): string =>
+  chosenShader(set, card, key) ?? (isFullImage(set) ? stockShader(key) : undefined) ?? '';
+/** Full-image sets get the stock holo on foils; framed sets keep the game's own foil unless a shader is chosen. */
+export const isFullImage = (set: any): boolean => set.renderMode !== 'Framed';
+/** How many cards have shader choices of their own. */
+export const cardsWithOwnShaders = (set: any): number => set.cards.filter((c: any) => c.versionShaders && Object.keys(c.versionShaders).length).length;
+/** Whether a shader was chosen for any version of the card (by the card or the set; the stock holo of foils doesn't count). */
+export const hasShader = (set: any, card: any): boolean => ALL_VERSIONS.some((k) => !!chosenShader(set, card, k));
+/** What a version gets when the choice is left to the level above: the label of that option in a picker. */
+export function inheritLabel(set: any, key: string, above: string | undefined, nameOf: (id: string) => string): string {
+  if (above !== undefined) return above ? `Set: ${nameOf(above)}` : 'Set: no shader';
+  return isFullImage(set) && stockShader(key) ? 'Default: stock holo' : 'Default: no shader';
+}
+
 /** The version the main image is (it never has a separate picture). */
 export const MAIN_VERSION = 'Base';
 

@@ -45,6 +45,13 @@ WHAT IS INCLUDED IN THE DOWNLOAD
    - Texture decoding for mod asset bundles (decoders.wasm): Unity's crunch transcoder (crn_decomp.h, zlib license,
      https://github.com/Unity-Technologies/crunch, unity branch; full text below) and bcdec's BC7 decoder (used under
      The Unlicense, public domain, https://github.com/iOrange/bcdec).
+   - Card shader conversion (glsl2hlsl.wasm): glslang (GLSL to SPIR-V; BSD-3-Clause, BSD-2-Clause, MIT and Apache-2.0
+     parts, https://github.com/KhronosGroup/glslang) and SPIRV-Cross (SPIR-V to HLSL; Apache-2.0,
+     https://github.com/KhronosGroup/SPIRV-Cross), both unchanged, with the C and C++ runtime libraries they are built
+     on: LLVM libc++ and libc++abi (Apache-2.0 with LLVM exceptions, https://llvm.org) and wasi-libc
+     (https://github.com/WebAssembly/wasi-libc). Full texts below.
+   - CodeMirror 6 (the shader code editor) with its Lezer parser packages, style-mod, w3c-keyname and crelt, all by
+     Marijn Haverbeke and others. MIT. https://codemirror.net
    - Go modules (license in brackets; full texts below):
 {{GO_MODULES}}
 

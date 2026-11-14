@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions } from './cardVersions';
+import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions, cardsWithOwnShaders, hasShader, inheritLabel, shownShader, writeCardShader, writeSetShader } from './cardVersions';
 
 describe('card versions', () => {
   it('follows the set until the card gets its own list', () => {
@@ -24,6 +24,40 @@ describe('card versions', () => {
     expect(anyCardHas(set, 'Gold', true)).toBe(true);
     expect(anyCardHas(set, 'Silver', null)).toBe(false);
     expect(anyCardHas(set, null, true)).toBe(true);
+  });
+
+  it('keeps shaders per version on the set and on cards', () => {
+    const set: any = { cards: [{ id: 'a' }, { id: 'b' }] };
+    writeSetShader(set, 'gold_foil', 'holo');
+    expect(set.versionShaders).toEqual({ Gold_foil: 'holo' });
+    const [a, b] = set.cards;
+    expect(shownShader(set, a, 'Gold_foil')).toBe('holo');
+    writeCardShader(a, 'Gold_foil', '');        // none on this card
+    writeCardShader(b, 'Base', 'sweep');        // its own
+    expect(shownShader(set, a, 'GOLD_FOIL')).toBe('');
+    expect(shownShader(set, b, 'Base')).toBe('sweep');
+    expect(shownShader(set, b, 'Gold_foil')).toBe('holo');
+    expect(cardsWithOwnShaders(set)).toBe(2);
+    expect(hasShader(set, b)).toBe(true);
+    writeCardShader(a, 'Gold_foil', undefined); // follows the set again
+    expect(a.versionShaders).toBeUndefined();
+    // Nothing chosen: a foil version gets the stock holo of its border, a normal one nothing.
+    writeSetShader(set, 'Gold_foil', undefined);
+    expect(set.versionShaders).toBeUndefined();
+    expect(shownShader(set, a, 'Gold_foil')).toBe('tcgcc-holo-gold');
+    expect(shownShader(set, a, 'FirstEdition_foil')).toBe('tcgcc-holo-firstedition');
+    expect(shownShader(set, a, 'Gold')).toBe('');
+    expect(hasShader(set, a)).toBe(false);
+    writeSetShader(set, 'Gold_foil', '');       // the set says: no shader, not even the stock holo
+    expect(set.versionShaders).toEqual({ Gold_foil: '' });
+    expect(shownShader(set, a, 'Gold_foil')).toBe('');
+    expect(inheritLabel(set, 'Gold_foil', undefined, (id) => id)).toBe('Default: stock holo');
+    expect(inheritLabel(set, 'Gold_foil', '', (id) => id)).toBe('Set: no shader');
+    expect(inheritLabel(set, 'Gold', undefined, (id) => id)).toBe('Default: no shader');
+    // Framed sets keep the game's own foil unless a shader is chosen.
+    const framed: any = { renderMode: 'Framed', cards: [{ id: 'a' }] };
+    expect(shownShader(framed, framed.cards[0], 'Gold_foil')).toBe('');
+    expect(inheritLabel(framed, 'Gold_foil', undefined, (id) => id)).toBe('Default: no shader');
   });
 
   it('stores pictures per version, case-insensitively', () => {

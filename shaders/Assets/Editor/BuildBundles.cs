@@ -9,13 +9,15 @@ using UnityEngine;
 public static class BuildBundles
 {
     public const string BundleName = "tcgcc_foil";
+    /// <summary>The template TCG Studio turns players' card shaders into (Assets/CardShader); not shipped to the game.</summary>
+    public const string CardShaderBundle = "tcgcc_cardshader";
 
     public static void Build()
     {
-        foreach (var guid in AssetDatabase.FindAssets("t:Shader", new[] { "Assets/Shaders" }))
+        foreach (var guid in AssetDatabase.FindAssets("t:Shader", new[] { "Assets/Shaders", "Assets/CardShader" }))
         {
             var path = AssetDatabase.GUIDToAssetPath(guid);
-            AssetImporter.GetAtPath(path).assetBundleName = BundleName;
+            AssetImporter.GetAtPath(path).assetBundleName = path.StartsWith("Assets/CardShader") ? CardShaderBundle : BundleName;
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
             var messages = ShaderUtil.GetShaderMessages(shader);
             foreach (var m in messages) Debug.Log($"[BuildBundles] {path}: {m.severity} {m.message} (line {m.line})");
@@ -23,6 +25,6 @@ public static class BuildBundles
         }
         Directory.CreateDirectory("Build");
         BuildPipeline.BuildAssetBundles("Build", BuildAssetBundleOptions.ChunkBasedCompression, BuildTarget.StandaloneWindows64);
-        Debug.Log("[BuildBundles] built Build/" + BundleName);
+        Debug.Log("[BuildBundles] built Build/" + BundleName + " and Build/" + CardShaderBundle);
     }
 }

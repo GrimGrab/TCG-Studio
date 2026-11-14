@@ -40,6 +40,10 @@ namespace TCGCustomCards.Runtime
             return string.IsNullOrEmpty(rel) ? null : Def.Resolve(rel);
         }
 
+        /// <summary>The card shader (library id) chosen for this version (set.json "versionShaders"): "" = none, null = no choice.</summary>
+        public string ShaderId(int pos, ECardBorderType border, bool foil) =>
+            Def.ShaderOf(pos, (int)border + (foil ? CardStore.BordersPerCard : 0));
+
         /// <summary>The picture of this version: its own one, else the main image.</summary>
         public string ImagePath(int pos, ECardBorderType border, bool foil) =>
             VersionImagePath(pos, border, foil) ?? ImagePath(Card(pos));

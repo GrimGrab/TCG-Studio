@@ -5,6 +5,7 @@
   import CardBackPreview from '../CardBackPreview.svelte';
   import RaritiesEditor from './RaritiesEditor.svelte';
   import VariantsEditor from './VariantsEditor.svelte';
+  import ShadersEditor from './ShadersEditor.svelte';
 
   let { project, notify, imgBust }: { project: any; notify: (t: string, k?: string) => void; imgBust: number } = $props();
 
@@ -88,6 +89,7 @@
   <div class="cols">
     <RaritiesEditor {project} {notify} />
     <VariantsEditor {project} />
+    <ShadersEditor {project} />
   </div>
 
   <section class="block">

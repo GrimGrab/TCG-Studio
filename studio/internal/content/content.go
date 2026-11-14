@@ -40,6 +40,7 @@ var Kinds = []Kind{
 	{ID: "clothing", One: "clothing look", Many: "clothes", Title: "Clothes", Store: Entry{Field: "clothes", Preview: PreviewClothing}},
 	{ID: "face", One: "face", Many: "faces", Title: "Faces", Store: Entry{Field: "faces", Label: "Saved face", Preview: PreviewPerson}},
 	{ID: "animation", One: "animation", Many: "animations", Title: "Animations", Store: Entry{Field: "animations", Preview: PreviewAnimation}},
+	{ID: "shader", One: "card shader", Many: "card shaders", Title: "Shaders", Store: Entry{Field: "shaders"}},
 }
 
 // LibraryKinds are the kinds kept in the accessory library, one entry each: every page that lists "items" goes through this, so a new kind only needs its line
@@ -95,6 +96,9 @@ type In struct {
 	Dir    string
 	NewID  string
 	Origin *origin.Origin
+	// Renamed: the items imported together with this one that got a new id here (old id → new id), for items that name
+	// others by id (a set's card shaders).
+	Renamed map[string]string
 }
 
 // Storage is how a kind is stored. Every method works on one root against the workspace's shared storage.

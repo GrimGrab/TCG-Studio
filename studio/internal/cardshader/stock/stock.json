@@ -1,0 +1,794 @@
+[
+ {
+  "id": "tcgcc-holo-base",
+  "name": "Holo: Dark teal (Base foil)",
+  "border": "Base",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     0.216,
+     0.404,
+     0.38,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     0.3
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     1.5
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1.2
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.2
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.7
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.2
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     60
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.1
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-holo-firstedition",
+  "name": "Holo: Cyan (First Edition foil)",
+  "border": "FirstEdition",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     0,
+     0.953,
+     1,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     0.9
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     1.5
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1.4
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.6
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.4
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     70
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.2
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-holo-silver",
+  "name": "Holo: Brushed silver (Silver foil)",
+  "border": "Silver",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     0.78,
+     0.851,
+     0.969,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0.04
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     0.29
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.8
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.8
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     2
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.3
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     90
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.25
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-holo-gold",
+  "name": "Holo: Gold leaf (Gold foil)",
+  "border": "Gold",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     1,
+     0.851,
+     0.18,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0.05
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     0.31
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1.2
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.6
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.7
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     2
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     80
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.3
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-holo-ex",
+  "name": "Holo: Emerald (EX foil)",
+  "border": "EX",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     0,
+     1,
+     0.404,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0.08
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     1.5
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1.5
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.8
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     70
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.3
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-holo-fullart",
+  "name": "Holo: Violet (Full Art foil)",
+  "border": "FullArt",
+  "code": "// Holo foil: bands of colour that drift over the picture, a light sweep that crosses the card, and an\n// optional pattern (sparkles, etched lines or a cosmos of clouds and stars).\n//   artMask   0 = everywhere, 1 = stronger on bright parts of the picture, 2 = stronger on dark parts\n//   pattern   0 = none, 1 = sparkle, 2 = etched lines, 3 = cosmos\n//   viewReact 0 = the look doesn't change when you move around the card, 1 = it shifts with the view\nfloat hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\n// The foil's colours around the tint: the hue wanders by hueSpread, brightness and saturation pulse.\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\n// Twinkling points in a jittered grid.\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    // Bands: a place on the colour ramp from the position, the view and a little noise, drifting with time.\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    // A glow at grazing angles, and a soft light that crosses the card again and again.\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * mix(0.5, 1.0, mask);\n\n    // A card with a mask picture has the foil only where the mask is white.\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     0.62,
+     0.416,
+     1,
+     1
+    ]
+   },
+   {
+    "name": "hueSpread",
+    "kind": "number",
+    "value": [
+     0.15
+    ],
+    "max": 0.5
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     0.3
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "tiling",
+    "kind": "number",
+    "value": [
+     1.3
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "parallax",
+    "kind": "number",
+    "value": [
+     1.6
+    ],
+    "max": 3
+   },
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "artMask",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 2
+   },
+   {
+    "name": "pattern",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 3
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.8
+    ],
+    "max": 1
+   },
+   {
+    "name": "patternScale",
+    "kind": "number",
+    "value": [
+     50
+    ],
+    "min": 10,
+    "max": 150
+   },
+   {
+    "name": "edgeGlow",
+    "kind": "number",
+    "value": [
+     0.35
+    ],
+    "max": 1
+   },
+   {
+    "name": "viewReact",
+    "kind": "number",
+    "value": [
+     0
+    ],
+    "max": 1
+   },
+   {
+    "name": "sweep",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 2
+   },
+   {
+    "name": "motion",
+    "kind": "number",
+    "value": [
+     1.49
+    ],
+    "max": 3
+   }
+  ]
+ }
+]

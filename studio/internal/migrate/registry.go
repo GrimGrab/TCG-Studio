@@ -46,6 +46,8 @@ var Registry = []Migration{
 		"[Binder] Layout", "Saves that old no longer matter"},
 	{"settings-credit-card", "Single credit card picture settings removed", "2026-10-17",
 		"[Visuals - Game look] CreditCardImage, CreditCardCrop", "No config can still have them"},
+	{"settings-foil-looks", "Holo foil look settings removed (the holo foils are stock card shaders)", "2026-11-13",
+		"[Foil] HoloFoilMotion, HoloFoilViewReact and the [Foil - <border>] sections", "No config can still have them"},
 	{"settings-bulk-boxes", "Tetramon bulk box designs carry over to BulkBoxNG…UG; Destiny ones are dropped", "2026-10-29",
 		"BulkBox_Tetramon* settings", "No config can still have them"},
 	{"import-page-paths", "Forgets paths older versions remembered on the Import page", "2026-10-16",

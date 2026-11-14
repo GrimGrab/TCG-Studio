@@ -1,5 +1,8 @@
 # Compiles the mod's shaders (TCG Custom Cards\shaders, a Unity 2021.3.38f1 built-in pipeline project) into the asset bundle
-# src\TCGCustomCards\Assets\tcgcc_foil, which the mod build copies next to the DLL.
+# src\TCGCustomCards\Assets\tcgcc_foil, which the mod build copies next to the DLL, and the card shader template
+# (Assets\CardShader) into studio\internal\cardshader\template\tcgcc_cardshader, which TCG Studio makes players' card
+# shaders from (it is built into Studio, not shipped to the game). After a change of the template, run Studio's tests:
+# internal/cardshader checks that the template still matches what Studio compiles against.
 # Needs Unity 2021.3.38f1 (the game's exact version — bundles/shaders from newer editors may not load in the game).
 param(
     [string]$Unity = "C:\Program Files\Unity\Hub\Editor\2021.3.38f1\Editor\Unity.exe"
@@ -26,3 +29,6 @@ if ($p.ExitCode -ne 0) { throw "Unity exited with code $($p.ExitCode); see $log"
 New-Item -ItemType Directory -Force $out | Out-Null
 Copy-Item (Join-Path $project "Build\tcgcc_foil") (Join-Path $out "tcgcc_foil") -Force
 Write-Host "Copied bundle -> $out\tcgcc_foil"
+$template = Join-Path $root "studio\internal\cardshader\template"
+Copy-Item (Join-Path $project "Build\tcgcc_cardshader") (Join-Path $template "tcgcc_cardshader") -Force
+Write-Host "Copied card shader template -> $template\tcgcc_cardshader"

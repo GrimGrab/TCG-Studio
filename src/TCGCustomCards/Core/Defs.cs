@@ -64,6 +64,20 @@ namespace TCGCustomCards.Core
 
         /// <summary>The versions a card has, by slot offset: its own "variants" when it has one, else the set's.</summary>
         public bool[] MaskOf(int pos) => Cards[pos].VariantMask ?? VariantMask;
+
+        /// <summary>
+        /// The card shader (accessory library "shaders" id) each version's picture is drawn with ("Gold_foil" → id), for every
+        /// card that doesn't say otherwise. Full-image sets only.
+        /// </summary>
+        [JsonProperty("versionShaders")] public Dictionary<string, string> VersionShaders;
+        /// <summary>Shader ids by slot offset (null = no choice, "" = none); null when the set has none. Filled by SetLoader.</summary>
+        [JsonIgnore] public string[] ShaderBySlot;
+
+        /// <summary>
+        /// The shader chosen for a card's version: the card's own entry, else the set's. "" = "no shader" was chosen;
+        /// null = nothing was chosen (a foil version then gets the stock holo of its border).
+        /// </summary>
+        public string ShaderOf(int pos, int slot) => Cards[pos].ShaderBySlot?[slot] ?? ShaderBySlot?[slot];
         public bool Allows(int pos, ECardBorderType border, bool foil) => MaskOf(pos)[(int)border + (foil ? 6 : 0)];
         /// <summary>How many of the 12 versions the card has.</summary>
         public int VersionCount(int pos) => MaskOf(pos).Count(v => v);
@@ -139,6 +153,24 @@ namespace TCGCustomCards.Core
         [JsonProperty("versionImages")] public Dictionary<string, string> VersionImages;
         /// <summary>Version pictures by slot offset (null entries = main image); null when the card has none. Filled by SetLoader.</summary>
         [JsonIgnore] public string[] VersionImageBySlot;
+
+        /// <summary>The card's own shader per version ("Gold_foil" → library id); "" = none for that version even when the set has a default.</summary>
+        [JsonProperty("versionShaders")] public Dictionary<string, string> VersionShaders;
+        /// <summary>Own shader ids by slot offset: null = follow the set, "" = none. Null when the card has no entries. Filled by SetLoader.</summary>
+        [JsonIgnore] public string[] ShaderBySlot;
+
+        /// <summary>
+        /// A picture painted over the card's (path like <see cref="Image"/>): white = shader effects, black = none. Shaders read
+        /// it as cardMask(uv); the stock holo foils only show where it is white. Null after loading when the file is missing.
+        /// </summary>
+        [JsonProperty("shaderMask")] public string ShaderMask;
+        /// <summary>
+        /// The card's own values for parameters of the shaders it is drawn with, by parameter name (1, 2 or 4 numbers). A
+        /// shader without a parameter of that name ignores the entry.
+        /// </summary>
+        [JsonProperty("shaderParams")] public Dictionary<string, List<float>> ShaderParams;
+        /// <summary>Whether the card needs a material of its own (a mask or own values) instead of the shader's shared one.</summary>
+        [JsonIgnore] public bool HasShaderData => !string.IsNullOrEmpty(ShaderMask) || (ShaderParams != null && ShaderParams.Count > 0);
 
         [JsonProperty("price")] public CardPrice Price = new CardPrice();
         [JsonProperty("play")] public PlayDef Play = new PlayDef();
@@ -296,7 +328,44 @@ namespace TCGCustomCards.Core
         [JsonProperty("furniture")] public List<FurnitureDef> Furniture = new List<FurnitureDef>();
         [JsonProperty("decorations")] public List<DecorationDef> Decorations = new List<DecorationDef>();
         [JsonProperty("employees")] public List<EmployeeDef> Employees = new List<EmployeeDef>();
+        [JsonProperty("shaders")] public List<ShaderDef> Shaders = new List<ShaderDef>();
         [JsonIgnore] public string FolderPath;
+    }
+
+    /// <summary>
+    /// A card shader written in TCG Studio. The game only reads what Studio compiled (<see cref="Bundle"/>: a shader bundle made
+    /// from the template TCGCC/CardShader) and the parameters' values and pictures; the code itself stays Studio's.
+    /// </summary>
+    public class ShaderDef
+    {
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("name")] public string Name;
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
+        [JsonProperty("bundle")] public string Bundle;
+        /// <summary>Stock shaders: the border whose foil version it is the default of.</summary>
+        [JsonProperty("border")] public string Border;
+        [JsonProperty("params")] public List<ShaderParamDef> Params = new List<ShaderParamDef>();
+        /// <summary>
+        /// What the shader draws on: absent = the card's picture; <see cref="SeeThrough"/> = the picture, with the rest of the
+        /// card front hidden (see-through parts show what is behind the card); <see cref="Over"/> = on top of the whole card
+        /// front, the picture under it staying as it is.
+        /// </summary>
+        [JsonProperty("draws")] public string Draws;
+        public const string SeeThrough = "seeThrough", Over = "over";
+        [JsonIgnore] public string FolderPath;
+    }
+
+    /// <summary>
+    /// A shader parameter. The n-th parameter that isn't a picture is value slot n (_P[n]); the n-th picture is image slot n
+    /// (_Tex&lt;n&gt;): the same rule TCG Studio compiled the code with.
+    /// </summary>
+    public class ShaderParamDef
+    {
+        public const string Image = "image";
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("kind")] public string Kind;
+        [JsonProperty("value")] public List<float> Value;
+        [JsonProperty("image")] public string ImagePath;
     }
 
     /// <summary>

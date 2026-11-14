@@ -342,6 +342,10 @@ export function ListSetups() {
   return window['go']['main']['App']['ListSetups']();
 }
 
+export function ListShaders() {
+  return window['go']['main']['App']['ListShaders']();
+}
+
 export function LoadClothes() {
   return window['go']['main']['App']['LoadClothes']();
 }
@@ -356,6 +360,10 @@ export function LoadEmployeesPage() {
 
 export function LoadProject(arg1) {
   return window['go']['main']['App']['LoadProject'](arg1);
+}
+
+export function LoadShadersPage() {
+  return window['go']['main']['App']['LoadShadersPage']();
 }
 
 export function LocateGame() {
@@ -392,6 +400,10 @@ export function NewDecoration(arg1, arg2) {
 
 export function NewFurniture(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewFurniture'](arg1, arg2, arg3);
+}
+
+export function NewShaderID() {
+  return window['go']['main']['App']['NewShaderID']();
 }
 
 export function OpenFolder(arg1) {
@@ -454,6 +466,10 @@ export function PickSetupFile() {
   return window['go']['main']['App']['PickSetupFile']();
 }
 
+export function PickShaderImage() {
+  return window['go']['main']['App']['PickShaderImage']();
+}
+
 export function PickShareFile() {
   return window['go']['main']['App']['PickShareFile']();
 }
@@ -492,6 +508,10 @@ export function RedownloadCardImages(arg1, arg2) {
 
 export function RefreshPrices(arg1) {
   return window['go']['main']['App']['RefreshPrices'](arg1);
+}
+
+export function RefreshShaders() {
+  return window['go']['main']['App']['RefreshShaders']();
 }
 
 export function RefreshTemplates(arg1) {
@@ -570,6 +590,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SaveShaders(arg1) {
+  return window['go']['main']['App']['SaveShaders'](arg1);
+}
+
 export function SaveShopLook(arg1) {
   return window['go']['main']['App']['SaveShopLook'](arg1);
 }
@@ -600,6 +624,10 @@ export function SetupState() {
 
 export function SetupUninstall(arg1) {
   return window['go']['main']['App']['SetupUninstall'](arg1);
+}
+
+export function ShaderWrapping(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ShaderWrapping'](arg1, arg2, arg3);
 }
 
 export function SharePath(arg1) {

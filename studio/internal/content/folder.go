@@ -178,6 +178,7 @@ func (f Folder) Import(ws workspace.Dir, root string, in []In) error {
 			return err
 		}
 		p.Set.ID, p.Meta.Origin = it.NewID, it.Origin
+		p.Set.RenameShaders(it.Renamed)
 		if err := pw.Save(p); err != nil {
 			return err
 		}

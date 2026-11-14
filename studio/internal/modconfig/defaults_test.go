@@ -15,7 +15,6 @@ var loopBinds = map[string][]string{
 	`Config.Bind("Content", key,`: {"Content/ShowVanillaDeckBoxes", "Content/ShowVanillaPlaymats", "Content/ShowVanillaSleeves",
 		"Content/ShowVanillaDice", "Content/ShowVanillaComics", "Content/ShowVanillaCollectionBooks", "Content/ShowVanillaBattleDecks",
 		"Content/ShowVanillaFigurines", "Content/ShowVanillaBoardGames", "Content/ShowVanillaCardSupplies"},
-	`Config.Bind(foilSection, $"{grades[g]}`: foilGrades(),
 	`Config.Bind(aiCol, i == 0 ? "AiDeckWeight1Color"`: {"MTG - AI deck colours/AiDeckWeight1Color",
 		"MTG - AI deck colours/AiDeckWeight2Colors", "MTG - AI deck colours/AiDeckWeight3Colors",
 		"MTG - AI deck colours/AiDeckWeight4Colors", "MTG - AI deck colours/AiDeckWeight5Colors"},
@@ -27,17 +26,6 @@ func bulkBoxLooks() []string {
 	var out []string
 	for _, v := range []string{"NG", "HG", "MG", "PG", "UG", "OG"} {
 		out = append(out, "Visuals - Game look - Boxes/BulkBox"+v+"Texture")
-	}
-	return out
-}
-
-func foilGrades() []string {
-	var out []string
-	names := [][2]string{{"Base", "Base"}, {"FirstEdition", "First edition"}, {"Silver", "Silver"}, {"Gold", "Gold"}, {"EX", "EX"}, {"FullArt", "Full art"}}
-	for _, g := range names {
-		for _, k := range []string{"Color", "Strength", "Pattern"} {
-			out = append(out, "Foil - "+g[1]+"/"+g[0]+k)
-		}
 	}
 	return out
 }

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { App, projectFile, setRarities, rarityName, ELEMENTS, LANES, money, errText } from '../../lib/api';
   import VersionGrid from './VersionGrid.svelte';
+  import ShaderGrid, { FOLLOW, MIXED } from './ShaderGrid.svelte';
+  import { cardShader, inheritLabel, setShader, writeCardShader } from '../../lib/cardVersions';
   import { ALL_VERSIONS, MAIN_VERSION, cardVersions, followSet, hasOwnVersions, versionsWithArt, writeCardVersions } from '../../lib/cardVersions';
 
   let { project, cards, notify, ondelete, imgBust = 0 }: {
@@ -68,6 +70,20 @@
     }
     if (skipped) notify(`${skipped} card(s) kept ${k.replace('_foil', ' foil')}: it is their only version.`);
   }
+
+  // Shaders of the selected cards: one choice per version for all of them.
+  let shaders = $state<{ id: string; name: string; builtIn?: boolean }[]>([]);
+  $effect(() => { App.ListShaders().then((l) => (shaders = l ?? [])).catch(() => (shaders = [])); });
+  let wholeShader = $state(FOLLOW);
+  function commonShader(k: string): string {
+    const first = cardShader(cards[0], k) ?? FOLLOW;
+    return cards.every((c) => (cardShader(c, k) ?? FOLLOW) === first) ? first : MIXED;
+  }
+  function setShaderForAll(k: string, v: string) {
+    if (v === MIXED) return;
+    for (const c of cards) writeCardShader(c, k, v === FOLLOW ? undefined : v);
+  }
+  const shaderName = (id: string) => shaders.find((s) => s.id === id)?.name || 'missing shader';
 
   function onlyWithArt() {
     let n = 0;
@@ -152,6 +168,28 @@
     </div>
     <div class="muted small">The set's default is on the Set tab. Pictures per version are added one card at a time.</div>
   </section>
+
+  {#if cards.length}
+    <section>
+      <h4>Shader</h4>
+      <div class="row">
+        <select class="grow" bind:value={wholeShader}>
+          <option value={FOLLOW}>Follow the set</option>
+          <option value="">No shader</option>
+          {#each shaders.filter((s) => !s.builtIn) as s}<option value={s.id}>{s.name || 'Unnamed'}</option>{/each}
+          <optgroup label="Comes with the mod">
+            {#each shaders.filter((s) => s.builtIn) as s}<option value={s.id}>{s.name}</option>{/each}
+          </optgroup>
+        </select>
+        <button onclick={() => apply(`Shader for every version`, (c) => { for (const k of ALL_VERSIONS) writeCardShader(c, k, wholeShader === FOLLOW ? undefined : wholeShader); })}>Apply to every version</button>
+      </div>
+      <details>
+        <summary class="muted small">A different shader per version</summary>
+        <ShaderGrid {shaders} value={commonShader} onchange={setShaderForAll}
+          follow={(k) => inheritLabel(project.set, k, setShader(project.set, k), shaderName)} />
+      </details>
+    </section>
+  {/if}
 
   {#if project.set.packs.length}
     <section>

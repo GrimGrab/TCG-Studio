@@ -67,6 +67,7 @@ namespace TCGCustomCards.Core
             if (set.Cards == null || set.Cards.Count == 0) errors.Add("no cards");
             bool defaultList = ValidateRarities(set, errors);
             ValidateVariants(set, errors);
+            set.ShaderBySlot = ParseShaders(set.VersionShaders, "versionShaders", errors);
             set.AllVariants = set.VariantMask.All(v => v); // ValidateCardVersions clears it for a card with its own list
 
             var ids = new HashSet<string>();
@@ -162,6 +163,17 @@ namespace TCGCustomCards.Core
             }
             if (c.VariantMask != null && !c.VariantMask.All(v => v)) set.AllVariants = false;
 
+            c.ShaderBySlot = ParseShaders(c.VersionShaders, $"{where}: versionShaders", errors);
+            if (!string.IsNullOrEmpty(c.ShaderMask) && !File.Exists(set.Resolve(c.ShaderMask)))
+            {
+                MissingImage(set, $"{where}: shader mask not found '{c.ShaderMask}' (effects show everywhere)", ref missing);
+                c.ShaderMask = null;
+            }
+            if (c.ShaderParams != null)
+                foreach (var kv in c.ShaderParams)
+                    if (kv.Value == null || (kv.Value.Count != 1 && kv.Value.Count != 2 && kv.Value.Count != 4))
+                        errors.Add($"{where}: shaderParams: '{kv.Key}' needs 1, 2 or 4 numbers");
+
             c.VersionImageBySlot = null;
             if (c.VersionImages == null) return;
             foreach (var kv in c.VersionImages)
@@ -179,6 +191,26 @@ namespace TCGCustomCards.Core
                 }
                 (c.VersionImageBySlot ?? (c.VersionImageBySlot = new string[12]))[slot] = kv.Value;
             }
+        }
+
+        /// <summary>
+        /// "versionShaders" → shader ids by slot offset, null when there are none. An empty id stays as "": "no shader for
+        /// this version", over the set's choice (on a card) and over the stock holo of foil versions.
+        /// </summary>
+        private static string[] ParseShaders(Dictionary<string, string> map, string what, List<string> errors)
+        {
+            if (map == null) return null;
+            string[] bySlot = null;
+            foreach (var kv in map)
+            {
+                if (!TryParseVersion(kv.Key, out int slot))
+                {
+                    errors.Add($"{what}: unknown version '{kv.Key}' ({VersionNames})");
+                    continue;
+                }
+                (bySlot ?? (bySlot = new string[12]))[slot] = kv.Value ?? "";
+            }
+            return bySlot;
         }
 
         private const string VersionNames = "Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil";

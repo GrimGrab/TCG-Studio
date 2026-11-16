@@ -193,7 +193,7 @@ func (a *App) PickShaderImage() (string, error) {
 func shaderSignature(template []byte, s setfmt.Shader) string {
 	h := sha256.New()
 	h.Write(template)
-	fmt.Fprintf(h, "\x00%s\x00%s", s.ID, s.Code)
+	fmt.Fprintf(h, "\x00wrap%d\x00%s\x00%s", cardshader.WrapVersion, s.ID, s.Code)
 	for _, p := range s.Params {
 		fmt.Fprintf(h, "\x00%s\x00%s", p.Name, p.Kind)
 	}

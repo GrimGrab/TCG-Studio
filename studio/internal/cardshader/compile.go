@@ -111,6 +111,27 @@ layout(location = 5) in vec4 _facts;
 layout(location = 0) out vec4 _colour;
 `
 
+// WrapVersion changes whenever the text put around a shader's code for the game changes what the shader draws: bundles
+// compiled with an older one are compiled again (it is part of a bundle's signature).
+const WrapVersion = 2
+
+// The game draws in linear colour (PlayerSettings m_ActiveColorSpace = 1, read from the game files): a picture looked up
+// there gives other numbers than the same picture in Studio's preview (mid grey 0.5 reads as 0.21), and a colour the
+// shader returns is shown brighter. So for the game every picture lookup is turned into the numbers the preview has
+// (sRGB, what an image editor shows), and what the shader returns is turned back at the end (tail). A shader's code then
+// works with the same numbers in both places.
+const gameColour = `#define TCGCC_LINEAR_GAME 1
+vec3 _toScreen(vec3 c) { c = max(c, vec3(0.0)); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+vec3 _toGame(vec3 c) { c = max(c, vec3(0.0)); return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+vec4 _lookUp(sampler2D s, vec2 uv) { vec4 c = texture(s, uv); return vec4(_toScreen(c.rgb), c.a); }
+vec4 _lookUp(sampler2D s, vec2 uv, float bias) { vec4 c = texture(s, uv, bias); return vec4(_toScreen(c.rgb), c.a); }
+vec4 _lookUpLod(sampler2D s, vec2 uv, float lod) { vec4 c = textureLod(s, uv, lod); return vec4(_toScreen(c.rgb), c.a); }
+vec4 _lookUpAt(sampler2D s, ivec2 p, int lod) { vec4 c = texelFetch(s, p, lod); return vec4(_toScreen(c.rgb), c.a); }
+#define texture _lookUp
+#define textureLod _lookUpLod
+#define texelFetch _lookUpAt
+`
+
 // The same inputs for Studio's preview (WebGL 2): plain uniforms set by the preview, one varying.
 const previewInputs = `uniform vec4 _TextureSampleAdd;
 uniform vec4 _P[16];
@@ -171,7 +192,13 @@ void main() {
     vec4 c = card(_uvWorld.xy);
     c.a = clamp(c.a, 0.0, 1.0);
     // Blending is "source + destination * (1 - alpha)": the glow is light with no alpha of its own.
-    c.rgb = c.rgb * c.a + max(cardGlow, vec3(0.0));
+    vec3 _glow = max(cardGlow, vec3(0.0));
+#ifdef TCGCC_LINEAR_GAME
+    // Back to the game's linear colour. The glow is what adding it changes on screen, so a solid card with glow is exact.
+    c.rgb = _toGame(c.rgb) * c.a + (_toGame(c.rgb * c.a + _glow) - _toGame(c.rgb * c.a));
+#else
+    c.rgb = c.rgb * c.a + _glow;
+#endif
     c *= _misc.x;
     // Every input is read here, so the converted shader keeps them all, in the template's order.
     c.rgb += (_view.x + _art.x + _card.x + _facts.x) * 0.0;
@@ -307,7 +334,7 @@ func PreviewWrapping(params []Param, o Options) (Wrapping, error) {
 
 // gameHLSL converts a shader to the HLSL of one keyword variant of the template.
 func gameHLSL(source string, slots []Slot, keywords []string, o Options) (string, error) {
-	w := wrapping("#version 310 es", gameInputs, slots, keywords, o)
+	w := wrapping("#version 310 es", gameInputs+gameColour, slots, keywords, o)
 	return toHLSL(w.around(source))
 }
 

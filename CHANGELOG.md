@@ -3,6 +3,14 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.2.3 - 2026-11-16
+
+Card shaders now look in the game the way they look in Studio's preview.
+
+- Fixed: card shaders looked different in game than in the Shaders page preview — colours came out pale and effects that pick out dark or bright parts of the picture (text, numbers, outlines) filled whole areas instead. Shaders now see and return the same colours in both places. Your shaders are recompiled automatically the next time Studio starts.
+- Changed: the built-in holo foils now match their Studio preview too, so they look a little stronger and more colourful in game than before.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.2.2 - 2026-11-15
 
 Stinky customers you send out no longer keep stinking up the shop on their way to the street.

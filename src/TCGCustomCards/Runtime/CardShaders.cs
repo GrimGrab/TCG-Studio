@@ -162,6 +162,9 @@ namespace TCGCustomCards.Runtime
                 Plugin.Log.LogError($"Stock card shaders: {e.Message}");
             }
             Plugin.Log.LogInfo($"Stock card shaders: {(_stockShader == null ? "could not be loaded: foil cards get no holo" : $"loaded (supported={_stockShader.isSupported})")}");
+            // Studio compiles every card shader for a game that draws in linear colour (it converts on the way in and out).
+            if (QualitySettings.activeColorSpace != ColorSpace.Linear)
+                Plugin.Log.LogWarning("Card shaders: the game no longer draws in linear colour, so card shaders will look too dark until TCG Studio is updated for it");
             return _stockShader;
         }
 

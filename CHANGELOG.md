@@ -3,6 +3,13 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.2.2 - 2026-11-15
+
+Stinky customers you send out no longer keep stinking up the shop on their way to the street.
+
+- Fixed: a stinky customer who was kicked out, thrown out by a Bouncer employee, ran out of patience or left after opening packs kept counting as "stinky in the shop" until they reached the street. Other customers could still complain, leave or lower their review because of them. The smell now stops counting when they pass the door, the same as for any customer leaving on their own.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.2.1 - 2026-11-14
 
 Magic tables now lay out cards like MTG Arena, so crowded boards stay readable.

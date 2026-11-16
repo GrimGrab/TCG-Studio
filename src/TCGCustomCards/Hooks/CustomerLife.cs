@@ -149,6 +149,20 @@ namespace TCGCustomCards.Hooks
 
         public static bool IsStinky(Customer c) => Smelly(c);
 
+        /// <summary>
+        /// For a customer walking out in a mod state: a stinky one stops counting against the shop when they pass an entrance
+        /// point, as vanilla does at the door in its own ExitingShop state only (Customer.cs:3782-3790). Without this they
+        /// stank "inside" all the way to the street. m_IsInsideShop is left set until the visit ends: cleared here, vanilla
+        /// takes anyone not in ExitingShop near an entrance point for a new arrival (:3774) and counts them in again.
+        /// </summary>
+        public static void PassedDoor(Customer c)
+        {
+            if (!Smelly(c) || !CustomerManager.CheckIsInsideShop(c.transform.position)) return;
+            Smelly(c) = false;
+            CSingleton<CustomerManager>.Instance.RemoveFromSmellyCustomerList(c);
+            Plugin.Log.LogInfo($"Customers: {Runtime.Customers.Cast.Of(c)?.name ?? "a customer"} (stinky) is out the door: the smell no longer counts");
+        }
+
         private static readonly AccessTools.FieldRef<Customer, InteractableCashierCounter> QueueCounter =
             AccessTools.FieldRefAccess<Customer, InteractableCashierCounter>("m_CurrentQueueCashierCounter");
         private static readonly System.Reflection.MethodInfo ThinkWantToPayMethod = AccessTools.Method(typeof(Customer), "ThinkWantToPay");

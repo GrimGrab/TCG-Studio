@@ -355,6 +355,7 @@ namespace TCGCustomCards.Hooks
 
             public override void Tick(Customer c, StateContext ctx)
             {
+                CustomerLife.PassedDoor(c);
                 if (ctx.Elapsed > Timeout) c.DeactivateCustomer();
             }
 

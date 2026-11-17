@@ -2,7 +2,7 @@
   // Shaders page: card shaders written by the player (the setup's item library). Code on the left, the shader running
   // on a card on the right, updated while typing. One draft for the page; Save stores it and compiles every changed
   // shader for the game. Card versions get a shader on a set's Set tab and a card's Versions grid.
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { App, ask, errText } from '../lib/api';
   import { accFile, projectFile } from '../lib/urls';
   import SaveBar from './SaveBar.svelte';
@@ -22,6 +22,8 @@
   let shaders = $state<Shader[]>([]);
   let starters = $state<Starter[]>([]);
   let stock = $state<Stock[]>([]);
+  // This setup's own values for the stock shaders (stock id → parameter → values): the game uses them instead.
+  let stockValues = $state<Record<string, Record<string, number[]>>>({});
   // The guided tutorial: its steps, and the shader it is running on (it shows while that shader is selected).
   let tutorialSteps = $state<TutorialStep[]>([]);
   let tutorial = $state<{ id: string; step: number } | null>(null);
@@ -43,12 +45,40 @@
   let preview = $state<ReturnType<typeof ShaderPreview>>();
   let help = $state(true);
 
-  const snapshot = () => JSON.stringify(shaders);
+  /** JSON with sorted keys, so the same values always give the same text. */
+  const stable = (v: unknown): string => JSON.stringify(v, (_k, x) =>
+    x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x);
+  const snapshot = () => stable([shaders, stockValues]);
   const dirty = $derived(!loading && snapshot() !== baseline);
   const selected = $derived(shaders.find((s) => s.id === selectedId) ?? null);
   /** A stock shader being looked at (read-only). */
   const viewing = $derived(stock.find((s) => s.id === selectedId) ?? null);
   $effect(() => { stockCode = viewing?.code ?? ''; });
+  // A stock shader's values: the stock ones with this setup's own on top. Changing them changes what the game uses (after
+  // Save); Reset values goes back to the stock ones; Duplicate makes a shader of your own with them.
+  let tryParams = $state<ShaderParam[]>([]);
+  const withOwn = (s: Stock): ShaderParam[] =>
+    s.params.map((p) => ({ ...p, value: [...(stockValues[s.id]?.[p.name] ?? p.value ?? [])] }));
+  let tryFor = ''; // the stock shader tryParams were filled for
+  $effect(() => { const v = viewing; untrack(() => { tryParams = v ? withOwn(v) : []; tryFor = v?.id ?? ''; }); });
+  // Keep stockValues in step with the sliders: only values that differ from the stock ones are kept.
+  $effect(() => {
+    const v = viewing;
+    const now = JSON.parse(JSON.stringify(tryParams)) as ShaderParam[];
+    untrack(() => {
+      if (!v || v.id !== tryFor || now.length !== v.params.length) return;
+      const own: Record<string, number[]> = {};
+      v.params.forEach((p, i) => {
+        const val = now[i]?.value;
+        if (p.kind !== 'image' && val && p.value && val.length === p.value.length && val.some((x, j) => Math.abs(x - p.value![j]) > 1e-6)) own[p.name] = val;
+      });
+      if (stable(own) === stable(stockValues[v.id] ?? {})) return;
+      const next = { ...stockValues };
+      if (Object.keys(own).length) next[v.id] = own; else delete next[v.id];
+      stockValues = next;
+    });
+  });
+  const tried = $derived(!!viewing && !!stockValues[viewing.id]);
   const shown = $derived(shaders.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase())));
   const valueCount = $derived((selected?.params ?? []).filter((p) => p.kind !== 'image').length);
   const imageCount = $derived((selected?.params ?? []).filter((p) => p.kind === 'image').length);
@@ -61,6 +91,7 @@
       shaders = (page.shaders ?? []) as unknown as Shader[];
       starters = (page.starters ?? []) as unknown as Starter[];
       stock = (page.stock ?? []) as unknown as Stock[];
+      stockValues = (page.stockValues ?? {}) as Record<string, Record<string, number[]>>;
       tutorialSteps = (page.tutorial ?? []) as unknown as TutorialStep[];
       limits = { values: page.maxValues, images: page.maxImages };
       noTemplate = page.noTemplate ?? '';
@@ -107,7 +138,7 @@
       // The list picture of the shader on screen, when it is running.
       const frame = selected && preview ? preview.snapshot() : '';
       if (selected && frame) selected.icon = frame;
-      const res = await App.SaveShaders(shaders as any);
+      const res = await App.SaveShaders(shaders as any, stockValues as any);
       const found = (res.problems ?? []) as Problem[];
       await load();
       problems = found;
@@ -280,6 +311,23 @@
   onMount(load);
 </script>
 
+{#snippet valueControls(p: ShaderParam)}
+  {#if p.kind === 'number' && p.value}
+    <div class="row">
+      <input type="range" class="grow" min={p.min ?? 0} max={p.max ?? 1} step="any" bind:value={p.value[0]} />
+      <input type="number" class="num" step="any" bind:value={p.value[0]} />
+    </div>
+  {:else if p.kind === 'vec2' && p.value}
+    <div class="row">x <input type="number" class="num" step="any" bind:value={p.value[0]} /> y <input type="number" class="num" step="any" bind:value={p.value[1]} /></div>
+  {:else if p.kind === 'colour' && p.value}
+    <div class="row">
+      <input type="color" value={hex(p.value)} oninput={(e) => setColour(p, e.currentTarget.value)} />
+      <span class="muted small">Strength (alpha)</span>
+      <input type="range" class="grow" min="0" max="1" step="0.01" bind:value={p.value[3]} />
+    </div>
+  {/if}
+{/snippet}
+
 <SaveBar {dirty} {saving} onsave={save} onrevert={load}
   leaveMessage="Leave Shaders without saving? Your unsaved changes will be lost."
   revertMessage="Throw away every unsaved change to your shaders?">
@@ -313,11 +361,11 @@
           {:else}
             <p class="muted small empty">{query ? 'Nothing matches.' : 'No shaders of your own yet.'}</p>
           {/each}
-          <div class="grouphead muted small" title="The holo foils foil cards get when nothing else is chosen for them. Duplicate one to change it.">Comes with the mod</div>
+          <div class="grouphead muted small" title="The holo foils foil cards get when nothing else is chosen for them. Change their values here, or duplicate one to change its code.">Comes with the mod</div>
           {#each stock.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase())) as s (s.id)}
             <button class="item" class:active={s.id === selectedId} onclick={() => (selectedId = s.id)}>
-              <span class="thumb blank" style:background="rgb({(s.params[0]?.value ?? [0.3, 0.3, 0.3]).slice(0, 3).map((v) => Math.round(v * 255)).join(',')})"></span>
-              <span class="info"><span class="name">{s.name}</span><span class="sub">stock · read-only</span></span>
+              <span class="thumb blank" style:background="rgb({(s.params.find((p) => p.kind === 'colour')?.value ?? [0.55, 0.55, 0.6]).slice(0, 3).map((v) => Math.round(v * 255)).join(',')})"></span>
+              <span class="info"><span class="name">{s.name}</span><span class="sub">{stockValues[s.id] ? 'stock · your values' : 'stock'}</span></span>
             </button>
           {/each}
         </div>
@@ -442,16 +490,18 @@
           </section>
 
           <aside class="rside">
-            <div class="row">
-              <label class="field grow">Shown on
-                <select bind:value={art}>
-                  {#each covers as c}<option value={c.url}>{c.name}</option>{/each}
-                  {#if !covers.length}<option value={art}>Sample picture</option>{/if}
-                </select>
-              </label>
+            <div class="pin">
+              <div class="row">
+                <label class="field grow">Shown on
+                  <select bind:value={art}>
+                    {#each covers as c}<option value={c.url}>{c.name}</option>{/each}
+                    {#if !covers.length}<option value={art}>Sample picture</option>{/if}
+                  </select>
+                </label>
+              </div>
+              <ShaderPreview bind:this={preview} code={selected.code} params={selected.params ?? []} {art} bind:messages bind:paramError
+                look={{ draws: selected.draws, mix: selected.mix, mixStrength: selected.mixStrength }} />
             </div>
-            <ShaderPreview bind:this={preview} code={selected.code} params={selected.params ?? []} {art} bind:messages bind:paramError
-              look={{ draws: selected.draws, mix: selected.mix, mixStrength: selected.mixStrength }} />
 
             <label class="field">Draws
               <select value={selected.draws ?? ''} onchange={(e) => (selected!.draws = e.currentTarget.value || undefined)}>
@@ -487,20 +537,9 @@
                   </select>
                   <button class="x" title="Remove this parameter" onclick={() => removeParam(i)}>✕</button>
                 </div>
+                {@render valueControls(p)}
                 {#if p.kind === 'number' && p.value}
-                  <div class="row">
-                    <input type="range" class="grow" min={p.min ?? 0} max={p.max ?? 1} step="any" bind:value={p.value[0]} />
-                    <input type="number" class="num" step="any" bind:value={p.value[0]} />
-                  </div>
                   <div class="row muted small">Slider from <input type="number" class="num" step="any" bind:value={p.min} /> to <input type="number" class="num" step="any" bind:value={p.max} /></div>
-                {:else if p.kind === 'vec2' && p.value}
-                  <div class="row">x <input type="number" class="num" step="any" bind:value={p.value[0]} /> y <input type="number" class="num" step="any" bind:value={p.value[1]} /></div>
-                {:else if p.kind === 'colour' && p.value}
-                  <div class="row">
-                    <input type="color" value={hex(p.value)} oninput={(e) => setColour(p, e.currentTarget.value)} />
-                    <span class="muted small">Strength (alpha)</span>
-                    <input type="range" class="grow" min="0" max="1" step="0.01" bind:value={p.value[3]} />
-                  </div>
                 {:else if p.kind === 'image'}
                   <div class="row">
                     {#if p.image}<img class="pimg" src={accFile(p.image)} alt="" />{/if}
@@ -520,23 +559,33 @@
             <div class="row">
               <div class="grow"><b>{viewing.name}</b>
                 <div class="muted small">Comes with the mod: foil versions of {viewing.border} cards are drawn with it unless a set or card chooses
-                  something else. It can't be changed here; duplicate it to get a copy of your own.</div></div>
-              <button class="primary" onclick={() => duplicate(viewing!)}>Duplicate to edit</button>
+                  something else. Its code can't be changed, but its values can: the sliders on the right are what the game uses for this setup
+                  after Save, and <b>Reset values</b> goes back to the mod's own. <b>Duplicate</b> makes a shader of your own with them.</div></div>
+              <button onclick={() => duplicate({ ...viewing!, params: tryParams })}>Duplicate{tried ? ' with these values' : ' to edit'}</button>
             </div>
             <CodeEditor bind:value={stockCode} readonly />
           </section>
           <aside class="rside">
-            <label class="field">Shown on
-              <select bind:value={art}>
-                {#each covers as c}<option value={c.url}>{c.name}</option>{/each}
-                {#if !covers.length}<option value={art}>Sample picture</option>{/if}
-              </select>
-            </label>
-            <ShaderPreview code={viewing.code} params={viewing.params} {art} look={{}} />
-            <h3 class="phead">Its values</h3>
-            <table class="vals small"><tbody>
-              {#each viewing.params as p}<tr><td><code>{p.name}</code></td><td>{p.kind === 'colour' ? hex(p.value) : (p.value ?? []).join(', ')}</td></tr>{/each}
-            </tbody></table>
+            <div class="pin">
+              <label class="field">Shown on
+                <select bind:value={art}>
+                  {#each covers as c}<option value={c.url}>{c.name}</option>{/each}
+                  {#if !covers.length}<option value={art}>Sample picture</option>{/if}
+                </select>
+              </label>
+              <ShaderPreview code={viewing.code} params={tryParams} {art} look={{}} />
+            </div>
+            <div class="row phead">
+              <h3 class="grow">Values{tried ? ' (yours)' : ''}</h3>
+              <button class="small" disabled={!tried} title="Back to the values that come with the mod (Save to use them in the game)"
+                onclick={() => (tryParams = JSON.parse(JSON.stringify(viewing!.params)))}>Reset values</button>
+            </div>
+            {#each tryParams as p, i (i)}
+              <div class="param">
+                <code>{p.name}</code>
+                {@render valueControls(p)}
+              </div>
+            {/each}
           </aside>
         {/key}
       {:else}
@@ -566,7 +615,9 @@
   .info .sub { font-size: 11px; color: var(--muted); }
   .starters { display: flex; flex-direction: column; gap: 4px; }
   .grouphead { padding: 10px 8px 4px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
-  .vals td { padding: 1px 12px 1px 0; }
+  /* The card stays in sight while the parameters under it scroll. */
+  .pin { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; padding: 14px 16px 8px; background: var(--bg);
+    border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
   .starters button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
   .small { font-size: 12px; }
   .clash { display: flex; align-items: center; gap: 10px; }

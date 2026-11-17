@@ -110,6 +110,21 @@ namespace TCGCustomCards.Core
             return result;
         }
 
+        /// <summary>The setup's own values for the stock shaders, from the same library file (empty when none).</summary>
+        public static Dictionary<string, Dictionary<string, List<float>>> LoadStockValues(string setupDir)
+        {
+            var none = new Dictionary<string, Dictionary<string, List<float>>>();
+            if (setupDir == null) return none;
+            string file = Path.Combine(setupDir, FolderName, FileName);
+            if (!File.Exists(file)) return none;
+            try
+            {
+                var lib = JsonConvert.DeserializeObject<AccessoryLibraryDef>(File.ReadAllText(file));
+                return lib?.StockValues != null && lib.SchemaVersion <= AccessoryLibraryDef.CurrentSchemaVersion ? lib.StockValues : none;
+            }
+            catch (Exception) { return none; } // already reported by Load
+        }
+
         /// <summary>Employees from the same library file.</summary>
         public static List<EmployeeDef> LoadEmployees(string setupDir)
         {

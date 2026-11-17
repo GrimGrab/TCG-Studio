@@ -187,11 +187,20 @@ func TestStockFilesCurrent(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	bundle, err := StockBundle(template)
+	bundles, err := StockBundles(template)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(StockJSON()) != string(stockJSONFile) || string(bundle) != string(stockBundleFile) {
+	same := string(StockJSON()) == string(stockJSONFile)
+	for name, b := range bundles {
+		if f, err := stockBundleFiles.ReadFile("stock/" + name); err != nil || string(f) != string(b) {
+			same = false
+		}
+	}
+	if files, _ := stockBundleFiles.ReadDir("stock"); len(files) != len(bundles) {
+		same = false // a bundle no stock shader uses any more
+	}
+	if !same {
 		t.Fatal("internal/cardshader/stock is out of date: run `go run ./cmd/stockshaders` in studio\\ and rebuild the mod")
 	}
 	for _, s := range Stock() {

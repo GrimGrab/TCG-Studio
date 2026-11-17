@@ -25,8 +25,10 @@ type ShadersPage struct {
 	Starters  []cardshader.Starter `json:"starters"`
 	// Tutorial: the steps of the guided tutorial.
 	Tutorial []cardshader.TutorialStep `json:"tutorial"`
-	// Stock: the shaders that come with the mod (read-only; a copy can be edited).
-	Stock []cardshader.StockShader `json:"stock"`
+	// Stock: the shaders that come with the mod, with their stock values (the code is read-only; a copy can be edited).
+	// StockValues: this setup's own values for them (accessory library "stockValues"), which the game uses instead.
+	Stock       []cardshader.StockShader          `json:"stock"`
+	StockValues map[string]map[string][]float64 `json:"stockValues"`
 	MaxValues int                  `json:"maxValues"`
 	MaxImages int                  `json:"maxImages"`
 	// NoTemplate: why this build cannot compile shaders for the game ("" = it can).
@@ -105,6 +107,10 @@ func (a *App) LoadShadersPage() (ShadersPage, error) {
 		return page, err
 	}
 	page.Shaders = append([]setfmt.Shader{}, l.Lib.Shaders...)
+	page.StockValues = cardshader.CleanStockValues(l.Lib.StockValues)
+	if page.StockValues == nil {
+		page.StockValues = map[string]map[string][]float64{}
+	}
 	return page, nil
 }
 
@@ -137,6 +143,7 @@ func (a *App) ListShaders() ([]ShaderChoice, error) {
 		out = append(out, ShaderChoice{ID: s.ID, Name: s.Name, Code: s.Code, Params: s.Params, Draws: s.Draws, Mix: s.Mix, MixStrength: s.MixStrength})
 	}
 	for _, s := range cardshader.Stock() {
+		s = s.WithValues(l.Lib.StockValues[s.ID]) // what the game draws this setup's cards with
 		c := ShaderChoice{ID: s.ID, Name: s.Name, Code: s.Code, BuiltIn: true, Border: s.Border}
 		for _, p := range s.Params {
 			c.Params = append(c.Params, setfmt.ShaderParam{Name: p.Name, Kind: p.Kind, Value: p.Value, Min: p.Min, Max: p.Max})
@@ -206,7 +213,8 @@ func shaderSignature(template []byte, s setfmt.Shader) string {
 
 // SaveShaders stores the page (Save): the whole list. Shaders that left the list are kept in the shared catalog. Every
 // new or changed shader is compiled for the game; one whose code has mistakes is saved all the same and reported.
-func (a *App) SaveShaders(list []setfmt.Shader) (ShaderSaveResult, error) {
+// stockValues: this setup's own values for the stock shaders (stock id → parameter → values; empty = the stock values).
+func (a *App) SaveShaders(list []setfmt.Shader, stockValues map[string]map[string][]float64) (ShaderSaveResult, error) {
 	var res ShaderSaveResult
 	if a.artConverting.Load() {
 		return res, errArtConverting
@@ -295,6 +303,7 @@ func (a *App) SaveShaders(list []setfmt.Shader) (ShaderSaveResult, error) {
 		}
 	}
 	l.Lib.Shaders = list
+	l.Lib.StockValues = cardshader.CleanStockValues(stockValues)
 	if _, err := a.saveLibrary(l); err != nil {
 		return res, err
 	}

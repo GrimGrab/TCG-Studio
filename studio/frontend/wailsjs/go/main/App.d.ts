@@ -315,7 +315,7 @@ export function SaveProjectImage(arg1:string,arg2:string,arg3:string):Promise<st
 
 export function SaveSettings(arg1:main.Settings):Promise<main.Settings>;
 
-export function SaveShaders(arg1:Array<setfmt.Shader>):Promise<main.ShaderSaveResult>;
+export function SaveShaders(arg1:Array<setfmt.Shader>,arg2:Record<string, Record<string, Array<number>>>):Promise<main.ShaderSaveResult>;
 
 export function SaveShopLook(arg1:main.ShopLookSave):Promise<main.ShopLookView>;
 

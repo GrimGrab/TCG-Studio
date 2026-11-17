@@ -329,6 +329,8 @@ namespace TCGCustomCards.Core
         [JsonProperty("decorations")] public List<DecorationDef> Decorations = new List<DecorationDef>();
         [JsonProperty("employees")] public List<EmployeeDef> Employees = new List<EmployeeDef>();
         [JsonProperty("shaders")] public List<ShaderDef> Shaders = new List<ShaderDef>();
+        /// <summary>The setup's own values for the stock shaders (stock id → parameter name → values), used instead of theirs.</summary>
+        [JsonProperty("stockValues")] public Dictionary<string, Dictionary<string, List<float>>> StockValues;
         [JsonIgnore] public string FolderPath;
     }
 

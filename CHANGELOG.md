@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.2.4 - 2026-11-17
+
+Faster holo foils, a new EX foil look, and stock holos you can tune yourself.
+
+- New: EX foil cards get an "Embossed prism" holo: the picture is pressed in as a low relief with a fine diamond texture, and highlights split into rainbow colours.
+- New: change the values of the holo foils that come with the mod. On the Shaders page, pick a stock holo, move the sliders and Save: your foil cards use them in the game (from its next start). Reset values goes back to the mod's own. Duplicate still makes a shader of your own.
+- Changed: new looks for the Base and First Edition holo foils.
+- Changed: the light sweeps over holo cards no longer move when you tilt the card.
+- Fixed: holo foils slowed the game down. Cards far away now drop the holo like the game's own foil does, and each card does much less work per frame.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.2.3 - 2026-11-16
 
 Card shaders now look in the game the way they look in Studio's preview.

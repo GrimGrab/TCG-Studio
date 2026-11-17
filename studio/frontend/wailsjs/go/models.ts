@@ -132,6 +132,7 @@ export namespace cardshader {
 	    border: string;
 	    code: string;
 	    params: StarterParam[];
+	    bundle: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StockShader(source);
@@ -144,6 +145,7 @@ export namespace cardshader {
 	        this.border = source["border"];
 	        this.code = source["code"];
 	        this.params = this.convertValues(source["params"], StarterParam);
+	        this.bundle = source["bundle"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3061,6 +3063,7 @@ export namespace main {
 	    starters: cardshader.Starter[];
 	    tutorial: cardshader.TutorialStep[];
 	    stock: cardshader.StockShader[];
+	    stockValues: Record<string, any>;
 	    maxValues: number;
 	    maxImages: number;
 	    noTemplate: string;
@@ -3075,6 +3078,7 @@ export namespace main {
 	        this.starters = this.convertValues(source["starters"], cardshader.Starter);
 	        this.tutorial = this.convertValues(source["tutorial"], cardshader.TutorialStep);
 	        this.stock = this.convertValues(source["stock"], cardshader.StockShader);
+	        this.stockValues = source["stockValues"];
 	        this.maxValues = source["maxValues"];
 	        this.maxImages = source["maxImages"];
 	        this.noTemplate = source["noTemplate"];

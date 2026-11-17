@@ -15,9 +15,9 @@ namespace TCGCustomCards.Runtime
     /// inputs: the card picture, value slots _P0.._P15 and pictures _Tex0.._Tex3, filled here from the shader's parameters,
     /// and the card's mask picture _Mask. A card with a mask or values of its own (set.json "shaderMask", "shaderParams")
     /// gets a copy of the shader's material with those filled in; every other card shares the shader's one.
-    /// A player's shader comes from the bundle Studio compiled for it; the stock ones share one bundle built into this DLL
-    /// (they share their code and differ in their values). A shader that can't be loaded is reported once and its cards are
-    /// drawn normally.
+    /// A player's shader comes from the bundle Studio compiled for it; the stock ones from bundles built into this DLL (the
+    /// holo looks share one, as they share their code and differ in their values; one with code of its own has its own). A shader that can't be loaded is reported once and its cards are
+    /// drawn normally. A setup can give stock shaders values of its own (library "stockValues"): they replace the stock values.
     /// </summary>
     internal static class CardShaders
     {
@@ -28,8 +28,9 @@ namespace TCGCustomCards.Runtime
         private static Dictionary<string, ShaderDef> _defs;
         private static Dictionary<string, ShaderDef> _stock;
         private static readonly string[] StockByBorder = new string[6];
-        private static Shader _stockShader;
-        private static bool _stockShaderTried;
+        /// <summary>Stock bundles' shaders by bundle name; a null entry = tried and failed.</summary>
+        private static readonly Dictionary<string, Shader> StockShaders = new Dictionary<string, Shader>();
+        private const string HoloBundle = "tcgcc_stock";
         /// <summary>Materials by shader id; a null entry = tried and failed (don't try or report again).</summary>
         private static readonly Dictionary<string, Material> Materials = new Dictionary<string, Material>();
         /// <summary>Materials of cards with a mask or own values, by "shader|set|card" (as many as there are such cards).</summary>
@@ -125,10 +126,12 @@ namespace TCGCustomCards.Runtime
             _stock = new Dictionary<string, ShaderDef>();
             try
             {
+                var own = AccessoryLoader.LoadStockValues(StudioPaths.Setup);
                 using (var s = typeof(CardShaders).Assembly.GetManifestResourceStream("TCGCustomCards.stock-shaders.json"))
                 using (var r = new StreamReader(s))
                     foreach (var def in JsonConvert.DeserializeObject<List<ShaderDef>>(r.ReadToEnd()))
                     {
+                        if (own.TryGetValue(def.Id, out var values) && values != null) UseOwnValues(def, values);
                         _stock[def.Id] = def;
                         if (Enum.TryParse(def.Border, out ECardBorderType border) && (int)border < StockByBorder.Length)
                             StockByBorder[(int)border] = def.Id;
@@ -140,32 +143,53 @@ namespace TCGCustomCards.Runtime
             }
         }
 
-        /// <summary>The one compiled shader all stock shaders use.</summary>
-        private static Shader StockShader()
+        /// <summary>
+        /// The setup's own values for a stock shader (TCG Studio's Shaders page, library "stockValues") in place of the stock
+        /// ones: same parameter, same number of values, never a picture.
+        /// </summary>
+        private static void UseOwnValues(ShaderDef def, Dictionary<string, List<float>> values)
         {
-            if (_stockShaderTried) return _stockShader;
-            _stockShaderTried = true;
+            int used = 0;
+            foreach (var p in def.Params ?? new List<ShaderParamDef>())
+            {
+                if (p == null || p.Kind == ShaderParamDef.Image || p.Name == null || p.Value == null) continue;
+                if (values.TryGetValue(p.Name, out var v) && v != null && v.Count == p.Value.Count)
+                {
+                    p.Value = new List<float>(v);
+                    used++;
+                }
+            }
+            if (used > 0) Plugin.Log.LogInfo($"Stock card shader {def.Label}: {used} value(s) of this setup's own");
+        }
+
+        /// <summary>The compiled shader of a stock bundle (built into this DLL as TCGCustomCards.stockbundle.&lt;name&gt;).</summary>
+        private static Shader StockShader(string name)
+        {
+            if (string.IsNullOrEmpty(name)) name = HoloBundle;
+            if (StockShaders.TryGetValue(name, out var cached)) return cached;
+            Shader shader = null;
             try
             {
-                byte[] bytes;
-                using (var s = typeof(CardShaders).Assembly.GetManifestResourceStream("TCGCustomCards.stock-shaders.bundle"))
-                using (var m = new MemoryStream())
+                using (var s = typeof(CardShaders).Assembly.GetManifestResourceStream("TCGCustomCards.stockbundle." + name))
                 {
-                    s.CopyTo(m);
-                    bytes = m.ToArray();
+                    if (s == null) throw new Exception($"no built-in bundle {name}");
+                    using (var m = new MemoryStream())
+                    {
+                        s.CopyTo(m);
+                        var bundle = AssetBundle.LoadFromMemory(m.ToArray());
+                        shader = bundle != null ? bundle.LoadAllAssets<Shader>().FirstOrDefault(x => x != null && x.name == ShaderName) : null;
+                    }
                 }
-                var bundle = AssetBundle.LoadFromMemory(bytes);
-                _stockShader = bundle != null ? bundle.LoadAllAssets<Shader>().FirstOrDefault(x => x != null && x.name == ShaderName) : null;
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"Stock card shaders: {e.Message}");
+                Plugin.Log.LogError($"Stock card shaders ({name}): {e.Message}");
             }
-            Plugin.Log.LogInfo($"Stock card shaders: {(_stockShader == null ? "could not be loaded: foil cards get no holo" : $"loaded (supported={_stockShader.isSupported})")}");
+            Plugin.Log.LogInfo($"Stock card shaders ({name}): {(shader == null ? "could not be loaded: foil cards using them get no holo" : $"loaded (supported={shader.isSupported})")}");
             // Studio compiles every card shader for a game that draws in linear colour (it converts on the way in and out).
-            if (QualitySettings.activeColorSpace != ColorSpace.Linear)
+            if (StockShaders.Count == 0 && QualitySettings.activeColorSpace != ColorSpace.Linear)
                 Plugin.Log.LogWarning("Card shaders: the game no longer draws in linear colour, so card shaders will look too dark until TCG Studio is updated for it");
-            return _stockShader;
+            return StockShaders[name] = shader;
         }
 
         private static Material Build(ShaderDef def)
@@ -173,7 +197,7 @@ namespace TCGCustomCards.Runtime
             Shader shader;
             if (IsStock(def.Id))
             {
-                shader = StockShader();
+                shader = StockShader(def.Bundle);
                 if (shader == null || !shader.isSupported) return null; // already logged
             }
             else

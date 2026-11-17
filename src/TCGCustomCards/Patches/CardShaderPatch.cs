@@ -140,6 +140,9 @@ namespace TCGCustomCards.Patches
             _set = set;
             _pos = pos;
             _usedBy = set?.Def.Label;
+            _mat = null;
+            _describe = id != null;
+            _shownFrames = 0;
             if (id == null || data == null) { _shownKey = null; return; }
 
             // A card that wasn't showing here a moment ago has just appeared: its own random number and clock start now.
@@ -186,9 +189,14 @@ namespace TCGCustomCards.Patches
         private void LateUpdate()
         {
             if (_id == null || Ui == null || Ui.m_CardFront == null) return;
+            // Far away (Card3dUISpawner's distance cull): the game drops its own foil there, so the shader goes too and the
+            // card shows its plain picture. Without this every custom foil card in the shop ran its shader.
+            if (Ui.m_IsFarDistanceCulled) { Hide(); return; }
             if (_overlay == null)
                 _overlay = _framed ? (Ui.m_CenterFrameImage != null ? Ui.m_CenterFrameImage.transform : null) : Ui.m_CardFront.transform.Find(OverlayName);
-            var mat = Plugin.CardShaders.Value && _overlay != null && _overlay.gameObject.activeSelf ? CardShaders.Get(_id, _usedBy, _set, _pos) : null;
+            Material mat = null;
+            if (Plugin.CardShaders.Value && _overlay != null && _overlay.gameObject.activeSelf)
+                mat = _mat != null ? _mat : (_mat = CardShaders.Get(_id, _usedBy, _set, _pos));
             if (mat == null) { Hide(); return; }
             if (_overlayImage == null) _overlayImage = _overlay.GetComponent<Image>();
             bool over = _draws == ShaderDef.Over;
@@ -217,12 +225,19 @@ namespace TCGCustomCards.Patches
         // ---- what a shader was drawn with, once per shader, version and place (for support: bounded, a line each)
         private static readonly HashSet<string> Described = new HashSet<string>();
         private int _shownFrames;
-        private string _shownFor;
+        private bool _describe;
+        private Material _mat;
 
+        // Runs once per card set on this CardUI (Set), on the third frame it shows, and costs nothing on other frames.
         private void Describe(Material mat)
         {
+            if (!_describe) return;
+            if (Described.Count >= 60) { _describe = false; return; }
+            // Two frames after it first shows: the canvas has built the mesh and picked the material it really draws with.
+            if (++_shownFrames < 3) return;
+            _describe = false;
             var data = Ui.GetCardData();
-            if (data == null || Described.Count >= 60) return;
+            if (data == null) return;
             var canvas = _image.canvas;
             string masks = "";
             for (var t = _image.transform.parent; t != null && (canvas == null || t != canvas.transform.parent); t = t.parent)
@@ -231,9 +246,7 @@ namespace TCGCustomCards.Patches
                 if (t.TryGetComponent<RectMask2D>(out var r) && r.enabled) masks += $" RectMask2D:{t.name}";
             }
             string key = $"{_id}|{data.borderType}|{data.isFoil}|{(canvas != null ? canvas.name : "-")}|{masks}";
-            // Two frames after it first shows: the canvas has built the mesh and picked the material it really draws with.
-            if (_shownFor != key) { _shownFor = key; _shownFrames = 0; }
-            if (++_shownFrames != 3 || !Described.Add(key)) return;
+            if (!Described.Add(key)) return;
             var drawn = _image.materialForRendering;
             var sprite = _image.sprite;
             var rect = _image.rectTransform.rect;

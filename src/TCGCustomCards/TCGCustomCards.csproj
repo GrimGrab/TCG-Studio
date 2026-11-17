@@ -56,7 +56,7 @@
     <EmbeddedResource Include="..\..\studio\internal\customers\default-animations.json" LogicalName="TCGCustomCards.customer-default-animations.json" />
     <!-- The stock card shaders (holo foils): made by `go run ./cmd/stockshaders` in studio\. -->
     <EmbeddedResource Include="..\..\studio\internal\cardshader\stock\stock.json" LogicalName="TCGCustomCards.stock-shaders.json" />
-    <EmbeddedResource Include="..\..\studio\internal\cardshader\stock\tcgcc_stock" LogicalName="TCGCustomCards.stock-shaders.bundle" />
+    <EmbeddedResource Include="..\..\studio\internal\cardshader\stock\tcgcc_stock*" LogicalName="TCGCustomCards.stockbundle.%(Filename)" />
   </ItemGroup>
 
   <!-- BepInPlugin needs a compile-time constant: generate BuildInfo.Version from VERSION. -->

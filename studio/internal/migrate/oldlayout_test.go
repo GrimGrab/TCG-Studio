@@ -43,6 +43,13 @@ func TestOldLayout(t *testing.T) {
 			t.Fatal("not flagged")
 		}
 	})
+	t.Run("the set's fonts folder is not an old art folder", func(t *testing.T) {
+		h, _ := newHome(t)
+		put(t, filepath.Join(h.Root, "library", "dom", "fonts", "almendra-regular.ttf"))
+		if OldLayout(h, "") {
+			t.Fatal("flagged")
+		}
+	})
 	t.Run("a named art folder", func(t *testing.T) {
 		h, _ := newHome(t)
 		put(t, filepath.Join(h.Root, "library", "dom", "my art", "c.png"))

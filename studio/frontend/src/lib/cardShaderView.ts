@@ -141,16 +141,40 @@ export class CardShaderView {
     return t;
   }
 
+  private loading = new Set<Promise<void>>();
+  private loadFailed = false; // a picture asked for since the last idle() didn't load
   private load(url: string, into: WebGLTexture, done?: (img: HTMLImageElement) => void) {
     const img = new Image();
-    img.onload = () => {
-      const gl = this.gl;
-      gl.bindTexture(gl.TEXTURE_2D, into);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      done?.(img);
-      this.draw();
-    };
+    const p = new Promise<void>((resolve) => {
+      img.onload = () => {
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, into);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        done?.(img);
+        this.draw();
+        resolve();
+      };
+      img.onerror = () => { this.loadFailed = true; resolve(); };
+    });
+    this.loading.add(p);
+    p.then(() => this.loading.delete(p));
     img.src = url;
+  }
+
+  /** Resolves once every picture asked for so far has loaded or failed: true when all of them loaded since the last call
+   *  (false = a texture may still hold an earlier picture). */
+  async idle(): Promise<boolean> {
+    while (this.loading.size) await Promise.all([...this.loading]);
+    const ok = !this.loadFailed;
+    this.loadFailed = false;
+    return ok;
+  }
+
+  /** Stops the clock at a moment (seconds), for a still frame. */
+  freeze(seconds: number) {
+    const now = performance.now();
+    this.started = now - seconds * 1000;
+    this.pausedAt = now;
   }
 
   /** The card picture the shader is shown on. */
@@ -160,6 +184,7 @@ export class CardShaderView {
 
   /** The card's mask picture (cardMask); '' = none: white everywhere. */
   setMask(url: string) {
+    if (this.mask) this.gl.deleteTexture(this.mask);
     if (!url) { this.mask = null; this.draw(); return; }
     const t = this.texture();
     this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, 1, 1, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
@@ -334,13 +359,13 @@ export class CardShaderView {
   stop() { cancelAnimationFrame(this.raf); }
 
   /** The current frame as a small PNG (data URL) for lists. */
-  snapshot(width = 150): string {
+  snapshot(width = 150, type = 'image/png', quality?: number): string {
     this.draw();
     const out = document.createElement('canvas');
     out.width = width;
     out.height = Math.round((width * this.canvas.height) / this.canvas.width);
     out.getContext('2d')!.drawImage(this.canvas, 0, 0, out.width, out.height);
-    return out.toDataURL('image/png');
+    return out.toDataURL(type, quality);
   }
 
   dispose() {

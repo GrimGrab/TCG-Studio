@@ -251,7 +251,7 @@
         <span class="muted small">(turn off when your picture already has a name or logo)</span></label>
       {#if draft.showName}
         <div class="sign-text">
-          <FontPicker {fonts} current={draft.font.name} defaultLabel="Game default (Fredoka One)" onpick={pickFont} />
+          <FontPicker {fonts} current={draft.font.name} currentUrl={draft.font.url} defaultLabel="Game default (Fredoka One)" onpick={pickFont} />
           <TextStyle bind:style={draft.style} defaultColor="#ffd23c" defaultLabel="game gold" />
           <button class="small" onclick={gameLook}
             disabled={!draft.font.file && !draft.style.color && draft.style.size === 1 && !draft.style.outline}>Game look</button>

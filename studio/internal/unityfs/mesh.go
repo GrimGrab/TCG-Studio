@@ -23,8 +23,8 @@ type Mesh struct {
 	UV2    [][2]float32 // second UV channel (empty when the mesh has none)
 	Subs   [][]uint32   // triangle vertex indices per submesh (base vertex applied)
 	Shapes []BlendShape
-	// Skinning (skinned meshes only): per bone of the renderer's m_Bones its bind pose (mesh space → bone space, column-major
-	// like Unity's Matrix4x4 storage), and per vertex up to 4 bone indices with weights.
+	// Skinning (skinned meshes only): per bone of the renderer's m_Bones its bind pose (mesh space → bone space, row-major as
+	// serialized: e00 e01 e02 e03 e10 …, the translation in [3], [7], [11]), and per vertex up to 4 bone indices with weights.
 	BindPoses  [][16]float32
 	Joints     [][4]uint16
 	Weights    [][4]float32

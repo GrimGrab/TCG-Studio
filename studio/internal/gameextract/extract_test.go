@@ -13,6 +13,7 @@ import (
 
 	"strconv"
 	"strings"
+	"tcgstudio/internal/packmesh"
 	"tcgstudio/internal/unityfs"
 )
 
@@ -40,6 +41,114 @@ func TestExtract(t *testing.T) {
 	}
 	checkClothes(t, out)
 	checkCharacters(t, out)
+	checkPackOpen(t, out)
+}
+
+// The pack models: the fixed shelf pack, and both pack-opening packs with every list as long as its vertex count says, bone
+// weights summing to 1, the 7 bones of the game's opening model, more triangles than the model had (the outside is cut along
+// the shelf pack's).
+func checkPackOpen(t *testing.T, out string) {
+	if _, err := os.Stat(filepath.Join(out, "accessories", "CardPackStaticMesh_low"+FixedShelfSuffix+".obj")); err != nil {
+		t.Fatalf("fixed shelf pack: %v", err)
+	}
+	for _, file := range []string{PackOpenFile, PackOpenFixedFile} {
+		checkPackOpenFile(t, out, file)
+	}
+}
+
+func checkPackOpenFile(t *testing.T, out, file string) {
+	var f PackOpen
+	b, err := os.ReadFile(filepath.Join(out, "accessories", file))
+	if err != nil || json.Unmarshal(b, &f) != nil {
+		t.Fatalf("%s: %v", file, err)
+	}
+	n := len(f.Positions) / 3
+	if f.Version != PackOpenVersion || len(f.Bones) != 7 || len(f.BoneParents) != 7 || len(f.BindPoses) != 16*7 ||
+		len(f.Normals) != 3*n || len(f.UVs) != 2*n || len(f.BoneIndices) != 4*n || len(f.BoneWeights) != 4*n || len(f.Triangles) < 3*1950 {
+		t.Fatalf("%s: version %d, %d bones, %d vertices, %d triangles", file, f.Version, len(f.Bones), n, len(f.Triangles)/3)
+	}
+	for i := 0; i < n; i++ {
+		sum := float32(0)
+		for k := 0; k < 4; k++ {
+			if j := f.BoneIndices[4*i+k]; j < 0 || j >= len(f.Bones) {
+				t.Fatalf("vertex %d: bone %d", i, j)
+			}
+			sum += f.BoneWeights[4*i+k]
+		}
+		if sum < 0.999 || sum > 1.001 {
+			t.Fatalf("vertex %d: weights sum to %v", i, sum)
+		}
+	}
+	for _, x := range f.Triangles {
+		if x < 0 || x >= n {
+			t.Fatalf("triangle index %d of %d vertices", x, n)
+		}
+	}
+	checkCrimpsDontCross(t, file, f)
+	t.Logf("%s (from %s): %d vertices, %d triangles, bones %v", file, f.Shelf, n, len(f.Triangles)/3, f.Bones)
+}
+
+// checkCrimpsDontCross: folded shut, the closed pack's crimps show their printed layer from the front and the back, never the
+// inside layer (packmesh.Unpinch: in the open sheet the crimps step back further than the closed pack is thick, so they crossed
+// and the crimp tips showed the other half's grey inside).
+func checkCrimpsDontCross(t *testing.T, file string, f PackOpen) {
+	var m packmesh.Mesh
+	for i := 0; i < len(f.Positions)/3; i++ {
+		m.Pos = append(m.Pos, packmesh.Vec3{float64(f.Positions[3*i]), float64(f.Positions[3*i+1]), float64(f.Positions[3*i+2])})
+		m.Norm = append(m.Norm, packmesh.Vec3{float64(f.Normals[3*i]), float64(f.Normals[3*i+1]), float64(f.Normals[3*i+2])})
+		m.Joints = append(m.Joints, [4]int{f.BoneIndices[4*i], f.BoneIndices[4*i+1], f.BoneIndices[4*i+2], f.BoneIndices[4*i+3]})
+		var w [4]float64
+		for k := range 4 {
+			w[k] = float64(f.BoneWeights[4*i+k])
+		}
+		m.Weights = append(m.Weights, w)
+	}
+	for i := 0; i+2 < len(f.Triangles); i += 3 {
+		m.Tris = append(m.Tris, [3]int{f.Triangles[i], f.Triangles[i+1], f.Triangles[i+2]})
+	}
+	bones := make([]packmesh.Bone, len(f.Bones))
+	for i, name := range f.Bones {
+		bones[i] = packmesh.Bone{Name: name, Parent: f.BoneParents[i]}
+		for k := range 16 {
+			bones[i].Bind[k] = float64(f.BindPoses[16*i+k])
+		}
+	}
+	pos, nrm, err := packmesh.Fold(m, bones)
+	if err != nil {
+		t.Fatalf("%s: %v", file, err)
+	}
+	// The print faces +z at rest: the closed pack's front is seen from +z, its back from -z.
+	for _, side := range []float64{1, -1} {
+		for _, y := range []float64{0.55, 0.6, 0.64, 0.66, -0.55, -0.6, -0.64, -0.66} {
+			for _, x := range []float64{-0.25, -0.1, 0.1, 0.25} {
+				best, bz := -1, math.Inf(-1)
+				for ti, tr := range m.Tris {
+					a, b, c := pos[tr[0]], pos[tr[1]], pos[tr[2]]
+					den := (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1])
+					if math.Abs(den) < 1e-12 || side*(nrm[tr[0]][2]+nrm[tr[1]][2]+nrm[tr[2]][2]) <= 0 {
+						continue // edge-on, or facing away (culled)
+					}
+					w0 := ((b[1]-c[1])*(x-c[0]) + (c[0]-b[0])*(y-c[1])) / den
+					w1 := ((c[1]-a[1])*(x-c[0]) + (a[0]-c[0])*(y-c[1])) / den
+					w2 := 1 - w0 - w1
+					if w0 < 0 || w1 < 0 || w2 < 0 {
+						continue
+					}
+					if z := side * (w0*a[2] + w1*b[2] + w2*c[2]); z > bz {
+						bz, best = z, ti
+					}
+				}
+				if best < 0 {
+					continue
+				}
+				tr := m.Tris[best]
+				if m.Norm[tr[0]][2]+m.Norm[tr[1]][2]+m.Norm[tr[2]][2] < 0 {
+					t.Errorf("%s: the closed pack shows its inside layer at x %+.2f y %+.2f from the %s (the crimps cross)",
+						file, x, y, map[float64]string{1: "front", -1: "back"}[side])
+				}
+			}
+		}
+	}
 }
 
 // The face editor's characters: both bodies with their parts, hair slots and presets, and the face sliders in the body mesh.

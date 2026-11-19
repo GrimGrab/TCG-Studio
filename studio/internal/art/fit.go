@@ -176,7 +176,7 @@ func GenerateCardBack(resolve func(string) string, colorHex, title, out string) 
 	art := image.NewNRGBA(backArt)
 	gradient(art, art.Bounds(), shade(base, 1.2), shade(base, 0.5))
 	if resolve != nil {
-		drawIcon(art, loadIcon(resolve, ""), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
+		drawIcon(art, loadIcon(resolve), image.Pt(art.Bounds().Dx()/2, art.Bounds().Dy()/2-40), 340, 235)
 	}
 	if title != "" {
 		drawText(art, func(s float64) fontFace { return newFace(s) }, title, image.Rect(40, art.Bounds().Dy()-250, art.Bounds().Dx()-40, art.Bounds().Dy()-70), 70, color.White)

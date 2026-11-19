@@ -3,13 +3,17 @@
   // studio.json (project.meta.packArt[packId].pack|box), so every edit is part of the set's draft. The composed texture + icon
   // are written under new names and the pack points at them (flush) before the set's Save and before closing the editor or
   // switching pack/box/tab; there is no separate Apply. Nothing reaches the game before the set's Save.
-  import { App, projectFile, errText, ask } from '../../lib/api';
+  import { App, EventsOn, projectFile, errText, ask } from '../../lib/api';
+  import { Ev } from '../../lib/events';
   import { templateFile } from '../../lib/urls';
-  import { applySmartArt, boxFromPackArt, hasOwnLayers, packIconFromTexture, type SmartSources } from '../../lib/smartArt';
+  import { applyClassicArt, applySmartArt, boxFromPackArt, hasOwnLayers, type SmartSources } from '../../lib/smartArt';
   import SmartGenerate from './SmartGenerate.svelte';
   import { newLayout, edgeColors, loadImage, type Layout, type Model } from '../../lib/accessoryArt';
   import AccessoryEditor from '../AccessoryEditor.svelte';
   import ProductPhotos from './ProductPhotos.svelte';
+  import FontPicker from '../FontPicker.svelte';
+  import { fontFile } from '../../lib/urls';
+  import { fontFamily } from '../../lib/shopLook';
 
   let { project, pack, notify, onapplied, hooks, rebaseArt }: {
     project: any; pack: any; notify: (t: string, k?: string) => void; onapplied: () => void;
@@ -33,6 +37,14 @@
   let classicTitle = $state('');
   let classicFront = $state('');
   let classicTitleOnImage = $state(false);
+  let classicFont = $state<{ source: string; id: string; name: string } | null>(null); // null = Studio's bold
+  // The title strip under the options shows the chosen font and colour as the generator will draw them.
+  let classicFamily = $state('');
+  $effect(() => {
+    const f = classicFont;
+    classicFamily = '';
+    if (f) fontFamily(fontFile(f)).then((fam) => { if (classicFont === f) classicFamily = fam; }).catch(() => {});
+  });
   $effect(() => { App.DefaultArtColor(project.id).then((c: string) => (classicColor = c)).catch(() => {}); });
 
   $effect(() => {
@@ -50,27 +62,42 @@
     for (const k of ['Pack', 'Box'])
       if (!models[k]) App.AccessoryModel(k).then((m: any) => (models[k] = m)).catch((e: unknown) => notify(errText(e), 'error'));
   });
+  // Studio read the game files again: load the models anew (the editor reloads its meshes with the new model).
+  $effect(() => EventsOn(Ev.TemplatesReady, () => { models = {}; }));
 
   // Packs switch (the tab keeps this component): close the editor so the next pack starts fresh.
   let lastPack = '';
   $effect(() => { if (pack.id !== lastPack) { lastPack = pack.id; open = false; } });
 
-  function ensureLayout() {
+  /** The editor shows the pack's art as it is. Without a design yet, or when the art was made elsewhere since its design
+   *  last produced it (classic generator, Smart generate's simple design, an import, a picture of your own), it starts from a
+   *  snapshot of the current art; only a pack with no art starts from the vanilla one. */
+  async function ensureLayout() {
     project.meta ??= {};
     project.meta.packArt ??= {};
     project.meta.packArt[pack.id] ??= {};
-    if (!project.meta.packArt[pack.id][which]) {
-      const l = newLayout();
-      l.baseItem = which === 'pack' ? 'BasicCardPack' : 'BasicCardBox';
-      project.meta.packArt[pack.id][which] = l;
-    }
+    const cur: Layout | undefined = project.meta.packArt[pack.id][which];
+    const art: string = (which === 'pack' ? pack.packTexture : pack.boxTexture) ?? '';
+    const changedElsewhere = !!cur?.madeTexture && !!art && cur.madeTexture !== art;
+    if (cur && !changedElsewhere) return;
+    if (cur && hasOwnLayers(cur) && !(await ask(`This ${which}'s art was changed outside the 3D editor. Start the editor from the current art? `
+      + `(Your earlier layers are removed. No = keep them: your next edit then replaces the current art.)`))) return;
+    const l = newLayout();
+    if (art) {
+      l.baseFile = await App.SnapshotPackBase(project.id, pack.id, which, art);
+      l.baseItem = 'file';
+      l.madeTexture = art;
+      bust = Date.now();
+    } else l.baseItem = which === 'pack' ? 'BasicCardPack' : 'BasicCardBox';
+    project.meta.packArt[pack.id][which] = l;
+    rebaseArt?.(pack.id, which, project.meta.packArt[pack.id][which]); // opening the editor alone is no unsaved change
   }
 
   async function show(w: 'pack' | 'box') {
     if (open && w === which) return;
     await flush();
     which = w;
-    ensureLayout();
+    try { await ensureLayout(); } catch (e) { notify(errText(e), 'error'); return; }
     open = true;
   }
 
@@ -104,6 +131,7 @@
     const r = await App.SavePackArt(project.id, pack.id, which, texture, icon);
     if (which === 'pack') { pack.packTexture = r.texture; pack.packIcon = r.icon; }
     else { pack.boxTexture = r.texture; pack.boxIcon = r.icon; }
+    project.meta.packArt[pack.id][which].madeTexture = r.texture; // the art is this design's again
     pending = false;
     onapplied();
   }
@@ -183,19 +211,23 @@
     } catch (e) { notify(errText(e), 'error'); }
   }
 
-  /** Classic generate: renders the pack and box textures + icons straight from the game templates (Save puts them in the game). */
+  /** Classic generate: the classic design as face layers (lib/smartArt applyClassicArt), like Smart generate's, so every face
+   *  is covered and the 3D editor opens on them. The chosen font is copied into the set (its text layers name it). Save puts
+   *  the art in the game. */
   async function runClassic() {
+    const art = project.meta?.packArt?.[pack.id];
+    if ((hasOwnLayers(art?.pack) || hasOwnLayers(art?.box)) &&
+      !(await ask('Replace the art of this pack and its box? The layers you made in the 3D editor are removed.'))) return;
     try {
       await flush();
       open = false;
       generating = 'Generating…';
-      const r = await App.GeneratePackArt(project.id, pack.id,
-        { color: classicColor, title: classicTitle, icon: '', filePrefix: '', frontImage: classicFront, titleOnImage: classicTitleOnImage } as any);
-      pack.packTexture = r.packTexture; pack.packIcon = r.packIcon; pack.boxTexture = r.boxTexture; pack.boxIcon = r.boxIcon;
-      await packIconFromTexture(project.id, pack, models.Pack ?? (await App.AccessoryModel('Pack') as any));
+      const font = classicFont ? await App.ImportSetFont(project.id, classicFont.source, classicFont.id) : '';
+      await applyClassicArt(project, pack, { color: classicColor, title: classicTitle || project.set.name, front: classicFront,
+        titleOnFront: classicTitleOnImage, font }, models.Pack && models.Box ? { pack: models.Pack, box: models.Box } : undefined);
       onapplied();
       classicOpen = false;
-      notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated — Save to put it in the game.');
+      notify('Pack' + (pack.hasBox ? ' and box' : '') + ' art generated — open the 3D editor to change any part, then Save.');
     } catch (e) { notify(errText(e), 'error'); }
     generating = '';
   }
@@ -245,7 +277,13 @@
     <div class="row gen">
       <label class="field">Color<input type="color" bind:value={classicColor} /></label>
       <label class="field grow">Title on the pack<input bind:value={classicTitle} placeholder={project.set.name} /></label>
+      <FontPicker pickFiles {notify} current={classicFont?.name ?? ''} currentUrl={classicFont ? fontFile(classicFont) : ''}
+        selected={classicFont} defaultLabel="Studio bold (default)" sample={classicTitle || project.set.name || 'Booster'}
+        onpick={(source, id, name) => (classicFont = source ? { source, id, name } : null)} />
       <button class="primary" disabled={!!generating} onclick={runClassic}>{generating ? 'Generating…' : 'Generate pack & box art'}</button>
+    </div>
+    <div class="titleprev" style="--c:{classicColor}">
+      <span style:font-family={classicFamily ? `"${classicFamily}", sans-serif` : ''} class:builtin={!classicFont}>{(classicTitle || project.set.name || 'Booster')}</span>
     </div>
     <div class="row">
       <span class="muted small">Pack front:</span>
@@ -259,8 +297,8 @@
       {/if}
       <button class="small" onclick={pickClassicFront}>Use my own image…</button>
     </div>
-    <p class="muted small">Replaces this pack's and box's images. The 3D editor keeps its own layers: to build on the classic art there,
-      set "Start from" to "This pack's current art".</p>
+    <p class="muted small">Builds this pack and its box as layers — colour on every face, the set icon or your picture, the
+      title — that you can change one by one in the 3D editor.</p>
   </div>
 {/if}
 {#if smartOpen}
@@ -292,6 +330,7 @@
     <AccessoryEditor bind:this={editor} {kind} {vanillaUrl} bind:layout={project.meta.packArt[pack.id][which]}
       {notify} onchange={() => (pending = true)} onbaseline={() => rebaseArt?.(pack.id, which, project.meta.packArt[pack.id][which])} imageUrl={(rel) => projectFile(project.id, rel)} {pickImage}
       saveImage={(name, png) => App.SaveProjectImage(project.id, name, png)}
+      importFont={(source, id) => App.ImportSetFont(project.id, source, id)}
       defaultText={which === 'pack' ? (project.set.name || 'BOOSTER').toUpperCase() : 'BOOSTER BOX'} />
   {/key}
   {#if photos}<ProductPhotos projectId={project.id} {which} onpick={usePhoto} oncancel={() => (photos = false)} />{/if}
@@ -304,4 +343,8 @@
   .gen { align-items: flex-end; }
   .gen input[type="color"] { width: 60px; height: 32px; padding: 2px; }
   .front-thumb { height: 48px; border-radius: 4px; }
+  .titleprev { display: flex; align-items: center; justify-content: center; min-height: 72px; padding: 10px 18px; border-radius: 6px;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--c) 85%, white), var(--c) 55%, color-mix(in srgb, var(--c) 60%, black)); }
+  .titleprev span { color: #fff; font-size: 34px; line-height: 1.1; text-align: center; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6); }
+  .titleprev .builtin { font-family: "Segoe UI", system-ui, sans-serif; font-weight: 700; }
 </style>

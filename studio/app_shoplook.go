@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tcgstudio/internal/art"
 	"tcgstudio/internal/fontname"
@@ -467,8 +466,7 @@ func (a *App) ImportShopFont(source, id string) (ShopFile, error) {
 		}
 	case "file":
 		var err error
-		from, err = runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "Choose a font",
-			Filters: []runtime.FileFilter{{DisplayName: "Fonts (*.ttf, *.otf)", Pattern: "*.ttf;*.otf"}}})
+		from, err = a.chooseFontFile()
 		if err != nil || from == "" {
 			return ShopFile{}, nil
 		}

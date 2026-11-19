@@ -5,10 +5,11 @@
 import { App, projectFile } from './api';
 import { templateFile } from './urls';
 import {
-  composeIcon, meshIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderTexture, shownArea, shownNet,
+  textureIcon, dominantColors, edgeColors, layerId, loadImage, netScale, newLayout, renderTexture, shownArea, shownNet,
   type Layer, type Layout, type Model,
 } from './accessoryArt';
 import { rectify, type Pt } from './perspective';
+import { fontFamily } from './shopLook';
 
 const AUTO = 'Auto: ';
 
@@ -191,6 +192,25 @@ function shade(hex: string, f: number): string {
   return '#' + [16, 8, 0].map((s) => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f))).toString(16).padStart(2, '0')).join('');
 }
 
+type Saver = (part: string, c: HTMLCanvasElement) => Promise<string>;
+
+/** The set icon on a background colour: one-colour SVG icons become white on dark and near-black on light packaging;
+ *  colour logos (PNG) stay as they are. null without an icon. */
+async function iconMaker(projectId: string, iconRel: string, save: Saver) {
+  const icon = iconRel ? await loadImage(projectFile(projectId, iconRel)).catch(() => null) : null;
+  const cache: Record<string, { rel: string; pic: Picture }> = {};
+  return async (bg: string) => {
+    if (!icon) return null;
+    if (!iconRel.endsWith('.svg')) return { rel: iconRel, pic: icon as Picture };
+    const tone = lum(bg) < 0.55 ? 'light' : 'dark';
+    if (!cache[tone]) {
+      const pic = silhouette(icon, tone === 'light' ? '#f4f4f4' : '#161616');
+      cache[tone] = { rel: await save('icon_' + tone, pic), pic };
+    }
+    return cache[tone];
+  };
+}
+
 // ---------------------------------------------------------------- generate
 
 interface SmartResult { pack: Layout; box: Layout; notes: string[] }
@@ -206,20 +226,7 @@ async function smartGenerate(job: Job): Promise<SmartResult> {
   const save = (part: string, c: HTMLCanvasElement) => App.SaveAutoArt(projectId, job.packId, part, c.toDataURL('image/png'));
   const notes = [...(src.notes ?? [])];
 
-  const icon = src.icon ? await loadImage(url(src.icon)).catch(() => null) : null;
-  // The icon on a background colour: one-colour SVG icons become white on dark and near-black on light packaging;
-  // colour logos (PNG) stay as they are.
-  const iconCache: Record<string, { rel: string; pic: Picture }> = {};
-  const iconOn = async (bg: string) => {
-    if (!icon) return null;
-    if (!src.icon.endsWith('.svg')) return { rel: src.icon, pic: icon };
-    const tone = lum(bg) < 0.55 ? 'light' : 'dark';
-    if (!iconCache[tone]) {
-      const pic = silhouette(icon, tone === 'light' ? '#f4f4f4' : '#161616');
-      iconCache[tone] = { rel: await save('icon_' + tone, pic), pic };
-    }
-    return iconCache[tone];
-  };
+  const iconOn = await iconMaker(projectId, src.icon, save);
   const arts: HTMLCanvasElement[] = [];
   for (const c of src.cards ?? []) {
     try { arts.push(crop(await loadImage(url(c.image)), c.window)); } catch { /* missing image */ }
@@ -332,51 +339,145 @@ async function renderLayout(projectId: string, m: Model, layout: Layout): Promis
   const vanilla = await loadImage(templateFile('game', b.texture));
   const S = netScale(m), net = document.createElement('canvas');
   const tex = (await renderTexture(m, layout, vanilla, null, (rel) => projectFile(projectId, rel), S, net))();
-  const icon = m.icon === 'pack' ? await meshIcon(m, tex) : composeIcon(m, net, S, 512, 512).toDataURL('image/png');
+  const icon = await textureIcon(m, tex, net, S); // the same icon the editor makes
   return { texture: tex.toDataURL('image/png'), icon };
 }
 
-/** Re-renders a pack's shop icon from its texture file on the game mesh (after the Go generator, whose icon is the vanilla
- *  pack picture with the front pasted in) and points the pack at it. */
-export async function packIconFromTexture(projectId: string, pack: any, m: Model) {
-  const img = await loadImage(projectFile(projectId, pack.packTexture));
-  const c = document.createElement('canvas');
-  c.width = img.width; c.height = img.height;
-  c.getContext('2d')!.drawImage(img, 0, 0);
-  const f = await App.SavePackArt(projectId, pack.id, 'pack', c.toDataURL('image/png'), await meshIcon(m, c));
-  pack.packTexture = f.texture; pack.packIcon = f.icon;
+// ---------------------------------------------------------------- classic design
+
+/** The classic generator's choices: packaging colour, title, an own front picture (set file, '' = the set icon) with or
+ *  without the title on it, a font (set file, '' = Studio's bold); noText = no words on the pack (Smart's fallback). */
+export interface ClassicOptions { color: string; title: string; front: string; titleOnFront: boolean; font: string; noText?: boolean }
+
+/** Lighter or darker shade of a colour (f > 1 = towards white). */
+function tint(hex: string, f: number): string {
+  if (f <= 1) return shade(hex, f);
+  const n = parseInt(hex.slice(1), 16), k = f - 1;
+  return '#' + [16, 8, 0].map((s) => { const v = (n >> s) & 255; return Math.round(v + (255 - v) * k).toString(16).padStart(2, '0'); }).join('');
 }
 
-/** Builds and applies one pack's art from its sources (automatic, or picked and adjusted in the dialog): stores the
- *  layouts in meta.packArt, writes the textures and icons and points the pack at them. Nothing to build from → the simple
- *  generator's design (colour + set icon, no text). The caller saves the project. Returns the notes. */
-export async function applySmartArt(project: any, pack: any, src: SmartSources, models?: { pack: Model; box: Model }): Promise<string[]> {
-  const [packModel, boxModel] = models ? [models.pack, models.box]
-    : (await Promise.all([App.AccessoryModel('Pack'), App.AccessoryModel('Box')])) as unknown as Model[];
+/** A text layer sized to fit a part of a face, measured in its font (text() estimates the width of Studio's bold). */
+function fittedText(m: Model, name: string, t: string, face: string, part: Part, maxH: number, emWidth: number, font: string): Layer {
+  const h = Math.min(maxH, (part[2] * aspectOf(m, face)) / Math.max(0.5, emWidth));
+  return placeAt({ ...base(name, 'text'), text: t, color: '#ffffff', outline: '#000000', ...(font ? { font } : {}) },
+    shownNet(faceOf(m, face)), [part[0], part[1] + part[3] / 2 - h / 2, part[2], h]);
+}
+
+/** The classic design — colour on every face, the set icon or your own front picture, the title and "BOOSTER BOX" — as face
+ *  layers like Smart generate's, so every face is covered and the 3D editor can change any part. */
+async function classicGenerate(job: { projectId: string; packId: string; cards: number; packModel: Model; boxModel: Model },
+  o: ClassicOptions): Promise<SmartResult> {
+  const { projectId } = job;
+  const save: Saver = (part, c) => App.SaveAutoArt(projectId, job.packId, part, c.toDataURL('image/png'));
+  // The set's own icon, as Smart generate finds it.
+  let iconRel = '';
+  for (const rel of ['images/set_icon.svg', 'images/set_logo.png']) {
+    if (await loadImage(projectFile(projectId, rel)).then(() => true, () => false)) { iconRel = rel; break; }
+  }
+  const iconOn = await iconMaker(projectId, iconRel, save);
+  // Width of a text in em of the chosen font (Studio's bold when there's none or it can't load).
+  const fam = o.font ? await fontFamily(projectFile(projectId, o.font)).catch(() => '') : '';
+  const meter = canvas(1, 1).getContext('2d')!;
+  meter.font = fam ? `100px "${fam}"` : 'bold 100px Nunito, "Segoe UI", sans-serif';
+  const em = (t: string) => meter.measureText(t).width / 100;
+  const font = fam ? o.font : '';
+  const top = tint(o.color, 1.25), bottom = shade(o.color, 0.55);
+  const title = (o.title || 'BOOSTER').toUpperCase();
+
+  // ---- pack
+  const P = job.packModel, pack = newLayout();
+  pack.baseItem = 'BasicCardPack';
+  pack.layers.push(fill(P, 'crimps', 'crimpTop', top), fill(P, 'crimps (bottom)', 'crimpBottom', bottom),
+    fill(P, 'front', 'front', top, bottom), fill(P, 'back', 'back', top, bottom),
+    fill(P, 'edges', 'edges', top, bottom), fill(P, 'seam', 'seam', top, bottom));
+  const frontPic = o.front ? await loadImage(projectFile(projectId, o.front)).catch(() => null) : null;
+  if (frontPic) pack.layers.push(image(P, 'front picture', await save('packfront', cover(frontPic, aspectOf(P, 'front'))), 'front'));
+  else {
+    const ic = await iconOn(o.color);
+    if (ic) pack.layers.push(contain(P, 'icon', ic.rel, ic.pic, 'front', 1, 1, [0.14, 0.3, 0.72, 0.42]));
+  }
+  if (!o.noText && (!frontPic || o.titleOnFront)) {
+    pack.layers.push(fittedText(P, 'title', title, 'front', [0.06, 0.05, 0.88, 0.2], 0.12, em(title), font));
+    if (!frontPic) {
+      const n = `${job.cards} CARDS`;
+      pack.layers.push(fittedText(P, 'card count', n, 'front', [0.25, 0.8, 0.5, 0.1], 0.06, em(n), font));
+    }
+  }
+  const backIcon = await iconOn(o.color);
+  if (backIcon) pack.layers.push(contain(P, 'back icon', backIcon.rel, backIcon.pic, 'back', 0.45, 0.9));
+
+  // ---- box: front, top and one side made, the opposite faces get copies (every face covered, like Smart generate)
+  const B = job.boxModel, box = newLayout();
+  box.baseItem = 'BasicCardBox';
+  box.layers.push(fill(B, 'front', 'front', top, bottom), fill(B, 'top', 'top', top, bottom), fill(B, 'sides', 'right', top, bottom));
+  if (frontPic) box.layers.push(image(B, 'front picture', await save('boxfront', cover(frontPic, aspectOf(B, 'front'))), 'front', 0.9));
+  const boxIcon = await iconOn(o.color);
+  if (boxIcon && !frontPic) box.layers.push(contain(B, 'icon', boxIcon.rel, boxIcon.pic, 'front', 1, 1, [0.3, 0.45, 0.4, 0.45]));
+  box.layers.push(fittedText(B, 'title', title, 'front', [0.05, 0.06, 0.9, 0.22], 0.14, em(title), font));
+  box.layers.push(fittedText(B, 'booster box', 'BOOSTER BOX', 'front', [0.2, 0.3, 0.6, 0.12], 0.08, em('BOOSTER BOX'), font));
+  box.layers.push(fittedText(B, 'top title', title, 'top', [0.06, 0.25, 0.88, 0.5], 0.4, em(title), font));
+  if (boxIcon) box.layers.push(contain(B, 'side icon', boxIcon.rel, boxIcon.pic, 'right', 0.6, 0.9));
+  box.layers.push(...onOpposite(B, box.layers, 'front', 'back'), ...onOpposite(B, box.layers, 'right', 'left'), ...onOpposite(B, box.layers, 'top', 'bottom'));
+  return { pack, box, notes: [] };
+}
+
+const BACKING = 'backing colour';
+
+/** Puts one colour under everything, on the texture itself (a map layer over the whole texture): the face areas leave
+ *  hairline seams between them (pack: beside the front, the back seam, where the crimps meet), where the vanilla print
+ *  would show as thin lines along the sides. No face is stretched over another. Colour = the design's first fill's. */
+function withBacking(m: Model, layout: Layout) {
+  if (layout.layers.some((l) => l.name === AUTO + BACKING)) return;
+  const f = layout.layers.find((l) => l.kind === 'fill');
+  if (!f) return;
+  const s = m.textureSize;
+  layout.layers.unshift({ ...base(BACKING, 'fill'), space: 'texture', x: s / 2, y: s / 2, w: s, h: s, color: f.color2 || f.color });
+}
+
+const loadModels = async (models?: { pack: Model; box: Model }) => models ? [models.pack, models.box]
+  : (await Promise.all([App.AccessoryModel('Pack'), App.AccessoryModel('Box')])) as unknown as Model[];
+
+/** Stores a pack's designs in meta.packArt, writes their textures and icons and points the pack at them (the 3D editor then
+ *  opens on these layers). The caller saves the project. */
+async function applyLayouts(project: any, pack: any, r: SmartResult, packModel: Model, boxModel: Model) {
+  withBacking(packModel, r.pack);
+  withBacking(boxModel, r.box);
   project.meta ??= {};
   project.meta.packArt ??= {};
-  let r: SmartResult;
-  try {
-    r = await smartGenerate({ projectId: project.id, packId: pack.id, title: project.set.name || 'BOOSTER', src, packModel, boxModel });
-  } catch (e) {
-    if (!(e instanceof NoSources)) throw e;
-    const g: any = await App.GeneratePackArt(project.id, pack.id, { color: '', title: '', icon: '', filePrefix: '', frontImage: '', titleOnImage: false, noPackText: true } as any);
-    pack.packTexture = g.packTexture; pack.packIcon = g.packIcon;
-    pack.boxTexture = g.boxTexture; pack.boxIcon = g.boxIcon;
-    await packIconFromTexture(project.id, pack, packModel);
-    delete project.meta.packArt[pack.id]; // earlier generated layouts no longer match the art
-    return [`${pack.name || pack.id}: no product photos or card images — used a simple colour + set icon design.`];
-  }
   project.meta.packArt[pack.id] = { pack: r.pack, box: r.box };
   const p = await renderLayout(project.id, packModel, r.pack);
   const pf = await App.SavePackArt(project.id, pack.id, 'pack', p.texture, p.icon);
   pack.packTexture = pf.texture; pack.packIcon = pf.icon;
+  project.meta.packArt[pack.id].pack.madeTexture = pf.texture; // the 3D editor opens on these layers while the art is theirs
   if (pack.hasBox) {
     const b = await renderLayout(project.id, boxModel, r.box);
     const bf = await App.SavePackArt(project.id, pack.id, 'box', b.texture, b.icon);
     pack.boxTexture = bf.texture; pack.boxIcon = bf.icon;
+    project.meta.packArt[pack.id].box.madeTexture = bf.texture;
   }
-  return r.notes;
+}
+
+/** The classic generator: builds the classic design as face layers and applies it. The caller saves the project. */
+export async function applyClassicArt(project: any, pack: any, o: ClassicOptions, models?: { pack: Model; box: Model }) {
+  const [packModel, boxModel] = await loadModels(models);
+  const r = await classicGenerate({ projectId: project.id, packId: pack.id, cards: pack.cardsPerPack || 7, packModel, boxModel }, o);
+  await applyLayouts(project, pack, r, packModel, boxModel);
+}
+
+/** Builds and applies one pack's art from its sources (automatic, or picked and adjusted in the dialog). Nothing to build
+ *  from → the classic design in the set's colour without words on the pack. The caller saves the project. Returns the notes. */
+export async function applySmartArt(project: any, pack: any, src: SmartSources, models?: { pack: Model; box: Model }): Promise<string[]> {
+  const [packModel, boxModel] = await loadModels(models);
+  try {
+    const r = await smartGenerate({ projectId: project.id, packId: pack.id, title: project.set.name || 'BOOSTER', src, packModel, boxModel });
+    await applyLayouts(project, pack, r, packModel, boxModel);
+    return r.notes;
+  } catch (e) {
+    if (!(e instanceof NoSources)) throw e;
+    await applyClassicArt(project, pack, { color: await App.DefaultArtColor(project.id), title: project.set.name, front: '', titleOnFront: false,
+      font: '', noText: true }, { pack: packModel, box: boxModel });
+    return [`${pack.name || pack.id}: no product photos or card images — used a simple colour + set icon design.`];
+  }
 }
 
 /** Smart generate for every pack of a project, choosing photos automatically (imports): pack n ↔ n-th booster product.
@@ -403,6 +504,7 @@ export async function boxFromPackArt(project: any, pack: any, boxModel?: Model):
   const layout = JSON.parse(r.layout) as Layout;
   const b = await renderLayout(project.id, m, layout);
   const bf = await App.SavePackArt(project.id, pack.id, 'box', b.texture, b.icon);
+  layout.madeTexture = bf.texture; // the 3D editor opens on this box while the art is its
   pack.hasBox = true;
   pack.boxTexture = bf.texture; pack.boxIcon = bf.icon;
   project.meta ??= {};

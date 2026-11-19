@@ -37,13 +37,17 @@ func OldLayout(h setups.Home, gameDir string) bool {
 	for _, s := range sets {
 		dirs, _ := os.ReadDir(filepath.Join(lib, s.Name()))
 		for _, d := range dirs {
-			if d.IsDir() && d.Name() != "images" {
+			if d.IsDir() && !currentSetFolders[d.Name()] {
 				return true
 			}
 		}
 	}
 	return false
 }
+
+// currentSetFolders are the folders this Studio itself writes in a set's library folder (images; fonts of pack/box text
+// layers, ImportSetFont); any other folder there is an old named art folder.
+var currentSetFolders = map[string]bool{"images": true, "fonts": true}
 
 // gameContentNotTaken: no setup was ever marked as having taken over the game folder's content, and there is some. Any one
 // mark means the upgrade ran; later setups never get one, and the game's copies are then only leftovers.

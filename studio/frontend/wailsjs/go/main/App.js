@@ -246,10 +246,6 @@ export function GenerateCardBack(arg1, arg2) {
   return window['go']['main']['App']['GenerateCardBack'](arg1, arg2);
 }
 
-export function GeneratePackArt(arg1, arg2, arg3) {
-  return window['go']['main']['App']['GeneratePackArt'](arg1, arg2, arg3);
-}
-
 export function GenerateSetCardBack(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateSetCardBack'](arg1, arg2, arg3);
 }
@@ -288,6 +284,10 @@ export function ImportModelWithTextures(arg1, arg2) {
 
 export function ImportSet(arg1, arg2, arg3) {
   return window['go']['main']['App']['ImportSet'](arg1, arg2, arg3);
+}
+
+export function ImportSetFont(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ImportSetFont'](arg1, arg2, arg3);
 }
 
 export function ImportSetup(arg1) {
@@ -440,6 +440,10 @@ export function PickEPLFolder() {
 
 export function PickEPLMod() {
   return window['go']['main']['App']['PickEPLMod']();
+}
+
+export function PickFontFile() {
+  return window['go']['main']['App']['PickFontFile']();
 }
 
 export function PickImage(arg1, arg2) {

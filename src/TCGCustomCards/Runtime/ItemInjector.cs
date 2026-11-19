@@ -55,7 +55,9 @@ namespace TCGCustomCards.Runtime
                 packData.marketPriceMaxPercent = def.MarketMax;
                 packData.boxFollowItemPrice = EItemType.None;
                 packData.isHideItemUntilUnlocked = false;
-                AddItem(so, pack.PackItem, packData, MeshData(vPackMesh, def.Name, set.Resolve(def.PackTexture)));
+                var packMesh = MeshData(vPackMesh, def.Name, set.Resolve(def.PackTexture));
+                packMesh.mesh = PackModels.Shelf(vPackMesh.mesh) ?? packMesh.mesh; // Studio paints custom packs for the fixed back
+                AddItem(so, pack.PackItem, packData, packMesh);
                 Registry.RegisterItem(pack.PackItem, pack);
 
                 // --- Box item (pack int < box int so the box price can follow the pack price) ---

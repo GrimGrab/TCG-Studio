@@ -4,9 +4,11 @@
   import ShaderGrid, { FOLLOW, MIXED } from './ShaderGrid.svelte';
   import { cardShader, inheritLabel, setShader, writeCardShader } from '../../lib/cardVersions';
   import { ALL_VERSIONS, MAIN_VERSION, cardVersions, followSet, hasOwnVersions, versionsWithArt, writeCardVersions } from '../../lib/cardVersions';
+  import { addToPack as addCards, removeFromPack as removeCards } from '../../lib/packPools';
+  import type { Goto } from '../../lib/setNav';
 
-  let { project, cards, notify, ondelete, imgBust = 0 }: {
-    project: any; cards: any[]; notify: (t: string, k?: string) => void; ondelete: () => void; imgBust?: number;
+  let { project, cards, notify, ondelete, goto, imgBust = 0 }: {
+    project: any; cards: any[]; notify: (t: string, k?: string) => void; ondelete: () => void; goto?: Goto; imgBust?: number;
   } = $props();
 
   let rotating = $state(false);
@@ -99,9 +101,16 @@
   function addToPack() {
     const p = project.set.packs.find((p: any) => p.id === packId);
     if (!p) return;
-    const ids = new Set([...(p.cards ?? []), ...cards.map((c) => c.id)]);
-    p.cards = project.set.cards.map((c: any) => c.id).filter((id: string) => ids.has(id));
+    addCards(project.set, p, cards.map((c) => c.id));
     notify(`Pack "${p.name}" now draws from ${p.cards.length} specific cards`, 'ok');
+  }
+
+  function takeFromPack() {
+    const p = project.set.packs.find((p: any) => p.id === packId);
+    if (!p) return;
+    const why = removeCards(project.set, p, cards.map((c) => c.id));
+    if (why) notify(why, 'error');
+    else notify(`Pack "${p.name}" now draws from ${p.cards.length} specific cards`, 'ok');
   }
 </script>
 
@@ -126,6 +135,51 @@
       <button disabled={!rarity} onclick={() => apply(`Rarity ${rarityName(project.set, rarity)}`, (c) => (c.rarity = rarity))}>Apply</button>
     </div>
   </section>
+
+  {#if project.set.packs.length}
+    <section>
+      <h4>In packs</h4>
+      <div class="row">
+        <select class="grow" bind:value={packId}><option value="">Pack…</option>{#each project.set.packs as p}<option value={p.id}>{p.name}</option>{/each}</select>
+        <button disabled={!packId} onclick={addToPack}>Add to pack's list</button>
+        <button disabled={!packId} onclick={takeFromPack} title="Take the selected cards out of this pack. A pack that draws from the whole set gets a list of every other card.">Remove</button>
+      </div>
+      <div class="muted small">A pack with an empty card list draws from the whole set.</div>
+    </section>
+  {/if}
+
+  <section>
+    <h4>Card versions <span class="muted small">{ownCount} with own list · {artCount} with version pictures</span></h4>
+    <VersionGrid on={allHave} mixed={someHave} ontoggle={toggleVersion} keepOne={false} />
+    <div class="row">
+      <button class="small" disabled={!ownCount} onclick={() => apply('Follow the set versions', followSet)}>Follow set</button>
+      <button class="small" onclick={() => apply('All 12 versions', (c) => writeCardVersions(project.set, c, new Set(ALL_VERSIONS)))}>All on</button>
+      <button class="small" disabled={!artCount} onclick={onlyWithArt} title="Each card keeps Base (its main image) and the versions that have a picture of their own">Only versions with own art</button>
+    </div>
+    <div class="muted small">The set's default is under <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card versions</button>. Pictures per version are added one card at a time.</div>
+  </section>
+
+  {#if cards.length}
+    <section>
+      <h4>Shader</h4>
+      <div class="row">
+        <select class="grow" bind:value={wholeShader}>
+          <option value={FOLLOW}>Follow the set</option>
+          <option value="">No shader</option>
+          {#each shaders.filter((s) => !s.builtIn) as s}<option value={s.id}>{s.name || 'Unnamed'}</option>{/each}
+          <optgroup label="Comes with the mod">
+            {#each shaders.filter((s) => s.builtIn) as s}<option value={s.id}>{s.name}</option>{/each}
+          </optgroup>
+        </select>
+        <button onclick={() => apply(`Shader for every version`, (c) => { for (const k of ALL_VERSIONS) writeCardShader(c, k, wholeShader === FOLLOW ? undefined : wholeShader); })}>Apply to every version</button>
+      </div>
+      <details>
+        <summary class="muted small">A different shader per version</summary>
+        <ShaderGrid {shaders} value={commonShader} onchange={setShaderForAll}
+          follow={(k) => inheritLabel(project.set, k, setShader(project.set, k), shaderName)} />
+      </details>
+    </section>
+  {/if}
 
   <section>
     <h4>Price <span class="muted small">base now: {common((c) => c.price.base) === 'mixed' ? 'mixed' : money(cards[0].price.base)}</span></h4>
@@ -157,50 +211,6 @@
       <button disabled={!element} onclick={() => apply(`Element ${element}`, (c) => (c.play.element = element))}>Apply</button>
     </div>
   </section>
-
-  <section>
-    <h4>Card versions <span class="muted small">{ownCount} with own list · {artCount} with version pictures</span></h4>
-    <VersionGrid on={allHave} mixed={someHave} ontoggle={toggleVersion} keepOne={false} />
-    <div class="row">
-      <button class="small" disabled={!ownCount} onclick={() => apply('Follow the set versions', followSet)}>Follow set</button>
-      <button class="small" onclick={() => apply('All 12 versions', (c) => writeCardVersions(project.set, c, new Set(ALL_VERSIONS)))}>All on</button>
-      <button class="small" disabled={!artCount} onclick={onlyWithArt} title="Each card keeps Base (its main image) and the versions that have a picture of their own">Only versions with own art</button>
-    </div>
-    <div class="muted small">The set's default is on the Set tab. Pictures per version are added one card at a time.</div>
-  </section>
-
-  {#if cards.length}
-    <section>
-      <h4>Shader</h4>
-      <div class="row">
-        <select class="grow" bind:value={wholeShader}>
-          <option value={FOLLOW}>Follow the set</option>
-          <option value="">No shader</option>
-          {#each shaders.filter((s) => !s.builtIn) as s}<option value={s.id}>{s.name || 'Unnamed'}</option>{/each}
-          <optgroup label="Comes with the mod">
-            {#each shaders.filter((s) => s.builtIn) as s}<option value={s.id}>{s.name}</option>{/each}
-          </optgroup>
-        </select>
-        <button onclick={() => apply(`Shader for every version`, (c) => { for (const k of ALL_VERSIONS) writeCardShader(c, k, wholeShader === FOLLOW ? undefined : wholeShader); })}>Apply to every version</button>
-      </div>
-      <details>
-        <summary class="muted small">A different shader per version</summary>
-        <ShaderGrid {shaders} value={commonShader} onchange={setShaderForAll}
-          follow={(k) => inheritLabel(project.set, k, setShader(project.set, k), shaderName)} />
-      </details>
-    </section>
-  {/if}
-
-  {#if project.set.packs.length}
-    <section>
-      <h4>Pack pool</h4>
-      <div class="row">
-        <select class="grow" bind:value={packId}><option value="">Pack…</option>{#each project.set.packs as p}<option value={p.id}>{p.name}</option>{/each}</select>
-        <button disabled={!packId} onclick={addToPack}>Add to pack's list</button>
-      </div>
-      <div class="muted small">A pack with an empty card list draws from the whole set.</div>
-    </section>
-  {/if}
 
   <section>
     <h4>Images</h4>

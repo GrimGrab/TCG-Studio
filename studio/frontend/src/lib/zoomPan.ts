@@ -129,21 +129,21 @@ export class ZoomPan {
   };
   private onDown = (e: PointerEvent) => {
     if (e.button !== 1 && !(e.button === 0 && this.space)) return;
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault(); e.stopImmediatePropagation();
     this.pan = { x: e.clientX, y: e.clientY, px: this.panX, py: this.panY, id: e.pointerId };
     this.stage.setPointerCapture(e.pointerId);
     this.stage.style.cursor = 'grabbing';
   };
   private onMove = (e: PointerEvent) => {
     if (!this.pan) return;
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     this.panX = this.pan.px + e.clientX - this.pan.x;
     this.panY = this.pan.py + e.clientY - this.pan.y;
     this.layout();
   };
   private onUp = (e: PointerEvent) => {
     if (!this.pan) return;
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     this.pan = null;
     this.stage.style.cursor = this.space ? 'grab' : '';
   };

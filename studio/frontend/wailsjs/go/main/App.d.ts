@@ -143,8 +143,6 @@ export function GamifyPreview(arg1:Array<string>,arg2:gamify.Settings):Promise<A
 
 export function GenerateCardBack(arg1:string,arg2:string):Promise<main.CardBackSource>;
 
-export function GeneratePackArt(arg1:string,arg2:string,arg3:art.Options):Promise<art.Result>;
-
 export function GenerateSetCardBack(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetSettings():Promise<main.Settings>;
@@ -164,6 +162,8 @@ export function ImportFigurineModel():Promise<main.FigurineSource>;
 export function ImportModelWithTextures(arg1:string,arg2:main.ModelTextures):Promise<main.FigurineSource>;
 
 export function ImportSet(arg1:string,arg2:string,arg3:importer.Options):Promise<string>;
+
+export function ImportSetFont(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function ImportSetup(arg1:string):Promise<main.SetupImport>;
 
@@ -240,6 +240,8 @@ export function PickCardImage(arg1:string):Promise<string>;
 export function PickEPLFolder():Promise<string>;
 
 export function PickEPLMod():Promise<string>;
+
+export function PickFontFile():Promise<main.ShopSignFont>;
 
 export function PickImage(arg1:string,arg2:string):Promise<string>;
 

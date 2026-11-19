@@ -2,7 +2,9 @@ package uvmap
 
 // Card box (CardBoxMesh_low). How to read and edit this: facemap.go.
 func faceMapBox() Model {
-	return faceMap(Model{Kind: "Box", Mesh: "CardBoxMesh_low", TextureSize: 2048, Icon: "box",
+	// Icon "mesh": the shop icon is the game's box model rendered with the art, like the pack's (the oblique drawing from the
+	// net missed layers on the texture view and didn't match the box).
+	return faceMap(Model{Kind: "Box", Mesh: "CardBoxMesh_low", TextureSize: 2048, Icon: "mesh",
 		Size:    [3]float64{1.547, 1.123, 0.929},
 		Preview: []PreviewPart{{Mesh: "CardBoxMesh_low", Texture: "main"}},
 		Bases:   sliceBases(box.Bases),

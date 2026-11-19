@@ -105,7 +105,7 @@
       removeLabel="Use a colour" bind:value={background, setBackground} />
     <textarea rows="3" bind:value={draft.text} placeholder="Your words, one line per row (empty = picture only)"></textarea>
     <div class="row wrap">
-      <FontPicker {fonts} current={draft.font?.name ?? ''} defaultLabel="Default (Impact)" onpick={pickFont} />
+      <FontPicker {fonts} current={draft.font?.name ?? ''} currentUrl={draft.font ? url(draft.font.file) : ''} defaultLabel="Default (Impact)" onpick={pickFont} />
       <TextStyle bind:style={draft} defaultColor="#ffffff" defaultLabel="white" />
     </div>
     {#if custom}<div class="row"><button class="danger" onclick={() => { draft = parse(saved); removed = true; }}>Remove</button></div>{/if}

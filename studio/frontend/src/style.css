@@ -204,3 +204,27 @@ button.link:hover:not(:disabled) { text-decoration: underline; }
 .personform .face .del { position: absolute; top: 2px; right: 2px; padding: 0 5px; font-size: 11px; line-height: 16px; margin: 0; opacity: 0; }
 .personform .face img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .personform .face span { position: absolute; right: 3px; bottom: 2px; font-size: 11px; background: rgba(0, 0, 0, 0.55); color: #fff; padding: 0 4px; border-radius: 3px; }
+
+/* A setting: its name and control on one line, a short description under it (Mod settings, a set's Set tab). A .block of
+   only settings is a .block.entries. */
+.entry { padding: 10px 0; border-top: 1px solid var(--line); }
+.block > .entry:first-child, .bhead + .entry { border-top: none; }
+.entry .head { flex-wrap: wrap; }
+.entry .name { font-weight: 600; }
+.entry .control { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.entry .desc { margin-top: 3px; max-width: 760px; }
+.block.entries { gap: 0; }
+
+/* The set editor's Set tab: shared pieces above, plus layout. Every part follows the width it really gets (container
+   queries), not the window's: the app's and the page's lists take part of it. */
+.setpages .pane, .setpages .block { container-type: inline-size; }
+.setpages .page-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 16px; align-items: start; }
+.setpages .page-side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
+@container (max-width: 980px) { .setpages .page-cols { grid-template-columns: minmax(0, 1fr); } .setpages .page-side { position: static; } }
+.setpages .stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.setpages .stat { min-width: 0; }
+.setpages .stat b { overflow-wrap: anywhere; }
+.setpages .bhead { flex-wrap: wrap; }
+.setpages .bfoot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.setpages .entry .control > input:not([type="checkbox"]):not([type="color"]):not(.short), .setpages .entry .control > select { width: min(360px, 100%); }
+.setpages .howto ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }

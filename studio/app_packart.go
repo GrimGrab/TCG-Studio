@@ -7,6 +7,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	_ "image/jpeg"
@@ -79,8 +81,9 @@ func (a *App) SavePackArt(id, packID, which, texturePNG, iconPNG string) (PackAr
 	return out, nil
 }
 
-// SnapshotPackBase copies a project image (the pack's current art) to <prefix><which>_base.png so the editor can start from it
-// without reading its own output back. Returns the copy's path.
+// SnapshotPackBase copies a project image (the pack's current art) to <prefix><which>_base_<hash>.png so the editor can start
+// from it without reading its own output back. Returns the copy's path. The name comes from the bytes, so opening the editor
+// again on the same art (its layout not saved yet) reuses the copy instead of writing another one.
 func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if !setfmt.SafeID(id) || (which != "pack" && which != "box") {
 		return "", errors.New("bad arguments")
@@ -96,11 +99,20 @@ func (a *App) SnapshotPackBase(id, packID, which, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return snapshotPackBase(p, pre+which, rel)
+}
+
+func snapshotPackBase(p *project.Project, prefix, rel string) (string, error) {
 	b, err := os.ReadFile(p.ImagePath(rel))
 	if err != nil {
 		return "", err
 	}
-	return p.WriteFile(project.FreshName(pre+which+"_base.png"), b)
+	sum := sha256.Sum256(b)
+	rel = prefix + "_base_" + hex.EncodeToString(sum[:6]) + ".png"
+	if _, err := os.Stat(p.ImagePath(rel)); err == nil {
+		return rel, nil
+	}
+	return p.WriteFile(rel, b)
 }
 
 // ---------------------------------------------------------------- product photos (TCGplayer)

@@ -240,15 +240,12 @@
   .pane-hero h1 { margin-bottom: 4px; }
   .block { gap: 0; }
   .block .bhead { padding-bottom: 6px; }
-  .entry { padding: 10px 0; border-top: 1px solid var(--line); }
-  .block > .entry:first-child, .bhead + .entry { border-top: none; }
   .badge.changed { font-size: 11px; color: #d9a400; }
   .name { font-weight: 600; }
   .control { display: flex; align-items: center; gap: 8px; }
   .control input[type='range'] { width: 180px; }
   .num { width: 80px; }
   .control input[type='color'] { width: 44px; height: 28px; padding: 2px; }
-  .desc { margin-top: 3px; max-width: 760px; }
   .badge { font-size: 11px; margin-left: 6px; }
   button.tiny { padding: 2px 8px; }
 </style>

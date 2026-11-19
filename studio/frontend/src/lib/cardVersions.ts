@@ -120,6 +120,15 @@ export const chosenShader = (set: any, card: any, key: string): string | undefin
 /** The shader the game draws a card's version with ('' = none): the choice, else the stock holo of a foil version. */
 export const shownShader = (set: any, card: any, key: string): string =>
   chosenShader(set, card, key) ?? (isFullImage(set) ? stockShader(key) : undefined) ?? '';
+/**
+ * Where the shader the game draws a card's version with comes from: the card's own choice, the set's, the stock holo
+ * (default), or '' (no shader at all).
+ */
+export function shaderSource(set: any, card: any, key: string): 'card' | 'set' | 'default' | '' {
+  if (cardShader(card, key) !== undefined) return cardShader(card, key) ? 'card' : '';
+  if (setShader(set, key) !== undefined) return setShader(set, key) ? 'set' : '';
+  return shownShader(set, card, key) ? 'default' : '';
+}
 /** Full-image sets get the stock holo on foils; framed sets keep the game's own foil unless a shader is chosen. */
 export const isFullImage = (set: any): boolean => set.renderMode !== 'Framed';
 /** How many cards have shader choices of their own. */

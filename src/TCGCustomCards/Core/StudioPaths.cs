@@ -25,6 +25,8 @@ namespace TCGCustomCards.Core
         public static string Assets { get; private set; }
         /// <summary>The active setup's folder, or null.</summary>
         public static string Setup { get; private set; }
+        /// <summary>The folder of the pack models TCG Studio builds from the game files (Runtime/PackModels), or null.</summary>
+        public static string PackModels { get; private set; }
         /// <summary>Why custom content can't load (shown in game once), or null when TCG Studio's folders were found.</summary>
         public static string Problem { get; private set; }
 
@@ -33,6 +35,7 @@ namespace TCGCustomCards.Core
             [JsonProperty("library")] public string Library { get; set; }
             [JsonProperty("assets")] public string Assets { get; set; }
             [JsonProperty("setup")] public string Setup { get; set; }
+            [JsonProperty("packModels")] public string PackModels { get; set; }
         }
 
         private class SetupInfo
@@ -42,7 +45,7 @@ namespace TCGCustomCards.Core
 
         public static void Load(string pluginDir)
         {
-            Library = Assets = Setup = null;
+            Library = Assets = Setup = PackModels = null;
             Problem = null;
             string file = Path.Combine(pluginDir, FileName);
             if (!File.Exists(file))
@@ -56,6 +59,7 @@ namespace TCGCustomCards.Core
                 Library = Folder(d.Library, "set files");
                 Assets = Folder(d.Assets, "item files");
                 Setup = Folder(d.Setup, "setup");
+                PackModels = string.IsNullOrWhiteSpace(d.PackModels) ? null : Folder(d.PackModels, "pack models");
                 if (Setup == null) Fail($"the setup folder '{d.Setup}' wasn't found");
                 else if (!File.Exists(Path.Combine(Setup, "setup.json"))) Fail($"the setup '{Setup}' has no setup.json");
                 else if (Library == null) Fail($"the set library '{d.Library}' wasn't found");

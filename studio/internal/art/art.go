@@ -30,13 +30,10 @@ import (
 type Options struct {
 	Color string `json:"color"` // #rrggbb; empty = derived from the set id
 	Title string `json:"title"` // text on the pack; empty = set name
-	Icon  string `json:"icon"`  // relative path to an SVG/PNG icon in the project; empty = images/set_icon.svg if present
 	// FilePrefix is prepended to the generated file names (e.g. "rare_" → images/rare_pack_texture.png).
 	FilePrefix string `json:"filePrefix"`
 	// FrontImage (relative path) replaces the generated pack front with your own artwork (cover-fitted).
 	FrontImage string `json:"frontImage"`
-	// TitleOnImage also prints the title over FrontImage.
-	TitleOnImage bool `json:"titleOnImage"`
 	// NoPackText leaves the title and "7 CARDS" off the pack (Smart generate's fallback); the box keeps its title.
 	NoPackText bool `json:"noPackText"`
 	// Resolve finds a project file to read (the icon, FrontImage) by its relative path; nil = inside projectFolder. Sets
@@ -136,7 +133,7 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	if o.Resolve == nil {
 		o.Resolve = InFolder(projectFolder)
 	}
-	icon := loadIcon(o.Resolve, o.Icon)
+	icon := loadIcon(o.Resolve)
 	face := func(size float64) font.Face { return newFace(size) }
 
 	load := func(name string) (*image.NRGBA, error) {
@@ -173,9 +170,6 @@ func Generate(templatesDir, projectFolder, setID, setName string, o Options) (Re
 	pf := packFrontRect()
 	if front != nil {
 		drawCover(pack, pf, front)
-		if o.Title != "" && o.TitleOnImage {
-			drawText(pack, face, o.Title, image.Rect(pf.Min.X+40, pf.Min.Y+26, pf.Max.X-40, pf.Min.Y+150), 56, color.White)
-		}
 	} else {
 		gradient(pack, pf, light, dark)
 		drawIcon(pack, icon, center(pf, 0, 20), 250, 235)
@@ -321,11 +315,8 @@ func drawIcon(img *image.NRGBA, icon func(size int) *image.Alpha, c image.Point,
 }
 
 // loadIcon returns a function rendering the set icon as an alpha mask of the requested size (aspect kept).
-func loadIcon(resolve func(string) string, rel string) func(int) *image.Alpha {
-	if rel == "" {
-		rel = "images/set_icon.svg"
-	}
-	path := resolve(rel)
+func loadIcon(resolve func(string) string) func(int) *image.Alpha {
+	path := resolve("images/set_icon.svg")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil

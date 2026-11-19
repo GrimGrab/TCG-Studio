@@ -18,7 +18,7 @@ import (
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 27
+const Version = 33
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {
@@ -204,6 +204,10 @@ func (x *extractor) run() error {
 	packs, err := x.packMeshes()
 	if err != nil {
 		return err
+	}
+	x.progress("Building the pack models (shelf pack with a fixed back, pack opening)…")
+	if err := x.packModels(); err != nil {
+		x.warn("pack models: %v", err) // optional: the mod then keeps the game's own models
 	}
 	x.progress("Extracting shelves…")
 	prefab, shelves, tables, err := x.shelves()

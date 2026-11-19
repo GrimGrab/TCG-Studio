@@ -7,17 +7,35 @@
 <script lang="ts">
   import { App, projectFile, money, setRarities, rarityName, rarityColor, ELEMENTS, BORDERS, BORDER_LABELS, LANES, errText } from '../../lib/api';
   import VersionGrid from './VersionGrid.svelte';
+  import { addToPack, inPack, packColour, removeFromPack } from '../../lib/packPools';
   import ShaderGrid, { FOLLOW, MIXED } from './ShaderGrid.svelte';
   import ShaderPreview from '../ShaderPreview.svelte';
   import { setCardValue } from '../../lib/cardShaderView';
-  import { cardShader, inheritLabel, setShader, shownShader, writeCardShader } from '../../lib/cardVersions';
+  import { cardShader, inheritLabel, setShader, shaderSource, shownShader, writeCardShader, writeSetShader } from '../../lib/cardVersions';
   import { cardVersions, followSet, hasOwnVersions, setVersionImage, versionImage, versionLabel, versionsWithArt, writeCardVersions,
     ALL_VERSIONS, MAIN_VERSION, fallbackImage } from '../../lib/cardVersions';
+  import Dropdown from '../Dropdown.svelte';
+  import ChangeCardId from './ChangeCardId.svelte';
+  import { renameCard } from '../../lib/cardId';
+  import type { Goto } from '../../lib/setNav';
 
-  let { project, card, imgBust, notify, ondelete, onzoom }: {
+  // showAs: the version the preview (and the Cards grid) shows, '' = the main picture; shared with the Cards tab, so it
+  // stays while you go from card to card.
+  let { project, card, imgBust, notify, ondelete, onrenamed, goto, showAs = $bindable('') }: {
     project: any; card: any; imgBust: number; notify: (t: string, k?: string) => void;
-    ondelete: () => void; onzoom: () => void;
+    ondelete: () => void; onrenamed?: (oldId: string, newId: string) => void; goto?: Goto; showAs?: string;
   } = $props();
+
+  // Change id (click the id): a dialog with what it does; the set's own references follow (lib/cardId).
+  let changingId = $state(false);
+  function changeId(newId: string) {
+    const old = card.id;
+    changingId = false;
+    if (renameCard(project, old, newId)) {
+      onrenamed?.(old, newId);
+      notify(`Card id changed to ${newId}: save the set to use it`, 'ok');
+    }
+  }
 
   const meta = $derived(project.meta?.cards?.[card.id]);
   let effectText = $state('');
@@ -87,12 +105,14 @@
   async function rotate(turns: number) {
     rotating = true;
     try {
-      const back = showBack && !!card.backImage, ver = !back ? shownVersionArt : undefined;
-      const rel = back ? card.backImage : ver ?? card.image;
+      const back = showBack && !!card.backImage;
+      const rel = previewImage;
+      // The version whose own picture is shown (a version without one shows another version's or the main picture).
+      const owner = back || rel === card.image ? undefined : ALL_VERSIONS.find((k) => versionImage(card, k) === rel);
       const turned = await App.RotateCardImages(project.id, [rel], turns, false);
       if (turned[rel]) { // a new file: the game sees it once the set is saved
         if (back) card.backImage = turned[rel];
-        else if (ver) setVersionImage(card, shownVersion, turned[rel]);
+        else if (owner) setVersionImage(card, owner, turned[rel]);
         else card.image = turned[rel];
       }
     } catch (e) { notify(errText(e), 'error'); }
@@ -103,9 +123,8 @@
   const versionsOn = $derived(cardVersions(project.set, card));
   const ownVersions = $derived(hasOwnVersions(card));
   const withArt = $derived(versionsWithArt(card));
-  /** The version whose own picture the preview shows ('' = the main image). */
-  let shownVersion = $state('');
-  const shownVersionArt = $derived(shownVersion ? versionImage(card, shownVersion) : undefined);
+  /** The shown version's picture: its own, else the one the game falls back to (undefined = the main picture). */
+  const shownVersionArt = $derived(showAs ? versionImage(card, showAs) ?? fallbackImage(card, showAs) : undefined);
 
   // Card shaders (set.json "versionShaders"): the card's own choice per version, else the set's. The preview runs the
   // shader of the version whose picture is shown, else of the card's first version that has one.
@@ -113,7 +132,7 @@
   let shaders = $state<ShaderInfo[]>([]);
   $effect(() => { App.ListShaders().then((l) => (shaders = (l ?? []) as unknown as ShaderInfo[])).catch(() => (shaders = [])); });
   const shaderName = (id: string) => shaders.find((s) => s.id === id)?.name || 'missing shader';
-  const previewKey = $derived(shownVersion && shownShader(project.set, card, shownVersion) ? shownVersion
+  const previewKey = $derived(showAs ? showAs
     : ALL_VERSIONS.find((k) => versionsOn.has(k) && shownShader(project.set, card, k)) ?? 'Base');
   const previewShader = $derived(shaders.find((s) => s.id === shownShader(project.set, card, previewKey)));
   /** One choice for the whole card: what every version has, or MIXED. */
@@ -155,16 +174,34 @@
   async function pickVersionImage(k: string) {
     try {
       const rel = await App.PickCardImage(project.id);
-      if (rel) { setVersionImage(card, k, rel); shownVersion = k; showBack = false; }
+      if (rel) { setVersionImage(card, k, rel); showAs = k; showBack = false; }
     } catch (e) { notify(errText(e), 'error'); }
   }
 
   function removeVersionImage(k: string) {
     setVersionImage(card, k, undefined);
-    if (shownVersion === k) shownVersion = '';
   }
 
   const previewImage = $derived(showBack && card.backImage ? card.backImage : shownVersionArt ?? card.image);
+
+  // The top preview runs the shown version's shader live (the Shaders page's preview), or a shader being tried out.
+  let trying = $state(''); // shader id previewed instead, not saved until Use…
+  const liveShader = $derived(showBack || !showAs ? undefined
+    : shaders.find((s) => s.id === (trying || shownShader(project.set, card, showAs))));
+  const source = $derived(showAs ? shaderSource(project.set, card, showAs) : '');
+  // Without a shader the preview still runs, drawing just the picture, so every card tilts with the mouse the same way.
+  const PLAIN = { code: 'vec4 card(vec2 uv) { return art(uv); }', params: [] as any[], draws: undefined, mix: undefined, mixStrength: undefined };
+  const drawn = $derived(liveShader ?? PLAIN);
+  const facts = (key: string) => ({ border: Math.max(0, ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt'].indexOf(key.replace('_foil', ''))),
+    foil: key.endsWith('_foil'), rarity: 0, grade: 0 });
+  function useTried(forSet: boolean) {
+    if (forSet) {
+      writeSetShader(project.set, showAs, trying);
+      if (cardShader(card, showAs) !== undefined) writeCardShader(card, showAs, undefined); // the card follows the set now
+    } else writeCardShader(card, showAs, trying);
+    notify(`${shaderName(trying)} is now ${forSet ? "the set's" : "this card's"} ${versionLabel(showAs)} shader. Save to use it in the game.`, 'ok');
+    trying = '';
+  }
 
   // Cards imported from a card database or image folder can fetch their art again (e.g. after it was overwritten).
   const canRedownload = $derived(!!(meta?.scryfallId || meta?.sourceId) && project.meta?.source !== 'epl');
@@ -196,14 +233,19 @@
   let tab = $state<DetailTab>(rememberedTab);
   function setTab(v: DetailTab) { tab = rememberedTab = v; }
   let lastCardId = '';
-  $effect(() => { if (card.id !== lastCardId) { lastCardId = card.id; showBack = false; shownVersion = ''; } });
+  $effect(() => { if (card.id !== lastCardId) { lastCardId = card.id; showBack = false; trying = ''; } });
+  let lastShowAs = '';
+  $effect(() => { if (showAs !== lastShowAs) { lastShowAs = showAs; trying = ''; } });
   const LANE_COLORS: Record<string, string> = { Fire: '#ff7a45', Earth: '#c9a227', Water: '#4fa3ff', Wind: '#3ecf8e' };
 </script>
 
 <div class="detail">
   <div class="preview" class:framed={project.set.renderMode === 'Framed'} style="--rc:{rarityColor(project.set, card.rarity)}">
     {#if card.image}
-      <button class="zoom" title="View full screen — {previewImage}" onclick={onzoom}><img src={projectFile(project.id, previewImage, imgBust)} alt={card.name} /></button>
+      <ShaderPreview code={drawn.code} params={drawn.params ?? []} art={projectFile(project.id, previewImage, imgBust)} width={240} controls={false}
+        look={{ draws: drawn.draws, mix: drawn.mix, mixStrength: drawn.mixStrength }}
+        mask={liveShader && card.shaderMask ? projectFile(project.id, card.shaderMask, imgBust) : ''} own={liveShader && !trying ? card.shaderParams : undefined}
+        facts={facts(showAs || 'Base')} />
     {:else}
       <button class="noimg" onclick={changeImage}>No image — choose one…</button>
     {/if}
@@ -211,24 +253,32 @@
       <button class="flip small" onclick={() => (showBack = !showBack)} title="Show the other side">
         ⇄ {showBack ? 'Front' : 'Back'}</button>
     {/if}
-    {#if shownVersionArt && !showBack}
-      <button class="vshown small" onclick={() => (shownVersion = '')} title="Show the main image">{versionLabel(shownVersion)} picture · ✕</button>
+    {#if showAs && !showBack}
+      <button class="vshown small" class:warnchip={!versionsOn.has(showAs)} onclick={() => (showAs = '')}
+        title={versionsOn.has(showAs) ? 'Show the main picture' : `This card has no ${versionLabel(showAs)} version — click to show the main picture`}>
+        {versionLabel(showAs)}{trying ? ` · trying ${shaderName(trying)}` : ''} · ✕</button>
     {/if}
   </div>
   {#if card.backImage && showBack && card.mtg?.backName}<div class="muted small center">Back: {card.mtg.backName}</div>{/if}
   <div class="imgtools">
-    <button class="small" onclick={changeImage}>Change image…</button>
-    <button class="small" onclick={changeBackImage} title="The picture on this card's back, instead of the set's card back">
-      {card.backImage ? 'Change back…' : 'Add back…'}</button>
-    {#if card.backImage}<button class="small" onclick={removeBackImage} title="Use the set's card back again">Remove back</button>{/if}
-    {#if canRedownload}
-      <button class="small" disabled={redownloading} onclick={redownload}
-        title="Download this card's original image again from where the set was imported">
-        {redownloading ? 'Downloading…' : 'Re-download'}</button>
-    {/if}
+    <Dropdown cls="small" title="Change, add or rotate this card's pictures">
+      {#snippet label()}Image{/snippet}
+      {#snippet panel(close)}
+        <div class="ddmenu">
+          <button onclick={() => { close(); changeImage(); }}>{card.image ? 'Change image…' : 'Choose image…'}</button>
+          <button onclick={() => { close(); changeBackImage(); }} title="The picture on this card's back, instead of the set's card back">
+            {card.backImage ? 'Change back picture…' : 'Add a back picture…'}</button>
+          {#if card.backImage}<button onclick={() => { close(); removeBackImage(); }} title="Use the set's card back again">Remove back picture</button>{/if}
+          {#if canRedownload}
+            <button disabled={redownloading} onclick={() => { close(); redownload(); }}
+              title="Download this card's original image again from where the set was imported">Download the original again</button>
+          {/if}
+        </div>
+      {/snippet}
+    </Dropdown>
     <span class="grow"></span>
-    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(-1)} title="Rotate left">⟲</button>
-    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(1)} title="Rotate right">⟳</button>
+    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(-1)} title="Rotate the shown picture left">⟲</button>
+    <button class="small" disabled={!card.image || rotating} onclick={() => rotate(1)} title="Rotate the shown picture right">⟳</button>
   </div>
 
   <div class="head">
@@ -237,9 +287,12 @@
       <span class="rar"><span class="dot" style="background:{rarityColor(project.set, card.rarity)}"></span>{rarityName(project.set, card.rarity)}</span>
       {#if meta?.srcRarity}<span>{meta.srcRarity}</span>{/if}
       {#if card.number}<span>#{card.number}</span>{/if}
-      <span class="code" title="Card id (stable)">{card.id}</span>
+      <span class="idfield" title="The card's ID: what saved games, decks and packs know the card by">ID <span class="code">{card.id}</span>
+        <button class="tiny" onclick={() => (changingId = true)} title="Change this card's ID (shows what changing it does first)">✎ Change…</button></span>
     </div>
   </div>
+
+  {#if changingId}<ChangeCardId set={project.set} {card} onchange={changeId} oncancel={() => (changingId = false)} />{/if}
 
   <nav class="dtabs" aria-label="Card settings">
     <button class:on={tab === 'card'} onclick={() => setTab('card')}>Card</button>
@@ -252,9 +305,11 @@
   {#if tab === 'versions'}
   <section>
     <div class="shead">
-      <span class="muted small">{ownVersions ? 'own list' : 'follows the set'} · {versionsOn.size} of 12{withArt.size ? ` · ${withArt.size} with own picture` : ''}</span>
+      <span class="muted small">{#if ownVersions}<span class="own">Own list</span>{:else}Follows the
+        <button class="link small" onclick={() => goto?.('set', { section: 'versions' })} title="The set's default versions">set's versions</button>{/if}
+        · {versionsOn.size} of 12{withArt.size ? ` · ${withArt.size} with own picture` : ''}</span>
       <span class="grow"></span>
-      {#if ownVersions}<button class="small" onclick={() => followSet(card)} title="Use the set's versions (Set tab → Card versions)">Follow set</button>{/if}
+      {#if ownVersions}<button class="small" onclick={() => followSet(card)} title="Use the set's versions (Set → Card versions)">Follow set</button>{/if}
       <button class="small" disabled={versionsOn.size === 12} onclick={() => writeCardVersions(project.set, card, new Set(ALL_VERSIONS))}>All on</button>
     </div>
     <VersionGrid on={versionsOn} ontoggle={toggleVersion}>
@@ -263,13 +318,13 @@
         {#if k === MAIN_VERSION}
           <!-- Base / normal = the card's main image: the picture every other version falls back to. -->
           {#if card.image}
-            <button class="vthumb" class:cur={!shownVersionArt && !showBack} onclick={() => { shownVersion = ''; showBack = false; }}
+            <button class="vthumb" class:cur={!showAs && !showBack} onclick={() => { showAs = ''; showBack = false; }}
               title="Main image: {card.image} — the Base version, and every version without its own picture">
               <img src={projectFile(project.id, card.image, imgBust)} alt="" /></button>
           {/if}
           <button class="small vadd" onclick={changeImage} title="Change the main image (the Base version)">{card.image ? 'Change' : '+ art'}</button>
         {:else if rel}
-          <button class="vthumb" class:cur={shownVersion === k} onclick={() => { shownVersion = k; showBack = false; }}
+          <button class="vthumb" class:cur={showAs === k} onclick={() => { showAs = k; showBack = false; }}
             title="{versionLabel(k)}: {rel} — click to show it">
             <img src={projectFile(project.id, rel, imgBust)} alt="" /></button>
           <button class="small vx" onclick={() => removeVersionImage(k)} title="Remove the {versionLabel(k)} picture ({k.endsWith('_foil') && fallbackImage(card, k) ? 'its normal picture' : 'the main image'} shows)">✕</button>
@@ -293,9 +348,40 @@
   {#if tab === 'shader'}
   <section>
     <div class="shead">
-      <span class="muted small">{card.versionShaders ? 'own choices' : 'follows the set'}</span>
+      <span class="muted small">{#if card.versionShaders}<span class="own">Own choices</span>{:else}Follows the
+        <button class="link small" onclick={() => goto?.('set', { section: 'shaders' })} title="The set's shaders">set's shaders</button>{/if}</span>
       <span class="grow"></span>
-      {#if card.versionShaders}<button class="small" onclick={() => (card.versionShaders = undefined)} title="Use the set's shaders (Set tab → Card shaders)">Follow set</button>{/if}
+      {#if card.versionShaders}<button class="small" onclick={() => (card.versionShaders = undefined)} title="Use the set's shaders (Set → Shaders)">Follow set</button>{/if}
+    </div>
+    <!-- Live try-out on the picture above: pick a version, try any shader, then keep it for this card or the whole set. -->
+    <div class="tryout">
+      <div class="row">
+        <label class="field">Preview as
+          <select bind:value={showAs} title="The version the preview above (and the card grid) shows, with the shader the game draws it with">
+            <option value="">Main picture</option>
+            {#each ALL_VERSIONS as k}<option value={k}>{versionLabel(k)}{versionsOn.has(k) ? '' : ' (not a version of this card)'}</option>{/each}
+          </select></label>
+        <label class="field">Try a shader
+          <select value={trying} disabled={!showAs || showBack} onchange={(e) => (trying = e.currentTarget.value)}
+            title={showAs ? 'Preview another shader on this card; nothing changes until you use it' : 'Pick a version to preview first'}>
+            <option value="">{showAs ? '— its own —' : 'Pick a version first'}</option>
+            {#each shaders.filter((s) => !s.builtIn) as s}<option value={s.id}>{s.name || 'Unnamed'}</option>{/each}
+            <optgroup label="Comes with the mod">{#each shaders.filter((s) => s.builtIn) as s}<option value={s.id}>{s.name}</option>{/each}</optgroup>
+          </select></label>
+      </div>
+      {#if showAs && !showBack}
+        {#if !versionsOn.has(showAs)}<span class="warn small">This card has no {versionLabel(showAs)} version (Versions tab).</span>{/if}
+        {#if trying}
+          <div class="row">
+            <button class="small primary" onclick={() => useTried(false)}>Use for this card's {versionLabel(showAs)}</button>
+            <button class="small" onclick={() => useTried(true)}>Use for the set's {versionLabel(showAs)}</button>
+            <button class="small" onclick={() => (trying = '')}>Stop</button>
+          </div>
+        {:else}
+          <span class="small">{versionLabel(showAs)} draws with <b>{source ? shaderName(shownShader(project.set, card, showAs)) : 'no shader'}</b>
+            <span class="muted">{source === 'card' ? '(this card)' : source === 'set' ? '(the set)' : source === 'default' ? '(stock holo for foils)' : ''}</span></span>
+        {/if}
+      {/if}
     </div>
     {#if project.set.renderMode !== 'FullImage'}
       <p class="muted small">This set is framed: the shader draws the artwork inside the game's frame.</p>
@@ -318,12 +404,9 @@
         follow={(k) => inheritLabel(project.set, k, setShader(project.set, k), shaderName)}
         onchange={(k, v) => writeCardShader(card, k, v === FOLLOW ? undefined : v)} />
     </details>
-    {#if previewShader && previewArt}
-      <div class="muted small">{versionLabel(previewKey)} with "{previewShader.name}":</div>
-      <ShaderPreview code={previewShader.code} params={previewShader.params ?? []} art={projectFile(project.id, previewArt, imgBust)} width={200} controls={false}
-        look={{ draws: previewShader.draws, mix: previewShader.mix, mixStrength: previewShader.mixStrength }}
-        mask={card.shaderMask ? projectFile(project.id, card.shaderMask, imgBust) : ''} own={card.shaderParams}
-        facts={{ border: Math.max(0, ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt'].indexOf(previewKey.replace('_foil', ''))), foil: previewKey.endsWith('_foil'), rarity: 0, grade: 0 }} />
+    {#if !showAs && previewShader && previewArt}
+      <div class="row muted small">{versionLabel(previewKey)} draws with "{previewShader.name}".
+        <button class="small" onclick={() => (showAs = previewKey)}>Preview it above</button></div>
     {/if}
 
     <h4 class="sub">Mask picture</h4>
@@ -373,6 +456,23 @@
       </label>
       <label class="field" style="flex: 0 0 90px">Number<input bind:value={card.number} /></label>
     </div>
+    {#if project.set.packs.length}
+      <div class="field">In packs
+        <div class="row packs">
+          {#each project.set.packs as p, pi (p.id)}
+            <label class="check" title={p.cards?.length ? `${p.cards.length} cards on its list` : 'Draws from the whole set: untick to give it a list of every other card'}>
+              <input type="checkbox" checked={inPack(p, card.id)} onchange={(e) => {
+                if (e.currentTarget.checked) addToPack(project.set, p, [card.id]);
+                else {
+                  const why = removeFromPack(project.set, p, [card.id]);
+                  if (why) { e.currentTarget.checked = true; notify(why, 'error'); }
+                }
+              }} /> <span class="pdot" style="background:{packColour(pi)}"></span>{p.name}{p.cards?.length ? '' : ' (whole set)'}</label>
+          {/each}
+        </div>
+        {#if !project.set.packs.some((p: any) => inPack(p, card.id))}<span class="muted small">No pack gives this card.</span>{/if}
+      </div>
+    {/if}
     <label class="field">Artist<input bind:value={card.artist} /></label>
     <label class="field">Description<textarea rows="4" bind:value={card.description}></textarea></label>
   </section>
@@ -448,7 +548,10 @@
     background: radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--rc) 22%, #2b3040), #15171d 75%); border: 1px solid var(--line); }
   .preview img { max-width: 240px; max-height: 330px; border-radius: 10px; display: block; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55); }
   .preview.framed img { border-radius: 4px; }
-  .zoom { padding: 0; border: none; background: none; cursor: zoom-in; }
+  .tryout { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .tryout .warn { color: #f2c14e; }
+  .vshown.warnchip { color: #f2c14e; }
+  .own { color: var(--accent); font-weight: 600; }
   .noimg { width: 170px; height: 238px; border-style: dashed; color: var(--muted); background: transparent; }
   .flip { position: absolute; bottom: 8px; right: 8px; background: rgba(12, 14, 18, 0.85); }
   .center { text-align: center; }
@@ -465,6 +568,7 @@
   .title:focus { border-color: var(--accent); background: var(--bg); }
   .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--muted); font-size: 12px; }
   .meta .rar { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
+  .idfield { display: inline-flex; align-items: center; gap: 6px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   section { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 0; }
   .dtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 4px -16px 0; padding: 0 12px; }
@@ -482,6 +586,8 @@
   .lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   /* The side panel is narrow: fields share a row and shrink (number boxes and selects keep a wide natural size otherwise). */
   .row > .field { flex: 1 1 0; min-width: 0; }
+  .packs { flex-wrap: wrap; gap: 4px 14px; font-weight: normal; }
+  .pdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 2px; }
   .field { min-width: 0; }
   .field > input, .field > select, .field > textarea { width: 100%; }
   .row > select { min-width: 0; }

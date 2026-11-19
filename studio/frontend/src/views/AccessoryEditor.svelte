@@ -14,10 +14,11 @@
   import { createHistory } from '../lib/history.svelte';
   import { accFile, templateFile } from '../lib/urls';
   import { onMount, tick, untrack } from 'svelte';
-  import { App, errText, ask } from '../lib/api';
+  import { App, EventsOn, errText, ask } from '../lib/api';
+  import { Ev } from '../lib/events';
   import {
-    type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, renderTexture, composeIcon,
-    recolorIcon, loadImage, layerId, renderTemplate, targetLabel, meshIcon, pickableFaces, previewUrl, layerTextures,
+    type Model, type Layout, type Layer, type Face, newLayout, netBounds, netScale, faceRect, renderNet, renderTexture, textureIcon,
+    recolorIcon, loadImage, layerId, renderTemplate, targetLabel, pickableFaces, previewUrl, layerTextures,
     shownArea, shownNet, isMapLayer, uvOutlines, traceShape, faceArea, placeIn, placeRect, placeStacked, areaFills, wholeFaceFill,
   } from '../lib/accessoryArt';
   import { faceFillsToRects } from '../lib/migrations';
@@ -26,10 +27,11 @@
   import { MeshView } from '../lib/meshView';
   import Straighten from './Straighten.svelte';
   import LayoutTuner from './editor/LayoutTuner.svelte';
+  import FontPicker from './FontPicker.svelte';
 
   let {
     kind, base = '', vanillaUrl, vanillaIconUrl = '', layout = $bindable(), iconSize = [512, 512], notify, onchange,
-    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true, onbaseline, underColor = '',
+    imageUrl, pickImage, saveImage, defaultText = 'DECK BOX', givenModel, active = true, onbaseline, underColor = '', importFont,
   }: {
     kind: string;
     givenModel?: Model;                 // a model made elsewhere (furniture paint templates); default: the accessory kind's
@@ -46,6 +48,8 @@
     imageUrl?: (rel: string) => string; // URL of a layer image (default: the accessory library)
     pickImage?: () => Promise<string>;  // lets the user add an image, returns its path for imageUrl (default: accessory library)
     saveImage?: (name: string, dataUrl: string) => Promise<string>; // stores a made image (straightened), returns its path
+    importFont?: (source: string, id: string) => Promise<string>; // stores a font of the picker with this item's files and
+                                        // returns its path (like an image's); given = text layers get a font choice
     defaultText?: string;               // text of a new text layer
     underColor?: string;                // shown under the texture (Texture view, 3D) without becoming part of it: a print
                                         // (transparent texture) over the cloth colour it is laid on in game
@@ -130,6 +134,8 @@
   });
 
   const accUrl = (rel: string) => imageUrl ? imageUrl(rel) : accFile(rel);
+  /** A text layer font's name for the picker: its file name without the folder and extension. */
+  const fontName = (rel: string) => (rel.split('/').pop() ?? rel).replace(/\.(ttf|otf)$/i, '');
   let sel = $derived(layout?.layers.find((l) => l.id === selected));
 
   // ---------------------------------------------------------------- rendering
@@ -330,15 +336,13 @@
     }
     ensureTexture();
     if (!model || !textureCanvas) throw new Error('editor not ready');
-    let icon: HTMLCanvasElement;
     const texture = textureCanvas.toDataURL('image/png');
-    // Packs: the game mesh rendered with the finished texture (what the pack looks like in game).
-    if (model.icon === 'pack' || model.icon === 'mesh') return { texture, icon: await meshIcon(model, textureCanvas) };
     if (model.icon === 'recolor') {
       if (!vanilla || !vanillaIconUrl) throw new Error("the vanilla icon is needed to recolour it — the game templates aren't available yet (Settings → Game)");
-      icon = recolorIcon(model, net, S, vanilla, await loadImage(vanillaIconUrl));
-    } else icon = composeIcon(model, net, S, iconSize[0], iconSize[1]);
-    return { texture, icon: icon.toDataURL('image/png') };
+      return { texture, icon: recolorIcon(model, net, S, vanilla, await loadImage(vanillaIconUrl)).toDataURL('image/png') };
+    }
+    // The same icon the generators make (lib/accessoryArt textureIcon): the game model rendered with the texture, or the net drawing.
+    return { texture, icon: await textureIcon(model, textureCanvas, net, S, iconSize[0], iconSize[1]) };
   }
 
   /** After a layer action (add, paste, duplicate, delete, copy to face, reorder): always its own undo step. */
@@ -1140,6 +1144,15 @@
 
   // ---------------------------------------------------------------- lifecycle
 
+  // Studio read the game files again: the same model as a new object, so the 3D view reloads its mesh (template URLs changed,
+  // lib/urls), and the UV outlines anew.
+  $effect(() => EventsOn(Ev.TemplatesReady, () => {
+    const m = untrack(() => model);
+    if (!m) return;
+    model = { ...m };
+    if (!m.palette && !m.projected) uvOutlines(model).then((o) => { outlines = o; drawTexView(); }).catch(() => {});
+  }));
+
   let markLoaded = () => {};
   const loaded = new Promise<void>((r) => (markLoaded = r));
 
@@ -1353,14 +1366,15 @@
         <!-- The texture you edit and the 3D model side by side: every edit shows on the model right away. -->
         <div class="split" bind:this={splitEl}>
           {#if view === 'net'}
-            <div class="texstage" use:zoomStage={'net'}>
-              <canvas class="netview" style:cursor={netCursor} bind:this={netView}
-                onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+            <!-- Pointer handlers on the stage, not the canvas: handles and layers reaching past the picture stay grabbable. -->
+            <div class="texstage" role="application" style:--cur={netCursor} use:zoomStage={'net'}
+              onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}>
+              <canvas class="netview" bind:this={netView}></canvas>
             </div>
           {:else}
-            <div class="texstage" use:zoomStage={'tex'}>
-              <canvas class="texview map" style:cursor={netCursor} bind:this={texView}
-                onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+            <div class="texstage" role="application" style:--cur={netCursor} use:zoomStage={'tex'}
+              onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}>
+              <canvas class="texview map" bind:this={texView}></canvas>
             </div>
           {/if}
           <div class="divider v" use:splitter={splitOpts}></div>
@@ -1381,8 +1395,9 @@
             stretch, snapping to the yellow boxes (Alt: free). Wheel zooms, Space+drag pans, Ctrl+wheel resizes the selected layer.</p>
         {/if}
       {:else if view === 'net'}
-        <div class="texstage" use:zoomStage={'net'}>
-          <canvas class="netview" style:cursor={netCursor} bind:this={netView} onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}></canvas>
+        <div class="texstage" role="application" style:--cur={netCursor} use:zoomStage={'net'}
+          onpointerdown={onDown} onpointermove={onMove} onpointerup={onUp} onwheel={onWheel}>
+          <canvas class="netview" bind:this={netView}></canvas>
         </div>
         <p class="muted small">Drag a layer to move it (snaps to face edges/centres; hold Alt for free), drag the blue corner or Ctrl+scroll to resize;
           scroll zooms, Space+drag pans. Every face is shown upright as seen from outside; an image across {wrapFaces().map((f) => f.label).join('–') || 'the faces'} wraps around.</p>
@@ -1467,6 +1482,15 @@
           <label class="field">Name<input bind:value={sel.name} /></label>
           {#if sel.kind === 'text'}
             <label class="field">Text<input bind:value={sel.text} oninput={changed} /></label>
+            {#if importFont}
+              {@const layer = sel}
+              <FontPicker pickFiles {notify} current={layer.font ? fontName(layer.font) : ''} currentUrl={layer.font ? accUrl(layer.font) : ''}
+                defaultLabel="Studio bold" sample={layer.text || 'Aa Bb 123'}
+                onpick={async (source, id) => {
+                  try { layer.font = source ? await importFont(source, id) : undefined; changed(); }
+                  catch (e) { notify(errText(e), 'error'); }
+                }} />
+            {/if}
             <div class="row">
               <label class="field">Colour<input type="color" bind:value={sel.color} oninput={changed} /></label>
               <label class="field">Outline<input type="color" value={sel.outline || '#000000'} oninput={(e) => { sel.outline = e.currentTarget.value; changed(); }} /></label>
@@ -1576,8 +1600,10 @@
   .netview, .texview { width: 100%; max-height: 62vh; object-fit: contain; background: repeating-conic-gradient(#1b1f27 0 25%, #232834 0 50%) 0 0 / 24px 24px; border-radius: 6px; }
   .netview { cursor: move; touch-action: none; }
   /* Zoom stage (lib/zoomPan places the canvas inside). */
-  .texstage { position: relative; overflow: hidden; height: 62vh; min-height: 320px; background: #12151b; border-radius: 6px; }
-  .texstage .netview, .texstage .texview { border-radius: 0; }
+  /* The checker fills the whole stage (not only the fitted canvas), and so do the pointer handlers. */
+  .texstage { position: relative; overflow: hidden; height: 62vh; min-height: 320px; border-radius: 6px; cursor: var(--cur, default);
+    background: repeating-conic-gradient(#1b1f27 0 25%, #232834 0 50%) 0 0 / 24px 24px; touch-action: none; }
+  .texstage .netview, .texstage .texview { border-radius: 0; background: none; }
   .zoombar { display: inline-flex; align-items: center; gap: 3px; }
   .zoombar .pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
   .guides { display: inline-flex; align-items: center; gap: 4px; }

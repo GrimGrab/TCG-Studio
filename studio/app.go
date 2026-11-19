@@ -423,25 +423,6 @@ func (a *App) ImportSet(source, code string, opt importer.Options) (string, erro
 
 func (a *App) DefaultArtColor(id string) string { return art.DefaultColor(id) }
 
-// GeneratePackArt renders pack/box textures + icons for one pack from the game's templates and returns the file paths.
-// The caller assigns them to the pack (new file names each time, project.FreshName: the game sees them once the set is saved).
-func (a *App) GeneratePackArt(id string, packID string, o art.Options) (art.Result, error) {
-	dir, err := a.requireTemplates()
-	if err != nil {
-		return art.Result{}, err
-	}
-	p, err := a.loadProject(id)
-	if err != nil {
-		return art.Result{}, err
-	}
-	if o.FilePrefix, err = packFilePrefix(packID); err != nil {
-		return art.Result{}, err
-	}
-	o.Resolve = p.ImagePath // the set icon / front image may live in the shared library
-	o.Target = func(rel string) (string, string) { return p.WriteTarget(project.FreshName(rel)) }
-	return art.Generate(dir, p.LibFolder, p.ID, p.Set.Name, o)
-}
-
 // ---------------------------------------------------------------- card backs
 
 const globalBackFile = "card_back.png" // the setup's global card back (<setup>\game\card_back.png, read by the mod)

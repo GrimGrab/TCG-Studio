@@ -70,6 +70,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<float> PrintedBorderMax;
         internal static ConfigEntry<string> ShopSignImage, ShopSignCrop;
         internal static ConfigEntry<bool> ShowShopNameOnSign;
+        internal static ConfigEntry<bool> ShelfPackInOpening;
         internal static ConfigEntry<string> ShopSignFont, ShopSignTextColor, ShopSignOutlineColor;
         internal static ConfigEntry<float> ShopSignTextSize, ShopSignOutline;
         internal static ConfigEntry<string> PhoneWallpaperImage, PhoneWallpaperCrop, OpenSignImage, OpenSignCrop, ClosedSignImage, ClosedSignCrop;
@@ -299,6 +300,10 @@ namespace TCGCustomCards
                 "corner), set with the crop box in TCG Studio's Game look page. Empty = the largest 4.11:1 area from the middle. Applies live.");
             ShowShopNameOnSign = Config.Bind("Visuals", "ShowShopNameOnSign", true,
                 "Show your shop's name on the sign above the entrance. Turn it off when your ShopSignImage already has a name or logo. Applies live.");
+            ShelfPackInOpening = Config.Bind("Visuals", "ShelfPackInOpening", true,
+                "Pack opening: show the pack with the same picture layout as on the shelf (and in TCG Studio's pack editor), so its " +
+                "back and crimps look as they do on the shelf; it still tears open as usual. Needs TCG Studio to have read the game " +
+                "files once. Off = the game's own opening pack. Applies the next time you open a pack.");
             const string signText = "Visuals - Shop sign text";
             ShopSignFont = Config.Bind(signText, "ShopSignFont", "",
                 "Font of the shop name on the sign: a .ttf/.otf file name in the active setup's Game look folder (TCG Studio's Game look page " +

@@ -4,17 +4,62 @@
   import CardDetail from './CardDetail.svelte';
   import BulkEdit from './BulkEdit.svelte';
   import CardViewer from './CardViewer.svelte';
-  import { cardVersions, hasOwnVersions, hasShader, versionsWithArt } from '../../lib/cardVersions';
+  import { cardVersions, hasOwnVersions, hasShader, versionsWithArt, ALL_VERSIONS, versionLabel, versionImage, fallbackImage, shownShader, shaderSource } from '../../lib/cardVersions';
+  import { inPack, ownListPacks, packColour, setInPack } from '../../lib/packPools';
+  import { makeStill, stillFor } from '../../lib/shaderStills';
+  import Dropdown from '../Dropdown.svelte';
+  import { untrack } from 'svelte';
+  import type { Goto, NavRequest, TakeNav } from '../../lib/setNav';
 
-  let { project, notify, imgBust }: {
+  let { project, notify, imgBust, goto, nav, takeNav }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
+    goto?: Goto; nav?: NavRequest | null; takeNav?: TakeNav;
   } = $props();
 
   let query = $state('');
   let rarity = $state('');
   let color = $state('');
+  // Packs: "Not in a pack" filter, and the pack brush (assign mode): click cards to put them in the brush's pack or take
+  // them out (lib/packPools: one owner of what a pack gives; an empty list = the whole set).
+  let noPack = $state(false);
+  let brush = $state(''); // pack id while assigning
+  let brushShow = $state<'all' | 'in' | 'out'>('all');
+  let paint = $state<boolean | null>(null); // the state a press-and-drag gives every card it crosses
   let sort = $state('set');
   let size = $state(150);
+  // "Show as": a version the grid and the card panel show, with the shader the game draws it with ('' = the main picture).
+  let showAs = $state('');
+  let shaders = $state<{ id: string; name: string; code: string; params?: any[]; draws?: string; mix?: string; mixStrength?: number }[]>([]);
+  $effect(() => { App.ListShaders().then((l) => (shaders = (l ?? []) as any)).catch(() => (shaders = [])); });
+  const shaderName = (id: string) => shaders.find((s) => s.id === id)?.name || 'missing shader';
+  /** The picture a card shows: the shown version's own, else what the game falls back to, else the main picture. */
+  const tileImage = (c: any) => (showAs ? versionImage(c, showAs) ?? fallbackImage(c, showAs) : undefined) ?? c.image;
+
+  // A still frame of each shown card's shader (lib/shaderStills: one hidden preview draws them in turn).
+  const facts = (key: string) => ({ border: Math.max(0, ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt'].indexOf(key.replace('_foil', ''))),
+    foil: key.endsWith('_foil'), rarity: 0, grade: 0 });
+  function stillJob(c: any) {
+    if (!showAs || !c.image || !cardVersions(project.set, c).has(showAs)) return null;
+    const sh = shaders.find((s) => s.id === shownShader(project.set, c, showAs));
+    if (!sh) return null;
+    const job = { code: sh.code, params: sh.params ?? [], look: { draws: sh.draws, mix: sh.mix, mixStrength: sh.mixStrength },
+      art: projectFile(project.id, tileImage(c), imgBust), mask: c.shaderMask ? projectFile(project.id, c.shaderMask, imgBust) : '',
+      own: c.shaderParams, facts: facts(showAs) };
+    return { ...job, key: JSON.stringify(job) };
+  }
+  let stills = $state<Record<string, string>>({}); // card id → picture of its shader, for the jobs below
+  let stillRound = 0;
+  $effect(() => {
+    const jobs = shown.map((c: any): [string, any] => [c.id, stillJob(c)]).filter(([, j]: [string, any]) => j);
+    const round = ++stillRound;
+    const ready: Record<string, string> = {};
+    for (const [id, j] of jobs) { const got = stillFor(j.key); if (got) ready[id] = got; }
+    stills = ready;
+    for (const [id, j] of jobs) {
+      if (ready[id] !== undefined) continue;
+      makeStill(j, () => round === stillRound).then((got) => { if (got && round === stillRound) stills = { ...stills, [id]: got }; });
+    }
+  });
   let selected = $state<string[]>([]);
   let anchor = $state<number>(-1);
 
@@ -57,9 +102,49 @@
   }
 
   function colorMatch(m: any, v: string): boolean {
-    if (v === 'C') return !m.colors?.length && !(m.typeLine ?? '').match(/^(Trainer|Energy)/);
+    if (v === 'C') return !m.colors?.length && !(m.typeLine ?? '').match(/^(Trainer|Energy)\b/);
     if (v === 'M') return m.colors?.length > 1;
     return !!m.colors?.includes(v) || (m.typeLine ?? '').startsWith(v);
+  }
+
+  const brushPack = $derived<any>(brush ? project.set.packs.find((p: any) => p.id === brush) ?? null : null);
+  const brushIndex = $derived(brush ? project.set.packs.findIndex((p: any) => p.id === brush) : -1);
+  $effect(() => { if (brush && !brushPack) brush = ''; }); // its pack was deleted
+  $effect(() => { if (noPack && !noPackCount) noPack = false; }); // every card is in a pack now: show them all again
+  const noPackCount = $derived(project.set.cards.filter((c: any) => !project.set.packs.some((p: any) => inPack(p, c.id))).length);
+
+  function startBrush(id: string) {
+    if (brush === id) { stopBrush(); return; }
+    brush = id;
+    brushShow = 'all';
+    noPack = false;
+    anchor = -1;
+  }
+  function stopBrush() { brush = ''; brushShow = 'all'; paint = null; }
+
+  /** Puts cards in the brush's pack or takes them out; reports a refusal (the last card of a list). */
+  function brushSet(ids: string[], on: boolean) {
+    if (!brushPack) return;
+    const why = setInPack(project.set, brushPack, ids, on);
+    if (why) notify(why, 'error');
+  }
+
+  // A press on a card toggles it (Shift = the range from the last card pressed gets that state); dragging on with the
+  // button held gives every card the pointer crosses the same state.
+  function paintStart(e: PointerEvent, index: number, id: string) {
+    if (!brushPack || e.button !== 0) return;
+    e.preventDefault();
+    const on = !inPack(brushPack, id);
+    if (e.shiftKey && anchor >= 0) {
+      const [a, b] = [Math.min(anchor, index), Math.max(anchor, index)];
+      brushSet(shown.slice(a, b + 1).map((c: any) => c.id), on);
+    } else brushSet([id], on);
+    anchor = index;
+    paint = on;
+  }
+  function paintOver(id: string) {
+    if (paint === null || !brushPack || inPack(brushPack, id) === paint) return;
+    brushSet([id], paint);
   }
 
   const shown = $derived.by(() => {
@@ -68,9 +153,17 @@
       const m = meta(c.id);
       if (rarity.startsWith('src:') ? m.srcRarity !== rarity.slice(4) : rarity && c.rarity !== rarity) return false;
       if (color && !colorMatch(m, color)) return false;
+      if (noPack && project.set.packs.some((p: any) => inPack(p, c.id))) return false;
+      if (brushPack && brushShow !== 'all' && inPack(brushPack, c.id) !== (brushShow === 'in')) return false;
       if (!q) return true;
       return matchSearch(q, c.name, c.id, c.number, m.typeLine, c.description);
     });
+    if (sort === 'number')
+      list = [...list].sort((a: any, b: any) => {
+        const x = String(a.number ?? '').trim(), y = String(b.number ?? '').trim();
+        if (!x || !y) return (x ? 0 : 1) - (y ? 0 : 1) || bySet(a, b);
+        return x.localeCompare(y, undefined, { numeric: true, sensitivity: 'base' }) || bySet(a, b);
+      });
     if (sort === 'name') list = [...list].sort((a: any, b: any) => a.name.localeCompare(b.name));
     if (sort === 'rarity')
       list = [...list].sort((a: any, b: any) => (RANK[b.rarity] ?? -1) - (RANK[a.rarity] ?? -1) ||
@@ -107,6 +200,11 @@
   }
 
   function selectAll() { selected = shown.map((c: any) => c.id); }
+  // A card got a new id (card panel): it stays selected, and what this tab keeps by card id moves with it.
+  function renamed(oldId: string, newId: string) {
+    selected = selected.map((id) => (id === oldId ? newId : id));
+    if (oldId in stills) { stills[newId] = stills[oldId]; delete stills[oldId]; }
+  }
 
   // Set order = the game's order (binder "Set order", price app); saves key cards by id, so moving them is safe.
   // Drag works in Set order only; dragging a selected card moves the whole selection, filtered or not.
@@ -188,8 +286,29 @@
   const maxRarity = $derived(Math.max(1, ...rarityCounts.map(([, n]) => n)));
   const value = $derived(project.set.cards.reduce((s: number, c: any) => s + (c.price?.base ?? 0), 0));
   const top = $derived([...project.set.cards].sort((a: any, b: any) => b.price.base - a.price.base).slice(0, 5));
-  const filtered = $derived(!!(query.trim() || rarity || color));
-  function clearFilters() { query = ''; rarity = ''; color = ''; }
+  const filtered = $derived(!!(query.trim() || rarity || color || noPack || (brush && brushShow !== 'all')));
+  /** Filters in the Filters panel that are on (the rarity chips and search show themselves). */
+  const panelFilters = $derived((color ? 1 : 0) + (rarity.startsWith('src:') ? 1 : 0) + (noPack ? 1 : 0));
+  let addOpen = $state(false);
+
+  // Links from other tabs: "Show the cards in no pack" (Checks), "Assign cards" (Packs → Contents).
+  $effect(() => {
+    if (nav?.tab !== 'cards') return;
+    untrack(() => {
+      const r = takeNav?.('cards');
+      if (r?.noPack) { clearFilters(); stopBrush(); noPack = true; }
+      if (r?.pack) { clearFilters(); startBrush(r.pack); }
+    });
+  });
+
+  // Ctrl+A selects every shown card, Esc clears the selection (or ends assigning), while typing in a field they don't.
+  function keys(e: KeyboardEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, select, [contenteditable], .ddpanel')) return;
+    if (e.key === 'Escape') { if (brush) stopBrush(); else selected = []; }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !brush) { e.preventDefault(); selectAll(); }
+  }
+  function clearFilters() { query = ''; rarity = ''; color = ''; noPack = false; brushShow = 'all'; }
   /** Selects a card from the summary (clearing filters that hide it). */
   function pick(id: string) {
     if (!shown.some((c: any) => c.id === id)) clearFilters();
@@ -199,34 +318,87 @@
   // Card size, remembered between launches.
   try { const s = Number(localStorage.getItem('cards.size')); if (s >= 100 && s <= 260) size = s; } catch {}
   $effect(() => { try { localStorage.setItem('cards.size', String(size)); } catch {} });
+  try { const v = localStorage.getItem('cards.showAs') ?? ''; if (!v || ALL_VERSIONS.includes(v)) showAs = v; } catch {}
+  $effect(() => { try { localStorage.setItem('cards.showAs', showAs); } catch {} });
 </script>
+
+<svelte:window onpointerup={() => (paint = null)} onkeydown={keys} />
 
 <div class="wrap">
   <div class="left">
     <div class="toolbar">
       <input class="search" type="search" placeholder="Search name, type, text…" bind:value={query} />
-      {#if colors.length}
-        <select bind:value={color} title="Filter by {source.colorLabel.toLowerCase()}">
-          <option value="">All {source.colorLabel.toLowerCase()}s</option>
-          {#each colors as f}<option value={f.value}>{f.label}</option>{/each}
-        </select>
+      {#if colors.length || srcRarities.length || noPackCount || noPack}
+        <Dropdown title="More filters" cls={panelFilters ? 'active' : ''}>
+          {#snippet label()}Filters{#if panelFilters}<span class="fcount">{panelFilters}</span>{/if}{/snippet}
+          {#snippet panel()}
+            {#if colors.length}
+              <label class="field">{source.colorLabel}
+                <select bind:value={color}>
+                  <option value="">All {source.colorLabel.toLowerCase()}s</option>
+                  {#each colors as f}<option value={f.value}>{f.label}</option>{/each}
+                </select></label>
+            {/if}
+            {#if srcRarities.length}
+              <label class="field" title="The card's own rarity from its import">Card rarity (from the import)
+                <select value={rarity.startsWith('src:') ? rarity : ''} onchange={(e) => (rarity = e.currentTarget.value)}>
+                  <option value="">All card rarities</option>
+                  {#each srcRarities as r}<option value={'src:' + r}>{r}</option>{/each}
+                </select></label>
+            {/if}
+            {#if noPackCount || noPack}
+              <label class="check" title="No pack can give these cards, so players can't get them from packs">
+                <input type="checkbox" checked={noPack} onchange={(e) => { noPack = e.currentTarget.checked; if (noPack) stopBrush(); }} />
+                Only cards in no pack <span class="muted small">({noPackCount})</span></label>
+            {/if}
+            {#if panelFilters}<button class="small" onclick={() => { color = ''; noPack = false; if (rarity.startsWith('src:')) rarity = ''; }}>Clear these filters</button>{/if}
+          {/snippet}
+        </Dropdown>
       {/if}
-      {#if srcRarities.length}
-        <select value={rarity.startsWith('src:') ? rarity : ''} onchange={(e) => (rarity = e.currentTarget.value)} title="The card's own rarity from its import">
-          <option value="">All card rarities</option>
-          {#each srcRarities as r}<option value={'src:' + r}>{r}</option>{/each}
-        </select>
-      {/if}
-      <span class="grow"></span>
       <label class="sortby">Sort
         <select bind:value={sort}>
-          <option value="set">Set order</option><option value="name">Name</option><option value="rarity">Rarity</option>
+          <option value="set">Set order</option><option value="number">Card number</option><option value="name">Name</option><option value="rarity">Rarity</option>
           {#if colors.length}<option value="color">{source.colorLabel}</option>{/if}
           {#each sorts as s}<option value={s.value}>{s.label}</option>{/each}
           <option value="price">Game price</option><option value="real">Real price</option>
         </select>
       </label>
-      <label class="sortby" title="Card size"><span class="sz small">▪</span><input type="range" min="100" max="260" bind:value={size} /><span class="sz">■</span></label>
+      <Dropdown title="How the cards are shown" cls={showAs ? 'active' : ''}>
+        {#snippet label()}View{#if showAs}<span class="fcount">{versionLabel(showAs)}</span>{/if}{/snippet}
+        {#snippet panel()}
+          <label class="field" title="Show every card as one version, with the shader the game draws it with">Show cards as
+            <select bind:value={showAs}>
+              <option value="">Main picture</option>
+              {#each ALL_VERSIONS as k}<option value={k}>{versionLabel(k)}</option>{/each}
+            </select></label>
+          <label class="field">Card size
+            <span class="sizer"><span class="sz small">▪</span><input type="range" min="100" max="260" bind:value={size} /><span class="sz">■</span></span></label>
+        {/snippet}
+      </Dropdown>
+      <span class="grow"></span>
+      {#if project.set.packs.length}
+        <Dropdown align="right" title="Pick a pack, then click cards to put them in or take them out" cls={brush ? 'active' : ''}>
+          {#snippet label()}🖌 Assign to pack{/snippet}
+          {#snippet panel(close)}
+            <div class="ddmenu">
+              {#each project.set.packs as p, pi (p.id)}
+                <button class="packpick" style="--pc:{packColour(pi)}" onclick={() => { close(); startBrush(p.id); }}>
+                  <span class="pdot"></span><span class="grow">{p.name}</span>
+                  <span class="muted small">{p.cards?.length ? `${p.cards.length} cards` : 'whole set'}</span></button>
+              {/each}
+            </div>
+          {/snippet}
+        </Dropdown>
+      {/if}
+      <Dropdown align="right" cls="primary" bind:open={addOpen} title="Each picture becomes a card">
+        {#snippet label()}+ Add cards{/snippet}
+        {#snippet panel(close)}
+          <span class="muted small">Pick card pictures from your computer: each one becomes a card you can name, price and give a rarity.</span>
+          <label class="check small" title="For files named with a card number first, like “001 Captain Marvel.png”: the number becomes the card's number and is left out of its name. Off: the whole file name is the name.">
+            <input type="checkbox" bind:checked={stripNumbers} onchange={rememberStrip} /> File names start with a card number (“001 Name.png”)</label>
+          <button class="primary" onclick={() => { close(); addCards(); }}>Choose images…</button>
+        {/snippet}
+      </Dropdown>
     </div>
     <div class="chips">
       <button class="chip" class:on={!rarity} onclick={() => (rarity = '')}>All <span class="n">{project.set.cards.length}</span></button>
@@ -234,31 +406,48 @@
         <button class="chip" class:on={rarity === r.id} onclick={() => (rarity = rarity === r.id ? '' : r.id)} disabled={!n && rarity !== r.id}>
           <span class="dot" style="background:{rarityColor(project.set, r.id)}"></span>{r.name} <span class="n">{n}</span></button>
       {/each}
-    </div>
-    <div class="subbar">
-      <span class="muted">{shown.length === project.set.cards.length ? `${shown.length} cards` : `${shown.length} of ${project.set.cards.length} shown`}{selected.length ? ` · ${selected.length} selected` : ''}</span>
-      {#if filtered}<button class="small link" onclick={clearFilters}>Clear filters</button>{/if}
       <span class="grow"></span>
-      <button class="small" onclick={selectAll} disabled={!shown.length}>Select all shown</button>
-      <button class="small" onclick={() => (selected = [])} disabled={!selected.length}>Clear selection</button>
-      <label class="check small" title="For files named with a card number first, like “001 Captain Marvel.png”: the number becomes the card's number and is left out of its name. Off: the whole file name is the name.">
-        <input type="checkbox" bind:checked={stripNumbers} onchange={rememberStrip} /> Strip leading numbers</label>
-      <button class="small primary" onclick={addCards}>+ Add cards from images</button>
+      <span class="muted small count">{shown.length === project.set.cards.length ? `${shown.length} cards` : `${shown.length} of ${project.set.cards.length}`}{selected.length && !brush ? ` · ${selected.length} selected` : ''}</span>
+      {#if filtered}<button class="small link" onclick={clearFilters}>Clear filters</button>{/if}
     </div>
+    {#if brushPack}
+      <div class="brushbar" style="--pc:{packColour(brushIndex)}">
+        <span>Assigning to <b>{brushPack.name}</b> ({brushPack.cards?.length ? `${brushPack.cards.length} cards` : 'the whole set'}).
+          <span class="muted">Click cards to put them in or take them out · Shift+click = range · drag across cards</span></span>
+        <span class="grow"></span>
+        <span class="seg">
+          <button class="small" class:on={brushShow === 'all'} onclick={() => (brushShow = 'all')}>All</button>
+          <button class="small" class:on={brushShow === 'in'} onclick={() => (brushShow = 'in')}>In pack</button>
+          <button class="small" class:on={brushShow === 'out'} onclick={() => (brushShow = 'out')}>Not in pack</button>
+        </span>
+        {#if brushPack.cards?.length}<button class="small" title="Give this pack every card of the set again" onclick={() => (brushPack.cards = [])}>Use the whole set</button>{/if}
+        <button class="small primary" onclick={stopBrush}>Done</button>
+      </div>
+    {/if}
     <!-- Drops land on the grid (the drop line sits in the gap between cards), at the last spot a card showed. -->
     <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax({size}px, 1fr))" role="list"
       ondragover={(e) => { if (dragIds.length) e.preventDefault(); }} ondrop={drop}
       ondragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropAt = null; }}>
       {#each shown as c, i (c.id)}
-        <button class="card" class:sel={selected.includes(c.id)} onclick={(e) => click(e, i, c.id)} ondblclick={() => view(c.id)}
-          draggable={sort === 'set'} ondragstart={(e) => dragStart(e, c.id)} ondragover={(e) => dragOver(e, c.id)} ondragend={dragEnd}
+        <button class="card" class:sel={!brushPack && selected.includes(c.id)} class:dim={(brushPack && !inPack(brushPack, c.id)) || (!brushPack && showAs && !cardVersions(project.set, c).has(showAs))}
+          onclick={(e) => { if (!brushPack) click(e, i, c.id); }} ondblclick={() => { if (!brushPack) view(c.id); }}
+          onpointerdown={(e) => paintStart(e, i, c.id)} onpointerenter={() => paintOver(c.id)}
+          draggable={sort === 'set' && !brushPack} ondragstart={(e) => dragStart(e, c.id)} ondragover={(e) => dragOver(e, c.id)} ondragend={dragEnd}
           class:dragging={dragIds.includes(c.id)} class:before={dropAt?.id === c.id && !dropAt?.after} class:after={dropAt?.id === c.id && !!dropAt?.after}
           style="--rc:{rarityColor(project.set, c.rarity)}"
-          title={meta(c.id).srcRarity && !ownRarities ? `${rarityName(project.set, c.rarity)} · ${meta(c.id).srcRarity}` : rarityName(project.set, c.rarity)}>
+          title={!brushPack && showAs && !cardVersions(project.set, c).has(showAs) ? `This card has no ${versionLabel(showAs)} version`
+            : meta(c.id).srcRarity && !ownRarities ? `${rarityName(project.set, c.rarity)} · ${meta(c.id).srcRarity}` : rarityName(project.set, c.rarity)}>
           <div class="img" style="aspect-ratio: 63/88">
-            {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt={c.name} loading="lazy" draggable="false" />
+            {#if c.image}<img src={stills[c.id] ?? projectFile(project.id, tileImage(c), imgBust)} alt={c.name} loading="lazy" draggable="false" />
             {:else}<span class="noimg">No image</span>{/if}
-            {#if selected.includes(c.id)}<span class="tick">✓</span>{/if}
+            {#if brushPack && inPack(brushPack, c.id)}<span class="tick" style="background:{packColour(brushIndex)}">✓</span>
+            {:else if !brushPack && selected.includes(c.id)}<span class="tick">✓</span>{/if}
+            {#if showAs && cardVersions(project.set, c).has(showAs) && shaderSource(project.set, c, showAs)}
+              {@const src = shaderSource(project.set, c, showAs)}
+              <span class="shaderbadge" class:own={src === 'card'}
+                title="{shaderName(shownShader(project.set, c, showAs))}: {src === 'card' ? "this card's own choice" : src === 'set' ? "the set's choice" : 'stock holo (foils without a choice)'}">
+                {src === 'card' ? '● ' : ''}{shaderName(shownShader(project.set, c, showAs))}</span>
+            {/if}
             <span class="flags">
               {#if c.backImage}<span title="Double-faced card (double-click to see both sides)">⇄</span>{/if}
               {#if hasOwnVersions(c)}<span title="Own versions: {cardVersions(project.set, c).size} of 12 (the set's default doesn't apply)">◧</span>{/if}
@@ -266,6 +455,11 @@
               {#if (c.versionShaders || project.set.versionShaders) && hasShader(project.set, c)}<span title="Drawn with a shader">✨</span>{/if}
               {#if meta(c.id).locked}<span title="Price locked">🔒</span>{/if}
             </span>
+            {#if ownListPacks(project.set, c.id).length}
+              <span class="packdots" title="In {ownListPacks(project.set, c.id).map((p) => p.name).join(', ')}">
+                {#each project.set.packs as p, pi (p.id)}{#if p.cards?.length && p.cards.includes(c.id)}<span style="background:{packColour(pi)}"></span>{/if}{/each}
+              </span>
+            {/if}
             {#if c.number}<span class="num">#{c.number}</span>{/if}
           </div>
           <div class="cap">
@@ -282,7 +476,7 @@
             <div class="emptyglyph">🂠</div>
             <h1>No cards yet</h1>
             <p class="muted">Add card pictures from your computer — each image becomes a card you can name, price and give a rarity.</p>
-            <button class="primary" onclick={addCards}>+ Add cards from images</button>
+            <button class="primary" onclick={() => (addOpen = true)}>+ Add cards</button>
           {/if}
         </div>
       {/each}
@@ -291,15 +485,14 @@
 
   <aside>
     {#if selectedCards.length === 1}
-      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} ondelete={deleteSelected} onzoom={() => view(selectedCards[0].id)} />
+      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {goto} ondelete={deleteSelected} onrenamed={renamed} bind:showAs />
     {:else if selectedCards.length > 1}
-      <BulkEdit {project} cards={selectedCards} {imgBust} {notify} ondelete={deleteSelected} />
+      <BulkEdit {project} cards={selectedCards} {imgBust} {notify} {goto} ondelete={deleteSelected} />
     {:else}
       <div class="summary">
-        <div class="minis">
-          <div class="mini"><span class="label">Cards</span><b>{project.set.cards.length.toLocaleString()}</b></div>
-          <div class="mini"><span class="label">Base value</span><b>{money(value)}</b></div>
-          <div class="mini"><span class="label">Average</span><b>{money(project.set.cards.length ? value / project.set.cards.length : 0)}</b></div>
+        <div class="sec tips">
+          <p><b>Click</b> a card to edit it · <b>Ctrl/Shift-click</b> or <b>Ctrl+A</b> for many · <b>Esc</b> clears ·
+            <b>double-click</b> = full screen · in Set order, <b>drag</b> to reorder (the game's binder uses this order).</p>
         </div>
 
         <div class="sec">
@@ -316,7 +509,7 @@
 
         {#if top.length && top[0].price.base > 0}
           <div class="sec">
-            <h3>Most valuable</h3>
+            <h3>Most valuable <span class="muted small">· set base value {money(value)}</span></h3>
             {#each top as c (c.id)}
               <button class="trow" onclick={() => pick(c.id)}>
                 {#if c.image}<img src={projectFile(project.id, c.image, imgBust)} alt="" loading="lazy" />{:else}<span class="ph"></span>{/if}
@@ -325,13 +518,6 @@
             {/each}
           </div>
         {/if}
-
-        <div class="sec tips">
-          <h3>Tips</h3>
-          <p><b>Click</b> a card to edit it, <b>double-click</b> to view it full screen.</p>
-          <p><b>Ctrl/Shift-click</b> or “Select all shown” to edit many at once.</p>
-          <p>In <b>Set order</b>, drag cards to move them (a selection moves together). The game's binder and price app show cards in this order.</p>
-        </div>
       </div>
     {/if}
   </aside>
@@ -347,16 +533,33 @@
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .toolbar .search { width: 280px; }
   .sortby { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-  .sortby input[type="range"] { width: 110px; }
   .sz { font-size: 14px; line-height: 1; }
   .sz.small { font-size: 9px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0; }
+  .toolbar :global(.ddbtn.active) { border-color: var(--accent); background: #22304d; }
+  .fcount { font-size: 11px; background: var(--accent); color: #fff; border-radius: 8px; padding: 0 6px; }
+  .sizer { display: flex; align-items: center; gap: 6px; }
+  .sizer input { flex: 1; }
+  .packpick { display: flex; align-items: center; gap: 8px; min-width: 240px; }
+  .pdot { width: 10px; height: 10px; border-radius: 50%; background: var(--pc); flex: none; }
+  .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 20px; }
+  .chips .count { margin-left: 8px; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--panel); }
   .chip.on { border-color: var(--accent); background: #22304d; }
   .chip .n { color: var(--muted); font-size: 11px; }
-  .subbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 20px; font-size: 13px; }
+  .brushbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 20px 10px; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--pc); background: color-mix(in srgb, var(--pc) 14%, var(--panel)); font-size: 13px; }
+  .brushbar .seg { display: inline-flex; gap: 2px; }
+  .brushbar .seg .on { border-color: var(--pc); background: color-mix(in srgb, var(--pc) 30%, var(--panel)); }
+  .card.dim { opacity: 0.35; }
+  .shaderbadge { position: absolute; left: 6px; bottom: 24px; max-width: calc(100% - 12px); box-sizing: border-box;
+    font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(20, 28, 44, 0.85); color: #cfe0ff; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .shaderbadge.own { background: rgba(44, 37, 70, 0.9); color: #e2d4ff; }
+  .card.dim:hover { opacity: 0.7; }
+  .packdots { position: absolute; bottom: 6px; left: 6px; display: flex; gap: 3px; padding: 2px 3px; border-radius: 6px; background: rgba(10, 12, 16, 0.6); }
+  .packdots span { width: 8px; height: 8px; border-radius: 50%; }
   .grid { flex: 1; overflow: auto; display: grid; gap: 14px; padding: 4px 20px 24px; align-content: start; }
-  .card { padding: 6px 6px 8px; display: flex; flex-direction: column; gap: 5px; background: var(--panel); text-align: left; user-select: none;
+  .card { min-width: 0; padding: 6px 6px 8px; display: flex; flex-direction: column; gap: 5px; background: var(--panel); text-align: left; user-select: none;
     border-radius: 10px; border-bottom: 2px solid var(--rc); transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
   .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
   .card.sel { border-color: var(--accent); background: #1f2b45; box-shadow: 0 0 0 1px var(--accent); }
@@ -385,8 +588,6 @@
 
   aside { width: 380px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; }
   .summary { padding: 16px; display: flex; flex-direction: column; gap: 18px; }
-  .minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .mini { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; min-width: 0; }
   .sec { display: flex; flex-direction: column; gap: 4px; }
   .sec h3 { margin-bottom: 4px; }
   .rrow, .trow { display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 1px solid transparent; padding: 4px 6px; border-radius: 6px; }

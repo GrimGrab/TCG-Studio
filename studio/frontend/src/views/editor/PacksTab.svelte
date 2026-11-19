@@ -1,17 +1,43 @@
+<script lang="ts" module>
+  type PackPart = 'contents' | 'odds' | 'shop' | 'art';
+  // The open part stays the same while going from pack to pack.
+  let rememberedPart: PackPart = 'contents';
+</script>
+
 <script lang="ts">
   import { App, projectFile, setRarities, splitWeights, BORDERS, BORDER_LABELS, ask, money } from '../../lib/api';
+  import Dropdown from '../Dropdown.svelte';
+  import { untrack } from 'svelte';
+  import type { Goto, NavRequest, TakeNav } from '../../lib/setNav';
   import { anyCardHas } from '../../lib/cardVersions';
   import { packSlot, pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
   import PictureSlot from '../PictureSlot.svelte';
   import PackArtEditor from './PackArtEditor.svelte';
   import PackContents from './PackContents.svelte';
 
-  let { project, notify, imgBust, hooks, rebaseArt }: {
+  let { project, notify, imgBust, hooks, rebaseArt, goto, nav, takeNav }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
     hooks: Set<() => Promise<void>>;
     rebaseArt?: (packId: string, which: string, layout: any) => void; // a design converted on opening counts as saved
+    goto?: Goto; nav?: NavRequest | null; takeNav?: TakeNav;
   } = $props();
   let artEditor = $state<any>();
+  let part = $state<PackPart>(rememberedPart);
+  /** Shows another part of the pack, after the art editor applied its unapplied edits (it closes when Art is left). */
+  async function showPart(p: PackPart) {
+    if (p === part) return;
+    await artEditor?.flush();
+    part = rememberedPart = p;
+  }
+  // Links from other tabs name a pack.
+  $effect(() => {
+    if (nav?.tab !== 'packs') return;
+    untrack(() => {
+      const r = takeNav?.('packs');
+      const i = r?.pack ? project.set.packs.findIndex((p: any) => p.id === r.pack) : -1;
+      if (i >= 0) selectPack(i);
+    });
+  });
 
   /** Switches packs after applying the art editor's unapplied edits to the current one. */
   async function selectPack(i: number) {
@@ -120,24 +146,24 @@
             <span class="code" title="Pack id (stable)">{pack.id}</span>
           </div>
         </div>
-        <div class="heroactions"><button class="danger" onclick={removePack}>Delete pack</button></div>
+        <div class="heroactions">
+          <Dropdown align="right" cls="dots" title="More" caret={false}>
+            {#snippet label()}⋯{/snippet}
+            {#snippet panel(close)}
+              <div class="ddmenu"><button class="danger" onclick={() => { close(); removePack(); }}>Delete pack…</button></div>
+            {/snippet}
+          </Dropdown>
+        </div>
       </header>
 
-      <section class="block">
-        <div class="bhead"><h2>Basics</h2></div>
-        <div class="row wrapr">
-          <label class="field grow">Box name<input bind:value={pack.boxName} placeholder={pack.name.endsWith(' Pack') ? pack.name.slice(0, -5) + ' Box' : pack.name + ' Box'} /></label>
-        </div>
-        <div class="toggles">
-          <label class="toggle" class:on={pack.starter}><input type="checkbox" bind:checked={pack.starter} />
-            <span><b>Starter</b><span class="muted small">Unlocked on new games</span></span></label>
-          <label class="toggle" class:on={pack.hasBox}><input type="checkbox" bind:checked={pack.hasBox} />
-            <span><b>Sell a box</b><span class="muted small">A box of 8 packs, with its own license</span></span></label>
-          <label class="toggle" class:on={pack.allowDuplicates}><input type="checkbox" bind:checked={pack.allowDuplicates} />
-            <span><b>Duplicates</b><span class="muted small">The same card can come twice in one pack</span></span></label>
-        </div>
-      </section>
+      <nav class="tabbar parts">
+        <button class:on={part === 'contents'} onclick={() => showPart('contents')} title="Slots, odds per rarity and which cards it gives">Contents</button>
+        <button class:on={part === 'odds'} onclick={() => showPart('odds')} title="Foil and border chances">Foil &amp; borders</button>
+        <button class:on={part === 'shop'} onclick={() => showPart('shop')} title="Starter, box, cost, licenses and market price">Shop</button>
+        <button class:on={part === 'art'} onclick={() => showPart('art')} title="Pack and box pictures">Art</button>
+      </nav>
 
+      {#if part === 'contents'}
       <section class="block">
         <div class="bhead"><h2>Contents</h2>
           {#if pack.slots.length}
@@ -161,27 +187,49 @@
         {/if}
         <div class="pool">
           <span><b>Card pool:</b> {pack.cards.length ? `${pack.cards.length} specific cards` : 'the whole set'}</span>
+          <button class="small" onclick={() => goto?.('cards', { pack: pack.id })} title="Opens the Cards tab: click cards to put them in this pack or take them out">
+            {pack.cards.length ? 'Change cards…' : 'Pick specific cards…'}</button>
           {#if pack.cards.length}<button class="small" onclick={() => (pack.cards = [])}>Use the whole set</button>{/if}
-          <span class="muted small">Select cards in the Cards tab to add them to this pack's list.</span>
         </div>
       </section>
+      {/if}
 
+      {#if part === 'odds'}
       <section class="block">
         <div class="bhead"><h2>Foil &amp; borders</h2><span class="muted small">Chance per card, on top of its rarity.</span></div>
         <div class="odds">
-          <label class="odd foil" class:off={!hasVersion(null, true)} title={hasVersion(null, true) ? '' : 'The set has no foil versions (Set details → Card versions): no card comes out foil.'}>
+          <label class="odd foil" class:off={!hasVersion(null, true)} title={hasVersion(null, true) ? '' : 'The set has no foil versions (Set → Card versions): no card comes out foil.'}>
             <span class="lbl">Foil</span>
             <span class="in"><input type="number" step="0.5" min="0" max="100" bind:value={pack.foilChance} disabled={!hasVersion(null, true)} />%</span>
             {#if !hasVersion(null, true)}<span class="muted small">no foil versions</span>{/if}
           </label>
           {#each BORDERS.slice(1) as b}
-            <label class="odd b-{b}" class:off={!hasVersion(b, null)} title={hasVersion(b, null) ? '' : 'Off for this set (Set details → Card versions): this border never comes out of packs.'}>
+            <label class="odd b-{b}" class:off={!hasVersion(b, null)} title={hasVersion(b, null) ? '' : 'Off for this set (Set → Card versions): this border never comes out of packs.'}>
               <span class="lbl">{BORDER_LABELS[b]}</span>
               <span class="in"><input type="number" step="0.05" min="0" value={pack.borderOdds[b] ?? 0} disabled={!hasVersion(b, null)} oninput={(e) => (pack.borderOdds[b] = optNumber(e.currentTarget.value) ?? 0)} />%</span>
               {#if !hasVersion(b, null)}<span class="muted small">off for this set</span>{/if}
             </label>
           {/each}
         </div>
+        <span class="muted small">Which versions exist at all is set for the whole set under
+          <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card versions</button>; greyed ones are off there.</span>
+      </section>
+      {/if}
+
+      {#if part === 'shop'}
+      <section class="block">
+        <div class="bhead"><h2>Basics</h2></div>
+        <div class="toggles">
+          <label class="toggle" class:on={pack.starter}><input type="checkbox" bind:checked={pack.starter} />
+            <span><b>Starter</b><span class="muted small">Unlocked on new games</span></span></label>
+          <label class="toggle" class:on={pack.hasBox}><input type="checkbox" bind:checked={pack.hasBox} />
+            <span><b>Sell a box</b><span class="muted small">A box of 8 packs, with its own license</span></span></label>
+          <label class="toggle" class:on={pack.allowDuplicates}><input type="checkbox" bind:checked={pack.allowDuplicates} />
+            <span><b>Duplicates</b><span class="muted small">The same card can come twice in one pack</span></span></label>
+        </div>
+        {#if pack.hasBox}
+          <label class="field boxname">Box name<input bind:value={pack.boxName} placeholder={pack.name.endsWith(' Pack') ? pack.name.slice(0, -5) + ' Box' : pack.name + ' Box'} /></label>
+        {/if}
       </section>
 
       <section class="block">
@@ -214,12 +262,15 @@
           <span class="muted small">Market price: {money(pack.packCost * pack.marketMin)} – {money(pack.packCost * pack.marketMax)} per pack</span>
         </div>
       </section>
+      {/if}
 
+      {#if part === 'art'}
       <section class="block">
-        <div class="bhead"><h2>Art</h2></div>
         <PackArtEditor bind:this={artEditor} {project} {pack} {notify} {hooks} {rebaseArt} onapplied={() => (artBust = Date.now())} />
-        <h3 class="sub">Finished images</h3>
-        <p class="muted small">What the pack uses (made by the editor above), or your own picture: textures in the
+      </section>
+      <section class="block">
+        <div class="bhead"><h2>Finished images</h2><span class="muted small">what the game uses; replace one with your own picture</span></div>
+        <p class="muted small">Made by the editor above, or your own picture: textures in the
           vanilla layout (cut to 1024²), icons in the vanilla icon's shape. Drag the box to pick the part used; saving the set cuts it.
           Empty = vanilla art.</p>
         <div class="art-grid">
@@ -235,6 +286,7 @@
           {/each}
         </div>
       </section>
+      {/if}
     </div>
   {:else}
     <div class="emptypane">
@@ -261,8 +313,8 @@
   .art { width: 88px; height: 110px; flex: none; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .art img { width: 80px; height: 100px; object-fit: contain; }
   .meta .ok { color: var(--warn); }
-  .wrapr { flex-wrap: wrap; }
-  .wrapr .field { max-width: 480px; }
+  .parts { padding: 0; margin-top: -6px; }
+  .boxname { max-width: 480px; }
 
   .toggles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
   .toggle { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); cursor: pointer; }
@@ -286,7 +338,7 @@
   .odd.b-EX { border-top-color: #ff5e6a; }
   .odd.b-FullArt { border-top-color: #3ecf8e; }
 
-  .shop { border-collapse: collapse; font-size: 13px; width: 100%; max-width: 820px; }
+  .shop { border-collapse: collapse; font-size: 13px; width: 100%; }
   .shop th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 0 8px 6px 0; }
   .shop td { padding: 3px 8px 3px 0; }
   .shop input { width: 100%; min-width: 70px; }
@@ -295,7 +347,6 @@
   .market { flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
   .market .field { width: 130px; }
 
-  h3.sub { font-size: 12px; margin-top: 4px; }
   .art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
   .artbox { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
   .artbox .lbl { font-weight: 600; }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -91,8 +92,19 @@ func (a *App) pointGameAtWorkspace() {
 	if gameDir := a.gameDir(); game.IsGameDir(gameDir) {
 		_ = game.UpdateStudioPaths(gameDir, func(sp *game.StudioPaths) {
 			sp.Setup, sp.Library, sp.Assets = a.root(), a.wsDir().Library(), a.wsDir().Store().Dir
+			sp.PackModels = a.packModels()
 		})
 	}
+}
+
+// packModels: the folder of the pack models in the game templates read from this game's files ("" while there are none: the
+// game then keeps its own). Named whenever the templates come from the game: the mod checks each model file on its own, so
+// a missing opening pack never takes the fixed shelf pack from custom packs.
+func (a *App) packModels() string {
+	if dir, source := a.templates(); source == "game" {
+		return filepath.Join(dir, "accessories")
+	}
+	return ""
 }
 
 // SetupsView is the Setups page.

@@ -30,7 +30,7 @@
 </div>
 
 <style>
-  .vgrid { display: grid; grid-template-columns: minmax(90px, auto) 1fr 1fr; gap: 4px 6px; align-items: center; }
+  .vgrid { display: grid; grid-template-columns: minmax(70px, auto) minmax(0, 1fr) minmax(0, 1fr); gap: 4px 6px; align-items: center; }
   .colhead { font-size: 12px; color: var(--muted); text-align: center; }
   .rowhead { font-size: 13px; }
   .cell { display: flex; align-items: center; gap: 4px; min-width: 0; }

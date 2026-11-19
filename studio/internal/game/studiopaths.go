@@ -20,6 +20,9 @@ type StudioPaths struct {
 	Library string `json:"library"` // <workspace>\library
 	Assets  string `json:"assets"`  // <workspace>\assets
 	Setup   string `json:"setup"`   // the active setup's folder: its installed sets, accessory library, card back, Game look
+	// PackModels is the folder of the pack models Studio builds from the game files (gameextract packModels: the fixed shelf
+	// pack for custom packs, the pack-opening packs); "" = none yet, the game keeps its own.
+	PackModels string `json:"packModels,omitempty"`
 }
 
 // ReadStudioPaths is the game's StudioPathsFile (empty fields when it is missing).
@@ -45,7 +48,7 @@ func UpdateStudioPaths(gameDir string, change func(*StudioPaths)) error {
 	p := old
 	change(&p)
 	same := func(a, b string) bool { return (a == "" && b == "") || SameDir(a, b) }
-	if same(p.Library, old.Library) && same(p.Assets, old.Assets) && same(p.Setup, old.Setup) &&
+	if same(p.Library, old.Library) && same(p.Assets, old.Assets) && same(p.Setup, old.Setup) && same(p.PackModels, old.PackModels) &&
 		fsutil.Exists(filepath.Join(PluginDir(gameDir), StudioPathsFile)) {
 		return nil
 	}

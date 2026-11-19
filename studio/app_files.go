@@ -75,11 +75,17 @@ var fileRoutes = []fileRoute{
 func (a *App) fileHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if file := a.routeFile(strings.TrimPrefix(r.URL.Path, "/")); file != "" {
+			// Always the whole file: Wails turns a 304 into a 500 (a 304 hangs WebView2), so a revalidated cached file
+			// (fonts, templates) would fail to load. Without the conditional headers ServeFile never answers 304.
+			for _, h := range []string{"If-Modified-Since", "If-None-Match", "If-Unmodified-Since", "If-Match", "If-Range"} {
+				r.Header.Del(h)
+			}
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFile(w, r, file)
 			return
 		}
-		http.NotFound(w, r)
+		// Name the path that found no file (the page shows it when a preview fails).
+		http.Error(w, "no file for "+r.URL.Path, http.StatusNotFound)
 	})
 }
 

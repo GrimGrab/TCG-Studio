@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions, cardsWithOwnShaders, hasShader, inheritLabel, shownShader, writeCardShader, writeSetShader } from './cardVersions';
+import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions, cardsWithOwnShaders, hasShader, inheritLabel, shownShader, writeCardShader, writeSetShader, shaderSource } from './cardVersions';
 
 describe('card versions', () => {
   it('follows the set until the card gets its own list', () => {
@@ -74,5 +74,18 @@ describe('card versions', () => {
     setVersionImage(card, 'Gold', undefined);
     setVersionImage(card, 'Gold_foil', undefined);
     expect(card.versionImages).toBeUndefined();
+  });
+  it('says where the shader of a version comes from', () => {
+    const set: any = { renderMode: 'FullImage', cards: [] };
+    const card: any = { id: 'a' };
+    expect(shaderSource(set, card, 'Gold_foil')).toBe('default');
+    expect(shaderSource(set, card, 'Gold')).toBe('');
+    writeSetShader(set, 'Gold_foil', 'x');
+    expect(shaderSource(set, card, 'Gold_foil')).toBe('set');
+    writeCardShader(card, 'Gold_foil', 'y');
+    expect(shaderSource(set, card, 'Gold_foil')).toBe('card');
+    writeCardShader(card, 'Gold_foil', '');
+    expect(shaderSource(set, card, 'Gold_foil')).toBe('');
+    expect(shaderSource({ renderMode: 'Framed', cards: [] }, {}, 'Gold_foil')).toBe('');
   });
 });

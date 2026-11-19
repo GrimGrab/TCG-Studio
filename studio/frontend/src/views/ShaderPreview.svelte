@@ -63,9 +63,11 @@
   });
   $effect(() => { if (view) view.tilt = tilt; });
 
+  let hit = $state<HTMLDivElement>();
   function onMove(e: PointerEvent) {
-    const r = canvas!.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width - 0.5) * 2, y = (0.5 - (e.clientY - r.top) / r.height) * 2;
+    const r = hit!.getBoundingClientRect(); // the untilted frame: the measure doesn't move as the card tilts
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+    const x = clamp(((e.clientX - r.left) / r.width - 0.5) * 2), y = clamp((0.5 - (e.clientY - r.top) / r.height) * 2);
     tilt = [-x * 0.5, -y * 0.5];
   }
 
@@ -86,10 +88,14 @@
     <p class="notice err">{failed}</p>
   {/if}
   <div class="stage" style:min-height="{Math.round(width * 1.4) + 30}px" use:maximizable={{ onchange: (on) => (full = on) }}>
-    <canvas bind:this={canvas} width={shownWidth * 2} height={height * 2} style:width="{shownWidth}px" style:height="{height}px"
-      style:transform="perspective(900px) rotateY({-tilt[0] * 50}deg) rotateX({tilt[1] * 50}deg)"
+    <!-- The pointer is followed on a still frame around the card, not on the card itself: a tilted card slides out from
+         under the pointer near its edges, which used to snap it flat and back again (jerky). -->
+    <div class="hit" bind:this={hit} style:width="{shownWidth}px" style:height="{height}px"
       onpointermove={onMove} onpointerenter={() => view?.hover(true)}
-      onpointerleave={() => { tilt = [0, 0]; view?.hover(false); }}></canvas>
+      onpointerleave={() => { tilt = [0, 0]; view?.hover(false); }} role="presentation">
+      <canvas bind:this={canvas} width={shownWidth * 2} height={height * 2} style:width="{shownWidth}px" style:height="{height}px"
+        style:transform="perspective(900px) rotateY({-tilt[0] * 50}deg) rotateX({tilt[1] * 50}deg)"></canvas>
+    </div>
   </div>
   {#if controls}
     <div class="row tools">
@@ -113,7 +119,8 @@
   .preview { display: flex; flex-direction: column; gap: 8px; }
   .stage { display: flex; align-items: center; justify-content: center; border-radius: 10px;
     background: repeating-conic-gradient(#2a2d36 0% 25%, #23262e 0% 50%) 0 0 / 24px 24px; }
-  canvas { display: block; transition: transform 0.08s linear; }
+  .hit { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; transition: transform 0.08s linear; pointer-events: none; }
   .tools { flex-wrap: wrap; }
   .hint { text-align: right; }
   .small { font-size: 12px; }

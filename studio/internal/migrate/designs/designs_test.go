@@ -102,7 +102,11 @@ func TestMigratePackLayout(t *testing.T) {
 	}
 	for id, oldW := range map[string]float64{"front": 0.678, "back": 0.678} {
 		f := faces[id]
-		if w := f.Net[2] * f.Shown[2]; math.Abs(w-oldW) > 0.001 {
+		shown := 1.0 // no Shown: all of the face
+		if f.Shown != nil {
+			shown = f.Shown[2] - f.Shown[0]
+		}
+		if w := f.Net[2] * shown; math.Abs(w-oldW) > 0.001 {
 			t.Errorf("%s shows %v of the net, was %v", id, w, oldW)
 		}
 	}

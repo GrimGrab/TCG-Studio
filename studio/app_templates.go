@@ -151,6 +151,7 @@ func (a *App) RefreshTemplates(force bool) TemplatesStatus {
 			a.RefreshTemplates(false)
 			return
 		}
+		a.pointGameAtWorkspace() // the pack-opening pack is part of the templates
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, evTemplatesReady, a.TemplatesStatus())
 		}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"tcgstudio/internal/fontname"
 	"tcgstudio/internal/fsutil"
 )
 
@@ -36,7 +37,7 @@ func IsRelFile(s string) bool {
 			return false
 		}
 	}
-	return fsutil.IsImage(s)
+	return fsutil.IsImage(s) || fontname.IsFont(s) // fonts: the pack/box editor's text layers
 }
 
 // Files lists every file the set refers to, as relative paths (each once, sorted): set.json's card images, card back and

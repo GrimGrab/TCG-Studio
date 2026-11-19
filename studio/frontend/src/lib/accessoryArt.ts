@@ -4,6 +4,7 @@
 import { loadObjUV, renderMeshIcon } from './meshView';
 
 import { templateFile } from './urls';
+import { fontFamily } from './shopLook';
 
 /** shape: the piece's outline in texture pixels when it isn't a plain rectangle (only inside it is painted); part: its name. */
 export interface Target { rect: number[]; src: number[]; flipX?: boolean; flipY?: boolean; transpose?: boolean; shape?: number[][]; part?: string }
@@ -64,6 +65,7 @@ export interface Layer {
   face?: string;                // fill on the faces: face id, '' = every face
   color?: string; color2?: string; // fill: solid or top→bottom gradient; text colour
   text?: string; outline?: string; // text: outline colour ('' = none)
+  font?: string;                // text: font file, a path like an image's src (the set's fonts/x.ttf); none = Studio's bold
   straighten?: { src: string; pts: number[] }; // image made by Straighten: the original photo and its corners (re-editable)
 }
 export interface Layout {
@@ -72,6 +74,8 @@ export interface Layout {
   baseItem?: string;            // pack/box editor: the model base (vanilla item) the art starts from, or 'file'
   baseFile?: string;            // baseItem 'file': project image in the model's own layout (a snapshot of earlier art)
   textureFile?: string;         // painted texture (made from an exported template): used at its own resolution, layers go on top
+  madeTexture?: string;         // pack/box editor: the finished texture this design produced last; the item's art differs
+                                // = it was made elsewhere since (classic generator, own picture), so the editor starts from it
 }
 
 /** The current net version (uvmap.NetVersion). */
@@ -83,10 +87,9 @@ export const newLayout = (): Layout => ({ version: 2, net: NET_VERSION, layers: 
  *  read straight from that texture, as the editor does with a painted texture. Same output as the editor's export. */
 export async function renderAccessoryIcon(m: Model, textureUrl: string, w = 512, h = 512): Promise<string> {
   const tex = await loadImage(textureUrl);
-  if (m.icon === 'mesh' || m.icon === 'pack') return meshIcon(m, tex); // the model itself, textured
   const S = netScale(m), net = document.createElement('canvas');
-  await renderNet(net, m, newLayout(), tex, () => '', S);
-  return composeIcon(m, net, S, w, h).toDataURL('image/png');
+  if (m.icon !== 'mesh' && m.icon !== 'pack') await renderNet(net, m, newLayout(), tex, () => '', S); // mesh icons skip the net
+  return textureIcon(m, tex, net, S, w, h);
 }
 
 /** Net bounds in object units. */
@@ -204,8 +207,15 @@ async function layerImages(layout: Layout, imageUrl: (rel: string) => string): P
   await Promise.all(layout.layers.filter((l) => l.visible && l.kind === 'image' && l.src).map(async (l) => {
     try { out.set(l.src!, await loadImage(imageUrl(l.src!))); } catch { /* missing image: skipped */ }
   }));
+  // Text layers' fonts load with the pictures, so drawing (synchronous) finds them ready.
+  await Promise.all(layout.layers.filter((l) => l.visible && l.kind === 'text' && l.font).map(async (l) => {
+    try { textFonts.set(l.font!, await fontFamily(imageUrl(l.font!))); } catch { /* missing font: Studio's bold */ }
+  }));
   return out;
 }
+
+/** CSS family of each text layer font file loaded so far (layerImages fills it). */
+const textFonts = new Map<string, string>();
 
 /** Draws one layer (with its opacity and blend, or `blend` instead) in net-canvas pixels (net origin at its top-left, S px per unit). */
 function drawLayer(ctx: CanvasRenderingContext2D, m: Model, l: Layer, S: number, imgs: Map<string, HTMLImageElement>, blend?: GlobalCompositeOperation) {
@@ -250,7 +260,8 @@ function drawShape(ctx: CanvasRenderingContext2D, l: Layer, s: number, imgs: Map
     ctx.drawImage(img, u0 * img.width, v0 * img.height, (u1 - u0) * img.width, (v1 - v0) * img.height, (-l.w / 2) * s, (-l.h / 2) * s, l.w * s, l.h * s);
   } else if (l.kind === 'text' && l.text) {
     const px = l.h * s;
-    ctx.font = `bold ${px}px Nunito, "Segoe UI", sans-serif`;
+    const fam = l.font ? textFonts.get(l.font) : undefined;
+    ctx.font = fam ? `${px}px "${fam}", "Segoe UI", sans-serif` : `bold ${px}px Nunito, "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if (l.outline) {
@@ -861,6 +872,14 @@ function bandColors(img: Picture, edges: boolean): { top: string; bottom: string
     return '#' + best.slice(0, 3).map((v) => Math.round(v / best![3]).toString(16).padStart(2, '0')).join('');
   };
   return edges ? { top: band(0.12, 0.35), bottom: band(0.65, 0.88) } : { top: band(0, 0.5), bottom: band(0.5, 1) };
+}
+
+/** A finished texture's shop icon, the one way the editor and the generators (Smart, classic) make it: the game model rendered
+ *  with the texture for 'pack' and 'mesh' models, else the drawing from the net (net canvas at S px per unit). 'recolor'
+ *  models need the vanilla icon and stay in the editor. */
+export async function textureIcon(m: Model, texture: TexImageSource, net: HTMLCanvasElement, S: number, w = 512, h = 512): Promise<string> {
+  if (m.icon === 'pack' || m.icon === 'mesh') return meshIcon(m, texture);
+  return composeIcon(m, net, S, w, h).toDataURL('image/png');
 }
 
 /** Shop icon of a model whose icon is 'pack': the real game mesh rendered with the finished texture (1024², like vanilla). */

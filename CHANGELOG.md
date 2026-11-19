@@ -3,6 +3,22 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.3.0 - 2026-11-18
+
+Pack art now looks the same in the pack opening as on the shelf, and custom pack backs no longer show art twice.
+
+- New: The pack you're about to open uses the same picture layout as the pack on the shelf and in the pack editor, so its back and crimps look right; it still tears open as usual (Visuals → Shelf Pack In Opening, on by default).
+- New: Custom packs use a corrected shelf model whose back is one continuous area, so art in the middle of the back no longer shows twice beside the seam. Vanilla packs are unchanged. Re-save your custom packs in the pack editor so their back art uses the new layout.
+- New: Change a card's ID in the card panel (ID → Change…), with a warning about what it affects in saved games.
+- New: Tidier set editor: a Checks menu in the header, a Cards toolbar with Filters / View / Assign / Add menus, pack sub-tabs, and a full-width Set tab with a jump list.
+- New: Put cards in packs right on the Cards tab: pick a pack, then click, Shift-click or drag cards. Pack dots on cards, a "Not in a pack" filter, sort by number, bulk Remove, and "In packs" in the card panel.
+- New: "Show as" a version on the Cards tab and in the card panel: see each version's picture and shader, try a shader live, then use it for the card or the whole set.
+- Changed: Pack editor face areas: the edges fit the model exactly, and the back and the back crimps are one area each.
+- Fixed: In the texture editor the checker fills the whole view, and resize handles past the picture's edge can be grabbed.
+- Fixed: Fonts sometimes failed to load in Studio.
+- Fixed: After Studio reads the game files again (for example after a game update), new models show without restarting Studio.
+After updating: open Game & mod and click Install / Repair to update the mod in the game. Studio reads the game files once after the update.
+
 ## v2.2.4 - 2026-11-17
 
 Faster holo foils, a new EX foil look, and stock holos you can tune yourself.

@@ -16,48 +16,6 @@ export namespace art {
 	        this.confident = source["confident"];
 	    }
 	}
-	export class Options {
-	    color: string;
-	    title: string;
-	    icon: string;
-	    filePrefix: string;
-	    frontImage: string;
-	    titleOnImage: boolean;
-	    noPackText: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new Options(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.color = source["color"];
-	        this.title = source["title"];
-	        this.icon = source["icon"];
-	        this.filePrefix = source["filePrefix"];
-	        this.frontImage = source["frontImage"];
-	        this.titleOnImage = source["titleOnImage"];
-	        this.noPackText = source["noPackText"];
-	    }
-	}
-	export class Result {
-	    packTexture: string;
-	    packIcon: string;
-	    boxTexture: string;
-	    boxIcon: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Result(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.packTexture = source["packTexture"];
-	        this.packIcon = source["packIcon"];
-	        this.boxTexture = source["boxTexture"];
-	        this.boxIcon = source["boxIcon"];
-	    }
-	}
 
 }
 

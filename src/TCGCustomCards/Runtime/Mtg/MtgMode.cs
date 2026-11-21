@@ -121,14 +121,17 @@ namespace TCGCustomCards.Runtime.Mtg
             ? new MtgDeckChoice { Store = true, Index = MtgDeckStore.Active }
             : new MtgDeckChoice { Store = false, Index = CPlayerData.m_CurrentSelectedDeckIndex };
 
-        /// <summary>Every deck the player could play MTG with (deck picker): valid MTG deck-builder decks, or vanilla decks with MTG cards.</summary>
-        public static List<MtgDeckChoice> DeckChoices()
+        /// <summary>
+        /// Every deck the player could play MTG with: valid MTG deck-builder decks, or vanilla decks with MTG cards.
+        /// <paramref name="includeIncomplete"/> = also builder decks that aren't finished (the deck picker shows them greyed out).
+        /// </summary>
+        public static List<MtgDeckChoice> DeckChoices(bool includeIncomplete = false)
         {
             var list = new List<MtgDeckChoice>();
             if (UseMtgDecks)
             {
                 for (int i = 0; i < MtgDeckStore.Decks.Count; i++)
-                    if (MtgDeckStore.Decks[i].Valid)
+                    if (includeIncomplete || MtgDeckStore.Decks[i].Valid)
                         list.Add(new MtgDeckChoice { Store = true, Index = i, Name = MtgDeckStore.Decks[i].Name, Commander = MtgDeckStore.Decks[i].IsCommander });
                 return list;
             }
@@ -147,7 +150,8 @@ namespace TCGCustomCards.Runtime.Mtg
         {
             if (c.Store)
             {
-                if (c.Index >= 0 && c.Index < MtgDeckStore.Decks.Count) MtgDeckStore.SetActive(MtgDeckStore.Decks[c.Index]);
+                if (c.Index >= 0 && c.Index < MtgDeckStore.Decks.Count && MtgDeckStore.SetActive(MtgDeckStore.Decks[c.Index]))
+                    MtgDeckStore.Touch(MtgDeckStore.Decks[c.Index]); // played: first under "Recent"
             }
             else CPlayerData.m_CurrentSelectedDeckIndex = c.Index;
         }

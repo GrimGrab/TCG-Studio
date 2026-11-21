@@ -60,6 +60,18 @@ namespace TCGCustomCards.UI
             }
         }
         private Vector2 _gridScroll, _deckScroll, _listScroll;
+        /// <summary>Deck list search (name, card, set code, colours).</summary>
+        private static string _deckSearch = "";
+        /// <summary>Deck list summaries, rebuilt once per frame (OnGUI runs several times a frame).</summary>
+        private readonly Dictionary<MtgDeckStore.Deck, MtgDeckSummary> _summaries = new Dictionary<MtgDeckStore.Deck, MtgDeckSummary>();
+        private int _summaryFrame = -1;
+
+        private MtgDeckSummary SummaryOf(MtgDeckStore.Deck d)
+        {
+            if (_summaryFrame != Time.frameCount) { _summaries.Clear(); _summaryFrame = Time.frameCount; }
+            if (!_summaries.TryGetValue(d, out var s)) _summaries[d] = s = MtgDeckSummary.Of(d);
+            return s;
+        }
         private string _message = "";
         private float _messageUntil;
         private (CustomSet set, int pos, CardData data)? _hover;
@@ -275,32 +287,66 @@ namespace TCGCustomCards.UI
                                                   "A deck needs at least 60 cards; a Commander deck is a commander + 99 different cards (Forge checks it).</i>", _small);
             if (GUI.Button(new Rect(W - 260, 24, 220, 50), "Close", _big)) Close();
 
-            var decks = MtgDeckStore.Decks;
-            var view = new Rect(40, 120, W - 80, H - 240);
-            _listScroll = GUI.BeginScrollView(view, _listScroll, new Rect(0, 0, view.width - 20, (decks.Count + 1) * 78));
-            for (int i = 0; i < decks.Count; i++)
+            // Search + sort (the sort is shared with the sit-down deck picker)
+            GUI.Label(new Rect(40, 118, 80, 30), "Search", _text);
+            _deckSearch = GUI.TextField(new Rect(120, 112, 420, 38), _deckSearch ?? "", 40, new GUIStyle(GUI.skin.textField) { fontSize = 18 });
+            if (GUI.Button(new Rect(546, 112, 40, 38), "✕", _toggle)) _deckSearch = "";
+            float sx = 620;
+            GUI.Label(new Rect(sx, 118, 60, 30), "Sort", _text);
+            sx += 56;
+            foreach (MtgDeckSort s in Enum.GetValues(typeof(MtgDeckSort)))
             {
+                if (Toggle(new Rect(sx, 112, 110, 38), MtgDeckSummary.SortLabel(s), MtgDeckSummary.CurrentSort == s)) MtgDeckSummary.CurrentSort = s;
+                sx += 114;
+            }
+            GUI.Label(new Rect(sx + 12, 118, 700, 30), "<color=#888888><size=14>Search a name, card, set code, or colours like \"ur\" (c = colourless)</size></color>", _small);
+
+            var decks = MtgDeckStore.Decks;
+            var shown = MtgDeckSummary.Sort(Enumerable.Range(0, decks.Count).Where(i => SummaryOf(decks[i]).Matches(_deckSearch)),
+                i => SummaryOf(decks[i]), MtgDeckSummary.CurrentSort).ToList();
+            const float rowStep = 92f;
+            var view = new Rect(40, 162, W - 80, H - 282);
+            _listScroll = GUI.BeginScrollView(view, _listScroll, new Rect(0, 0, view.width - 20, shown.Count * rowStep + 80));
+            for (int n = 0; n < shown.Count; n++)
+            {
+                int i = shown[n];
                 var d = decks[i];
-                var row = new Rect(0, i * 78, view.width - 24, 70);
+                var sum = SummaryOf(d);
+                var row = new Rect(0, n * rowStep, view.width - 24, rowStep - 8);
                 GUI.Box(row, "");
                 bool active = MtgDeckStore.Active == i;
-                string state = Status(d, short_: true);
-                string kind = d.IsCommander ? " <color=#c9a0ff>Commander</color>" : "";
-                GUI.Label(new Rect(row.x + 16, row.y + 8, 900, 30), $"{(active ? "<color=#ffd24a>★</color> " : "")}<b>{d.Name}</b>{kind}", _text);
-                GUI.Label(new Rect(row.x + 16, row.y + 38, 900, 26), $"{d.Total}/{d.Target} cards   {state}", _small);
-                if (GUI.Button(new Rect(row.xMax - 560, row.y + 12, 170, 46), "Edit", _button)) { _editing = d; _dirty = true; }
+                string title = $"{(active ? "<color=#ffd24a>★</color> " : "")}<b>{d.Name}</b>";
+                var titleStyle = new GUIStyle(_text) { wordWrap = false };
+                float tw = Mathf.Min(700, titleStyle.CalcSize(new GUIContent(title)).x);
+                GUI.Label(new Rect(row.x + 16, row.y + 10, tw + 4, 30), title, titleStyle);
+                float cx = row.x + 16 + tw + 14;
+                cx += ManaSymbols.KindBadge(cx, row.y + 13, d.IsCommander) + 10;
+                ManaSymbols.DrawColors(cx, row.y + 11, sum.Colors, 26f);
+                string info = $"{d.Total}/{d.Target} cards   {Status(d, short_: true)}";
+                if (sum.CommanderName != null) info += $"   Commander: {sum.CommanderName}";
+                if (sum.SetCodes.Count > 0) info += $"   <color=#999999>{string.Join(" ", sum.SetCodes)}</color>";
+                string ago = MtgDeckSummary.Ago(sum.LastUsed);
+                if (ago.Length > 0) info += $"   <color=#888888>edited or played {ago}</color>";
+                GUI.Label(new Rect(row.x + 16, row.y + 48, row.width - 600, 26), info, new GUIStyle(_small) { wordWrap = false, clipping = TextClipping.Clip });
+                if (GUI.Button(new Rect(row.xMax - 560, row.y + 18, 170, 48), "Edit", _button)) { _editing = d; _dirty = true; }
                 GUI.enabled = !modal && CanPlay(d) && !active;
-                if (GUI.Button(new Rect(row.xMax - 380, row.y + 12, 190, 46), active ? "Active" : "Set active", _button))
+                if (GUI.Button(new Rect(row.xMax - 380, row.y + 18, 190, 48), active ? "Active" : "Set active", _button))
                     Say(MtgDeckStore.SetActive(d) ? $"{d.Name} is now your MTG deck" : StripTags(Status(d, short_: false)));
                 GUI.enabled = !modal;
-                if (GUI.Button(new Rect(row.xMax - 180, row.y + 12, 170, 46), "Delete", _button)) _confirmDelete = d;
+                if (GUI.Button(new Rect(row.xMax - 180, row.y + 18, 170, 48), "Delete", _button)) _confirmDelete = d;
             }
-            if (GUI.Button(new Rect(0, decks.Count * 78, 300, 60), "+ New deck", _big))
+            float by = shown.Count * rowStep;
+            if (shown.Count == 0 && decks.Count > 0)
+            {
+                GUI.Label(new Rect(0, 0, 900, 40), $"<i>No deck matches \"{_deckSearch}\".</i>", _text);
+                by = 50;
+            }
+            if (GUI.Button(new Rect(0, by, 300, 60), "+ New deck", _big))
             {
                 _editing = MtgDeckStore.Create();
                 _dirty = true;
             }
-            if (GUI.Button(new Rect(320, decks.Count * 78, 380, 60), "+ New Commander deck", _big))
+            if (GUI.Button(new Rect(320, by, 380, 60), "+ New Commander deck", _big))
             {
                 _editing = MtgDeckStore.Create(commander: true);
                 _dirty = true;
@@ -338,7 +384,8 @@ namespace TCGCustomCards.UI
             // Top bar
             if (GUI.Button(new Rect(20, 16, 160, 48), "◀ Decks", _big)) { _editing = null; return; }
             GUI.Label(new Rect(200, 24, 80, 32), "Name", _text);
-            deck.Name = GUI.TextField(new Rect(270, 18, 420, 44), deck.Name ?? "", 40, new GUIStyle(GUI.skin.textField) { fontSize = 22 });
+            string newName = GUI.TextField(new Rect(270, 18, 420, 44), deck.Name ?? "", 40, new GUIStyle(GUI.skin.textField) { fontSize = 22 });
+            if (newName != (deck.Name ?? "")) { deck.Name = newName; MtgDeckStore.Touch(deck); }
             int total = deck.Total;
             bool countOk = deck.IsCommander ? total == deck.Target : total >= deck.Target;
             string countCol = countOk ? "#70ff80" : "#ffaa55";
@@ -380,11 +427,13 @@ namespace TCGCustomCards.UI
             // Colours + mana value
             y += 46;
             float cx = x;
-            foreach (var (key, label) in new[] { ("W", "W"), ("U", "U"), ("B", "B"), ("R", "R"), ("G", "G"), ("C", "Colourless"), ("M", "Multi") })
+            foreach (var key in new[] { "W", "U", "B", "R", "G", "C", "M" }) // mana symbols; M = multicoloured
             {
-                float w = key.Length == 1 && label.Length == 1 ? 46 : 110;
-                if (Toggle(new Rect(cx, y, w, 38), ColorLabel(key, label), _filter.Colors.Contains(key))) Flip(_filter.Colors, key);
-                cx += w + 4;
+                bool symbol = key != "M";
+                var cell = new Rect(cx, y, symbol ? 46 : 110, 38);
+                if (Toggle(cell, symbol ? "" : "Multi", _filter.Colors.Contains(key))) Flip(_filter.Colors, key);
+                if (symbol) ManaSymbols.Draw(cell.x + (cell.width - 26) / 2, cell.y + 6, key, 26f);
+                cx += cell.width + 4;
             }
             cx += 20;
             GUI.Label(new Rect(cx, y + 6, 60, 30), "Cost", _text);
@@ -434,19 +483,6 @@ namespace TCGCustomCards.UI
                 _filter.FavouritesOnly = false;
                 _filter.Colors.Clear(); _filter.Types.Clear(); _filter.ManaValues.Clear(); _filter.Rarities.Clear(); _filter.Sets.Clear();
                 _dirty = true;
-            }
-        }
-
-        private static string ColorLabel(string key, string label)
-        {
-            switch (key)
-            {
-                case "W": return "<color=#fff6c8><b>W</b></color>";
-                case "U": return "<color=#7fb7ff><b>U</b></color>";
-                case "B": return "<color=#b9a3c9><b>B</b></color>";
-                case "R": return "<color=#ff7f6a><b>R</b></color>";
-                case "G": return "<color=#7fd98a><b>G</b></color>";
-                default: return label;
             }
         }
 
@@ -685,9 +721,13 @@ namespace TCGCustomCards.UI
                 if (c?.Live == true)
                 {
                     var cinfo = MtgDeckStore.Info(c.Set, c.Pos);
-                    if (GUI.Button(new Rect(slot.x + 4, slot.y + 4, slot.width - 8, slot.height - 8),
-                            $"<b>Commander:</b> {cinfo?.Name}  <color=#aaaaaa>{cinfo?.ManaCost}</color>  <size=12>(click to put it back)</size>",
-                            new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 15 }))
+                    var btn = new Rect(slot.x + 4, slot.y + 4, slot.width - 8, slot.height - 8);
+                    float costW = ManaSymbols.CostWidth(cinfo?.ManaCost, 20f);
+                    var cstyle = new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 15, clipping = TextClipping.Clip };
+                    cstyle.padding.right += (int)costW + 8;
+                    bool clear = GUI.Button(btn, $"<b>Commander:</b> {cinfo?.Name}  <size=12>(click to put it back)</size>", cstyle);
+                    ManaSymbols.DrawCost(btn.xMax - 8 - costW, btn.y + (btn.height - 20) / 2, cinfo?.ManaCost, 20f);
+                    if (clear)
                     {
                         MtgDeckStore.ClearCommander(deck);
                         _dirty = true;
@@ -706,7 +746,8 @@ namespace TCGCustomCards.UI
                 var (name, color) = MtgDeckRules.Basics[i];
                 var cell = new Rect(x + (i % 3) * (lw + 5), y + (i / 3) * 44, lw, 40);
                 GUI.Box(cell, "");
-                GUI.Label(new Rect(cell.x + 6, cell.y + 8, lw - 100, 26), $"{ColorLabel(color, name.Substring(0, 1))} {name}", _small);
+                ManaSymbols.Draw(cell.x + 6, cell.y + 9, color, 22f);
+                GUI.Label(new Rect(cell.x + 32, cell.y + 8, lw - 126, 26), name, _small);
                 bool enabledBefore = GUI.enabled;
                 GUI.enabled = enabledBefore && deck.Basics(name) > 0;
                 if (GUI.Button(new Rect(cell.xMax - 94, cell.y + 5, 30, 30), "−", _toggle)) { MtgDeckStore.ChangeBasic(deck, name, -1); }
@@ -737,8 +778,12 @@ namespace TCGCustomCards.UI
                     var row = new Rect(0, ry, w - 24, rowH - 2);
                     string variant = e.Foil || e.Border != ECardBorderType.Base ? $" <size=12><color=#ffd24a>{VersionLabel(e.Border, e.Foil)}</color></size>" : "";
                     string fav = Favourites.Has(e.Data) ? $"<color={HeartHex}>♥</color> " : "";
-                    if (GUI.Button(row, $"{e.Save.Count}×  {fav}{info.Name}{variant}   <color=#aaaaaa>{info.ManaCost}</color>",
-                            new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 14 }))
+                    float costW = ManaSymbols.CostWidth(info.ManaCost, 18f);
+                    var rstyle = new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 14, clipping = TextClipping.Clip };
+                    rstyle.padding.right += (int)costW + 6;
+                    bool take = GUI.Button(row, $"{e.Save.Count}×  {fav}{info.Name}{variant}", rstyle);
+                    ManaSymbols.DrawCost(row.xMax - 6 - costW, row.y + (row.height - 18) / 2, info.ManaCost, 18f);
+                    if (take)
                     {
                         MtgDeckStore.RemoveOne(deck, e); // back to the binder
                         _dirty = true;

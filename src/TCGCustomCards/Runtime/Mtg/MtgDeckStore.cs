@@ -18,6 +18,8 @@ namespace TCGCustomCards.Runtime.Mtg
         [JsonProperty("kind", NullValueHandling = NullValueHandling.Ignore)] public string Kind;
         /// <summary>Commander decks: the commander (out of the collection like any card in a deck).</summary>
         [JsonProperty("commander", NullValueHandling = NullValueHandling.Ignore)] public MtgDeckCardSave Commander;
+        /// <summary>Unix seconds of the last edit or game (deck lists' "Recent" sort); null in older saves.</summary>
+        [JsonProperty("used", NullValueHandling = NullValueHandling.Ignore)] public long? Used;
     }
 
     internal sealed class MtgDeckCardSave
@@ -114,6 +116,7 @@ namespace TCGCustomCards.Runtime.Mtg
             while (Decks.Any(d => d.Name == $"{stem} {n}")) n++;
             var deck = new Deck { Save = new MtgDeckSave { Name = $"{stem} {n}", Kind = commander ? "commander" : null } };
             Decks.Add(deck);
+            Touch(deck);
             return deck;
         }
 
@@ -127,6 +130,12 @@ namespace TCGCustomCards.Runtime.Mtg
             Decks.Remove(deck);
             if (Active == i) Active = -1;
             else if (Active > i) Active--;
+        }
+
+        /// <summary>Marks the deck as just edited / played (deck lists' "Recent" sort).</summary>
+        public static void Touch(Deck deck)
+        {
+            if (deck != null) deck.Save.Used = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
         public static bool SetActive(Deck deck)
@@ -173,6 +182,7 @@ namespace TCGCustomCards.Runtime.Mtg
             deck.Save.Commander = new MtgDeckCardSave { Set = set.Def.Id, Card = set.Card(pos).Id, Variant = PriceModel.VariantKey(border, foil), Count = 1 };
             deck.Commander = new Entry { Save = deck.Save.Commander, Set = set, Pos = pos, Border = border, Foil = foil };
             if (deck == ActiveDeck && !deck.Valid) Active = -1;
+            Touch(deck);
             return null;
         }
 
@@ -183,6 +193,7 @@ namespace TCGCustomCards.Runtime.Mtg
             deck.Commander = null;
             deck.Save.Commander = null;
             if (deck == ActiveDeck && !deck.Valid) Active = -1;
+            Touch(deck);
         }
 
         /// <summary>
@@ -193,7 +204,10 @@ namespace TCGCustomCards.Runtime.Mtg
         {
             if (!deck.IsCommander || !deck.Valid) return null;
             // The builder asks every frame: rebuild the Forge deck only when the deck's contents (or the sets) change.
+            var used = deck.Save.Used; // the timestamp isn't part of the deck's contents
+            deck.Save.Used = null;
             string sig = JsonConvert.SerializeObject(deck.Save) + "|" + string.Join(",", setCodes ?? new List<string>());
+            deck.Save.Used = used;
             if (ForgeChecks.TryGetValue(deck, out var known) && known.sig == sig && !(known.result.Done && known.result.Problems.Any(p => p.StartsWith("Forge isn't running"))))
                 return known.result;
             int i = Decks.IndexOf(deck);
@@ -239,6 +253,7 @@ namespace TCGCustomCards.Runtime.Mtg
                         deck.Entries.Add(entry);
                     }
                     entry.Save.Count++;
+                    Touch(deck);
                     return null;
                 }
             return "You don't have any more copies of this card";
@@ -265,6 +280,7 @@ namespace TCGCustomCards.Runtime.Mtg
                 deck.Entries.Add(entry);
             }
             entry.Save.Count++;
+            Touch(deck);
             return null;
         }
 
@@ -280,6 +296,7 @@ namespace TCGCustomCards.Runtime.Mtg
                 deck.Save.Cards.Remove(entry.Save);
             }
             if (deck == ActiveDeck && !deck.Valid) Active = -1;
+            Touch(deck);
         }
 
         public static void ChangeBasic(Deck deck, string name, int delta)
@@ -288,6 +305,7 @@ namespace TCGCustomCards.Runtime.Mtg
             if (n == 0) deck.Save.Basics.Remove(name);
             else deck.Save.Basics[name] = n;
             if (deck == ActiveDeck && !deck.Valid) Active = -1;
+            Touch(deck);
         }
 
         /// <summary>Builder info for a custom card (MTG data + fallbacks for sets installed before rarity/cmc existed).</summary>

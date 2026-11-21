@@ -89,6 +89,9 @@ TCG Studio's Setup screen can download these from their official sources when yo
 Card data and images from Scryfall are subject to Scryfall's terms (https://scryfall.com/docs/api) and belong to their
 owners (Wizards of the Coast and the card artists).
 
+The mod shows the Magic: The Gathering mana symbols (pictures from the Scryfall symbology API). Mana symbols are
+(c) Wizards of the Coast LLC, used under the Wizards of the Coast Fan Content Policy.
+
 FULL LICENSE TEXTS
 ==================
 

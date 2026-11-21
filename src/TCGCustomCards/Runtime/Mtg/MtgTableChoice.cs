@@ -39,7 +39,8 @@ namespace TCGCustomCards.Runtime.Mtg
             {
                 if (!MtgEvents.TournamentTableOk(table)) return false; // vanilla says why (wrong table, round reported…)
                 bool cmdr = MtgEvents.IsCommanderEvent;
-                var decks = MtgMode.DeckChoices().Where(c => c.Commander == cmdr).ToList();
+                // Every deck is listed; the picker greys out the other kind and unfinished decks with the reason.
+                var decks = MtgMode.DeckChoices(includeIncomplete: true);
                 if (decks.Count == 0)
                 {
                     Toast.Show(cmdr ? "Commander tournament: build a Commander deck in the MTG deck builder ([MTG] MtgDeckBuilder) first"
@@ -47,15 +48,20 @@ namespace TCGCustomCards.Runtime.Mtg
                         : "Magic tournament: you need a deck with MTG cards");
                     return true;
                 }
-                MtgDeckPickerUI.Open(cmdr ? "Choose your deck - Commander tournament" : "Choose your deck - Magic tournament",
-                    decks, MtgEvents.EventSetCodes(), c => PlayMagic(table, c));
+                MtgDeckPickerUI.Open(new MtgPickContext
+                {
+                    Title = cmdr ? "Choose your deck - Commander tournament" : "Choose your deck - Magic tournament",
+                    SetCodes = MtgEvents.EventSetCodes(),
+                    Commander = cmdr,
+                }, decks, c => PlayMagic(table, c));
                 return true;
             }
 
-            var choices = MtgMode.DeckChoices();
+            var choices = MtgMode.DeckChoices(includeIncomplete: true); // unfinished decks: the picker says why
             if (choices.Count == 0) return false;
             ChoicePopup.Show("Which game do you want to play?",
-                "Magic (Forge)", () => MtgDeckPickerUI.Open("Choose your deck", MtgMode.DeckChoices(), null, c => PlayMagic(table, c), casual: true),
+                "Magic (Forge)", () => MtgDeckPickerUI.Open(new MtgPickContext { Casual = true },
+                    MtgMode.DeckChoices(includeIncomplete: true), c => PlayMagic(table, c)),
                 "Tetramon", () => TableSession.SitVanilla(table));
             return true;
         }

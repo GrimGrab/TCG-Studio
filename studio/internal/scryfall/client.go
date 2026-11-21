@@ -219,6 +219,23 @@ func (c *Client) SetCards(ctx context.Context, code string, progress func(got, t
 	return all, nil
 }
 
+// Symbol is one entry of Scryfall's card symbology ({W}, {2/U}, {T}, …).
+type Symbol struct {
+	Symbol         string `json:"symbol"`
+	SVGURI         string `json:"svg_uri"`
+	RepresentsMana bool   `json:"represents_mana"`
+	Funny          bool   `json:"funny"`
+}
+
+// Symbology lists every card symbol with its SVG.
+func (c *Client) Symbology(ctx context.Context) ([]Symbol, error) {
+	var l list[Symbol]
+	if err := c.getJSON(ctx, apiBase+"/symbology", &l); err != nil {
+		return nil, err
+	}
+	return l.Data, nil
+}
+
 // Download fetches a file (images, SVG icons) with the same politeness rules.
 func (c *Client) Download(ctx context.Context, u string) ([]byte, error) {
 	resp, err := c.do(ctx, u, "*/*")

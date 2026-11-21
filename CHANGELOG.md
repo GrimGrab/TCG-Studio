@@ -3,6 +3,16 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.3.1 - 2026-11-20
+
+Better MTG deck lists: real mana symbols, sorting, search, and a deck picker that explains which decks you can use.
+
+- New: MTG decks show real mana symbols for their colours and a Constructed / Commander badge, in the deck builder and when you sit down to play.
+- New: Sort your MTG decks by Recent, Name, Colours or Kind, and search by deck name, card name, set code or colours (type "ur" for blue-red decks, "c" for colourless).
+- New: The sit-down deck picker lists every deck. Decks you can't use at that table (unfinished, the wrong kind for the tournament, or not legal for its sets) are greyed out with the reason.
+- Changed: The deck builder's colour filters, basic lands and mana costs now use mana symbols.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.3.0 - 2026-11-18
 
 Pack art now looks the same in the pack opening as on the shelf, and custom pack backs no longer show art twice.

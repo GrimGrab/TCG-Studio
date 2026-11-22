@@ -24,6 +24,10 @@ var removedSettings = map[string]bool{
 	"Foil - Gold/GoldColor": true, "Foil - Gold/GoldStrength": true, "Foil - Gold/GoldPattern": true,
 	"Foil - EX/EXColor": true, "Foil - EX/EXStrength": true, "Foil - EX/EXPattern": true,
 	"Foil - Full art/FullArtColor": true, "Foil - Full art/FullArtStrength": true, "Foil - Full art/FullArtPattern": true,
+	// migration:settings-edition-label
+	// The grade label's place and size are per set and card now (set.json "editionLabel").
+	"Visuals - Grade label/GradeLabel": true, "Visuals - Grade label/GradeLabelOffsetX": true,
+	"Visuals - Grade label/GradeLabelOffsetY": true, "Visuals - Grade label/GradeLabelSize": true,
 }
 
 // renamedSettings: "section/new key" → old key (same section). A new setting the file doesn't have yet takes the old one's

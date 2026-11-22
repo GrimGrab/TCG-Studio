@@ -92,6 +92,8 @@ type AccessoryLibrary struct {
 	Faces         []SavedFace  `json:"faces,omitempty"`
 	Animations    []Animation  `json:"animations,omitempty"`
 	Shaders       []Shader     `json:"shaders,omitempty"`
+	// Borders: card borders (image + shader layers) that sets give their border slots (set.json "borders").
+	Borders []Border `json:"borders,omitempty"`
 	// StockValues: this setup's own values for the stock shaders (the holo foils that come with the mod): stock shader id
 	// → parameter name → values. Only values that differ from the stock ones; the mod uses them instead (Runtime/CardShaders).
 	StockValues map[string]map[string][]float64 `json:"stockValues,omitempty"`

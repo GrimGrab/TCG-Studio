@@ -228,3 +228,24 @@ button.link:hover:not(:disabled) { text-decoration: underline; }
 .setpages .bfoot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; border-top: 1px solid var(--line); padding-top: 10px; }
 .setpages .entry .control > input:not([type="checkbox"]):not([type="color"]):not(.short), .setpages .entry .control > select { width: min(360px, 100%); }
 .setpages .howto ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
+/* The Set tab's tables (border multipliers, border slots): a header row in small caps, rows split by lines. */
+.setpages .tablewrap { overflow-x: auto; }
+.setpages .mults { width: 100%; border-collapse: collapse; font-size: 13px; }
+.setpages .mults th { text-align: left; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0 12px 6px 0; }
+.setpages .mults td { padding: 6px 12px 6px 0; border-top: 1px solid var(--line); }
+.setpages .mults input { width: 90px; }
+.setpages .mults .num { text-align: right; font-variant-numeric: tabular-nums; width: 110px; }
+.setpages .mults .foil { color: #c9a8ff; }
+@container (max-width: 560px) {
+  .setpages .mults th, .setpages .mults td { padding-right: 8px; }
+  .setpages .mults input { width: 70px; }
+  .setpages .mults .num { width: auto; }
+}
+/* A border's colour dot before its name. */
+.setpages .bname { white-space: nowrap; }
+.setpages .bdot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; background: var(--line); }
+.setpages .bdot.b-FirstEdition { background: #8a93a3; }
+.setpages .bdot.b-Silver { background: #c9d1dc; }
+.setpages .bdot.b-Gold { background: #e2b53c; }
+.setpages .bdot.b-EX { background: #ff5e6a; }
+.setpages .bdot.b-FullArt { background: #3ecf8e; }

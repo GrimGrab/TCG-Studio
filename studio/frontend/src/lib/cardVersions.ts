@@ -10,11 +10,14 @@ export const ALL_VERSIONS: string[] = BORDERS.flatMap((b: string) => [versionKey
 const canon = new Map(ALL_VERSIONS.map((k) => [k.toLowerCase(), k]));
 /** The spelling the game uses for a key in any case ("gold_FOIL" → "Gold_foil"); undefined for an unknown name. */
 export const canonical = (key: string) => canon.get(key.toLowerCase());
+/** A border slot's name: the game's standard edition name (sets and cards can't rename them). */
+export const borderLabel = (border: string): string => BORDER_LABELS[border] ?? border;
+/** A version's name ("Gold foil"). */
 export const versionLabel = (key: string) => {
   const k = canonical(key) ?? key;
   const foil = k.endsWith('_foil');
   const b = foil ? k.slice(0, -5) : k;
-  return `${BORDER_LABELS[b] ?? b}${foil ? ' foil' : ''}`;
+  return `${borderLabel(b)}${foil ? ' foil' : ''}`;
 };
 
 const toSet = (list: string[] | undefined) =>
@@ -137,8 +140,9 @@ export const cardsWithOwnShaders = (set: any): number => set.cards.filter((c: an
 export const hasShader = (set: any, card: any): boolean => ALL_VERSIONS.some((k) => !!chosenShader(set, card, k));
 /** What a version gets when the choice is left to the level above: the label of that option in a picker. */
 export function inheritLabel(set: any, key: string, above: string | undefined, nameOf: (id: string) => string): string {
-  if (above !== undefined) return above ? `Set: ${nameOf(above)}` : 'Set: no shader';
-  return isFullImage(set) && stockShader(key) ? 'Default: stock holo' : 'Default: no shader';
+  if (above) return `Set: ${nameOf(above)}`;
+  if (above === '') return 'No shader';
+  return isFullImage(set) && stockShader(key) ? 'Vanilla holo' : 'No shader';
 }
 
 /** The version the main image is (it never has a separate picture). */
@@ -157,3 +161,43 @@ export function anyCardHas(set: any, border: string | null, foil: boolean | null
   return lists.some((on) => BORDERS.some((b: string) => (border == null || b === border) &&
     [false, true].some((f) => (foil == null || f === foil) && on.has(versionKey(b, f)))));
 }
+
+// ---- card borders (set.json "borders" slots on the set, "versionBorders" on a card; ids of the setup's borders)
+
+/** A set's slot entry ({look, foilLook}) by border, any case; undefined when the slot is the game's. */
+export const slotOf = (set: any, border: string): { look?: string; foilLook?: string } | undefined =>
+  set.borders ? Object.entries(set.borders as Record<string, any>).find(([k]) => k.toLowerCase() === border.toLowerCase())?.[1] : undefined;
+
+/** The set's border for a version: its slot's look (normal) or foilLook, else look (foil); '' = the game's rim. */
+export function setBorder(set: any, key: string): string {
+  const k = canonical(key) ?? key;
+  const foil = k.endsWith('_foil');
+  const slot = slotOf(set, foil ? k.slice(0, -5) : k);
+  if (!slot) return '';
+  return (foil ? slot.foilLook ?? slot.look : slot.look) ?? '';
+}
+
+/** Changes one field of a slot (undefined = remove the field); a slot with nothing left is removed, and so is an empty map. */
+export function writeSlot(set: any, border: string, field: 'look' | 'foilLook', value: string | undefined) {
+  const next: Record<string, any> = {};
+  let slot: Record<string, any> = {};
+  for (const [k, v] of Object.entries(set.borders ?? {})) {
+    if (k.toLowerCase() === border.toLowerCase()) slot = { ...(v as any) };
+    else next[k] = v;
+  }
+  if (value === undefined) delete slot[field]; else slot[field] = value;
+  if (Object.keys(slot).length) next[border] = slot;
+  set.borders = Object.keys(next).length ? next : undefined;
+}
+
+/** A card's own border for a version: an id, '' (none even when the set's slot has one) or undefined (the set's). */
+export const cardBorder = (card: any, key: string): string | undefined => entryOf(card.versionBorders, key);
+/** Sets a card's own border (undefined = follow the set). */
+export function writeCardBorder(card: any, key: string, id: string | undefined) {
+  card.versionBorders = withEntry(card.versionBorders, key, id);
+}
+/** The border the game draws a card's version with ('' = the game's rim). Full-image sets only. */
+export const shownBorder = (set: any, card: any, key: string): string =>
+  isFullImage(set) ? cardBorder(card, key) ?? setBorder(set, key) : '';
+/** How many cards have border choices of their own. */
+export const cardsWithOwnBorders = (set: any): number => set.cards.filter((c: any) => c.versionBorders && Object.keys(c.versionBorders).length).length;

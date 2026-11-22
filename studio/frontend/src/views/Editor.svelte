@@ -28,7 +28,8 @@
   async function showTab(t: TabName) { if (t !== tab) { await flushAll(); tab = t; } }
   // One link request between tabs (lib/setNav): the tab it names takes it when it shows.
   let nav = $state<NavRequest | null>(null);
-  const goto: Goto = async (t, opts = {}) => { nav = { tab: t, ...opts }; await showTab(t); };
+  // A link to a tab also leaves the card editor (it covers the Cards tab, so the link would seem to do nothing).
+  const goto: Goto = async (t, opts = {}) => { cardEditing = false; nav = { tab: t, ...opts }; await showTab(t); };
   function takeNav(t: TabName) { if (nav?.tab !== t) return null; const r = nav; nav = null; return r; }
 
   const dirty = $derived(project ? JSON.stringify(project) !== saved : false);
@@ -89,6 +90,16 @@
       notify(errText(e), 'error');
       checksOpen = true;
     }
+  }
+
+  // The full card editor open over the Cards tab: the header then names the card, and ← goes back to the set's cards.
+  let cardEditing = $state(false);
+  let editingCard = $state<any>(null);
+  const inCard = $derived(tab === 'cards' && cardEditing && !!editingCard);
+
+  async function back() {
+    if (inCard) { cardEditing = false; return; }
+    await leave();
   }
 
   async function leave() {
@@ -156,10 +167,16 @@
       revertMessage="Throw away your unsaved changes to this set?"
       saveTitle={installState === 'none' ? 'Save the set (Ctrl+S)' : 'Save the set and update it in the game (Ctrl+S)'}>
       {#snippet title()}
-      <button class="back" onclick={leave} title="Back to Sets">←</button>
+      <button class="back" onclick={back} title={inCard ? `Back to ${project.set.name}'s cards (Esc)` : 'Back to Sets'}>←</button>
       <div class="cover">{#if cover}<img src={projectFile(project.id, cover, imgBust)} alt="" />{:else}<span>{project.set.name.slice(0, 2)}</span>{/if}</div>
       <div class="grow title">
-        <h2 title={project.set.name}>{project.set.name}</h2>
+        {#if inCard}
+          <h2 class="crumbs" title="{project.set.name} › {editingCard.name || editingCard.id}">
+            <button class="crumb" onclick={back} title="Back to the set's cards">{project.set.name}</button>
+            <span class="sep">›</span><span class="cardname">{editingCard.name || editingCard.id}</span></h2>
+        {:else}
+          <h2 title={project.set.name}>{project.set.name}</h2>
+        {/if}
         <div class="meta">
           {#if project.meta?.origin?.mod}<span>{originLabel(project.meta.origin.kind, project.meta.origin.mod, project.meta.origin.author)}</span>
           {:else if sourceCode(project.meta)}<span>{sourceName(project.meta.source)} · {sourceCode(project.meta).toUpperCase()}</span>{/if}
@@ -217,15 +234,18 @@
       {/snippet}
     </SaveBar>
 
+    <!-- Editing one card: no set tabs (← or the set's name in the header goes back to the set). -->
+    {#if !inCard}
     <nav class="tabbar">
       <button class:on={tab === 'cards'} onclick={() => showTab('cards')}>Cards<span class="n">{project.set.cards.length}</span></button>
       <button class:on={tab === 'packs'} onclick={() => showTab('packs')}>Packs<span class="n">{project.set.packs.length}</span></button>
       <button class:on={tab === 'set'} onclick={() => showTab('set')}>Set</button>
     </nav>
+    {/if}
 
     <div class="body">
       {#if tab === 'cards'}
-        <CardsTab {project} {notify} {imgBust} {goto} {nav} {takeNav} />
+        <CardsTab {project} {notify} {imgBust} {goto} {nav} {takeNav} bind:editing={cardEditing} bind:editingCard />
       {:else if tab === 'packs'}
         <PacksTab {project} {notify} {imgBust} {hooks} {rebaseArt} {goto} {nav} {takeNav} />
       {:else}
@@ -246,6 +266,12 @@
   .cover span { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
   .title { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
   .title h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crumbs { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .crumb { padding: 0; background: none; border: none; font: inherit; color: var(--muted); cursor: pointer; flex: none; max-width: 45%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crumb:hover { color: var(--text); text-decoration: underline; }
+  .sep { color: var(--muted); flex: none; }
+  .cardname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; color: var(--muted); font-size: 12px; }
   .link { padding: 0; font-size: 12px; }
   .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }

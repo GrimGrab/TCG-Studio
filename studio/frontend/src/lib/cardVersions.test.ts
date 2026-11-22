@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions, cardsWithOwnShaders, hasShader, inheritLabel, shownShader, writeCardShader, writeSetShader, shaderSource } from './cardVersions';
+import { anyCardHas, fallbackImage, cardVersions, setVersionImage, totalVersions, versionImage, versionsWithArt, writeCardVersions, cardsWithOwnShaders, hasShader, inheritLabel, shownShader, writeCardShader, writeSetShader, shaderSource, versionLabel, borderLabel, writeSlot, setBorder, shownBorder } from './cardVersions';
 
 describe('card versions', () => {
   it('follows the set until the card gets its own list', () => {
@@ -51,13 +51,13 @@ describe('card versions', () => {
     writeSetShader(set, 'Gold_foil', '');       // the set says: no shader, not even the stock holo
     expect(set.versionShaders).toEqual({ Gold_foil: '' });
     expect(shownShader(set, a, 'Gold_foil')).toBe('');
-    expect(inheritLabel(set, 'Gold_foil', undefined, (id) => id)).toBe('Default: stock holo');
-    expect(inheritLabel(set, 'Gold_foil', '', (id) => id)).toBe('Set: no shader');
-    expect(inheritLabel(set, 'Gold', undefined, (id) => id)).toBe('Default: no shader');
+    expect(inheritLabel(set, 'Gold_foil', undefined, (id) => id)).toBe('Vanilla holo');
+    expect(inheritLabel(set, 'Gold_foil', '', (id) => id)).toBe('No shader');
+    expect(inheritLabel(set, 'Gold', undefined, (id) => id)).toBe('No shader');
     // Framed sets keep the game's own foil unless a shader is chosen.
     const framed: any = { renderMode: 'Framed', cards: [{ id: 'a' }] };
     expect(shownShader(framed, framed.cards[0], 'Gold_foil')).toBe('');
-    expect(inheritLabel(framed, 'Gold_foil', undefined, (id) => id)).toBe('Default: no shader');
+    expect(inheritLabel(framed, 'Gold_foil', undefined, (id) => id)).toBe('No shader');
   });
 
   it('stores pictures per version, case-insensitively', () => {
@@ -87,5 +87,31 @@ describe('card versions', () => {
     writeCardShader(card, 'Gold_foil', '');
     expect(shaderSource(set, card, 'Gold_foil')).toBe('');
     expect(shaderSource({ renderMode: 'Framed', cards: [] }, {}, 'Gold_foil')).toBe('');
+  });
+});
+
+describe('border slots', () => {
+  it('names a slot by the standard name', () => {
+    expect(versionLabel('Gold_foil')).toBe('Gold foil');
+    expect(versionLabel('FirstEdition')).toBe('First Edition');
+    expect(borderLabel('Gold')).toBe('Gold');
+  });
+  it('gives foil the normal border unless it has its own', () => {
+    const set: any = { renderMode: 'FullImage', cards: [] };
+    writeSlot(set, 'Gold', 'look', 'leaf');
+    expect(setBorder(set, 'Gold')).toBe('leaf');
+    expect(setBorder(set, 'Gold_foil')).toBe('leaf');
+    writeSlot(set, 'Gold', 'foilLook', '');
+    expect(setBorder(set, 'Gold_foil')).toBe('');
+    const card: any = { versionBorders: { gold_foil: 'own' } };
+    expect(shownBorder(set, card, 'Gold_foil')).toBe('own');
+    expect(shownBorder({ ...set, renderMode: 'Framed' }, card, 'Gold_foil')).toBe('');
+  });
+  it('drops empty slots and an empty map', () => {
+    const set: any = {};
+    writeSlot(set, 'EX', 'look', 'shiny');
+    expect(set.borders).toEqual({ EX: { look: 'shiny' } });
+    writeSlot(set, 'EX', 'look', undefined);
+    expect(set.borders).toBeUndefined();
   });
 });

@@ -9,6 +9,13 @@ interface FullWindow {
   destroy(): void;
 }
 
+// Full views open right now. Pages with their own Esc (close an editor, clear a selection) skip it while one is open: the
+// window gets one keydown, and in whatever order the listeners run, that Esc only leaves the full view.
+let openCount = 0;
+let leftAt = -1;
+/** A full view is open, or the Esc being handled right now just closed one. */
+export const fullViewOpen = (e?: Event) => openCount > 0 || (!!e && e.timeStamp === leftAt);
+
 /** Full-window control of `node`; `onChange` hears every switch (also Esc). */
 export function fullWindow(node: HTMLElement, onChange?: (on: boolean) => void): FullWindow {
   let on = false;
@@ -23,6 +30,7 @@ export function fullWindow(node: HTMLElement, onChange?: (on: boolean) => void):
   const set = (v: boolean) => {
     if (v === on) return;
     on = v;
+    openCount += on ? 1 : -1;
     if (on) {
       scrolls = scrollParents();
       const r = node.getBoundingClientRect();
@@ -43,7 +51,7 @@ export function fullWindow(node: HTMLElement, onChange?: (on: boolean) => void):
   };
   // A dialog opened from inside (Straighten, confirms) handles its own Esc.
   const onKey = (e: KeyboardEvent) => {
-    if (on && e.key === 'Escape' && !e.defaultPrevented && !(e.target as HTMLElement | null)?.closest?.('.backdrop')) { e.preventDefault(); set(false); }
+    if (on && e.key === 'Escape' && !e.defaultPrevented && !(e.target as HTMLElement | null)?.closest?.('.backdrop')) { e.preventDefault(); leftAt = e.timeStamp; set(false); }
   };
   window.addEventListener('keydown', onKey);
   return {

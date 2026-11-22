@@ -66,6 +66,7 @@ namespace TCGCustomCards
         internal static ConfigEntry<float> FullImageInset;
         internal static ConfigEntry<bool> FullImageFoilGlow;
         internal static ConfigEntry<bool> CardShaders;
+        internal static ConfigEntry<bool> CustomBorders;
         internal static ConfigEntry<bool> HidePrintedBorders;
         internal static ConfigEntry<float> PrintedBorderMax;
         internal static ConfigEntry<string> ShopSignImage, ShopSignCrop;
@@ -78,10 +79,6 @@ namespace TCGCustomCards
         internal static ConfigEntry<bool> CreditCardKeepChip, CreditCardKeepPrint;
         internal static ConfigEntry<Runtime.LoadingCardMode> LoadingScreenCard;
         internal static ConfigEntry<string> LoadingScreenCardImage, LoadingScreenCardCrop;
-        internal static ConfigEntry<bool> GradeLabel;
-        internal static ConfigEntry<float> GradeLabelOffsetX;
-        internal static ConfigEntry<float> GradeLabelOffsetY;
-        internal static ConfigEntry<float> GradeLabelSize;
         internal static ConfigEntry<bool> HoloFoil;
         internal static ConfigEntry<bool> HoloFoilRim;
         internal static ConfigEntry<bool> EnhancedBinder;
@@ -291,6 +288,9 @@ namespace TCGCustomCards
             CardShaders = Config.Bind("Visuals", "CardShaders", true,
                 "Draw card versions with the shaders given to them in TCG Studio (Shaders page; a set's Set tab and a card's Shader " +
                 "tab), and foil cards with the stock holo (Foil). Off = every card is drawn normally. Applies live.");
+            CustomBorders = Config.Bind("Visuals", "CustomBorders", true,
+                "Full-image cards: draw the borders given to a set's border slots in TCG Studio (Borders page; a set's Borders & " +
+                "versions page) instead of the game's border rim. Off = the game's rim everywhere. Applies to newly shown cards.");
             ShopSignImage = Config.Bind("Visuals", "ShopSignImage", "",
                 "Your own picture for the sign above the shop entrance: a file name in the active setup's Game look folder (TCG Studio's " +
                 "Game look page copies the image you choose there) or a full path to a PNG/JPG. Best at about 4:1 (e.g. 4096×1000); " +
@@ -383,18 +383,6 @@ namespace TCGCustomCards
             ScreenPictures.Init();
             LoadingScreenLook.Init();
             BoxLook.Bind(Config);
-            GradeLabel = Config.Bind("Visuals - Grade label", "GradeLabel", true,
-                "Full-image cards: show the grade label (1st Edition / Silver / Gold / EX) like vanilla cards. Applies live.");
-            GradeLabelOffsetX = Config.Bind("Visuals - Grade label", "GradeLabelOffsetX", 0f, new ConfigDescription(
-                "Full-image cards: move the grade label sideways, in % of the card width (0 = the game's own spot, + = right). Applies live.",
-                new AcceptableValueRange<float>(-50f, 50f)));
-            GradeLabelOffsetY = Config.Bind("Visuals - Grade label", "GradeLabelOffsetY", -24.882f, new ConfigDescription(
-                "Full-image cards: move the grade label up/down, in % of the card height (0 = the game's own spot, + = up; " +
-                "default -24.882 = near the bottom, chosen in game 2026-09-24). Applies live.",
-                new AcceptableValueRange<float>(-50f, 50f)));
-            GradeLabelSize = Config.Bind("Visuals - Grade label", "GradeLabelSize", 1f, new ConfigDescription(
-                "Full-image cards: size of the grade label (1 = the game's size). Applies live.",
-                new AcceptableValueRange<float>(0.3f, 4f)));
             HoloFoil = Config.Bind("Foil", "HoloFoil", true,
                 "Full-image foil cards: a foil version that has no shader chosen in TCG Studio is drawn with the stock holo of its " +
                 "border (a different look per border; TCG Studio lists them on the Shaders page, where a copy can be changed). " +

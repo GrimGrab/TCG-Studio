@@ -3,6 +3,7 @@ package main
 import (
 	"tcgstudio/internal/game"
 	"tcgstudio/internal/installer"
+	"tcgstudio/internal/library"
 	"tcgstudio/internal/migrate"
 )
 
@@ -15,6 +16,8 @@ type StartupResult struct {
 	Version      string `json:"version"`      // that version
 	Waiting      string `json:"waiting"`      // why it couldn't run now (the game is running), shown until it can
 	ModUpdated   bool   `json:"modUpdated"`   // the mod in the game was updated
+	// Repaired: sets whose card pictures were pointed back at their files (library.RepairShrunk), for the start-up message.
+	Repaired []string `json:"repaired"`
 }
 
 // StartupUpdate runs the start-up step (see above). The frontend calls it on start and after Setup actions.
@@ -28,6 +31,7 @@ func (a *App) StartupUpdate() (*StartupResult, error) {
 		out.OldLayoutURL, out.Version = legacyReleaseURL(), legacyRelease
 		return out, nil
 	}
+	a.repairShrunk(out)
 	if game.IsGameDir(gameDir) && game.IsRunning() {
 		if modOutdatedOnly(gameDir) {
 			out.Waiting = waitText
@@ -83,4 +87,19 @@ func modOutdatedOnly(gameDir string) bool {
 		}
 	}
 	return outdated
+}
+
+// repairShrunk runs library.RepairShrunk once (settings ShrinkRepaired): an older Storage Shrink converted every picture of
+// a card to JPEG but renamed only the main one in set.json. It only edits set.json files, so it needs no closed game.
+// migration:shrink-repoint
+func (a *App) repairShrunk(out *StartupResult) {
+	if a.cfg().ShrinkRepaired {
+		return
+	}
+	fixed, err := library.RepairShrunk(a.home())
+	if err != nil {
+		return // tried again at the next start
+	}
+	out.Repaired = fixed
+	_, _ = a.updateSettings(func(s *Settings) { s.ShrinkRepaired = true })
 }

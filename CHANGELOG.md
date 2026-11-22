@@ -3,6 +3,21 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.4.0 - 2026-11-22
+
+Custom card borders, a full card editor, and edition labels you can place per set and per card.
+
+- New: Borders page. Make your own card borders from picture and shader layers, or use the stock ones (Gold leaf, Silver leaf, Rainbow holo, Obsidian, Etched silver, Pastel). Export a thin rim or card panel template to paint on.
+- New: Set → Card look. Choose the versions, border and shader for each edition, with a live preview.
+- New: Full card editor (double-click a card): details, look (a live sample of every version, try shaders per version), price and play on one page.
+- New: Edition label per set and per card: show or hide the 1st Edition / Silver / Gold / EX text, drag it where you want it and change its size (Card look → Edition label).
+- New: Binder: versions you own that the panel's filters hide show as small grey squares.
+- Changed: The Visuals - Grade label settings are gone; the edition label is now set per set and per card in Studio.
+- Changed: Full-image card art sits centred on the game's card, so the rim is even on both sides.
+- Changed: Stock card shaders have shorter names.
+- Fixed: Shrinking a set on the Storage page no longer breaks version and back pictures.
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.3.1 - 2026-11-20
 
 Better MTG deck lists: real mana symbols, sorting, search, and a deck picker that explains which decks you can use.

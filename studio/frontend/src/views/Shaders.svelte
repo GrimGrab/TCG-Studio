@@ -558,8 +558,8 @@
           <section class="codepane">
             <div class="row">
               <div class="grow"><b>{viewing.name}</b>
-                <div class="muted small">Comes with the mod: foil versions of {viewing.border} cards are drawn with it unless a set or card chooses
-                  something else. Its code can't be changed, but its values can: the sliders on the right are what the game uses for this setup
+                <div class="muted small">Comes with the mod: {#if viewing.border}foil versions of {viewing.border} cards are drawn with it unless a set or card chooses
+                  something else{:else}made for the shader layer of a border (Borders page): put it on top of a picture layer{/if}. Its code can't be changed, but its values can: the sliders on the right are what the game uses for this setup
                   after Save, and <b>Reset values</b> goes back to the mod's own. <b>Duplicate</b> makes a shader of your own with them.</div></div>
               <button onclick={() => duplicate({ ...viewing!, params: tryParams })}>Duplicate{tried ? ' with these values' : ' to edit'}</button>
             </div>
@@ -613,7 +613,8 @@
   .info { display: flex; flex-direction: column; min-width: 0; }
   .info .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .info .sub { font-size: 11px; color: var(--muted); }
-  .starters { display: flex; flex-direction: column; gap: 4px; }
+  /* The examples open in the side list's footer: they scroll on their own so the footer never grows past the window. */
+  .starters { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; min-height: 0; }
   .grouphead { padding: 10px 8px 4px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
   /* The card stays in sight while the parameters under it scroll. */
   .pin { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; padding: 14px 16px 8px; background: var(--bg);

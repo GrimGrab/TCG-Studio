@@ -3,10 +3,12 @@
   // own versions (card detail) and several cards at once (bulk edit). `mixed` = some of the selected cards have it.
   // `extra` adds content under a cell's button (the card detail's picture per version).
   import type { Snippet } from 'svelte';
-  import { BORDERS, BORDER_LABELS } from '../../lib/api';
-  import { versionKey } from '../../lib/cardVersions';
+  import { BORDERS } from '../../lib/api';
+  import { borderLabel, versionKey } from '../../lib/cardVersions';
 
-  let { on, mixed = new Set<string>(), ontoggle, keepOne = true, extra }: {
+  let { on, mixed = new Set<string>(), ontoggle, keepOne = true, extra, set }: {
+    /** The set whose own slot names label the rows (set.json "borders"). */
+    set?: any;
     on: Set<string>; mixed?: Set<string>; ontoggle: (key: string) => void; keepOne?: boolean; extra?: Snippet<[string]>;
   } = $props();
 </script>
@@ -14,14 +16,14 @@
 <div class="vgrid">
   <span></span><span class="colhead">Normal</span><span class="colhead">Foil</span>
   {#each BORDERS as b}
-    <span class="rowhead">{BORDER_LABELS[b]}</span>
+    <span class="rowhead">{borderLabel(b)}</span>
     {#each [false, true] as foil}
       {@const k = versionKey(b, foil)}
       {@const isOn = on.has(k)}
       {@const isMixed = !isOn && mixed.has(k)}
       <div class="cell">
         <button class="v" class:on={isOn} class:mixed={isMixed} class:foil disabled={keepOne && on.size === 1 && isOn}
-          onclick={() => ontoggle(k)} aria-pressed={isOn} aria-label="{BORDER_LABELS[b]} {foil ? 'foil' : 'normal'}">
+          onclick={() => ontoggle(k)} aria-pressed={isOn} aria-label="{borderLabel(b)} {foil ? 'foil' : 'normal'}">
           {isOn ? '✓ On' : isMixed ? '◐ Some' : 'Off'}</button>
         {#if extra}{@render extra(k)}{/if}
       </div>

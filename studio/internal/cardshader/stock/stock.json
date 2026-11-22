@@ -1,7 +1,7 @@
 [
  {
   "id": "tcgcc-holo-base",
-  "name": "Holo: Dark teal (Base foil)",
+  "name": "Holo: Dark teal",
   "border": "Base",
   "code": "float hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    float shine = 1.0;\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 3.5) {\n        vec3 bronze = vec3(dot(holo, vec3(0.333))) * vec3(1.10, 0.92, 0.66);\n        vec3 aged = mix(bronze, holo, 0.45);\n        float grain = 0.7 + 0.3 * valueNoise(uv * 240.0) * valueNoise(uv * 97.0 + 5.1);\n        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n        float wear = smoothstep(0.0, 0.07, edge + (valueNoise(uv * 18.0) - 0.5) * 0.05)\n            * (0.55 + 0.45 * smoothstep(0.25, 0.6, valueNoise(uv * 4.0 + 11.0)));\n        col = aged * (0.35 + 0.65 * band) * mask * grain * wear;\n        float scratch = 0.0;\n        for (int k = 0; k < 2; k++) {\n            float a = k == 0 ? 0.45 : -1.1;\n            vec2 r = vec2(cos(a) * uv.x - sin(a) * uv.y, sin(a) * uv.x + cos(a) * uv.y) * vec2(3.0, patternScale);\n            vec2 cell = floor(r);\n            float on = step(0.82, hash21(cell + float(k) * 7.3));\n            float across = abs(fract(r.y) - 0.5);\n            scratch += on * (1.0 - smoothstep(0.02, 0.07, across)) * smoothstep(0.0, 0.3, fract(r.x)) * smoothstep(1.0, 0.7, fract(r.x));\n        }\n        extra += clamp(scratch, 0.0, 1.0) * vec3(0.55, 0.52, 0.46) * sparkle * (0.4 + 0.6 * band);\n        shine = 0.3;\n        picture.rgb = mix(picture.rgb, picture.rgb * vec3(1.04, 0.95, 0.78) + vec3(0.03, 0.02, 0.0), 0.6);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact * shine;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * shine * mix(0.5, 1.0, mask);\n\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
   "params": [
@@ -134,7 +134,7 @@
  },
  {
   "id": "tcgcc-holo-firstedition",
-  "name": "Holo: Antique (First Edition foil)",
+  "name": "Holo: Antique",
   "border": "FirstEdition",
   "code": "float hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    float shine = 1.0;\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 3.5) {\n        vec3 bronze = vec3(dot(holo, vec3(0.333))) * vec3(1.10, 0.92, 0.66);\n        vec3 aged = mix(bronze, holo, 0.45);\n        float grain = 0.7 + 0.3 * valueNoise(uv * 240.0) * valueNoise(uv * 97.0 + 5.1);\n        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n        float wear = smoothstep(0.0, 0.07, edge + (valueNoise(uv * 18.0) - 0.5) * 0.05)\n            * (0.55 + 0.45 * smoothstep(0.25, 0.6, valueNoise(uv * 4.0 + 11.0)));\n        col = aged * (0.35 + 0.65 * band) * mask * grain * wear;\n        float scratch = 0.0;\n        for (int k = 0; k < 2; k++) {\n            float a = k == 0 ? 0.45 : -1.1;\n            vec2 r = vec2(cos(a) * uv.x - sin(a) * uv.y, sin(a) * uv.x + cos(a) * uv.y) * vec2(3.0, patternScale);\n            vec2 cell = floor(r);\n            float on = step(0.82, hash21(cell + float(k) * 7.3));\n            float across = abs(fract(r.y) - 0.5);\n            scratch += on * (1.0 - smoothstep(0.02, 0.07, across)) * smoothstep(0.0, 0.3, fract(r.x)) * smoothstep(1.0, 0.7, fract(r.x));\n        }\n        extra += clamp(scratch, 0.0, 1.0) * vec3(0.55, 0.52, 0.46) * sparkle * (0.4 + 0.6 * band);\n        shine = 0.3;\n        picture.rgb = mix(picture.rgb, picture.rgb * vec3(1.04, 0.95, 0.78) + vec3(0.03, 0.02, 0.0), 0.6);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact * shine;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * shine * mix(0.5, 1.0, mask);\n\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
   "params": [
@@ -267,7 +267,7 @@
  },
  {
   "id": "tcgcc-holo-silver",
-  "name": "Holo: Brushed silver (Silver foil)",
+  "name": "Holo: Brushed silver",
   "border": "Silver",
   "code": "float hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    float shine = 1.0;\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 3.5) {\n        vec3 bronze = vec3(dot(holo, vec3(0.333))) * vec3(1.10, 0.92, 0.66);\n        vec3 aged = mix(bronze, holo, 0.45);\n        float grain = 0.7 + 0.3 * valueNoise(uv * 240.0) * valueNoise(uv * 97.0 + 5.1);\n        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n        float wear = smoothstep(0.0, 0.07, edge + (valueNoise(uv * 18.0) - 0.5) * 0.05)\n            * (0.55 + 0.45 * smoothstep(0.25, 0.6, valueNoise(uv * 4.0 + 11.0)));\n        col = aged * (0.35 + 0.65 * band) * mask * grain * wear;\n        float scratch = 0.0;\n        for (int k = 0; k < 2; k++) {\n            float a = k == 0 ? 0.45 : -1.1;\n            vec2 r = vec2(cos(a) * uv.x - sin(a) * uv.y, sin(a) * uv.x + cos(a) * uv.y) * vec2(3.0, patternScale);\n            vec2 cell = floor(r);\n            float on = step(0.82, hash21(cell + float(k) * 7.3));\n            float across = abs(fract(r.y) - 0.5);\n            scratch += on * (1.0 - smoothstep(0.02, 0.07, across)) * smoothstep(0.0, 0.3, fract(r.x)) * smoothstep(1.0, 0.7, fract(r.x));\n        }\n        extra += clamp(scratch, 0.0, 1.0) * vec3(0.55, 0.52, 0.46) * sparkle * (0.4 + 0.6 * band);\n        shine = 0.3;\n        picture.rgb = mix(picture.rgb, picture.rgb * vec3(1.04, 0.95, 0.78) + vec3(0.03, 0.02, 0.0), 0.6);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact * shine;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * shine * mix(0.5, 1.0, mask);\n\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
   "params": [
@@ -400,7 +400,7 @@
  },
  {
   "id": "tcgcc-holo-gold",
-  "name": "Holo: Gold leaf (Gold foil)",
+  "name": "Holo: Gold leaf",
   "border": "Gold",
   "code": "float hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    float shine = 1.0;\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 3.5) {\n        vec3 bronze = vec3(dot(holo, vec3(0.333))) * vec3(1.10, 0.92, 0.66);\n        vec3 aged = mix(bronze, holo, 0.45);\n        float grain = 0.7 + 0.3 * valueNoise(uv * 240.0) * valueNoise(uv * 97.0 + 5.1);\n        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n        float wear = smoothstep(0.0, 0.07, edge + (valueNoise(uv * 18.0) - 0.5) * 0.05)\n            * (0.55 + 0.45 * smoothstep(0.25, 0.6, valueNoise(uv * 4.0 + 11.0)));\n        col = aged * (0.35 + 0.65 * band) * mask * grain * wear;\n        float scratch = 0.0;\n        for (int k = 0; k < 2; k++) {\n            float a = k == 0 ? 0.45 : -1.1;\n            vec2 r = vec2(cos(a) * uv.x - sin(a) * uv.y, sin(a) * uv.x + cos(a) * uv.y) * vec2(3.0, patternScale);\n            vec2 cell = floor(r);\n            float on = step(0.82, hash21(cell + float(k) * 7.3));\n            float across = abs(fract(r.y) - 0.5);\n            scratch += on * (1.0 - smoothstep(0.02, 0.07, across)) * smoothstep(0.0, 0.3, fract(r.x)) * smoothstep(1.0, 0.7, fract(r.x));\n        }\n        extra += clamp(scratch, 0.0, 1.0) * vec3(0.55, 0.52, 0.46) * sparkle * (0.4 + 0.6 * band);\n        shine = 0.3;\n        picture.rgb = mix(picture.rgb, picture.rgb * vec3(1.04, 0.95, 0.78) + vec3(0.03, 0.02, 0.0), 0.6);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact * shine;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * shine * mix(0.5, 1.0, mask);\n\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
   "params": [
@@ -533,7 +533,7 @@
  },
  {
   "id": "tcgcc-holo-ex",
-  "name": "Holo: Embossed prism (EX foil)",
+  "name": "Holo: Embossed prism",
   "border": "EX",
   "code": "vec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nfloat luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }\n\nfloat diamonds(vec2 uv) {\n    vec2 p = uv * vec2(diamondScale, diamondScale * 1.4);\n    vec2 r = vec2(p.x + p.y, p.x - p.y) * 0.7071;\n    vec2 f = abs(fract(r) - 0.5);\n    return 1.0 - 2.0 * max(f.x, f.y);\n}\n\nfloat height(vec2 uv) {\n    vec2 o = vec2(0.002, 0.0015);\n    float pic = (luma(art(uv).rgb) * 2.0 + luma(art(uv + o).rgb) + luma(art(uv - o).rgb)) * 0.25;\n    return pic * relief + diamonds(uv) * diamond * 0.12;\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n\n    vec2 e = vec2(0.003, 0.0022);\n    float gx = height(uv + vec2(e.x, 0.0)) - height(uv - vec2(e.x, 0.0));\n    float gy = height(uv + vec2(0.0, e.y)) - height(uv - vec2(0.0, e.y));\n    vec3 n = normalize(vec3(-gx * 3.0, -gy * 3.0, 1.0));\n\n    float t = iTime * 0.5 * lightSpeed;\n    vec2 tilt = iTilt * viewReact;\n    vec3 l = normalize(vec3(vec2(cos(t), sin(t) * 0.7) * 0.6 + tilt * 3.0, 1.0));\n    vec3 h = normalize(l + vec3(0.0, 0.0, 1.0));\n\n    float lit = dot(n, l) - l.z;\n    vec3 base = picture.rgb * (1.0 + lit * shading * 2.0);\n\n    float spec = max(pow(max(dot(n, h), 0.0), sharpness) - pow(h.z, sharpness) * 0.85, 0.0);\n    float hue = fract(atan(n.y, n.x) / 6.2831853 + uv.y * 0.4 + t * 0.05 + (tilt.x * 1.6 + tilt.y * 1.1));\n    vec3 prism = hsv2rgb(vec3(hue, 0.65 * clamp(hueSpread * 2.0, 0.0, 1.0), 1.0));\n    vec3 light = prism * spec * shine * 4.0;\n\n    vec2 dir = normalize(vec2(0.8, 0.6));\n    float along = dot(uv, dir);\n    float every = max(sweepEvery, 0.5);\n    float at = -0.3 + mod(iTime + iSeed * every, every) * sweepSpeed * 0.8;\n    float d = (along - at) / max(sweepWidth, 0.005);\n    float band = exp(-d * d);\n    float facing = clamp(dot(n.xy, dir) * -6.0, 0.0, 1.0) + clamp(length(n.xy) * 3.0, 0.0, 1.0) * 0.5;\n    vec3 rake = mix(vec3(1.0), prism, 0.5) * band * (facing + 0.12) * sweep;\n\n    float m = cardMask(uv);\n    return vec4(mix(picture.rgb, base, m) + (light * strength + rake) * m, picture.a);\n}\n",
   "params": [
@@ -659,7 +659,7 @@
  },
  {
   "id": "tcgcc-holo-fullart",
-  "name": "Holo: Violet (Full Art foil)",
+  "name": "Holo: Violet",
   "border": "FullArt",
   "code": "float hash21(vec2 p) {\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat valueNoise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = hash21(i);\n    float b = hash21(i + vec2(1.0, 0.0));\n    float c = hash21(i + vec2(0.0, 1.0));\n    float d = hash21(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec3 rgb2hsv(vec3 c) {\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);\n}\n\nvec3 hsv2rgb(vec3 c) {\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}\n\nvec3 ramp(float t) {\n    vec3 hsv = rgb2hsv(tint.rgb);\n    float a = t * 6.2831853;\n    float hue = fract(hsv.x + hueSpread * sin(a));\n    float sat = clamp(hsv.y * saturation * (0.75 + 0.25 * cos(a * 2.0)), 0.0, 1.0);\n    float val = clamp(max(hsv.z, 0.35) * (0.55 + 0.45 * (0.5 + 0.5 * sin(a * 2.0 + 1.0))), 0.0, 1.0);\n    return hsv2rgb(vec3(hue, sat, val));\n}\n\nfloat sparkles(vec2 uv, vec2 tilt, float scale, float amount) {\n    vec2 grid = uv * vec2(scale, scale * 1.4);\n    vec2 cell = floor(grid);\n    float h = hash21(cell);\n    float h2 = hash21(cell + 17.13);\n    vec2 centre = vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);\n    float star = clamp(1.0 - length(fract(grid) - centre) * 6.0, 0.0, 1.0);\n    star = star * star * star;\n    float present = step(1.0 - amount * 0.45, hash21(cell + 3.7));\n    float phase = h * 43.0 + dot(tilt, vec2(21.0, 13.0)) + iTime * (0.6 + h2);\n    return star * present * pow(clamp(sin(phase) * 0.5 + 0.5, 0.0, 1.0), 6.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 picture = art(uv);\n    vec2 tilt = iTilt * viewReact;\n\n    float distortion = valueNoise(uv * 5.0) * 0.6 + valueNoise(uv * 13.0) * 0.4;\n    float coord = (uv.x * 0.6 + uv.y) * tiling + (tilt.x * 0.9 + tilt.y * 0.6) * parallax\n        + distortion * 0.25 + iTime * 0.06 * motion;\n    vec3 holo = ramp(fract(coord));\n    float band = pow(clamp(sin(coord * 6.2831853 * 1.5) * 0.5 + 0.5, 0.0, 1.0), 2.0);\n    float intensity = mix(1.0, 0.25 + 0.75 * band, bands);\n\n    float lum = dot(picture.rgb, vec3(0.299, 0.587, 0.114));\n    float mask = 1.0;\n    if (artMask > 0.5 && artMask < 1.5) mask = smoothstep(0.3, 0.85, lum);\n    else if (artMask > 1.5) mask = 1.0 - smoothstep(0.15, 0.6, lum);\n\n    vec3 col = holo * intensity * mask;\n    vec3 extra = vec3(0.0);\n    float shine = 1.0;\n    if (pattern > 0.5 && pattern < 1.5) {\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.6);\n    } else if (pattern > 1.5 && pattern < 2.5) {\n        float lines = fract((uv.x + uv.y * 1.4) * patternScale * 0.25);\n        extra += smoothstep(0.85, 1.0, lines) * (0.4 + 0.6 * band) * holo * 1.2;\n        extra += sparkles(uv, tilt, patternScale * 0.5, sparkle * 0.5) * (holo + 0.5);\n    } else if (pattern > 3.5) {\n        vec3 bronze = vec3(dot(holo, vec3(0.333))) * vec3(1.10, 0.92, 0.66);\n        vec3 aged = mix(bronze, holo, 0.45);\n        float grain = 0.7 + 0.3 * valueNoise(uv * 240.0) * valueNoise(uv * 97.0 + 5.1);\n        float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));\n        float wear = smoothstep(0.0, 0.07, edge + (valueNoise(uv * 18.0) - 0.5) * 0.05)\n            * (0.55 + 0.45 * smoothstep(0.25, 0.6, valueNoise(uv * 4.0 + 11.0)));\n        col = aged * (0.35 + 0.65 * band) * mask * grain * wear;\n        float scratch = 0.0;\n        for (int k = 0; k < 2; k++) {\n            float a = k == 0 ? 0.45 : -1.1;\n            vec2 r = vec2(cos(a) * uv.x - sin(a) * uv.y, sin(a) * uv.x + cos(a) * uv.y) * vec2(3.0, patternScale);\n            vec2 cell = floor(r);\n            float on = step(0.82, hash21(cell + float(k) * 7.3));\n            float across = abs(fract(r.y) - 0.5);\n            scratch += on * (1.0 - smoothstep(0.02, 0.07, across)) * smoothstep(0.0, 0.3, fract(r.x)) * smoothstep(1.0, 0.7, fract(r.x));\n        }\n        extra += clamp(scratch, 0.0, 1.0) * vec3(0.55, 0.52, 0.46) * sparkle * (0.4 + 0.6 * band);\n        shine = 0.3;\n        picture.rgb = mix(picture.rgb, picture.rgb * vec3(1.04, 0.95, 0.78) + vec3(0.03, 0.02, 0.0), 0.6);\n    } else if (pattern > 2.5) {\n        float cloud = valueNoise(uv * 3.0 + tilt * 0.8) * valueNoise(uv * 7.0 - tilt * 0.5);\n        col *= 0.6 + 1.2 * cloud;\n        extra += sparkles(uv, tilt, patternScale, sparkle) * (holo + 0.8);\n        extra += sparkles(uv + 0.37, tilt * 1.3, patternScale * 1.7, sparkle * 0.7) * holo;\n    }\n\n    float glow = pow(1.0 - iFacing, 2.0) * edgeGlow * viewReact * shine;\n    float sweepAt = fract((uv.x * 0.6 + uv.y) * 0.5 - iTime * 0.15 * motion);\n    float d = (sweepAt - 0.5) / 0.07;\n    vec3 sweepLight = (holo * 0.7 + 0.3) * exp(-d * d) * sweep * shine * mix(0.5, 1.0, mask);\n\n    vec3 light = (col + extra + holo * glow + sweepLight) * strength * cardMask(uv);\n    return vec4(picture.rgb + light, picture.a);\n}\n",
   "params": [
@@ -789,5 +789,151 @@
    }
   ],
   "bundle": "tcgcc_stock"
+ },
+ {
+  "id": "tcgcc-holo-leaf",
+  "name": "Metal leaf shimmer",
+  "border": "",
+  "code": "float leafHash(vec2 p) {\n    p = fract(p * vec2(234.34, 435.345));\n    p += dot(p, p + 34.23);\n    return fract(p.x * p.y);\n}\n\nvec4 card(vec2 uv) {\n    vec4 leaf = art(uv);\n\n    // Flakes of leaf, laid in rows like real gilding: each a little brighter or darker, each tilted its own way.\n    vec2 grid = vec2(flakes, flakes * 1.4);\n    vec2 p = uv * grid;\n    p.x += leafHash(vec2(floor(p.y), 3.0)) * 0.7;\n    vec2 cell = floor(p);\n    // How many flakes one screen pixel covers: 1 below about half a flake per pixel, 0 from a flake and a half.\n    float footprint = max(fwidth(p.x), fwidth(p.y));\n    float detail = 1.0 - smoothstep(0.5, 1.5, footprint);\n    float tone = mix(0.5, leafHash(cell + iCard * 17.0), detail);\n    vec2 facing = vec2(leafHash(cell + 3.1), leafHash(cell + 7.7)) - 0.5;\n\n    // The light moves with the card's tilt and drifts slowly by itself.\n    vec2 light = iTilt * 1.6 + vec2(sin(iTime * speed * 0.7 + iSeed * 6.0), cos(iTime * speed * 0.5)) * 0.3;\n    float glint = mix(0.04, pow(max(0.0, 1.0 - length(facing - light * 0.5) * 2.2), 6.0), detail); // 0.04 ≈ its average\n\n    // A broad sheen crossing the card.\n    float band = uv.x * 0.8 + uv.y * 0.6 - fract(iTime * speed * 0.12 + iSeed) * 2.6 + 0.6 + iTilt.x;\n    float sheen = exp(-band * band * 16.0);\n\n    // The glint takes the leaf's own colour, lighter.\n    vec3 glow = mix(vec3(1.0), leaf.rgb / max(0.001, max(leaf.r, max(leaf.g, leaf.b))), 0.55);\n    vec3 col = leaf.rgb * (1.0 - variation * 0.5 + variation * tone) * tint.rgb;\n    col += glow * (glint * shine + sheen * shine * 0.5) * leaf.a * cardMask(uv);\n    return vec4(col, leaf.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "name": "flakes",
+    "kind": "number",
+    "value": [
+     60
+    ],
+    "min": 4,
+    "max": 60
+   },
+   {
+    "name": "shine",
+    "kind": "number",
+    "value": [
+     0.55
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "variation",
+    "kind": "number",
+    "value": [
+     0.35
+    ],
+    "max": 1
+   },
+   {
+    "name": "speed",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 3
+   }
+  ],
+  "bundle": "tcgcc_stock_leaf"
+ },
+ {
+  "id": "tcgcc-holo-rainbowrim",
+  "name": "Rainbow rim",
+  "border": "",
+  "code": "vec3 rimHue(float h) {\n    return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);\n}\n\nvec4 card(vec2 uv) {\n    vec4 rim = art(uv);\n    // The colour at a point depends on where it is and on the angle the card is seen from, so the bands slide as it tilts.\n    float h = (uv.x + uv.y * 0.6) * bands + iTilt.x * 2.0 - iTilt.y * 1.2 + iTime * speed * 0.05 + iCard;\n    vec3 rainbow = mix(vec3(1.0), rimHue(fract(h)), saturation);\n    float shade = dot(rim.rgb, vec3(0.299, 0.587, 0.114));\n    vec3 col = mix(rim.rgb, rainbow * (0.35 + shade), strength);\n\n    // Twinkles: a few cells light up and fade, each on its own beat.\n    vec2 cell = floor(uv * vec2(90.0, 126.0));\n    float r = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);\n    float twinkle = step(1.0 - sparkle * 0.05, r) * max(0.0, sin(iTime * 3.0 + r * 40.0));\n    col += vec3(twinkle) * rim.a;\n    return vec4(col, rim.a);\n}\n",
+  "params": [
+   {
+    "name": "bands",
+    "kind": "number",
+    "value": [
+     1.2
+    ],
+    "min": 0.2,
+    "max": 4
+   },
+   {
+    "name": "saturation",
+    "kind": "number",
+    "value": [
+     0.75
+    ],
+    "max": 1
+   },
+   {
+    "name": "strength",
+    "kind": "number",
+    "value": [
+     0.7
+    ],
+    "max": 1
+   },
+   {
+    "name": "sparkle",
+    "kind": "number",
+    "value": [
+     0.5
+    ],
+    "max": 1
+   },
+   {
+    "name": "speed",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 3
+   }
+  ],
+  "bundle": "tcgcc_stock_rainbow"
+ },
+ {
+  "id": "tcgcc-holo-gloss",
+  "name": "Gloss streak",
+  "border": "",
+  "code": "vec4 card(vec2 uv) {\n    vec4 base = art(uv);\n    // Where the light falls: moved by the tilt, drifting a little by itself.\n    vec2 light = vec2(0.5) + iTilt * 1.4 + vec2(sin(iTime * speed * 0.4 + iSeed * 6.0), cos(iTime * speed * 0.3)) * 0.15;\n    float d = dot(uv - light, normalize(vec2(1.0, 0.7)));\n    float streak = exp(-d * d * sharpness);\n    return vec4(base.rgb + tint.rgb * streak * shine * base.a, base.a);\n}\n",
+  "params": [
+   {
+    "name": "tint",
+    "kind": "colour",
+    "value": [
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "name": "shine",
+    "kind": "number",
+    "value": [
+     0.6
+    ],
+    "max": 1.5
+   },
+   {
+    "name": "sharpness",
+    "kind": "number",
+    "value": [
+     40
+    ],
+    "min": 4,
+    "max": 200
+   },
+   {
+    "name": "speed",
+    "kind": "number",
+    "value": [
+     1
+    ],
+    "max": 3
+   }
+  ],
+  "bundle": "tcgcc_stock_gloss"
  }
 ]

@@ -146,37 +146,73 @@ func ExportItems(h setups.Home, activeRoot string, picks []Pick, dest, studioVer
 	return skipped, z.Close()
 }
 
-// withSetShaders adds the card shaders the listed sets name (the player's own; the stock ones come with the mod), so a
-// set arrives with the look it has here. A shader that is gone or was converted from another mod is left out: its
-// cards are then drawn normally.
+// withSetShaders adds the card borders the listed sets name and the card shaders the sets and those borders name (the
+// player's own; the stock ones come with the mod), so a set arrives with the look it has here. One that is gone or was
+// converted from another mod is left out: its cards are then drawn normally.
 func withSetShaders(h setups.Home, activeRoot string, list []located) ([]located, error) {
-	const setKind, shaderKind = "set", "shader"
-	k, ok := content.Get(shaderKind)
+	ws := workspace.Dir(h.Root)
+	list, err := withRefs(h, activeRoot, list, "border", func(l located) ([]string, error) {
+		if l.kind.ID != "set" {
+			return nil, nil
+		}
+		p, err := ws.Projects(l.root).Load(l.item.ID)
+		if err != nil {
+			return nil, err
+		}
+		return p.Set.BorderIDs(), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return withRefs(h, activeRoot, list, "shader", func(l located) ([]string, error) {
+		switch l.kind.ID {
+		case "set":
+			p, err := ws.Projects(l.root).Load(l.item.ID)
+			if err != nil {
+				return nil, err
+			}
+			return p.Set.ShaderIDs(), nil
+		case "border":
+			lib, err := ws.Items(l.root)
+			if err != nil {
+				return nil, err
+			}
+			for _, b := range lib.Lib.Borders {
+				if b.ID == l.item.ID {
+					return b.ShaderIDs(), nil
+				}
+			}
+		}
+		return nil, nil
+	})
+}
+
+// withRefs adds the items of kind refKind that the listed items name (refsOf), each once, from wherever the catalog
+// finds them.
+func withRefs(h setups.Home, activeRoot string, list []located, refKind string, refsOf func(located) ([]string, error)) ([]located, error) {
+	k, ok := content.Get(refKind)
 	if !ok {
 		return list, nil
 	}
 	ws := workspace.Dir(h.Root)
 	have := map[string]bool{}
 	for _, l := range list {
-		if l.kind.ID == shaderKind {
+		if l.kind.ID == refKind {
 			have[l.item.ID] = true
 		}
 	}
 	var entries []catalog.Entry
-	for _, l := range list {
-		if l.kind.ID != setKind {
-			continue
-		}
-		p, err := ws.Projects(l.root).Load(l.item.ID)
+	for i := 0; i < len(list); i++ {
+		ids, err := refsOf(list[i])
 		if err != nil {
 			return nil, err
 		}
-		for _, id := range p.Set.ShaderIDs() {
+		for _, id := range ids {
 			if have[id] {
 				continue
 			}
 			if entries == nil {
-				if entries, err = catalog.For(h.Root).All(h, activeRoot, shaderKind); err != nil {
+				if entries, err = catalog.For(h.Root).All(h, activeRoot, refKind); err != nil {
 					return nil, err
 				}
 			}

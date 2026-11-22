@@ -18,7 +18,7 @@ import (
 )
 
 // Version changes whenever the output changes (forces a new extraction).
-const Version = 33
+const Version = 38
 
 // Info is written as studio.json next to the extracted templates.
 type Info struct {
@@ -67,18 +67,19 @@ func Stamp(gameDir string) (string, error) {
 }
 
 type extractor struct {
-	scenes    map[string]*unityfs.File // sceneWith's finds by class
-	env       *unityfs.Env
-	dir, acc  string
-	itemNames map[int32]string
-	objNames  map[int32]string
-	decoNames map[int32]string
-	catNames  map[int32]string
-	so        unityfs.StockItemData
-	warnings  []string
-	progress  func(string)
-	texNames  map[*unityfs.Object]unityfs.Texture2D
-	accMeshes *meshSet
+	expansionEnum map[string]int32         // ECardExpansionType (card rims)
+	scenes        map[string]*unityfs.File // sceneWith's finds by class
+	env           *unityfs.Env
+	dir, acc      string
+	itemNames     map[int32]string
+	objNames      map[int32]string
+	decoNames     map[int32]string
+	catNames      map[int32]string
+	so            unityfs.StockItemData
+	warnings      []string
+	progress      func(string)
+	texNames      map[*unityfs.Object]unityfs.Texture2D
+	accMeshes     *meshSet
 }
 
 // Extract writes the templates into outDir (replaced atomically: built in outDir+".new", then swapped in).
@@ -95,6 +96,7 @@ func Extract(gameDir, outDir string, progress func(string)) (info Info, err erro
 	if err != nil {
 		return info, err
 	}
+	var expansions map[string]int32
 	env, err := unityfs.Open(data)
 	if err != nil {
 		return info, err
@@ -104,10 +106,16 @@ func Extract(gameDir, outDir string, progress func(string)) (info Info, err erro
 		return info, err
 	}
 
+	// Optional (card rims only), so read on its own: a game that renamed it loses the rims, not every template.
+	if exp, err := unityfs.ReadEnums(filepath.Join(data, "Managed", "Assembly-CSharp.dll"), "ECardExpansionType"); err == nil {
+		expansions = exp["ECardExpansionType"]
+	}
+
 	tmp := outDir + ".new"
 	os.RemoveAll(tmp)
 	x := &extractor{env: env, dir: tmp, acc: filepath.Join(tmp, "accessories"), progress: progress,
 		itemNames: invert(enums["EItemType"]), catNames: invert(enums["EItemCategory"]), objNames: invert(enums["EObjectType"]), decoNames: invert(enums["EDecoObject"]), texNames: map[*unityfs.Object]unityfs.Texture2D{}}
+	x.expansionEnum = expansions
 	if err := os.MkdirAll(x.acc, 0o755); err != nil {
 		return info, err
 	}
@@ -222,6 +230,15 @@ func (x *extractor) run() error {
 	x.progress("Extracting decorations…")
 	if err := x.decorations(x.decoNames); err != nil {
 		x.warn("decorations: %v", err) // optional, like furniture
+	}
+	x.progress("Extracting the card rims…")
+	if len(x.expansionEnum) == 0 {
+		x.warn("card rims: the game's ECardExpansionType wasn't found") // optional: border previews then show no rim
+	} else if err := x.cardFrames(invert(x.expansionEnum)); err != nil {
+		x.warn("card rims: %v", err)
+	}
+	if err := x.editionLabel(); err != nil {
+		x.warn("edition label: %v", err) // optional: card previews then show no edition label
 	}
 	x.progress("Extracting the shop sign…")
 	if err := x.shopSign(); err != nil {

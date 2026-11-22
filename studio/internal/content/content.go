@@ -41,6 +41,7 @@ var Kinds = []Kind{
 	{ID: "face", One: "face", Many: "faces", Title: "Faces", Store: Entry{Field: "faces", Label: "Saved face", Preview: PreviewPerson}},
 	{ID: "animation", One: "animation", Many: "animations", Title: "Animations", Store: Entry{Field: "animations", Preview: PreviewAnimation}},
 	{ID: "shader", One: "card shader", Many: "card shaders", Title: "Shaders", Store: Entry{Field: "shaders"}},
+	{ID: "border", One: "card border", Many: "card borders", Title: "Borders", Store: Entry{Field: "borders", Rename: renameBorderShaders}},
 }
 
 // LibraryKinds are the kinds kept in the accessory library, one entry each: every page that lists "items" goes through this, so a new kind only needs its line
@@ -97,7 +98,7 @@ type In struct {
 	NewID  string
 	Origin *origin.Origin
 	// Renamed: the items imported together with this one that got a new id here (old id → new id), for items that name
-	// others by id (a set's card shaders).
+	// others by id (a set's card shaders and borders, a border's shaders).
 	Renamed map[string]string
 }
 

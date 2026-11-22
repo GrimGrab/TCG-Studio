@@ -48,8 +48,12 @@ var Registry = []Migration{
 		"[Visuals - Game look] CreditCardImage, CreditCardCrop", "No config can still have them"},
 	{"settings-foil-looks", "Holo foil look settings removed (the holo foils are stock card shaders)", "2026-11-13",
 		"[Foil] HoloFoilMotion, HoloFoilViewReact and the [Foil - <border>] sections", "No config can still have them"},
+	{"settings-edition-label", "Global grade label settings removed (sets and cards carry their own editionLabel)", "2026-11-22",
+		"[Visuals - Grade label] GradeLabel, GradeLabelOffsetX, GradeLabelOffsetY, GradeLabelSize", "No config can still have them"},
 	{"settings-bulk-boxes", "Tetramon bulk box designs carry over to BulkBoxNG…UG; Destiny ones are dropped", "2026-10-29",
 		"BulkBox_Tetramon* settings", "No config can still have them"},
+	{"shrink-repoint", "Sets an older Storage Shrink broke: back pictures, version pictures and masks named a deleted PNG beside its JPEG get the JPEG", "2026-11-20",
+		"Card picture paths ending .png with no file and a .jpg of the same name", "Keep for a few releases: only players who shrank a set before the fix need it"},
 	{"import-page-paths", "Forgets paths older versions remembered on the Import page", "2026-10-16",
 		"localStorage import.epl, import.share", "Harmless to delete after a release or two"},
 }

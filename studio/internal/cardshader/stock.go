@@ -25,7 +25,7 @@ const StockPrefix = "tcgcc-holo-"
 type StockShader struct {
 	ID     string         `json:"id"`
 	Name   string         `json:"name"`
-	Border string         `json:"border"` // the border whose foil version it is the default of
+	Border string         `json:"border"` // the border whose foil version it is the default of ("" = none: a card border's shader)
 	Code   string         `json:"code"`
 	Params []StarterParam `json:"params"`
 	Bundle string         `json:"bundle"` // its compiled bundle: stock/<Bundle>, in the mod's DLL as TCGCustomCards.stockbundle.<Bundle>
@@ -174,18 +174,16 @@ var holoLooks = []holoLook{
 	{"FullArt", "Violet", 0x9E, 0x6A, 0xFF, 0.15, 1.0, 0.30, 1.3, 1.6, 0.5, 0, 1, 0.8, 50, 0.35, 0.6, 1.49},
 }
 
-var borderLabels = map[string]string{"Base": "Base", "FirstEdition": "First Edition", "Silver": "Silver", "Gold": "Gold", "EX": "EX", "FullArt": "Full Art"}
-
 // Stock returns the stock shaders, in border order.
 func Stock() []StockShader {
-	order := map[string]int{"Base": 0, "FirstEdition": 1, "Silver": 2, "Gold": 3, "EX": 4, "FullArt": 5}
+	order := map[string]int{"Base": 0, "FirstEdition": 1, "Silver": 2, "Gold": 3, "EX": 4, "FullArt": 5, "": 6} // borders' own shaders last
 	num := func(name string, v, min, max float64) StarterParam {
 		return StarterParam{Param: Param{name, KindNumber}, Value: []float64{v}, Min: min, Max: max}
 	}
 	var out []StockShader
 	for _, l := range holoLooks {
 		out = append(out, StockShader{
-			ID: StockPrefix + strings.ToLower(l.border), Name: "Holo: " + l.name + " (" + borderLabels[l.border] + " foil)", Border: l.border, Code: holoCode, Bundle: holoBundle,
+			ID: StockPrefix + strings.ToLower(l.border), Name: "Holo: " + l.name, Border: l.border, Code: holoCode, Bundle: holoBundle,
 			Params: []StarterParam{
 				{Param: Param{"tint", KindColour}, Value: []float64{round3(float64(l.r) / 255), round3(float64(l.g) / 255), round3(float64(l.b) / 255), 1}},
 				num("hueSpread", l.hue, 0, 0.5), num("saturation", l.sat, 0, 1), num("strength", l.strength, 0, 1.5),
@@ -196,7 +194,8 @@ func Stock() []StockShader {
 			},
 		})
 	}
-	out = append(out, embossStock())
+	out = append(out, embossStock(), leafStock())
+	out = append(out, rimStocks()...)
 	sort.SliceStable(out, func(i, j int) bool { return order[out[i].Border] < order[out[j].Border] })
 	return out
 }

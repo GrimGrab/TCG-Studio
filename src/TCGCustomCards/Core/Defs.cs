@@ -78,6 +78,24 @@ namespace TCGCustomCards.Core
         /// null = nothing was chosen (a foil version then gets the stock holo of its border).
         /// </summary>
         public string ShaderOf(int pos, int slot) => Cards[pos].ShaderBySlot?[slot] ?? ShaderBySlot?[slot];
+
+        /// <summary>
+        /// The set's own take on the six border slots, keyed by slot name ("Gold"): the border (accessory library "borders" id)
+        /// its normal and foil versions are drawn with (the edition keeps the game's name). A slot that isn't listed stays the game's.
+        /// Full-image sets only. Odds, prices and on/off stay with "borderOdds", "borderMultipliers" and "variants".
+        /// </summary>
+        [JsonProperty("borders")] public Dictionary<string, BorderSlotDef> Borders;
+        /// <summary>The slots' entries by ECardBorderType (null = the game's). Filled by SetLoader.</summary>
+        [JsonIgnore] public BorderSlotDef[] SlotDefs = new BorderSlotDef[6];
+        /// <summary>Border ids by slot offset (null = none); null when the set has none. Filled by SetLoader.</summary>
+        [JsonIgnore] public string[] BorderBySlot;
+
+        /// <summary>The edition label on the set's full-image cards (each card can change any field of it).</summary>
+        [JsonProperty("editionLabel")] public EditionLabelDef EditionLabel;
+
+        /// <summary>The border a card's version is drawn with: the card's own entry, else the set's. "" or null = none.</summary>
+        public string BorderOf(int pos, int slot) => Cards[pos].BorderBySlot?[slot] ?? BorderBySlot?[slot];
+
         public bool Allows(int pos, ECardBorderType border, bool foil) => MaskOf(pos)[(int)border + (foil ? 6 : 0)];
         /// <summary>How many of the 12 versions the card has.</summary>
         public int VersionCount(int pos) => MaskOf(pos).Count(v => v);
@@ -158,6 +176,14 @@ namespace TCGCustomCards.Core
         [JsonProperty("versionShaders")] public Dictionary<string, string> VersionShaders;
         /// <summary>Own shader ids by slot offset: null = follow the set, "" = none. Null when the card has no entries. Filled by SetLoader.</summary>
         [JsonIgnore] public string[] ShaderBySlot;
+
+        /// <summary>The card's own border per version ("Gold_foil" → library border id); "" = none for that version even when the set has one.</summary>
+        [JsonProperty("versionBorders")] public Dictionary<string, string> VersionBorders;
+        /// <summary>Own border ids by slot offset: null = follow the set, "" = none. Null when the card has no entries. Filled by SetLoader.</summary>
+        [JsonIgnore] public string[] BorderBySlot;
+
+        /// <summary>The card's own edition label choices; a field it leaves out is the set's.</summary>
+        [JsonProperty("editionLabel")] public EditionLabelDef EditionLabel;
 
         /// <summary>
         /// A picture painted over the card's (path like <see cref="Image"/>): white = shader effects, black = none. Shaders read
@@ -329,6 +355,7 @@ namespace TCGCustomCards.Core
         [JsonProperty("decorations")] public List<DecorationDef> Decorations = new List<DecorationDef>();
         [JsonProperty("employees")] public List<EmployeeDef> Employees = new List<EmployeeDef>();
         [JsonProperty("shaders")] public List<ShaderDef> Shaders = new List<ShaderDef>();
+        [JsonProperty("borders")] public List<BorderDef> Borders = new List<BorderDef>();
         /// <summary>The setup's own values for the stock shaders (stock id → parameter name → values), used instead of theirs.</summary>
         [JsonProperty("stockValues")] public Dictionary<string, Dictionary<string, List<float>>> StockValues;
         [JsonIgnore] public string FolderPath;
@@ -355,6 +382,69 @@ namespace TCGCustomCards.Core
         [JsonProperty("draws")] public string Draws;
         public const string SeeThrough = "seeThrough", Over = "over";
         [JsonIgnore] public string FolderPath;
+    }
+
+    /// <summary>A set's own take on one border slot (set.json "borders").</summary>
+    /// <summary>
+    /// set.json "editionLabel" (on a set and on a card): the edition text (1st Edition, Silver, Gold, EX) on full-image cards
+    /// (Patches/FullImageGradeLabelPatch). Every field is optional: a card's left-out field is the set's, the set's the default.
+    /// </summary>
+    public class EditionLabelDef
+    {
+        /// <summary>Drawn at all (default true).</summary>
+        [JsonProperty("show")] public bool? Show;
+        /// <summary>Moves it from the game's own spot, in % of the card's width (+ = right; default 0).</summary>
+        [JsonProperty("x")] public float? X;
+        /// <summary>In % of the card's height (+ = up; default -24.882 = near the bottom, chosen in game 2026-09-24).</summary>
+        [JsonProperty("y")] public float? Y;
+        /// <summary>Size, 1 = the game's (0.3–4).</summary>
+        [JsonProperty("size")] public float? Size;
+    }
+
+    public class BorderSlotDef
+    {
+        /// <summary>Library border of the slot's normal version. Empty = the game's rim.</summary>
+        [JsonProperty("look")] public string Look;
+        /// <summary>Library border of the slot's foil version. Absent = <see cref="Look"/>; "" = the game's rim.</summary>
+        [JsonProperty("foilLook")] public string FoilLook;
+    }
+
+    /// <summary>
+    /// A card border (accessory library "borders", written by TCG Studio): a stack of layers drawn over a full-image card, back
+    /// to front. An image layer is a card-shaped picture (see-through where the card shows); a shader layer draws a card shader
+    /// on the image layer under it (the shader's art() is that picture) and can be clipped to its shape.
+    /// </summary>
+    public class BorderDef
+    {
+        public const string ImageLayer = "image", ShaderLayer = "shader";
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("name")] public string Name;
+        [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
+        [JsonProperty("icon")] public string Icon;
+        /// <summary>
+        /// Where the card's picture goes: x, y, width, height as fractions of the border, from its top left. Absent = the
+        /// picture covers the whole card under the border.
+        /// </summary>
+        [JsonProperty("window")] public float[] Window;
+        [JsonProperty("layers")] public List<BorderLayerDef> Layers = new List<BorderLayerDef>();
+        [JsonIgnore] public string FolderPath;
+        /// <summary>Comes with the mod (files are resources of this DLL, not the setup's).</summary>
+        [JsonIgnore] public bool BuiltIn;
+    }
+
+    public class BorderLayerDef
+    {
+        /// <summary><see cref="BorderDef.ImageLayer"/> or <see cref="BorderDef.ShaderLayer"/>.</summary>
+        [JsonProperty("kind")] public string Kind;
+        /// <summary>Image layer: the picture (assets/… in the workspace store).</summary>
+        [JsonProperty("file")] public string File;
+        [JsonProperty("opacity")] public float Opacity = 1f;
+        /// <summary>Shader layer: the card shader (library or stock id).</summary>
+        [JsonProperty("shader")] public string Shader;
+        /// <summary>Shader layer: only draw where the image layer under it is.</summary>
+        [JsonProperty("clip")] public bool Clip = true;
+        /// <summary>Shader layer: own values for the shader's parameters, by name (1, 2 or 4 numbers).</summary>
+        [JsonProperty("params")] public Dictionary<string, List<float>> Params;
     }
 
     /// <summary>

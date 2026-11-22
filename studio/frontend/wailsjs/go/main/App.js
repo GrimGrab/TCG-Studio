@@ -82,6 +82,10 @@ export function CancelStorage() {
   return window['go']['main']['App']['CancelStorage']();
 }
 
+export function CardFrames() {
+  return window['go']['main']['App']['CardFrames']();
+}
+
 export function CatalogAll(arg1) {
   return window['go']['main']['App']['CatalogAll'](arg1);
 }
@@ -176,6 +180,10 @@ export function DetectBoxFaces(arg1, arg2) {
 
 export function EPLModPath(arg1) {
   return window['go']['main']['App']['EPLModPath'](arg1);
+}
+
+export function EditionLabelLayout() {
+  return window['go']['main']['App']['EditionLabelLayout']();
 }
 
 export function ExportItems(arg1, arg2, arg3) {
@@ -334,6 +342,10 @@ export function LibraryFolder() {
   return window['go']['main']['App']['LibraryFolder']();
 }
 
+export function ListBorders() {
+  return window['go']['main']['App']['ListBorders']();
+}
+
 export function ListProjects() {
   return window['go']['main']['App']['ListProjects']();
 }
@@ -344,6 +356,10 @@ export function ListSetups() {
 
 export function ListShaders() {
   return window['go']['main']['App']['ListShaders']();
+}
+
+export function LoadBordersPage() {
+  return window['go']['main']['App']['LoadBordersPage']();
 }
 
 export function LoadClothes() {
@@ -384,6 +400,10 @@ export function MoveSetup(arg1, arg2) {
 
 export function NewAccessory(arg1, arg2, arg3) {
   return window['go']['main']['App']['NewAccessory'](arg1, arg2, arg3);
+}
+
+export function NewBorderID() {
+  return window['go']['main']['App']['NewBorderID']();
 }
 
 export function NewClothingID() {
@@ -428,6 +448,10 @@ export function PaintFurniture(arg1, arg2) {
 
 export function PickAccessoryImage() {
   return window['go']['main']['App']['PickAccessoryImage']();
+}
+
+export function PickBorderImage() {
+  return window['go']['main']['App']['PickBorderImage']();
 }
 
 export function PickCardImage(arg1) {
@@ -548,6 +572,10 @@ export function SaveAccessorySourceImage(arg1, arg2) {
 
 export function SaveAutoArt(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveAutoArt'](arg1, arg2, arg3, arg4);
+}
+
+export function SaveBorders(arg1) {
+  return window['go']['main']['App']['SaveBorders'](arg1);
 }
 
 export function SaveBoxImage(arg1, arg2) {

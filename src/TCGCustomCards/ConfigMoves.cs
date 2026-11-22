@@ -39,6 +39,10 @@ namespace TCGCustomCards
             DropRemoved(cfg, ("Foil", "HoloFoilMotion"), ("Foil", "HoloFoilViewReact"));
             foreach (var (grade, name) in new[] { ("Base", "Base"), ("FirstEdition", "First edition"), ("Silver", "Silver"), ("Gold", "Gold"), ("EX", "EX"), ("FullArt", "Full art") })
                 DropRemoved(cfg, ("Foil - " + name, grade + "Color"), ("Foil - " + name, grade + "Strength"), ("Foil - " + name, grade + "Pattern"));
+            // migration:settings-edition-label
+            // The grade label's place and size are per set and card now (set.json "editionLabel").
+            const string label = "Visuals - Grade label";
+            DropRemoved(cfg, (label, "GradeLabel"), (label, "GradeLabelOffsetX"), (label, "GradeLabelOffsetY"), (label, "GradeLabelSize"));
         }
 
         /// <summary>Every (section, key) → raw value in the config file as it is on disk now.</summary>

@@ -196,11 +196,7 @@ namespace TCGCustomCards.UI
             else DrawCardImage(r, art, fallback, style);
         }
 
-        private static string VersionLabel(ECardBorderType border, bool foil)
-        {
-            string b = border == ECardBorderType.FirstEdition ? "1st Edition" : border == ECardBorderType.FullArt ? "Full Art" : border.ToString();
-            return foil ? (border == ECardBorderType.Base ? "Foil" : b + " Foil") : b;
-        }
+
 
         private static void DrawCardImage(Rect r, Sprite art, string fallback, GUIStyle style)
         {
@@ -586,7 +582,7 @@ namespace TCGCustomCards.UI
                     bool isCmd = deck.Commander?.Live == true && deck.Commander.Set == set && deck.Commander.Pos == pos;
                     if (isCmd) Badge(new Rect(tile.xMax - 100, tile.y + 4, 96, 26), "Commander", new Color(0.45f, 0.25f, 0.65f, 0.95f));
                     else if (inDeck > 0) Badge(new Rect(tile.xMax - 68, tile.y + 4, 64, 26), $"{inDeck} in deck", new Color(0.1f, 0.35f, 0.6f, 0.9f));
-                    string version = t.Border == ECardBorderType.Base && !t.Foil ? "" : $" <color=#ffd24a>{VersionLabel(t.Border, t.Foil)}</color>";
+                    string version = t.Border == ECardBorderType.Base && !t.Foil ? "" : $" <color=#ffd24a>{CardVersions.Label(t.Set, t.Pos, t.Border, t.Foil)}</color>";
                     GUI.Label(new Rect(tile.x, tile.yMax + 2, tile.width, 24), info.Name + version,
                         new GUIStyle(_small) { alignment = TextAnchor.UpperCenter, wordWrap = false, clipping = TextClipping.Clip });
                     bool hovered = tile.Contains(Event.current.mousePosition);
@@ -776,7 +772,7 @@ namespace TCGCustomCards.UI
                 foreach (var (e, info) in items)
                 {
                     var row = new Rect(0, ry, w - 24, rowH - 2);
-                    string variant = e.Foil || e.Border != ECardBorderType.Base ? $" <size=12><color=#ffd24a>{VersionLabel(e.Border, e.Foil)}</color></size>" : "";
+                    string variant = e.Foil || e.Border != ECardBorderType.Base ? $" <size=12><color=#ffd24a>{CardVersions.Label(e.Data != null ? Registry.Get(e.Data.expansionType) : null, e.Pos, e.Border, e.Foil)}</color></size>" : "";
                     string fav = Favourites.Has(e.Data) ? $"<color={HeartHex}>♥</color> " : "";
                     float costW = ManaSymbols.CostWidth(info.ManaCost, 18f);
                     var rstyle = new GUIStyle(_button) { alignment = TextAnchor.MiddleLeft, fontSize = 14, clipping = TextClipping.Clip };

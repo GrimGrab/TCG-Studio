@@ -20,6 +20,9 @@ type Settings struct {
 	Workspace string `json:"workspace"`
 	// SyncedVersion = the Studio version that last brought the installed sets up to date (SyncInstalledSets).
 	SyncedVersion string `json:"syncedVersion,omitempty"`
+	// ShrinkRepaired: the one-time repair of sets an older Storage Shrink left pointing at deleted PNGs has run
+	// (library.RepairShrunk). Backend-only.
+	ShrinkRepaired bool `json:"shrinkRepaired,omitempty"`
 	// ImageFormat is the default card image format for imports: "png" (default) or "jpg" (about 6x smaller). The Import
 	// page starts from it and can still pick the other one for a single import.
 	ImageFormat string `json:"imageFormat,omitempty"`
@@ -93,6 +96,7 @@ func (a *App) SaveSettings(s Settings) (Settings, error) {
 	}
 	saved, err := a.updateSettings(func(cur *Settings) {
 		s.SyncedVersion = cur.SyncedVersion // backend-only
+		s.ShrinkRepaired = cur.ShrinkRepaired
 		*cur = s
 	})
 	if saved.GameDir != old.GameDir {

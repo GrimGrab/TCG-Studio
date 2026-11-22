@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace TCGCustomCards.Core
@@ -107,6 +108,35 @@ namespace TCGCustomCards.Core
                 result[s.Id] = s;
             }
             if (result.Count > 0) Plugin.Log.LogInfo($"Loaded {result.Count} card shader{(result.Count == 1 ? "" : "s")} from {file}");
+            return result;
+        }
+
+        /// <summary>Card borders from the same library file (id → border). Layers of an unknown kind are left out.</summary>
+        public static Dictionary<string, BorderDef> LoadBorders(string setupDir)
+        {
+            var result = new Dictionary<string, BorderDef>();
+            if (setupDir == null) return result;
+            string dir = Path.Combine(setupDir, FolderName);
+            string file = Path.Combine(dir, FileName);
+            if (!File.Exists(file)) return result;
+            AccessoryLibraryDef lib;
+            try { lib = JsonConvert.DeserializeObject<AccessoryLibraryDef>(File.ReadAllText(file)); }
+            catch (Exception) { return result; } // already reported by Load
+            if (lib?.Borders == null || lib.SchemaVersion > AccessoryLibraryDef.CurrentSchemaVersion) return result;
+            foreach (var b in lib.Borders)
+            {
+                if (b == null || string.IsNullOrWhiteSpace(b.Id) || result.ContainsKey(b.Id)) continue;
+                b.FolderPath = dir;
+                b.Layers = (b.Layers ?? new List<BorderLayerDef>())
+                    .Where(l => l != null && (l.Kind == BorderDef.ImageLayer || l.Kind == BorderDef.ShaderLayer)).ToList();
+                if (b.Window != null && b.Window.Length != 4)
+                {
+                    Plugin.Log.LogWarning($"Card border {b.Label}: window needs 4 numbers (x, y, width, height): the picture covers the card");
+                    b.Window = null;
+                }
+                result[b.Id] = b;
+            }
+            if (result.Count > 0) Plugin.Log.LogInfo($"Loaded {result.Count} card border{(result.Count == 1 ? "" : "s")} from {file}");
             return result;
         }
 

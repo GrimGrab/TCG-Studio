@@ -135,7 +135,8 @@ namespace TCGCustomCards.Patches
     {
         private static void Postfix(string Term, ref string __result)
         {
-            if (!string.IsNullOrEmpty(__result) || string.IsNullOrEmpty(Term) || Term.Length > 6) return;
+            if (!string.IsNullOrEmpty(__result) || string.IsNullOrEmpty(Term)) return;
+            if (Term.Length > 6) return;
             if (!int.TryParse(Term, out int n)) return;
             if (Registry.IsCustomRarity((ERarity)n))
             {

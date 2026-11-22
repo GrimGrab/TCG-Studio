@@ -16,13 +16,14 @@
   import Customers from './views/Customers.svelte';
   import Employees from './views/Employees.svelte';
   import Shaders from './views/Shaders.svelte';
+  import Borders from './views/Borders.svelte';
   import ShopLook from './views/ShopLook.svelte';
   import ModSettings from './views/ModSettings.svelte';
   import Setups from './views/Setups.svelte';
   import Storage from './views/Storage.svelte';
   import Catalog from './views/Catalog.svelte';
 
-  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'decorations' | 'customers' | 'employees' | 'shaders' | 'shoplook' | 'gamify' | 'modsettings' | 'settings' | 'editor';
+  type View = 'setup' | 'setups' | 'storage' | 'catalog' | 'projects' | 'import' | 'accessories' | 'furniture' | 'decorations' | 'customers' | 'employees' | 'shaders' | 'borders' | 'shoplook' | 'gamify' | 'modsettings' | 'settings' | 'editor';
   let view = $state<View>('projects');
   let openId = $state('');
   let storageBusy = $state(false); // a Storage page task is running (it keeps running on other pages)
@@ -72,6 +73,7 @@
       const r = await App.StartupUpdate();
       upgradeWaiting = r.waiting || '';
       oldLayout = r.oldLayoutUrl ? { url: r.oldLayoutUrl, version: r.version } : null;
+      if (r.repaired?.length) said.push(`Pictures of ${r.repaired.join(', ')} were pointed back at their files (Storage → Shrink had renamed only the main picture).`);
       if (r.modUpdated) {
         said.push('The mod in the game was updated.');
         await refreshStatus();
@@ -138,6 +140,7 @@
     dice: ['M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4z', 'M8.5 8.5h.01', 'M15.5 15.5h.01', 'M15.5 8.5h.01', 'M8.5 15.5h.01', 'M12 12h.01'],
     shelf: ['M4 3v18', 'M20 3v18', 'M4 9h16', 'M4 15h16', 'M7 6.5h3', 'M13 12.5h4'],
     people: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5', 'M16 4.5a3 3 0 0 1 0 6', 'M18 14.8c2 .7 3.2 2.4 3.5 5.2'],
+    frame: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M8 7h8v7H8z'],
     wand: ['M4 20L15 9', 'M14 6l4 4', 'M18 3v3', 'M16.5 4.5h3', 'M20 11v2', 'M19 12h2', 'M9 4v2', 'M8 5h2'],
     sparkle: ['M11 3l1.8 4.7L17.5 9.5l-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8z', 'M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z'],
     store: ['M3 9l1.6-5h14.8L21 9', 'M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0', 'M5 12v8h14v-8', 'M10 20v-5h4v5'],
@@ -316,6 +319,7 @@
         {@render item('customers', 'Customers', 'people', view === 'customers')}
         {@render item('employees', 'Employees', 'people', view === 'employees')}
         {@render item('shaders', 'Shaders', 'wand', view === 'shaders')}
+        {@render item('borders', 'Borders', 'frame', view === 'borders')}
         {@render item('shoplook', 'Game look', 'store', view === 'shoplook')}
         {@render item('gamify', 'Gamify', 'chart', view === 'gamify')}
         {@render item('modsettings', 'Mod settings', 'sliders', view === 'modsettings')}
@@ -445,6 +449,8 @@
       <Employees {notify} />
     {:else if view === 'shaders'}
       <Shaders {notify} />
+    {:else if view === 'borders'}
+      <Borders {notify} />
     {:else if view === 'shoplook'}
       <ShopLook {notify} />
     {:else if view === 'gamify'}

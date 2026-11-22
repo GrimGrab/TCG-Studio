@@ -82,22 +82,30 @@ namespace TCGCustomCards.Runtime
             if (shared == null || set == null || pos < 0) return shared;
             var card = set.Card(pos);
             if (!card.HasShaderData) return shared;
-            string key = id + "|" + set.Def.Id + "|" + card.Id;
+            var mask = string.IsNullOrEmpty(card.ShaderMask) ? null : ImageCache.Get(set.Def.Resolve(card.ShaderMask));
+            return Own(id, usedBy, id + "|" + set.Def.Id + "|" + card.Id, card.Id, mask != null ? mask.texture : null, card.ShaderParams);
+        }
+
+        /// <summary>
+        /// A copy of a shader's material with a mask picture and/or own parameter values (by name) filled in, made once per
+        /// key: a card with its own data, a border's shader layer. Null when the shader is unknown or couldn't be loaded.
+        /// </summary>
+        public static Material Own(string id, string usedBy, string key, string name, Texture mask, Dictionary<string, List<float>> values)
+        {
+            var shared = Get(id, usedBy);
+            if (shared == null) return null;
+            if (mask == null && (values == null || values.Count == 0)) return shared;
             if (CardMaterials.TryGetValue(key, out var own) && own != null) return own;
-            own = new Material(shared) { name = shared.name + "_" + card.Id, hideFlags = HideFlags.DontUnloadUnusedAsset };
-            if (!string.IsNullOrEmpty(card.ShaderMask))
-            {
-                var mask = ImageCache.Get(set.Def.Resolve(card.ShaderMask));
-                if (mask != null) own.SetTexture("_Mask", mask.texture);
-            }
-            if (card.ShaderParams != null)
+            own = new Material(shared) { name = shared.name + "_" + name, hideFlags = HideFlags.DontUnloadUnusedAsset };
+            if (mask != null) own.SetTexture("_Mask", mask);
+            if (values != null)
             {
                 int value = 0;
                 foreach (var p in Find(id)?.Params ?? new List<ShaderParamDef>())
                 {
                     if (p == null || p.Kind == ShaderParamDef.Image) continue;
                     if (value >= ValueSlots) break;
-                    if (p.Name != null && card.ShaderParams.TryGetValue(p.Name, out var v) && v != null)
+                    if (p.Name != null && values.TryGetValue(p.Name, out var v) && v != null)
                         own.SetVector("_P" + value, new Vector4(At(v, 0), At(v, 1), At(v, 2), At(v, 3)));
                     value++;
                 }

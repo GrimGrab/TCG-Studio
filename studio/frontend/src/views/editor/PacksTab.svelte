@@ -9,7 +9,7 @@
   import Dropdown from '../Dropdown.svelte';
   import { untrack } from 'svelte';
   import type { Goto, NavRequest, TakeNav } from '../../lib/setNav';
-  import { anyCardHas } from '../../lib/cardVersions';
+  import { anyCardHas, borderLabel } from '../../lib/cardVersions';
   import { packSlot, pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
   import PictureSlot from '../PictureSlot.svelte';
   import PackArtEditor from './PackArtEditor.svelte';
@@ -198,21 +198,21 @@
       <section class="block">
         <div class="bhead"><h2>Foil &amp; borders</h2><span class="muted small">Chance per card, on top of its rarity.</span></div>
         <div class="odds">
-          <label class="odd foil" class:off={!hasVersion(null, true)} title={hasVersion(null, true) ? '' : 'The set has no foil versions (Set → Card versions): no card comes out foil.'}>
+          <label class="odd foil" class:off={!hasVersion(null, true)} title={hasVersion(null, true) ? '' : 'The set has no foil versions (Set → Card look): no card comes out foil.'}>
             <span class="lbl">Foil</span>
             <span class="in"><input type="number" step="0.5" min="0" max="100" bind:value={pack.foilChance} disabled={!hasVersion(null, true)} />%</span>
             {#if !hasVersion(null, true)}<span class="muted small">no foil versions</span>{/if}
           </label>
           {#each BORDERS.slice(1) as b}
-            <label class="odd b-{b}" class:off={!hasVersion(b, null)} title={hasVersion(b, null) ? '' : 'Off for this set (Set → Card versions): this border never comes out of packs.'}>
-              <span class="lbl">{BORDER_LABELS[b]}</span>
+            <label class="odd b-{b}" class:off={!hasVersion(b, null)} title={hasVersion(b, null) ? '' : 'Off for this set (Set → Card look): this border never comes out of packs.'}>
+              <span class="lbl">{borderLabel(b)}</span>
               <span class="in"><input type="number" step="0.05" min="0" value={pack.borderOdds[b] ?? 0} disabled={!hasVersion(b, null)} oninput={(e) => (pack.borderOdds[b] = optNumber(e.currentTarget.value) ?? 0)} />%</span>
               {#if !hasVersion(b, null)}<span class="muted small">off for this set</span>{/if}
             </label>
           {/each}
         </div>
         <span class="muted small">Which versions exist at all is set for the whole set under
-          <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card versions</button>; greyed ones are off there.</span>
+          <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card look</button>; greyed ones are off there.</span>
       </section>
       {/if}
 

@@ -38,8 +38,14 @@ type Set struct {
 	// VersionShaders: the card shader (library id) each version's picture is drawn with ("Gold_foil" → id), for every card
 	// that doesn't say otherwise. Full-image sets only. Mirrors the mod's SetDef.VersionShaders.
 	VersionShaders map[string]string `json:"versionShaders,omitempty"`
-	Packs          []Pack            `json:"packs"`
-	Cards          []Card            `json:"cards"`
+	// Borders: the set's own take on the six border slots, by slot name ("Gold"): the library borders its normal and foil
+	// versions are drawn with. Full-image sets only. Mirrors the mod's SetDef.Borders.
+	Borders map[string]BorderSlot `json:"borders,omitempty"`
+	// EditionLabel: the edition label (1st Edition, Silver, Gold, EX) on the set's full-image cards. Mirrors the mod's
+	// SetDef.EditionLabel.
+	EditionLabel *EditionLabel `json:"editionLabel,omitempty"`
+	Packs   []Pack                `json:"packs"`
+	Cards   []Card                `json:"cards"`
 }
 
 type PriceDefaults struct {
@@ -63,6 +69,11 @@ type Card struct {
 	VersionImages map[string]string `json:"versionImages,omitempty"`
 	// VersionShaders: the card's own shader per version; "" = none for that version even when the set has a default.
 	VersionShaders map[string]string `json:"versionShaders,omitempty"`
+	// VersionBorders: the card's own border per version (library border id); "" = none for that version even when the
+	// set's slot has one. Mirrors the mod's CardDef.VersionBorders.
+	VersionBorders map[string]string `json:"versionBorders,omitempty"`
+	// EditionLabel: the card's own edition label choices; each field it leaves out is the set's.
+	EditionLabel *EditionLabel `json:"editionLabel,omitempty"`
 	// ShaderMask: a picture painted over the card's (white = shader effects, black = none), which shaders read as
 	// cardMask(uv); the stock holo foils show only where it is white. Mirrors the mod's CardDef.ShaderMask.
 	ShaderMask string `json:"shaderMask,omitempty"`
@@ -306,6 +317,14 @@ func (s *Set) Validate(folders ...string) []Issue {
 			add("error", "set", "versionShaders: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
 		}
 	}
+	for _, k := range sortedSlotKeys(s.Borders) {
+		if !isBorder(k) {
+			add("error", "set", "borders: unknown border %q (Base, FirstEdition, Silver, Gold, EX, FullArt)", k)
+		}
+	}
+	if msg := s.EditionLabel.problem(); msg != "" {
+		add("error", "set", "editionLabel: %s", msg)
+	}
 	fileMissing := func(rel string) bool {
 		if rel == "" {
 			return false
@@ -417,6 +436,14 @@ func (s *Set) Validate(folders ...string) []Issue {
 				add("error", w, "versionShaders: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
 			}
 		}
+		for _, k := range sortedKeys(c.VersionBorders) {
+			if !IsVariant(k) {
+				add("error", w, "versionBorders: unknown version %q (Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil)", k)
+			}
+		}
+		if msg := c.EditionLabel.problem(); msg != "" {
+			add("error", w, "editionLabel: %s", msg)
+		}
 		if fileMissing(c.ShaderMask) {
 			add("warning", w, "shader mask not found %q (effects show everywhere)", c.ShaderMask)
 		}
@@ -495,36 +522,36 @@ func IsVariant(v string) bool {
 	return false
 }
 
-// Images lists every picture the card uses (main, back, one per version; each once, empty ones left out). The one list
-// Storage, sharing and file moves go through.
+// pictures is the one place a card's picture fields are named: main, back, one per version (in key order), mask. Images and
+// RepointImages both walk it, so a new picture field added here is listed, shared, moved and converted everywhere at once.
+func (c *Card) pictures(visit func(rel *string)) {
+	visit(&c.Image)
+	visit(&c.BackImage)
+	for _, k := range sortedKeys(c.VersionImages) {
+		v := c.VersionImages[k]
+		visit(&v)
+		c.VersionImages[k] = v
+	}
+	visit(&c.ShaderMask)
+}
+
+// Images lists every picture the card uses (each once, empty ones left out). The one list Storage, sharing and file moves
+// go through.
 func (c *Card) Images() []string {
 	var out []string
 	seen := map[string]bool{}
-	add := func(rel string) {
-		if rel != "" && !seen[rel] {
-			seen[rel] = true
-			out = append(out, rel)
+	c.pictures(func(rel *string) {
+		if *rel != "" && !seen[*rel] {
+			seen[*rel] = true
+			out = append(out, *rel)
 		}
-	}
-	add(c.Image)
-	add(c.BackImage)
-	for _, k := range sortedKeys(c.VersionImages) {
-		add(c.VersionImages[k])
-	}
-	add(c.ShaderMask)
+	})
 	return out
 }
 
-// RepointImages rewrites every picture path of the card through re (see Images).
-func (c *Card) RepointImages(re func(*string)) {
-	re(&c.Image)
-	re(&c.BackImage)
-	re(&c.ShaderMask)
-	for k, v := range c.VersionImages {
-		re(&v)
-		c.VersionImages[k] = v
-	}
-}
+// RepointImages rewrites every picture path of the card through re: exactly the pictures Images lists (empty ones too,
+// which re should leave alone).
+func (c *Card) RepointImages(re func(*string)) { c.pictures(re) }
 
 func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))

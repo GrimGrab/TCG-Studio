@@ -24,6 +24,7 @@ namespace TCGCustomCards.Patches
         {
             var overlay = Find(__instance);
             if (overlay != null && overlay.gameObject.activeSelf) overlay.gameObject.SetActive(false);
+            CardBorderView.BeforeCardSet(__instance);
         }
 
         private static void Postfix(CardUI __instance, CardData cardData)
@@ -51,33 +52,54 @@ namespace TCGCustomCards.Patches
             if (sprite == null) return;
             var overlay = Find(__instance) ?? Create(__instance);
             overlay.sprite = sprite;
-            Fit(__instance, overlay, sprite);
+            // A custom border (set.json "borders"): the border places the picture in its window.
+            if (CardBorderView.Apply(__instance, overlay, set, pos, cardData))
+            {
+                overlay.gameObject.SetActive(true);
+                return;
+            }
+            // Every card is the same shape: the picture fills the card's box. A scan of a real card (MTG 0.716, YGO 0.686,
+            // Pokémon 0.717) is close to it and is stretched the few percent; any other picture (square-ish, landscape, tall)
+            // is cropped from its middle to the card's shape, as a custom border crops it to its opening.
+            float aspect = sprite.texture.width / (float)sprite.texture.height;
+            if (Mathf.Abs(aspect / CardShape - 1f) > StretchLimit) overlay.sprite = PictureCrop.Fill(sprite, CardShape);
+            Fit(__instance, overlay, CardShape);
             bool fullArt = cardData.borderType == ECardBorderType.FullArt;
             float inset = fullArt ? 1f : Mathf.Clamp(Plugin.FullImageInset.Value, 0.7f, 1f);
             overlay.rectTransform.localScale = Vector3.one * (FullImageScale * inset);
             overlay.gameObject.SetActive(true);
         }
 
+        /// <summary>Pictures off the card's shape by at most this (relative) are stretched to it; others are cropped to it.</summary>
+        private const float StretchLimit = 0.06f;
+
         /// <summary>
-        /// Sizes the overlay to the card's printed area at the shape of the whole image (texture), not the sprite: a sprite
-        /// trimmed of its printed border is stretched back to the full card's size, so the game's border sits right against
-        /// the card content instead of leaving the gap the border used to fill. Untrimmed sprites get the same rect that
-        /// preserveAspect gave them. Done on every SetCardUI because CardUIs are reused.
+        /// The shape every full-image card's picture gets, width / height: a real card's 63 × 88 mm, the shape of the scans every other card
+        /// is (Studio's lib/cardLooks CARD_SHAPE). The game's own card mask is a little narrower (1273×1791 = 0.711): cropped to
+        /// that, the picture left a sliver of the game's card showing at its side (2026-11-21).
         /// </summary>
-        private static void Fit(CardUI ui, Image overlay, Sprite sprite)
+        private const float CardShape = 63f / 88f;
+
+        /// <summary>
+        /// Sizes the overlay to the card's printed area at the given shape (the card's): a sprite trimmed of its printed border
+        /// is stretched back to the full card's size, so the game's border sits right against the card content instead of
+        /// leaving the gap the border used to fill. Done on every SetCardUI because CardUIs are reused.
+        /// </summary>
+        private static void Fit(CardUI ui, Image overlay, float aspect)
         {
             var rt = overlay.rectTransform;
             var parentRt = rt.parent as RectTransform;
             bool parentSized = parentRt != null && parentRt.rect.width > 1f;
             Vector2 area = parentSized ? parentRt.rect.size
                 : ui.m_CardBorderMask != null ? ui.m_CardBorderMask.rectTransform.rect.size : rt.rect.size;
-            float aspect = sprite.texture.width / (float)sprite.texture.height;
             if (area.x <= 1f || area.y <= 1f || aspect <= 0f) { overlay.preserveAspect = true; return; }
             overlay.preserveAspect = false;
             if (parentSized)
             {
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-                rt.anchoredPosition = Vector2.zero;
+                // On the game's card, a little left of the front's centre (CardBorderView.CardCentreX); a border may have
+                // moved it into its window before.
+                rt.anchoredPosition = new Vector2(CardBorderView.CardCentreX * area.x, 0f);
             }
             rt.sizeDelta = area.x / area.y > aspect ? new Vector2(area.y * aspect, area.y) : new Vector2(area.x, area.x / aspect);
         }

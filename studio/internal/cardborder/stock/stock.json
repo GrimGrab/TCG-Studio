@@ -1,0 +1,140 @@
+[
+ {
+  "id": "tcgcc-border-gold-leaf",
+  "name": "Gold leaf",
+  "icon": "gold_leaf_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "gold_leaf.png",
+    "opacity": 1
+   },
+   {
+    "kind": "shader",
+    "opacity": 1,
+    "shader": "tcgcc-holo-leaf",
+    "clip": true
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-border-silver-leaf",
+  "name": "Silver leaf",
+  "icon": "silver_leaf_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "silver_leaf.png",
+    "opacity": 1
+   },
+   {
+    "kind": "shader",
+    "opacity": 1,
+    "shader": "tcgcc-holo-leaf",
+    "clip": true
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-border-rainbow-holo",
+  "name": "Rainbow holo",
+  "icon": "rainbow_holo_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "rainbow_holo.png",
+    "opacity": 1
+   },
+   {
+    "kind": "shader",
+    "opacity": 1,
+    "shader": "tcgcc-holo-rainbowrim",
+    "clip": true
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-border-obsidian",
+  "name": "Obsidian",
+  "icon": "obsidian_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "obsidian.png",
+    "opacity": 1
+   },
+   {
+    "kind": "shader",
+    "opacity": 1,
+    "shader": "tcgcc-holo-gloss",
+    "clip": true
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-border-etched-silver",
+  "name": "Etched silver",
+  "icon": "etched_silver_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "etched_silver.png",
+    "opacity": 1
+   },
+   {
+    "kind": "shader",
+    "opacity": 1,
+    "shader": "tcgcc-holo-gloss",
+    "clip": true
+   }
+  ]
+ },
+ {
+  "id": "tcgcc-border-pastel",
+  "name": "Pastel",
+  "icon": "pastel_icon.png",
+  "window": [
+   0.0351,
+   0.0357,
+   0.9298,
+   0.9286
+  ],
+  "layers": [
+   {
+    "kind": "image",
+    "file": "pastel.png",
+    "opacity": 1
+   }
+  ]
+ }
+]

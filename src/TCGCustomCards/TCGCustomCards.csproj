@@ -57,6 +57,9 @@
     <!-- The stock card shaders (holo foils): made by `go run ./cmd/stockshaders` in studio\. -->
     <EmbeddedResource Include="..\..\studio\internal\cardshader\stock\stock.json" LogicalName="TCGCustomCards.stock-shaders.json" />
     <EmbeddedResource Include="..\..\studio\internal\cardshader\stock\tcgcc_stock*" LogicalName="TCGCustomCards.stockbundle.%(Filename)" />
+    <!-- The stock card borders (gold / silver leaf): made by `go run ./cmd/stockborders` in studio\. -->
+    <EmbeddedResource Include="..\..\studio\internal\cardborder\stock\stock.json" LogicalName="TCGCustomCards.stock-borders.json" />
+    <EmbeddedResource Include="..\..\studio\internal\cardborder\stock\*.png" LogicalName="TCGCustomCards.stockborder.%(Filename)%(Extension)" />
     <!-- MTG mana symbols (Scryfall symbology): made by `go run ./cmd/manasymbols` in studio\. -->
     <EmbeddedResource Include="Assets\mana\*.png" LogicalName="TCGCustomCards.mana.%(Filename)" />
   </ItemGroup>

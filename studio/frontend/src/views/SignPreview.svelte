@@ -1,6 +1,7 @@
 <script lang="ts">
   import { loadImage } from '../lib/accessoryArt';
   import { drawCropped, fillOutlined, fontFamily, latestPerFrame } from '../lib/shopLook';
+  import { drawSdfText } from '../lib/sdfText';
   // The shop sign as the game draws it (daylight): banner (custom crop or the vanilla art) plus the shop name in its font, colour,
   // size and outline. Layout, default font (Fredoka One as a TMP SDF atlas) and vanilla art come from the game files
   // (templates shopsign/sign.json). Mirrors the mod's Runtime/ShopSign.cs: TMP auto size in the name's rect, which grows in
@@ -118,58 +119,13 @@
       return;
     }
     if (!atlas) return;
-    // The game's font: each pixel takes the highest SDF value of the letters covering it (padded quads overlap), then is
-    // thresholded like TMP's shader.
-    const A = atlas;
-    const pad = f.gradientScale - 1, sc = px / f.pointSize; // canvas px per atlas px
-    const x0 = Math.max(0, Math.floor(left - pad * sc)), y0 = Math.max(0, Math.floor(top - pad * sc));
-    const x1 = Math.min(W, Math.ceil(left + adv100 * s + pad * sc)), y1 = Math.min(H, Math.ceil(bottom + pad * sc));
-    if (x1 <= x0 || y1 <= y0) return;
-    type Quad = { l: number; t: number; r: number; b: number; ax: number; ay: number };
-    const quads: Quad[] = [];
-    let pen = left;
-    for (const ch of text) {
-      const gl = glyphs.get(ch.codePointAt(0)!) ?? f.glyphs[0];
-      const [rx, ry, rw, rh] = gl.rect;
-      if (rw > 0 && rh > 0) {
-        const l = pen + (gl.bx - pad) * sc, tq = baseline - (gl.by + pad) * sc;
-        quads.push({ l, t: tq, r: l + (rw + 2 * pad) * sc, b: tq + (rh + 2 * pad) * sc, ax: rx - pad, ay: A.h - (ry + rh) - pad });
-      }
-      pen += gl.adv * sc;
-    }
-    const sample = (x: number, y: number) => { // bilinear alpha of the atlas (top-down pixel coords)
-      const fx = Math.min(Math.max(x - 0.5, 0), A.w - 1), fy = Math.min(Math.max(y - 0.5, 0), A.h - 1);
-      const ix = Math.min(Math.floor(fx), A.w - 2), iy = Math.min(Math.floor(fy), A.h - 2), dx = fx - ix, dy = fy - iy;
-      const at = (xx: number, yy: number) => A.data[(yy * A.w + xx) * 4 + 3];
-      return ((at(ix, iy) * (1 - dx) + at(ix + 1, iy) * dx) * (1 - dy) + (at(ix, iy + 1) * (1 - dx) + at(ix + 1, iy + 1) * dx) * dy) / 255;
-    };
-    const sdf = document.createElement('canvas'); sdf.width = x1 - x0; sdf.height = y1 - y0;
-    const sg = sdf.getContext('2d')!;
-    const out = new ImageData(sdf.width, sdf.height);
-    const spread = 2 * f.gradientScale * sc; // canvas px per unit of SDF value
-    const half = (outline * f.pointSize) / (2 * f.gradientScale) / 2; // TMP _OutlineWidth / 2, in SDF value
+    // The game's font from its SDF atlas (lib/sdfText); TMP's vertex gradient per row × the gold, unless a colour was chosen.
     const grad = custom ? null : t.gradient ? t.gradientColors : null;
-    for (let y = 0; y < sdf.height; y++) {
-      const v = Math.min(1, Math.max(0, (y + y0 - top) / Math.max(1, bottom - top)));
-      const faceRGB = custom ?? (grad
-        ? t.color.map((c: number, i: number) => c * ((grad[0][i] + grad[1][i]) / 2 * (1 - v) + (grad[2][i] + grad[3][i]) / 2 * v))
-        : t.color);
-      const py = y + y0 + 0.5;
-      for (let x = 0; x < sdf.width; x++) {
-        const i = (y * sdf.width + x) * 4;
-        const pxx = x + x0 + 0.5;
-        let a = 0;
-        for (const q of quads)
-          if (pxx >= q.l && pxx < q.r && py >= q.t && py < q.b) a = Math.max(a, sample(q.ax + (pxx - q.l) / sc, q.ay + (py - q.t) / sc));
-        const faceCov = Math.min(1, Math.max(0, (a - 0.5 - half) * spread + 0.5));
-        const allCov = Math.min(1, Math.max(0, (a - 0.5 + half) * spread + 0.5));
-        if (allCov <= 0) continue;
-        for (let c = 0; c < 3; c++) out.data[i + c] = Math.round(Math.min(1, outCol[c] * (1 - faceCov) + faceRGB[c] * faceCov) * 255);
-        out.data[i + 3] = Math.round(allCov * 255);
-      }
-    }
-    sg.putImageData(out, 0, 0);
-    g.drawImage(sdf, x0, y0);
+    const rowColor = (v: number) => custom ?? (grad
+      ? t.color.map((c: number, i: number) => c * ((grad[0][i] + grad[1][i]) / 2 * (1 - v) + (grad[2][i] + grad[3][i]) / 2 * v))
+      : t.color);
+    // The sign's outline is a fraction of the font size, half inside and half outside the letter edge: in TMP's width.
+    drawSdfText(g, f, atlas, text, cx, cy, { px, color: rowColor, outline: (outline * f.pointSize) / (2 * f.gradientScale), outlineColor: outCol });
   }
 </script>
 

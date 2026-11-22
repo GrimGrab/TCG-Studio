@@ -64,7 +64,7 @@ func embossStock() StockShader {
 		return StarterParam{Param: Param{name, KindNumber}, Value: []float64{v}, Min: min, Max: max}
 	}
 	return StockShader{
-		ID: StockPrefix + "ex", Name: "Holo: Embossed prism (EX foil)", Border: "EX", Code: embossCode, Bundle: embossBundle,
+		ID: StockPrefix + "ex", Name: "Holo: Embossed prism", Border: "EX", Code: embossCode, Bundle: embossBundle,
 		Params: []StarterParam{
 			// The user's values, tuned on the Shaders page 2026-11-16.
 			num("relief", 1.03, 0, 3), num("diamond", 0.5, 0, 1), num("diamondScale", 47.6, 10, 150),

@@ -24,6 +24,8 @@ type Entry struct {
 	Sub   string // the entry field shown as sub label ("kind", "type")
 	// Preview is what stands in for an icon: Preview* below, "" = nothing.
 	Preview string
+	// Rename points an imported entry's references to other items at their new ids (In.Renamed); nil = it names none.
+	Rename func(entry []byte, renamed map[string]string) ([]byte, error)
 }
 
 // What an entry without an icon shows.
@@ -280,6 +282,12 @@ func (e Entry) Import(ws workspace.Dir, root string, in []In) error {
 			return s
 		}
 		entry, err := withID(fsutil.MapJSONStrings(b, repoint), it.NewID)
+		if err == nil && e.Rename != nil && len(it.Renamed) > 0 {
+			var b []byte
+			if b, err = e.Rename(entry, it.Renamed); err == nil {
+				entry = b
+			}
+		}
 		if err != nil {
 			return fmt.Errorf("%s %s: %w", e.Field, it.NewID, err)
 		}

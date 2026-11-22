@@ -1,19 +1,26 @@
 <script lang="ts">
   import { App, projectFile, money, setRarities, rarityName, rarityColor, errText, ask, sourceInfo } from '../../lib/api';
+  import { fullViewOpen } from '../../lib/maximize';
   import { matchSearch } from '../../lib/search';
   import CardDetail from './CardDetail.svelte';
+  import CardEditor from './CardEditor.svelte';
   import BulkEdit from './BulkEdit.svelte';
-  import CardViewer from './CardViewer.svelte';
-  import { cardVersions, hasOwnVersions, hasShader, versionsWithArt, ALL_VERSIONS, versionLabel, versionImage, fallbackImage, shownShader, shaderSource } from '../../lib/cardVersions';
+  import CardFace from '../CardFace.svelte';
+  import { loadLooks, noLooks, nameOf, versionFacts, shownImage, borderFor, shaderFor, rimFor } from '../../lib/cardLooks';
+  import { cardVersions, hasOwnVersions, hasShader, versionsWithArt, ALL_VERSIONS, versionLabel, shownShader, shaderSource, isFullImage } from '../../lib/cardVersions';
   import { inPack, ownListPacks, packColour, setInPack } from '../../lib/packPools';
   import { makeStill, stillFor } from '../../lib/shaderStills';
   import Dropdown from '../Dropdown.svelte';
   import { untrack } from 'svelte';
   import type { Goto, NavRequest, TakeNav } from '../../lib/setNav';
 
-  let { project, notify, imgBust, goto, nav, takeNav }: {
+  let { project, notify, imgBust, goto, nav, takeNav, editing = $bindable(false), editingCard = $bindable(null) }: {
     project: any; notify: (t: string, k?: string) => void; imgBust: number;
     goto?: Goto; nav?: NavRequest | null; takeNav?: TakeNav;
+    /** The full card editor (CardEditor) is open over the grid; the set's header shows it and its ← closes it. */
+    editing?: boolean;
+    /** The card that editor shows (for the set's header). */
+    editingCard?: any;
   } = $props();
 
   let query = $state('');
@@ -29,22 +36,21 @@
   let size = $state(150);
   // "Show as": a version the grid and the card panel show, with the shader the game draws it with ('' = the main picture).
   let showAs = $state('');
-  let shaders = $state<{ id: string; name: string; code: string; params?: any[]; draws?: string; mix?: string; mixStrength?: number }[]>([]);
-  $effect(() => { App.ListShaders().then((l) => (shaders = (l ?? []) as any)).catch(() => (shaders = [])); });
-  const shaderName = (id: string) => shaders.find((s) => s.id === id)?.name || 'missing shader';
-  /** The picture a card shows: the shown version's own, else what the game falls back to, else the main picture. */
-  const tileImage = (c: any) => (showAs ? versionImage(c, showAs) ?? fallbackImage(c, showAs) : undefined) ?? c.image;
+  let looks = $state(noLooks());
+  $effect(() => { loadLooks().then((l) => (looks = l)); });
+  const shaderName = (id: string) => nameOf(looks.shaders, id, 'No shader', 'shader');
+  // Tiles show the shown version (the main picture = Base) in its border, or the game's rim, still (CardFace).
+  const tileRim = $derived(rimFor(looks, project.set, showAs) || undefined);
+  const tileImage = (c: any) => shownImage(c, showAs);
 
   // A still frame of each shown card's shader (lib/shaderStills: one hidden preview draws them in turn).
-  const facts = (key: string) => ({ border: Math.max(0, ['Base', 'FirstEdition', 'Silver', 'Gold', 'EX', 'FullArt'].indexOf(key.replace('_foil', ''))),
-    foil: key.endsWith('_foil'), rarity: 0, grade: 0 });
   function stillJob(c: any) {
     if (!showAs || !c.image || !cardVersions(project.set, c).has(showAs)) return null;
-    const sh = shaders.find((s) => s.id === shownShader(project.set, c, showAs));
+    const sh = shaderFor(looks, project.set, c, showAs);
     if (!sh) return null;
     const job = { code: sh.code, params: sh.params ?? [], look: { draws: sh.draws, mix: sh.mix, mixStrength: sh.mixStrength },
       art: projectFile(project.id, tileImage(c), imgBust), mask: c.shaderMask ? projectFile(project.id, c.shaderMask, imgBust) : '',
-      own: c.shaderParams, facts: facts(showAs) };
+      own: c.shaderParams, facts: versionFacts(showAs) };
     return { ...job, key: JSON.stringify(job) };
   }
   let stills = $state<Record<string, string>>({}); // card id → picture of its shader, for the jobs below
@@ -61,6 +67,8 @@
     }
   });
   let selected = $state<string[]>([]);
+  // The full card editor (CardEditor) open over the grid, for the one selected card (`editing`, a bindable prop).
+  $effect(() => { if (selected.length !== 1) editing = false; });
   let anchor = $state<number>(-1);
 
   const meta = (id: string) => project.meta?.cards?.[id] ?? {};
@@ -184,6 +192,7 @@
   });
 
   const selectedCards = $derived(project.set.cards.filter((c: any) => selected.includes(c.id)));
+  $effect(() => { editingCard = editing && selectedCards.length === 1 ? selectedCards[0] : null; });
 
   function click(e: MouseEvent, index: number, id: string) {
     if (e.shiftKey && anchor >= 0) {
@@ -238,10 +247,8 @@
 
   function dragEnd() { dragIds = []; dropAt = null; }
 
-  // Full-screen viewer over the shown cards (double-click a card, or click the picture in the card panel); browsing selects.
-  let viewing = $state<number | null>(null);
-  function view(id: string) { const i = shown.findIndex((c: any) => c.id === id); if (i >= 0) viewing = i; }
-  function viewAt(i: number) { viewing = i; selected = [shown[i].id]; anchor = i; }
+  // Double-click a card: the full card editor for it alone.
+  function edit(id: string) { selected = [id]; anchor = shown.findIndex((c: any) => c.id === id); editing = true; }
 
   // Strip leading numbers: "001 Captain Marvel.png" → card 001 "Captain Marvel" (shared with the Import page's image-folder
   // option). Off: the whole file name is the name, so "2099 Spider-Man" stays whole.
@@ -304,7 +311,7 @@
   // Ctrl+A selects every shown card, Esc clears the selection (or ends assigning), while typing in a field they don't.
   function keys(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
-    if (t.closest('input, textarea, select, [contenteditable], .ddpanel')) return;
+    if (editing || fullViewOpen(e) || t.closest('input, textarea, select, [contenteditable], .ddpanel')) return;
     if (e.key === 'Escape') { if (brush) stopBrush(); else selected = []; }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !brush) { e.preventDefault(); selectAll(); }
   }
@@ -430,7 +437,7 @@
       ondragleave={(e) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropAt = null; }}>
       {#each shown as c, i (c.id)}
         <button class="card" class:sel={!brushPack && selected.includes(c.id)} class:dim={(brushPack && !inPack(brushPack, c.id)) || (!brushPack && showAs && !cardVersions(project.set, c).has(showAs))}
-          onclick={(e) => { if (!brushPack) click(e, i, c.id); }} ondblclick={() => { if (!brushPack) view(c.id); }}
+          onclick={(e) => { if (!brushPack) click(e, i, c.id); }} ondblclick={() => { if (!brushPack) edit(c.id); }}
           onpointerdown={(e) => paintStart(e, i, c.id)} onpointerenter={() => paintOver(c.id)}
           draggable={sort === 'set' && !brushPack} ondragstart={(e) => dragStart(e, c.id)} ondragover={(e) => dragOver(e, c.id)} ondragend={dragEnd}
           class:dragging={dragIds.includes(c.id)} class:before={dropAt?.id === c.id && !dropAt?.after} class:after={dropAt?.id === c.id && !!dropAt?.after}
@@ -438,14 +445,14 @@
           title={!brushPack && showAs && !cardVersions(project.set, c).has(showAs) ? `This card has no ${versionLabel(showAs)} version`
             : meta(c.id).srcRarity && !ownRarities ? `${rarityName(project.set, c.rarity)} · ${meta(c.id).srcRarity}` : rarityName(project.set, c.rarity)}>
           <div class="img" style="aspect-ratio: 63/88">
-            {#if c.image}<img src={stills[c.id] ?? projectFile(project.id, tileImage(c), imgBust)} alt={c.name} loading="lazy" draggable="false" />
+            {#if c.image}<CardFace src={stills[c.id] ?? projectFile(project.id, tileImage(c), imgBust)} border={borderFor(looks, project.set, c, showAs)} rim={tileRim} cardShaped={isFullImage(project.set)} alt={c.name} />
             {:else}<span class="noimg">No image</span>{/if}
             {#if brushPack && inPack(brushPack, c.id)}<span class="tick" style="background:{packColour(brushIndex)}">✓</span>
             {:else if !brushPack && selected.includes(c.id)}<span class="tick">✓</span>{/if}
             {#if showAs && cardVersions(project.set, c).has(showAs) && shaderSource(project.set, c, showAs)}
               {@const src = shaderSource(project.set, c, showAs)}
               <span class="shaderbadge" class:own={src === 'card'}
-                title="{shaderName(shownShader(project.set, c, showAs))}: {src === 'card' ? "this card's own choice" : src === 'set' ? "the set's choice" : 'stock holo (foils without a choice)'}">
+                title="{shaderName(shownShader(project.set, c, showAs))}: {src === 'card' ? "this card's own choice" : src === 'set' ? "the set's choice" : 'vanilla holo (foils without a choice)'}">
                 {src === 'card' ? '● ' : ''}{shaderName(shownShader(project.set, c, showAs))}</span>
             {/if}
             <span class="flags">
@@ -484,15 +491,17 @@
   </div>
 
   <aside>
-    {#if selectedCards.length === 1}
-      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {goto} ondelete={deleteSelected} onrenamed={renamed} bind:showAs />
+    {#if editing}
+      <!-- The card editor covers this: no card panel (and no live preview) running under it. -->
+    {:else if selectedCards.length === 1}
+      <CardDetail {project} card={selectedCards[0]} {imgBust} {notify} {goto} ondelete={deleteSelected} onrenamed={renamed} onopen={() => (editing = true)} bind:showAs />
     {:else if selectedCards.length > 1}
       <BulkEdit {project} cards={selectedCards} {imgBust} {notify} {goto} ondelete={deleteSelected} />
     {:else}
       <div class="summary">
         <div class="sec tips">
           <p><b>Click</b> a card to edit it · <b>Ctrl/Shift-click</b> or <b>Ctrl+A</b> for many · <b>Esc</b> clears ·
-            <b>double-click</b> = full screen · in Set order, <b>drag</b> to reorder (the game's binder uses this order).</p>
+            <b>double-click</b> = the card editor · in Set order, <b>drag</b> to reorder (the game's binder uses this order).</p>
         </div>
 
         <div class="sec">
@@ -521,14 +530,15 @@
       </div>
     {/if}
   </aside>
+
+  {#if editing && selectedCards.length === 1}
+    <CardEditor {project} card={selectedCards[0]} {imgBust} {notify} cards={shown} onpick={(id) => pick(id)} onclose={() => (editing = false)} />
+  {/if}
 </div>
 
-{#if viewing !== null && shown[viewing]}
-  <CardViewer {project} cards={shown} index={viewing} {imgBust} onindex={viewAt} onclose={() => (viewing = null)} />
-{/if}
 
 <style>
-  .wrap { display: flex; height: 100%; }
+  .wrap { position: relative; display: flex; height: 100%; }
   .left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .toolbar .search { width: 280px; }
@@ -567,7 +577,6 @@
   .card.before { box-shadow: -7px 0 0 -2px var(--accent); }
   .card.after { box-shadow: 7px 0 0 -2px var(--accent); }
   .img { position: relative; background: var(--bg); border-radius: 6px; overflow: hidden; }
-  .img img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .noimg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
   .tick { position: absolute; top: 6px; left: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff;
     display: grid; place-items: center; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); }

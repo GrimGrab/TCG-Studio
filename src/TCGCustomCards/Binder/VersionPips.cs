@@ -7,7 +7,8 @@ namespace TCGCustomCards.Binder
     /// <summary>
     /// The small squares beside a binder card's count ("X 3 ▪▪▪") in the one-slot-per-card layout: one per border × foil
     /// version (top row normal, bottom row foil), lit in the border's colour when owned, dark when not, the shown version
-    /// bigger with an outline. Built once per binder slot as a child of its count text, sized from that text.
+    /// bigger with an outline. Owned versions the binder panel's filters leave out (Border / Finish, Duplicates) are a small
+    /// grey square: the mouse wheel skips them, and the grey says why. Built once per binder slot as a child of its count text, sized from that text.
     /// </summary>
     internal static class VersionPips
     {
@@ -18,6 +19,7 @@ namespace TCGCustomCards.Binder
             new Color(1f, 0.78f, 0.15f), new Color(0.78f, 0.42f, 1f), new Color(1f, 0.42f, 0.62f),
         };
         private static readonly Color Missing = new Color(0.08f, 0.08f, 0.08f, 0.55f);
+        private static readonly Color FilteredOut = new Color(0.55f, 0.55f, 0.55f, 0.45f);
 
         private sealed class Pips
         {
@@ -53,9 +55,10 @@ namespace TCGCustomCards.Binder
                 bool listed = v < e.Per && e.Listed[v];
                 sq.gameObject.SetActive(listed);
                 if (!listed) continue;
-                sq.color = ColorOf(e, v);
+                bool filtered = e.Count(v) > 0 && !BinderIndex.Usable(e, BinderIndex.Query, v);
+                sq.color = filtered ? FilteredOut : ColorOf(e, v);
                 bool isShown = v == shown;
-                sq.rectTransform.localScale = Vector3.one * (isShown ? 1.3f : 1f);
+                sq.rectTransform.localScale = Vector3.one * (isShown ? 1.3f : filtered ? 0.7f : 1f);
                 p.Outlines[v].enabled = isShown;
             }
             // On the count's line, just right of the drawn text (its width changes with the number).

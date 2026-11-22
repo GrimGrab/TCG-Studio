@@ -279,7 +279,8 @@ namespace TCGCustomCards.Binder
             return NewEntry(exp, false, pos, shown[pos], CPlayerData.GetCardAmountPerMonsterType(exp), VariantPatches.Limited(exp), pos);
         }
 
-        private static bool Usable(BinderEntry e, BinderQuery q, int v) => e.Count(v) >= q.MinCount && q.VersionOk(e, v);
+        /// <summary>The slot may show this version under the query: owned (twice for Duplicates) and passing Border / Finish.</summary>
+        public static bool Usable(BinderEntry e, BinderQuery q, int v) => e.Count(v) >= q.MinCount && q.VersionOk(e, v);
 
         /// <summary>
         /// The version a slot shows: the one the player picked while it still fits, else the most valuable owned one that

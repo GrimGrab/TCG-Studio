@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	astore "tcgstudio/internal/assets"
+	"tcgstudio/internal/cardborder"
 	"tcgstudio/internal/gameextract"
 	"tcgstudio/internal/modconfig"
 	"tcgstudio/internal/setfmt"
@@ -36,6 +37,9 @@ var fileRoutes = []fileRoute{
 	}},
 	{"decotemplates/", 1, func(a *App, rel string) string {
 		return safeJoin(a.templatesDir(), gameextract.DecorationsDir, rel)
+	}},
+	{"frametemplates/", 1, func(a *App, rel string) string {
+		return safeJoin(a.templatesDir(), gameextract.CardFramesDir, rel)
 	}},
 	{"boxtemplates/", 1, func(a *App, rel string) string {
 		return safeJoin(a.templatesDir(), gameextract.BoxesDir, rel)
@@ -74,6 +78,15 @@ var fileRoutes = []fileRoute{
 // fileHandler serves the files the frontend shows (see fileRoutes).
 func (a *App) fileHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Pictures of the borders that come with the mod are built into Studio (internal/cardborder).
+		if name, ok := strings.CutPrefix(strings.TrimPrefix(r.URL.Path, "/"), cardborder.URLPrefix); ok {
+			if b, found := cardborder.StockFile(name); found {
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Content-Type", "image/png")
+				_, _ = w.Write(b)
+				return
+			}
+		}
 		if file := a.routeFile(strings.TrimPrefix(r.URL.Path, "/")); file != "" {
 			// Always the whole file: Wails turns a 304 into a 500 (a 304 hangs WebView2), so a revalidated cached file
 			// (fonts, templates) would fail to load. Without the conditional headers ServeFile never answers 304.

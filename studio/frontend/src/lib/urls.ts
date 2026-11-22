@@ -17,10 +17,10 @@ export function accFile(rel: string | undefined, bust = 0): string {
 }
 
 /** Game template folders: game = pack/box textures, acc = accessory models, furn = furniture, deco = decorations,
- * sign = shop look previews (file may be "sub/file"). */
-type TemplateKind = 'game' | 'acc' | 'furn' | 'deco' | 'sign';
+ * sign = shop look previews (file may be "sub/file"), frame = the game's card rims. */
+type TemplateKind = 'game' | 'acc' | 'furn' | 'deco' | 'sign' | 'frame';
 const templatePrefix: Record<TemplateKind, string> = {
-  game: '/templates/', acc: '/acctemplates/', furn: '/furntemplates/', deco: '/decotemplates/', sign: '/signtemplates/',
+  game: '/templates/', acc: '/acctemplates/', furn: '/furntemplates/', deco: '/decotemplates/', sign: '/signtemplates/', frame: '/frametemplates/',
 };
 
 // When Studio last finished reading the game files (0 = not during this run). Template URLs carry it, so every cache of

@@ -150,13 +150,13 @@
 
   <section>
     <h4>Card versions <span class="muted small">{ownCount} with own list · {artCount} with version pictures</span></h4>
-    <VersionGrid on={allHave} mixed={someHave} ontoggle={toggleVersion} keepOne={false} />
+    <VersionGrid set={project.set} on={allHave} mixed={someHave} ontoggle={toggleVersion} keepOne={false} />
     <div class="row">
       <button class="small" disabled={!ownCount} onclick={() => apply('Follow the set versions', followSet)}>Follow set</button>
       <button class="small" onclick={() => apply('All 12 versions', (c) => writeCardVersions(project.set, c, new Set(ALL_VERSIONS)))}>All on</button>
       <button class="small" disabled={!artCount} onclick={onlyWithArt} title="Each card keeps Base (its main image) and the versions that have a picture of their own">Only versions with own art</button>
     </div>
-    <div class="muted small">The set's default is under <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card versions</button>. Pictures per version are added one card at a time.</div>
+    <div class="muted small">The set's default is under <button class="link small" onclick={() => goto?.('set', { section: 'versions' })}>Set → Card look</button>. Pictures per version are added one card at a time.</div>
   </section>
 
   {#if cards.length}
@@ -175,7 +175,7 @@
       </div>
       <details>
         <summary class="muted small">A different shader per version</summary>
-        <ShaderGrid {shaders} value={commonShader} onchange={setShaderForAll}
+        <ShaderGrid set={project.set} {shaders} value={commonShader} onchange={setShaderForAll}
           follow={(k) => inheritLabel(project.set, k, setShader(project.set, k), shaderName)} />
       </details>
     </section>

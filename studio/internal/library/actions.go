@@ -83,14 +83,17 @@ func shrinkSet(ctx context.Context, locs []loc) (files int, freed int64, err err
 	if len(converted) == 0 {
 		return 0, 0, nil
 	}
-	// 2. Point every copy's set.json at the JPEGs.
+	// 2. Point every copy's set.json at the JPEGs: every picture a card names (main, back, version pictures, mask), the same
+	// list step 1 converted (Card.Images / RepointImages).
 	for _, l := range locs {
 		changed := false
-		for ci, c := range l.p.Set.Cards {
-			if converted[c.Image] {
-				l.p.Set.Cards[ci].Image = jpgName(c.Image)
-				changed = true
-			}
+		for ci := range l.p.Set.Cards {
+			l.p.Set.Cards[ci].RepointImages(func(rel *string) {
+				if converted[*rel] {
+					*rel = jpgName(*rel)
+					changed = true
+				}
+			})
 		}
 		if changed {
 			if err := (project.Workspace{}).Save(l.p); err != nil {
@@ -112,4 +115,45 @@ func shrinkSet(ctx context.Context, locs []loc) (files int, freed int64, err err
 		_ = project.SaveLibMeta(p.LibFolder, m)
 	}
 	return files, freed, nil
+}
+
+// RepairShrunk points pictures that an older Shrink left on deleted PNGs at the JPEGs it wrote. That Shrink converted every
+// picture of a card but only renamed the main one in set.json, so back pictures, version pictures and shader masks named a
+// .png that was gone while its .jpg was right beside it. Only such pairs are touched (a missing PNG with no JPEG stays as it
+// is). Every setup's and the catalog's copy is fixed. Returns the names of the sets changed.
+// migration:shrink-repoint
+func RepairShrunk(h setups.Home) ([]string, error) {
+	bySet, _, err := sets(h)
+	if err != nil {
+		return nil, err
+	}
+	var fixed []string
+	for _, id := range sortedIDs(bySet) {
+		changedSet := false
+		for _, l := range bySet[id] {
+			changed := false
+			for ci := range l.p.Set.Cards {
+				l.p.Set.Cards[ci].RepointImages(func(rel *string) {
+					if !isPNG(*rel) || fsutil.Exists(l.p.ImagePath(*rel)) {
+						return
+					}
+					if jpg := jpgName(*rel); fsutil.Exists(l.p.ImagePath(jpg)) {
+						*rel = jpg
+						changed = true
+					}
+				})
+			}
+			if !changed {
+				continue
+			}
+			if err := (project.Workspace{}).Save(l.p); err != nil {
+				return fixed, err
+			}
+			changedSet = true
+		}
+		if changedSet {
+			fixed = append(fixed, bySet[id][0].p.Set.Name)
+		}
+	}
+	return fixed, nil
 }

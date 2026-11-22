@@ -141,8 +141,7 @@ namespace TCGCustomCards.Runtime
             {
                 if (d == null) { copies.Add(null); continue; }
                 var c = (CardUISettingData)CloneMethod.Invoke(d, null);
-                c.cardBorderNameList = shortNames;
-                c.cardBorderFullNameList = fullNames;
+                (c.cardBorderNameList, c.cardBorderFullNameList) = (shortNames, fullNames);
                 copies.Add(c);
             }
             if (Def.FrameTemplate != ECardExpansionType.Tetramon)

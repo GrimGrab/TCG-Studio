@@ -1,20 +1,19 @@
 <script lang="ts" module>
-  type Page = 'overview' | 'basics' | 'look' | 'rarities' | 'versions' | 'prices';
+  type Page = 'overview' | 'basics' | 'look' | 'rarities' | 'prices';
   let rememberedPage: Page = 'overview';
 </script>
 
 <script lang="ts">
   // The Set tab: set-wide rules every card follows unless it has its own (versions, shaders, prices), and the set's look.
   // A side list of pages like Mod settings: .sidelist, then a .pane with .pane-hero and .blocks of .entry settings.
-  import { App, projectFile, FRAME_TEMPLATES, BORDERS, BORDER_LABELS, money, setRarities, rarityColor, errText } from '../../lib/api';
+  import { App, projectFile, FRAME_TEMPLATES, BORDERS, money, setRarities, rarityColor, errText } from '../../lib/api';
   import { pickSetPicture, putSetPicture, setPicture } from '../../lib/setPictures';
-  import { ALL_VERSIONS, hasOwnVersions, setShader, setVersions } from '../../lib/cardVersions';
+  import { ALL_VERSIONS, borderLabel, setShader, setVersions } from '../../lib/cardVersions';
   import { untrack } from 'svelte';
   import PictureSlot from '../PictureSlot.svelte';
   import CardBackPreview from '../CardBackPreview.svelte';
   import RaritiesEditor from './RaritiesEditor.svelte';
-  import VariantsEditor from './VariantsEditor.svelte';
-  import ShadersEditor from './ShadersEditor.svelte';
+  import LookEditor from './LookEditor.svelte';
   import type { NavRequest, TakeNav } from '../../lib/setNav';
 
   let { project, notify, imgBust, nav, takeNav }: {
@@ -23,8 +22,8 @@
 
   const PAGES: [Page, string, string][] = [
     ['overview', 'Overview', 'Cards, packs, value'], ['basics', 'Basics', 'Name, collection, release'],
-    ['look', 'Card look', 'Style, shaders, card back'], ['rarities', 'Rarities', 'Names, colours, order'],
-    ['versions', 'Card versions', 'Borders and foil'], ['prices', 'Prices', 'Default multipliers']
+    ['look', 'Card look', 'Style, versions, borders, shaders, back'], ['rarities', 'Rarities', 'Names, colours, order'],
+    ['prices', 'Prices', 'Default multipliers']
   ];
 
   let backBust = $state(0);
@@ -55,13 +54,11 @@
   const shadersSet = $derived(ALL_VERSIONS.filter((k) => setShader(project.set, k)).length);
   const backKind = $derived(own.file || project.set.cardBack ? 'own' : globalBack ? 'global' : 'frame');
   const backLabel = $derived(backKind === 'own' ? 'Own back' : backKind === 'global' ? 'Global back' : `${project.set.frameTemplate} frame's back`);
-  const frontImage = $derived(project.set.cards.find((c: any) => c.image)?.image ?? '');
   const summary = $derived<Record<Page, string>>({
     overview: '',
     basics: [project.set.collection || 'No collection', project.set.released?.slice(0, 4)].filter(Boolean).join(' · '),
-    look: `${project.set.renderMode === 'Framed' ? 'Framed' : 'Full image'} · ${shadersSet ? `${shadersSet} shader${shadersSet === 1 ? '' : 's'}` : 'default shaders'} · ${backLabel}`,
+    look: `${project.set.renderMode === 'Framed' ? 'Framed' : 'Full image'} · ${versionsOn} of 12 versions · ${shadersSet ? `${shadersSet} shader${shadersSet === 1 ? '' : 's'}` : 'default shaders'} · ${backLabel}`,
     rarities: rarities.map((r) => r.name).join(' · '),
-    versions: `${versionsOn} of 12${project.set.cards.some(hasOwnVersions) ? ' · some cards own' : ''}`,
     prices: `Foil ×${project.set.priceDefaults.foilMultiplier} · min ${money(project.set.priceDefaults.minimum)}`
   });
 
@@ -77,12 +74,12 @@
   // The side list opens one page at a time (remembered while Studio runs).
   let page = $state<Page>(rememberedPage);
   function open(p: Page) { page = rememberedPage = p; }
-  // Links from other tabs ("Set → Card versions"); shaders and the card back are on the card look page.
+  // Links from other tabs ("Set → Card versions"); versions, borders, shaders and the card back are on the card look page.
   $effect(() => {
     if (nav?.tab !== 'set') return;
     untrack(() => {
       const s = takeNav?.('set')?.section;
-      const p = s === 'shaders' || s === 'back' ? 'look' : s;
+      const p = s === 'shaders' || s === 'back' || s === 'versions' ? 'look' : s;
       if (p && PAGES.some(([id]) => id === p)) open(p as Page);
     });
   });
@@ -152,9 +149,8 @@
 
     {:else if page === 'look'}
       <div class="pane">
-        <header class="pane-hero"><div class="grow"><h1>Card look</h1><div class="muted">How the game draws this set's cards: front style, effects per version and the back.</div></div></header>
+        <header class="pane-hero"><div class="grow"><h1>Card look</h1><div class="muted">How the game draws this set's cards: the style, each version's border and effect, and the back.</div></div></header>
         <div class="page-cols">
-          <div class="maincol">
             <div class="block">
               <div class="bhead"><h2>Card style</h2></div>
               <div>
@@ -173,9 +169,20 @@
               </div>
               <div class="entry"><div class="head row"><span class="grow name">Frame template</span><span class="control"><select bind:value={project.set.frameTemplate}>{#each FRAME_TEMPLATES as f}<option>{f}</option>{/each}</select></span></div><div class="desc muted small">The game set whose borders, foil and default back this set uses.</div></div>
             </div>
+          <aside class="page-side">
+            <div class="notice info howto"><b>How card styles work</b>
+              <ul>
+                <li><b>Full image</b>: the picture is the whole card. The frame template's vanilla rim shows around it, unless a version
+                  has a border of its own (below).</li>
+                <li><b>Framed</b>: the picture is artwork inside the frame template's own card frame.</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
 
-            <ShadersEditor {project} {imgBust} />
+        <LookEditor {project} {imgBust} {notify} />
 
+        <div class="page-cols">
             <div class="block">
               <div class="bhead"><h2>Card back</h2><span class="badge" class:ok={backKind === 'own'}>{backLabel}</span></div>
               <div class="backbody">
@@ -194,20 +201,10 @@
                   : `Without its own, the set uses the ${project.set.frameTemplate} frame's back.`}
               </div>
             </div>
-          </div>
-
           <aside class="page-side">
             <div class="block">
-              <div class="bhead"><h2>Preview</h2><span class="muted small">front · back</span></div>
-              <div class="preview">
-                <figure class="front-fig">
-                  <div class="front">
-                    {#if frontImage}<img src={projectFile(project.id, frontImage, imgBust)} alt="" />{:else}<span class="muted small">No card picture yet</span>{/if}
-                  </div>
-                  <figcaption class="muted small">{project.set.renderMode === 'Framed'
-                    ? `Artwork only: the game puts it inside its ${project.set.frameTemplate} frame`
-                    : 'The picture is the whole card'}</figcaption>
-                </figure>
+              <div class="bhead"><h2>Back</h2></div>
+              <div class="single">
                 <CardBackPreview image={own.file ? own.url : ''} crop={own.crop} aspect={aspects.cardBack ?? 718 / 1006}
                   fallback={own.file ? '' : project.set.cardBack ? projectFile(project.id, project.set.cardBack, imgBust + backBust) : globalBack || ''}
                   caption="The {project.set.frameTemplate} frame's own back" />
@@ -223,12 +220,6 @@
         <RaritiesEditor {project} {notify} />
       </div>
 
-    {:else if page === 'versions'}
-      <div class="pane">
-        <header class="pane-hero"><div class="grow"><h1>Card versions</h1><div class="muted">Which borders and foils this set's cards come in, unless a card has its own list.</div></div></header>
-        <VariantsEditor {project} />
-      </div>
-
     {:else if page === 'prices'}
       <div class="pane">
         <header class="pane-hero"><div class="grow"><h1>Prices</h1><div class="muted">Market price = card base × border × foil. Cards can override on their Price tab; the game's daily changes apply on top.</div></div></header>
@@ -242,7 +233,7 @@
                 <tbody>
                   {#each BORDERS as b, i}
                     <tr>
-                      <td class="bname"><span class="bdot b-{b}"></span>{BORDER_LABELS[b]}</td>
+                      <td class="bname"><span class="bdot b-{b}"></span>{borderLabel(b)}</td>
                       <td><span class="times">×</span><input type="number" step="0.05" min="0" bind:value={project.set.priceDefaults.borderMultipliers[i]} /></td>
                       <td class="num">{money(example[i][1])}</td>
                       <td class="num foil">{money(example[i][2])}</td>
@@ -313,37 +304,15 @@
   .backbody :global(.slot) { max-width: 560px; }
   .gen { display: inline-flex; align-items: center; gap: 6px; }
   .gen input[type="color"] { width: 40px; height: 30px; padding: 2px; }
-  .preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; max-width: 480px; }
-  .front { aspect-ratio: 63 / 88; border-radius: 12px; overflow: hidden; background: var(--bg); display: grid; place-items: center; box-shadow: 0 6px 18px #0009; }
-  .front img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .front-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .single { max-width: 240px; }
 
   /* Prices */
   .ex-in { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
   .ex-in input { width: 80px; }
-  .tablewrap { overflow-x: auto; }
-  .mults { width: 100%; border-collapse: collapse; font-size: 13px; }
-  @container (max-width: 560px) {
-    .barcol { display: none; }
-    .mults th, .mults td { padding-right: 8px; }
-    .mults input { width: 70px; }
-    .mults .num { width: auto; }
-  }
-  .mults th { text-align: left; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 0 12px 6px 0; }
-  .mults td { padding: 6px 12px 6px 0; border-top: 1px solid var(--line); }
-  .mults input { width: 90px; }
-  .mults .num { text-align: right; font-variant-numeric: tabular-nums; width: 110px; }
-  .mults .foil { color: #c9a8ff; }
+  @container (max-width: 560px) { .barcol { display: none; } }
   .barcol { width: 34%; }
   .pbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--bg); }
   .pbar span { background: var(--accent-2); }
   .pbar span.f { background: #8f6ad8; }
-  .bname { white-space: nowrap; }
-  .bdot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; background: var(--line); }
-  .bdot.b-FirstEdition { background: #8a93a3; }
-  .bdot.b-Silver { background: #c9d1dc; }
-  .bdot.b-Gold { background: #e2b53c; }
-  .bdot.b-EX { background: #ff5e6a; }
-  .bdot.b-FullArt { background: #3ecf8e; }
   .times { color: var(--muted); margin-right: 4px; }
 </style>

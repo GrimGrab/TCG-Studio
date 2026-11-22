@@ -7,6 +7,7 @@ import {catalog} from '../models';
 import {figurine} from '../models';
 import {decoart} from '../models';
 import {game} from '../models';
+import {gameextract} from '../models';
 import {updater} from '../models';
 import {content} from '../models';
 import {project} from '../models';
@@ -61,6 +62,8 @@ export function CancelImport():Promise<void>;
 
 export function CancelStorage():Promise<void>;
 
+export function CardFrames():Promise<Array<gameextract.CardFrame>>;
+
 export function CatalogAll(arg1:string):Promise<Array<catalog.Entry>>;
 
 export function CatalogList(arg1:string):Promise<Array<catalog.Entry>>;
@@ -108,6 +111,8 @@ export function DeleteUnused(arg1:Array<library.Pick>):Promise<library.Deleted>;
 export function DetectBoxFaces(arg1:string,arg2:string):Promise<art.DisplayFaces>;
 
 export function EPLModPath(arg1:string):Promise<string>;
+
+export function EditionLabelLayout():Promise<gameextract.EditionLabel>;
 
 export function ExportItems(arg1:string,arg2:Array<string>,arg3:string):Promise<main.ExportResult>;
 
@@ -187,11 +192,15 @@ export function LibraryArt(arg1:string,arg2:string,arg3:string):Promise<main.Lib
 
 export function LibraryFolder():Promise<string>;
 
+export function ListBorders():Promise<Array<main.BorderChoice>>;
+
 export function ListProjects():Promise<Array<project.Summary>>;
 
 export function ListSetups():Promise<main.SetupsView>;
 
 export function ListShaders():Promise<Array<main.ShaderChoice>>;
+
+export function LoadBordersPage():Promise<main.BordersPage>;
 
 export function LoadClothes():Promise<main.ClothesPage>;
 
@@ -212,6 +221,8 @@ export function MoveAccessory(arg1:string,arg2:number):Promise<main.AccessoryVie
 export function MoveSetup(arg1:string,arg2:number):Promise<main.SetupsView>;
 
 export function NewAccessory(arg1:string,arg2:string,arg3:string):Promise<setfmt.Accessory>;
+
+export function NewBorderID():Promise<string>;
 
 export function NewClothingID():Promise<string>;
 
@@ -234,6 +245,8 @@ export function PackPresets():Promise<Array<importer.Booster>>;
 export function PaintFurniture(arg1:string,arg2:string):Promise<setfmt.FurniturePaint>;
 
 export function PickAccessoryImage():Promise<string>;
+
+export function PickBorderImage():Promise<string>;
 
 export function PickCardImage(arg1:string):Promise<string>;
 
@@ -294,6 +307,8 @@ export function RotateCardImages(arg1:string,arg2:Array<string>,arg3:number,arg4
 export function SaveAccessorySourceImage(arg1:string,arg2:string):Promise<string>;
 
 export function SaveAutoArt(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
+
+export function SaveBorders(arg1:Array<setfmt.Border>):Promise<main.BorderSaveResult>;
 
 export function SaveBoxImage(arg1:string,arg2:string):Promise<string>;
 

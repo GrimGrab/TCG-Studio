@@ -39,6 +39,13 @@ namespace TCGCustomCards.Core
                     }
                     result.Add(set);
                     Plugin.Log.LogInfo($"Loaded set {set.Label} ({set.Cards.Count} cards, {set.RenderMode})");
+                    int ownLabels = set.Cards.Count(c => c.EditionLabel != null);
+                    if (set.EditionLabel != null || ownLabels > 0)
+                    {
+                        var l = set.EditionLabel;
+                        Plugin.Log.LogInfo($"  edition label: set show {l?.Show?.ToString() ?? "-"}, x {l?.X?.ToString() ?? "-"}, " +
+                            $"y {l?.Y?.ToString() ?? "-"}, size {l?.Size?.ToString() ?? "-"}; {ownLabels} card(s) with their own");
+                    }
                 }
                 catch (Exception e)
                 {
@@ -68,6 +75,7 @@ namespace TCGCustomCards.Core
             bool defaultList = ValidateRarities(set, errors);
             ValidateVariants(set, errors);
             set.ShaderBySlot = ParseShaders(set.VersionShaders, "versionShaders", errors);
+            ParseBorderSlots(set, errors);
             set.AllVariants = set.VariantMask.All(v => v); // ValidateCardVersions clears it for a card with its own list
 
             var ids = new HashSet<string>();
@@ -164,6 +172,7 @@ namespace TCGCustomCards.Core
             if (c.VariantMask != null && !c.VariantMask.All(v => v)) set.AllVariants = false;
 
             c.ShaderBySlot = ParseShaders(c.VersionShaders, $"{where}: versionShaders", errors);
+            c.BorderBySlot = ParseShaders(c.VersionBorders, $"{where}: versionBorders", errors);
             if (!string.IsNullOrEmpty(c.ShaderMask) && !File.Exists(set.Resolve(c.ShaderMask)))
             {
                 MissingImage(set, $"{where}: shader mask not found '{c.ShaderMask}' (effects show everywhere)", ref missing);
@@ -213,7 +222,35 @@ namespace TCGCustomCards.Core
             return bySlot;
         }
 
-        private const string VersionNames = "Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil";
+        /// <summary>
+        /// "borders" (slot name → border ids) → <see cref="SetDef.SlotDefs"/> and <see cref="SetDef.BorderBySlot"/>.
+        /// Whether a border id is in the library is checked when a card is drawn (Runtime/CardBorders): a missing one keeps
+        /// the game's rim.
+        /// </summary>
+        private static void ParseBorderSlots(SetDef set, List<string> errors)
+        {
+            set.SlotDefs = new BorderSlotDef[6];
+            set.BorderBySlot = null;
+            if (set.Borders == null) return;
+            foreach (var kv in set.Borders)
+            {
+                if (!Enum.TryParse(kv.Key ?? "", true, out ECardBorderType border) || (int)border < 0 || (int)border > 5)
+                {
+                    errors.Add($"borders: unknown border '{kv.Key}' (Base, FirstEdition, Silver, Gold, EX, FullArt)");
+                    continue;
+                }
+                var slot = kv.Value;
+                if (slot == null) continue;
+                set.SlotDefs[(int)border] = slot;
+                string look = slot.Look ?? "", foil = slot.FoilLook ?? look;
+                if (look.Length == 0 && foil.Length == 0) continue;
+                var bySlot = set.BorderBySlot ?? (set.BorderBySlot = new string[12]);
+                bySlot[(int)border] = look;
+                bySlot[(int)border + 6] = foil;
+            }
+        }
+
+        private const string VersionNames ="Base, FirstEdition, Silver, Gold, EX, FullArt, each optionally + _foil";
 
         /// <summary>A version name ("Gold", "gold_foil") → slot offset (border + 6 if foil).</summary>
         private static bool TryParseVersion(string v, out int slot)

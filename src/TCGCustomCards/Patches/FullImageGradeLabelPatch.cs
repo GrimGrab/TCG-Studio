@@ -7,8 +7,8 @@ namespace TCGCustomCards.Patches
 {
     // Grade label ("1st Edition", "Silver", "Gold", "EX") on full-image cards. Vanilla shows it on those borders (not Base/Full Art)
     // via CardUI.m_FirstEditionText, which our overlay covers. We draw a copy of that text above the overlay. Visibility follows the
-    // card's border (not whether the game's own text object happens to be active — on 3D cards it often isn't), position defaults
-    // to the game's own spot and can be moved/resized live via [Visuals] GradeLabelOffsetX/Y/Size.
+    // card's border (not whether the game's own text object happens to be active — on 3D cards it often isn't), at the game's
+    // own spot moved and sized by the set's and card's set.json "editionLabel" (EditionLabelDef; TCG Studio draws it the same way).
     // Like the foil glow, the helper lives on the CardUI and finds the overlay itself (no dependence on postfix order).
 
     [HarmonyPatch(typeof(CardUI), nameof(CardUI.SetCardUI))]
@@ -17,16 +17,28 @@ namespace TCGCustomCards.Patches
         private static void Postfix(CardUI __instance, CardData cardData)
         {
             var label = __instance.GetComponent<FullImageGradeLabel>();
+            CustomSet set = null;
+            int pos = -1;
             bool fullImage = cardData != null && Registry.IsCustom(cardData.expansionType) &&
-                             Registry.TryGetCard(cardData.monsterType, out var set, out _) && set.Def.RenderMode == Core.RenderMode.FullImage;
+                             Registry.TryGetCard(cardData.monsterType, out set, out pos) && set.Def.RenderMode == Core.RenderMode.FullImage;
             if (!fullImage)
             {
                 if (label != null) label.Text = null; // CardUI reused for another card
                 return;
             }
             if (label == null) (label = __instance.gameObject.AddComponent<FullImageGradeLabel>()).Ui = __instance;
-            label.Text = HasLabel(cardData.borderType) ? GradeName(__instance, cardData.borderType) : null;
+            // Shown or not is the set's and card's choice (set.json "editionLabel"); borders have no say (removed 2026-11-22).
+            var own = set.Def.Cards[pos].EditionLabel;
+            var setLabel = set.Def.EditionLabel;
+            bool shown = HasLabel(cardData.borderType) && (own?.Show ?? setLabel?.Show ?? true);
+            label.Text = shown ? GradeName(__instance, cardData.borderType) : null;
+            label.OffsetX = own?.X ?? setLabel?.X ?? DefaultX;
+            label.OffsetY = own?.Y ?? setLabel?.Y ?? DefaultY;
+            label.Size = Mathf.Clamp(own?.Size ?? setLabel?.Size ?? 1f, 0.3f, 4f);
         }
+
+        /// <summary>Where the label sits when no set or card says: near the bottom (chosen in game 2026-09-24).</summary>
+        private const float DefaultX = 0f, DefaultY = -24.882f;
 
         private static bool HasLabel(ECardBorderType b) =>
             b == ECardBorderType.FirstEdition || b == ECardBorderType.Silver || b == ECardBorderType.Gold || b == ECardBorderType.EX;
@@ -49,6 +61,8 @@ namespace TCGCustomCards.Patches
         public CardUI Ui;
         /// <summary>Label text for the current card, or null for none (set in SetCardUI).</summary>
         public string Text;
+        /// <summary>The card's place for it: % of the card from the game's spot (+ = right, up) and size (set in SetCardUI).</summary>
+        public float OffsetX, OffsetY, Size = 1f;
         private Transform _overlay;
         private TextMeshProUGUI _label;
         private bool _outlinePending;
@@ -58,20 +72,21 @@ namespace TCGCustomCards.Patches
         private void LateUpdate()
         {
             if (Ui == null || Ui.m_CardFront == null) return;
-            if (string.IsNullOrEmpty(Text) || !Plugin.GradeLabel.Value) { Hide(); return; }
+            if (string.IsNullOrEmpty(Text)) { Hide(); return; }
             if (_overlay == null) _overlay = Ui.m_CardFront.transform.Find(OverlayName);
             var src = Ui.m_FirstEditionText;
             if (_overlay == null || !_overlay.gameObject.activeSelf || src == null) { Hide(); return; }
             if (_label == null) Create(src);
 
-            // Game's own spot (the text keeps its transform even while inactive) + user offset, in CardFront space.
+            // Game's own spot (the text keeps its transform even while inactive) + user offset, in CardFront space. Cards with
+            // a custom border are the vanilla card's size too (CardBorderView.CardScale), so this is the same spot on every card.
             var parent = _label.transform.parent;
             var basePos = parent.InverseTransformPoint(src.transform.position);
-            var offset = new Vector3(Plugin.GradeLabelOffsetX.Value / 100f * CardSize.x, Plugin.GradeLabelOffsetY.Value / 100f * CardSize.y, 0f);
+            var offset = new Vector3(OffsetX / 100f * CardSize.x, OffsetY / 100f * CardSize.y, 0f);
             _label.transform.localPosition = basePos + offset;
             _label.transform.rotation = src.transform.rotation;
             Vector3 p = parent.lossyScale, w = src.transform.lossyScale;
-            float size = Mathf.Clamp(Plugin.GradeLabelSize.Value, 0.3f, 4f);
+            float size = Size;
             _label.transform.localScale = new Vector3(w.x / Mathf.Max(1e-5f, p.x), w.y / Mathf.Max(1e-5f, p.y), w.z / Mathf.Max(1e-5f, p.z)) * size;
 
             if (_label.text != Text) _label.text = Text;

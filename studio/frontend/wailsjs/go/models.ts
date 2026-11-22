@@ -769,6 +769,87 @@ export namespace game {
 
 }
 
+export namespace gameextract {
+	
+	export class CardFrame {
+	    template: string;
+	    border: string;
+	    file: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CardFrame(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.template = source["template"];
+	        this.border = source["border"];
+	        this.file = source["file"];
+	    }
+	}
+	export class EditionLabel {
+	    cardWidth: number;
+	    cardHeight: number;
+	    cardX: number;
+	    offsetWidth: number;
+	    offsetHeight: number;
+	    x: number;
+	    y: number;
+	    w: number;
+	    h: number;
+	    fontSize: number;
+	    autoSize: boolean;
+	    sizeMin: number;
+	    sizeMax: number;
+	    color: number[];
+	    font: unityfs.TMPFont;
+	    atlas: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditionLabel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cardWidth = source["cardWidth"];
+	        this.cardHeight = source["cardHeight"];
+	        this.cardX = source["cardX"];
+	        this.offsetWidth = source["offsetWidth"];
+	        this.offsetHeight = source["offsetHeight"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.w = source["w"];
+	        this.h = source["h"];
+	        this.fontSize = source["fontSize"];
+	        this.autoSize = source["autoSize"];
+	        this.sizeMin = source["sizeMin"];
+	        this.sizeMax = source["sizeMax"];
+	        this.color = source["color"];
+	        this.font = this.convertValues(source["font"], unityfs.TMPFont);
+	        this.atlas = source["atlas"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace gamify {
 	
 	export class AccessoryPreview {
@@ -2057,6 +2138,110 @@ export namespace main {
 	        this.version = source["version"];
 	    }
 	}
+	export class BorderChoice {
+	    id: string;
+	    name: string;
+	    icon?: string;
+	    window?: number[];
+	    layers: setfmt.BorderLayer[];
+	    builtIn: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BorderChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.window = source["window"];
+	        this.layers = this.convertValues(source["layers"], setfmt.BorderLayer);
+	        this.builtIn = source["builtIn"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BorderSaveResult {
+	    borders: setfmt.Border[];
+	    warnings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BorderSaveResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.borders = this.convertValues(source["borders"], setfmt.Border);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class BordersPage {
+	    borders: setfmt.Border[];
+	    stock: setfmt.Border[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BordersPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.borders = this.convertValues(source["borders"], setfmt.Border);
+	        this.stock = this.convertValues(source["stock"], setfmt.Border);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class BoxArt {
 	    boxTexture: string;
 	    boxIcon: string;
@@ -2842,6 +3027,7 @@ export namespace main {
 	    gameDir: string;
 	    workspace: string;
 	    syncedVersion?: string;
+	    shrinkRepaired?: boolean;
 	    imageFormat?: string;
 	    uiScale?: number;
 	    layoutTuner?: boolean;
@@ -2855,6 +3041,7 @@ export namespace main {
 	        this.gameDir = source["gameDir"];
 	        this.workspace = source["workspace"];
 	        this.syncedVersion = source["syncedVersion"];
+	        this.shrinkRepaired = source["shrinkRepaired"];
 	        this.imageFormat = source["imageFormat"];
 	        this.uiScale = source["uiScale"];
 	        this.layoutTuner = source["layoutTuner"];
@@ -3419,6 +3606,7 @@ export namespace main {
 	    version: string;
 	    waiting: string;
 	    modUpdated: boolean;
+	    repaired: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new StartupResult(source);
@@ -3430,6 +3618,7 @@ export namespace main {
 	        this.version = source["version"];
 	        this.waiting = source["waiting"];
 	        this.modUpdated = source["modUpdated"];
+	        this.repaired = source["repaired"];
 	    }
 	}
 	export class StorageResult {
@@ -4069,6 +4258,81 @@ export namespace setfmt {
 		    return a;
 		}
 	}
+	export class BorderLayer {
+	    kind: string;
+	    file?: string;
+	    opacity: number;
+	    shader?: string;
+	    clip?: boolean;
+	    params?: Record<string, Array<number>>;
+	
+	    static createFrom(source: any = {}) {
+	        return new BorderLayer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.file = source["file"];
+	        this.opacity = source["opacity"];
+	        this.shader = source["shader"];
+	        this.clip = source["clip"];
+	        this.params = source["params"];
+	    }
+	}
+	export class Border {
+	    id: string;
+	    name: string;
+	    icon?: string;
+	    window?: number[];
+	    layers: BorderLayer[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Border(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.window = source["window"];
+	        this.layers = this.convertValues(source["layers"], BorderLayer);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class BorderSlot {
+	    look?: string;
+	    foilLook?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BorderSlot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.look = source["look"];
+	        this.foilLook = source["foilLook"];
+	    }
+	}
 	export class CardMtg {
 	    name: string;
 	    typeLine?: string;
@@ -4133,6 +4397,24 @@ export namespace setfmt {
 	        this.overrides = source["overrides"];
 	    }
 	}
+	export class EditionLabel {
+	    show?: boolean;
+	    x?: number;
+	    y?: number;
+	    size?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditionLabel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.show = source["show"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.size = source["size"];
+	    }
+	}
 	export class Card {
 	    id: string;
 	    name: string;
@@ -4145,6 +4427,8 @@ export namespace setfmt {
 	    variants?: string[];
 	    versionImages?: Record<string, string>;
 	    versionShaders?: Record<string, string>;
+	    versionBorders?: Record<string, string>;
+	    editionLabel?: EditionLabel;
 	    shaderMask?: string;
 	    shaderParams?: Record<string, Array<number>>;
 	    price: CardPrice;
@@ -4168,6 +4452,8 @@ export namespace setfmt {
 	        this.variants = source["variants"];
 	        this.versionImages = source["versionImages"];
 	        this.versionShaders = source["versionShaders"];
+	        this.versionBorders = source["versionBorders"];
+	        this.editionLabel = this.convertValues(source["editionLabel"], EditionLabel);
 	        this.shaderMask = source["shaderMask"];
 	        this.shaderParams = source["shaderParams"];
 	        this.price = this.convertValues(source["price"], CardPrice);
@@ -4432,6 +4718,7 @@ export namespace setfmt {
 	        this.surface = source["surface"];
 	    }
 	}
+	
 	export class Employee {
 	    id: string;
 	    name: string;
@@ -4972,6 +5259,8 @@ export namespace setfmt {
 	    priceDefaults: PriceDefaults;
 	    variants?: string[];
 	    versionShaders?: Record<string, string>;
+	    borders?: Record<string, BorderSlot>;
+	    editionLabel?: EditionLabel;
 	    packs: Pack[];
 	    cards: Card[];
 	
@@ -4994,6 +5283,8 @@ export namespace setfmt {
 	        this.priceDefaults = this.convertValues(source["priceDefaults"], PriceDefaults);
 	        this.variants = source["variants"];
 	        this.versionShaders = source["versionShaders"];
+	        this.borders = this.convertValues(source["borders"], BorderSlot, true);
+	        this.editionLabel = this.convertValues(source["editionLabel"], EditionLabel);
 	        this.packs = this.convertValues(source["packs"], Pack);
 	        this.cards = this.convertValues(source["cards"], Card);
 	    }
@@ -5441,6 +5732,97 @@ export namespace share {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.file = source["file"];
 	        this.manifest = this.convertValues(source["manifest"], Manifest);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace unityfs {
+	
+	export class PPtr {
+	    FileID: number;
+	    PathID: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PPtr(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.FileID = source["FileID"];
+	        this.PathID = source["PathID"];
+	    }
+	}
+	export class TMPGlyph {
+	    u: number;
+	    w: number;
+	    h: number;
+	    bx: number;
+	    by: number;
+	    adv: number;
+	    rect: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TMPGlyph(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.u = source["u"];
+	        this.w = source["w"];
+	        this.h = source["h"];
+	        this.bx = source["bx"];
+	        this.by = source["by"];
+	        this.adv = source["adv"];
+	        this.rect = source["rect"];
+	    }
+	}
+	export class TMPFont {
+	    name: string;
+	    family: string;
+	    pointSize: number;
+	    lineHeight: number;
+	    ascent: number;
+	    descent: number;
+	    glyphs: TMPGlyph[];
+	    atlasWidth: number;
+	    atlasHeight: number;
+	    gradientScale: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TMPFont(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.family = source["family"];
+	        this.pointSize = source["pointSize"];
+	        this.lineHeight = source["lineHeight"];
+	        this.ascent = source["ascent"];
+	        this.descent = source["descent"];
+	        this.glyphs = this.convertValues(source["glyphs"], TMPGlyph);
+	        this.atlasWidth = source["atlasWidth"];
+	        this.atlasHeight = source["atlasHeight"];
+	        this.gradientScale = source["gradientScale"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

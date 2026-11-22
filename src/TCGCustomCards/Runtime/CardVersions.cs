@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace TCGCustomCards.Runtime
 {
@@ -10,6 +11,13 @@ namespace TCGCustomCards.Runtime
     /// </summary>
     internal static class CardVersions
     {
+        /// <summary>A version's name as the mod's own screens show it (the game's standard edition names; sets can't rename them).</summary>
+        public static string Label(CustomSet set, int pos, ECardBorderType border, bool foil)
+        {
+            string b = border == ECardBorderType.FirstEdition ? "1st Edition" : border == ECardBorderType.FullArt ? "Full Art" : border.ToString();
+            return foil ? (border == ECardBorderType.Base ? "Foil" : b + " Foil") : b;
+        }
+
         /// <summary>The custom set of an expansion when some of its cards have versions switched off; null otherwise (vanilla too).</summary>
         public static CustomSet Limited(ECardExpansionType exp)
         {

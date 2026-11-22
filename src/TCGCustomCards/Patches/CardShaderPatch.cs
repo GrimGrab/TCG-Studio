@@ -112,7 +112,7 @@ namespace TCGCustomCards.Patches
             Plugin.CardShaders.Value && CardShaders.Get(l._id, l._usedBy) != null;
 
         /// <summary>The shader's clock right now: what the template's vertex program reads as time.</summary>
-        private static float ShaderTime => Shader.GetGlobalVector("_Time").y;
+        internal static float ShaderTime => Shader.GetGlobalVector("_Time").y;
 
         /// <summary>
         /// The shader of the card this CardUI now shows (id null = none). framed: the card is drawn in the game's frame, so the
@@ -157,7 +157,7 @@ namespace TCGCustomCards.Patches
         }
 
         /// <summary>A number 0..1 that belongs to the card (the same on every PC and in every session).</summary>
-        private static float CardNumber(string setId, string cardId)
+        internal static float CardNumber(string setId, string cardId)
         {
             uint h = 2166136261;
             foreach (char c in setId + "|" + cardId) h = (h ^ c) * 16777619;
@@ -263,7 +263,7 @@ namespace TCGCustomCards.Patches
         private const AdditionalCanvasShaderChannels Channels =
             AdditionalCanvasShaderChannels.TexCoord1 | AdditionalCanvasShaderChannels.TexCoord2 | AdditionalCanvasShaderChannels.TexCoord3;
 
-        private static void Show(Image image, Material mat)
+        internal static void Show(Image image, Material mat)
         {
             if (image.material != mat) image.material = mat;
             var canvas = image.canvas;

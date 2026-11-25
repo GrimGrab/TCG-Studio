@@ -51,10 +51,14 @@ func TestValidateBorders(t *testing.T) {
 	bad := []Border{
 		{ID: "a", Name: "A", Window: []float64{0, 0, 1}, Layers: []BorderLayer{{Kind: "paint"}, {Kind: BorderImageLayer}, {Kind: BorderShaderLayer, Params: map[string][]float64{"x": {1, 2, 3}}}}},
 		{ID: "a"},
+		{ID: "b", Name: "B", Window: []float64{0.5, 0.1, 0.6, 0.5}},
 	}
-	// window, unknown kind, picture missing, shader missing, 3 numbers, duplicate id, no name
-	if issues := ValidateBorders(bad); len(issues) != 7 {
-		t.Errorf("got %d issues, want 7: %v", len(issues), issues)
+	// window, unknown kind, picture missing, shader missing, 3 numbers, duplicate id, no name, box outside the card
+	if issues := ValidateBorders(bad); len(issues) != 8 {
+		t.Errorf("got %d issues, want 8: %v", len(issues), issues)
+	}
+	if issues := ValidateBorders([]Border{{ID: "c", Name: "C", Window: []float64{0.1, 0.1, 0.8, 0.6}}}); len(issues) != 0 {
+		t.Errorf("a box inside the card refused: %v", issues)
 	}
 	set := &Set{Borders: map[string]BorderSlot{"Golden": {Look: "a"}}}
 	found := false

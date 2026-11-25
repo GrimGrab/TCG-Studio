@@ -21,9 +21,10 @@ export type Border = {
   id: string;
   name: string;
   icon?: string;
-  /** Where the card's picture goes: x, y, width, height as fractions of the border from its top left; none = the whole card.
-   *  Never set by hand: measured from the first picture layer's see-through middle (measureWindow). */
+  /** Where the card's picture goes, set by hand on the Borders page (Card picture → In a box): x, y, width, height as
+   *  fractions of the card from its top left; none = the whole card. */
   window?: number[];
+  /** Back to front, over the card's picture: the layers' transparency decides what of it shows. */
   layers: BorderLayer[];
   /** Comes with the mod (ListBorders, the Borders page's stock list). */
   builtIn?: boolean;
@@ -52,13 +53,35 @@ export function under(b: Border, index: number): BorderLayer | undefined {
   return undefined;
 }
 
-/** The window as [x, y, w, h] fractions, clamped; the whole card when the border has none. */
-export function windowOf(b: Border | null | undefined): [number, number, number, number] {
-  const w = b?.window;
-  if (!w || w.length !== 4) return [0, 0, 1, 1];
-  const c = (v: number) => Math.min(1, Math.max(0, v || 0));
-  return [c(w[0]), c(w[1]), Math.max(0.02, c(w[2])), Math.max(0.02, c(w[3]))];
+export type Box = [number, number, number, number];
+
+/** The smallest box side, as a fraction of the card. */
+export const MIN_BOX = 0.05;
+
+/** A box kept inside the card and at least MIN_BOX on each side, rounded to 4 decimals. */
+export function clampBox(b: readonly number[]): Box {
+  const r4 = (v: number) => Math.round(v * 10000) / 10000;
+  const w = Math.min(1, Math.max(MIN_BOX, b[2] || 0)), h = Math.min(1, Math.max(MIN_BOX, b[3] || 0));
+  const x = Math.min(1 - w, Math.max(0, b[0] || 0)), y = Math.min(1 - h, Math.max(0, b[1] || 0));
+  return [r4(x), r4(y), r4(w), r4(h)];
 }
+
+/** The box with one of its numbers (0 left, 1 top, 2 width, 3 height) set to v, capped so the others stay as they are. */
+export function setBoxSide(b: Box, k: number, v: number): Box {
+  const out: Box = [...b];
+  const most = [1 - b[2], 1 - b[3], 1 - b[0], 1 - b[1]][k];
+  out[k] = Math.min(most, Math.max(k < 2 ? 0 : MIN_BOX, v || 0));
+  return clampBox(out);
+}
+
+/** Where the card's picture goes: the border's box, else the whole card. */
+export function windowOf(b: Border | null | undefined): Box {
+  const w = b?.window;
+  return w && w.length === 4 ? clampBox(w) : [0, 0, 1, 1];
+}
+
+/** The box a border starts with when "In a box" is switched on: the thin rim's (the picture just inside the frame). */
+export const DEFAULT_BOX = (): Box => [...THIN_RIM_WINDOW];
 
 /** The thin rim template's window: as thin as the game's own rim around a full-image picture (3.5 % each side; the stock
  *  borders' window, cmd/stockborders). */
@@ -67,7 +90,7 @@ export const THIN_RIM_WINDOW: [number, number, number, number] = [0.0351, 0.0357
 /**
  * A picture to paint a border on: the card's shape at CARD_SIZE (rounded corners, grey) with the window cut out see-through,
  * nothing else on it (no guide lines or notes: the picture can be used as it is). kind 'panel' = a framed card (the
- * border's window, else an art box over a text panel); 'thin' = a thin rim round the whole picture (THIN_RIM_WINDOW).
+ * border's box, else an art box over a text panel); 'thin' = a thin rim round the whole picture (THIN_RIM_WINDOW).
  */
 export function templatePng(b: Border | null, kind: 'panel' | 'thin' = 'panel'): string {
   const [W, H] = CARD_SIZE;
@@ -101,7 +124,7 @@ export async function borderIcon(b: Border): Promise<string> {
   const g = c.getContext('2d')!;
   const [x, y, w, h] = windowOf(b);
   g.fillStyle = '#5b6a8a';
-  g.fillRect(x * W, y * H, w * W, h * H);
+  g.beginPath(); g.roundRect(x * W, y * H, w * W, h * H, 6); g.fill();
   for (const l of imgs) {
     try {
       const img = await load(borderFile(b, l.file));
@@ -121,44 +144,32 @@ export async function asDataUrl(url: string): Promise<string> {
   return c.toDataURL('image/png');
 }
 
-/**
- * The border's window: the see-through middle of its first picture layer, as [x, y, w, h] fractions, or undefined when the
- * card picture should cover the whole card (no picture, its middle isn't see-through, or it is see-through to the edges).
- * Measured along three rows and three columns through the middle; the tightest of each side wins, so the rim never covers
- * the picture.
- */
-export async function measureWindow(b: Border): Promise<number[] | undefined> {
-  const first = b.layers.find((l) => l.kind === 'image' && l.file);
-  if (!first) return undefined;
-  let img: HTMLImageElement;
-  try { img = await load(borderFile(b, first.file)); } catch { return b.window; } // can't read it: keep what it had
-  const W = 300, H = Math.max(1, Math.round((W * img.naturalHeight) / img.naturalWidth));
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d', { willReadFrequently: true })!;
-  g.drawImage(img, 0, 0, W, H);
-  const data = g.getImageData(0, 0, W, H).data;
-  const clear = (x: number, y: number) => data[(y * W + x) * 4 + 3] < 128;
-  if (!clear(W >> 1, H >> 1)) return undefined;
-  let left = 0, right = W - 1, top = 0, bottom = H - 1;
-  for (const f of [0.3, 0.5, 0.7]) {
-    const y = Math.round(H * f), x = Math.round(W * f);
-    if (clear(W >> 1, y)) {
-      let l = W >> 1, r = W >> 1;
-      while (l > 0 && clear(l - 1, y)) l--;
-      while (r < W - 1 && clear(r + 1, y)) r++;
-      left = Math.max(left, l); right = Math.min(right, r);
-    }
-    if (clear(x, H >> 1)) {
-      let t = H >> 1, d = H >> 1;
-      while (t > 0 && clear(x, t - 1)) t--;
-      while (d < H - 1 && clear(x, d + 1)) d++;
-      top = Math.max(top, t); bottom = Math.min(bottom, d);
-    }
+/** True when some of the alpha values (RGBA bytes, every 4th) let what's under the picture show through. */
+export function anySeeThrough(rgba: ArrayLike<number>): boolean {
+  for (let i = 3; i < rgba.length; i += 4) if (rgba[i] < 250) return true;
+  return false;
+}
+
+// Per picture URL: whether it has see-through parts (pictures don't change under one URL).
+const seeThrough = new Map<string, Promise<boolean>>();
+
+/** Whether a border picture lets the card's picture show through anywhere (a JPG or an opaque PNG doesn't). A picture that
+ *  can't be read counts as yes: there is nothing to warn about yet. */
+export function hasSeeThrough(url: string): Promise<boolean> {
+  if (!url) return Promise.resolve(true);
+  let p = seeThrough.get(url);
+  if (!p) {
+    p = load(url).then((img) => {
+      const W = 300, H = Math.max(1, Math.round((W * img.naturalHeight) / Math.max(1, img.naturalWidth)));
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d', { willReadFrequently: true })!;
+      g.drawImage(img, 0, 0, W, H);
+      return anySeeThrough(g.getImageData(0, 0, W, H).data);
+    }, () => true);
+    seeThrough.set(url, p);
   }
-  if (left === 0 && top === 0 && right === W - 1 && bottom === H - 1) return undefined;
-  const r4 = (v: number) => Math.round(v * 10000) / 10000;
-  return [r4(left / W), r4(top / H), r4((right + 1 - left) / W), r4((bottom + 1 - top) / H)];
+  return p;
 }
 
 /** The shader of a card's picture itself (versionShaders), as BorderPreview draws it in the picture's window: its code and

@@ -13,7 +13,8 @@ namespace TCGCustomCards.Patches
     ///   - a group "TCGCC_Border" right after the picture holds the border's layers, back to front, at the card's size (the
     ///     900×900 card front fitted to the shape of the border's first picture, scaled to the vanilla card's height
     ///     (<see cref="CardScale"/>);
-    ///   - the picture moves into the border's window and is cropped to fill it (no window: it covers the card);
+    ///   - the picture covers the whole card (cropped to its shape), or is resized into the box the user set for the
+    ///     border (window); the border's layers lie on top and their transparency decides what of it shows;
     ///   - an image layer is an Image; a shader layer is an Image with the shader's material showing the image layer under it
     ///     (the card picture when there is none). Clipped shader layers are children of that image layer, which is then a
     ///     UI Mask (the template card shader has the stencil properties for it).
@@ -105,14 +106,17 @@ namespace TCGCustomCards.Patches
             return true;
         }
 
-        /// <summary>The picture in the border's window, cropped from its middle to fill it (no window: the whole card).</summary>
+        /// <summary>
+        /// The picture as it would cover the whole card (cropped from its middle to the card's shape), then resized into the
+        /// border's window: a box only scales it (stretched to the box's shape), it never shows another part of the picture.
+        /// </summary>
         private static void PlacePicture(BorderDef def, Image picture, Vector2 card, Vector2 shift)
         {
             var w = def.Window;
             Vector2 size = w != null ? new Vector2(Mathf.Clamp01(w[2]) * card.x, Mathf.Clamp01(w[3]) * card.y) : card;
             Vector2 centre = w != null ? new Vector2((w[0] + w[2] / 2f - 0.5f) * card.x, (0.5f - (w[1] + w[3] / 2f)) * card.y) : Vector2.zero;
             if (size.x <= 1f || size.y <= 1f) return;
-            picture.sprite = PictureCrop.Fill(picture.sprite, size.x / size.y);
+            picture.sprite = PictureCrop.Fill(picture.sprite, card.x / card.y);
             var rt = picture.rectTransform;
             picture.preserveAspect = false;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);

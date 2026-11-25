@@ -3,6 +3,17 @@
 What changed in each TCG Studio release (the mod and TCG Studio share one version). Downloads, licenses and checksums are on the
 [releases page](https://github.com/GrimGrab/TCG-Studio/releases).
 
+## v2.5.0 - 2026-11-25
+
+Custom borders: ornate frames now sit over the whole card, and you can choose where the card picture goes.
+
+- Fixed: elaborate borders (vines, knots, soft shading) shrank the card picture into a small box inside the frame. The card picture now covers the whole card under the border, and the border's transparency decides what shows.
+- New: Borders → Card picture → "In a box": put the card picture anywhere inside the frame. Drag the box on the preview, drag a corner to size it, or type it in % of the card. The picture is resized into the box, never cut differently.
+- Changed: border pictures must be PNG files (they need transparency). A picture without see-through parts gets a warning on its layer.
+- Changed: borders saved with v2.4.0 may show "In a box" with the picture squeezed into an old automatic box. Open Borders, pick the border and choose Card picture → Whole card, then Save.
+
+After updating: open Game & mod and click Install / Repair to update the mod in the game.
+
 ## v2.4.0 - 2026-11-22
 
 Custom card borders, a full card editor, and edition labels you can place per set and per card.

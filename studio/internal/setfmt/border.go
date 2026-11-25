@@ -23,14 +23,15 @@ const (
 // BorderStockPrefix starts the ids of borders that come with the mod (mod Runtime/CardBorders.StockPrefix).
 const BorderStockPrefix = "tcgcc-border-"
 
-// Border is a card border in the accessory library: a stack of layers drawn over a full-image card, back to front.
+// Border is a card border in the accessory library: a stack of layers drawn over a full-image card, back to front. The
+// card's picture lies under them (over the whole card, or in Window); the layers' transparency decides what of it shows.
 // Mirrors the mod's BorderDef.
 type Border struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Icon string `json:"icon,omitempty"`
-	// Window is where the card's picture goes: x, y, width, height as fractions of the border from its top left. Empty =
-	// the picture covers the whole card under the border.
+	// Window is where the card's picture goes, set by the user on the Borders page: x, y, width, height as fractions of
+	// the border from its top left. Empty = the picture covers the whole card.
 	Window []float64     `json:"window,omitempty"`
 	Layers []BorderLayer `json:"layers"`
 }
@@ -176,8 +177,12 @@ func ValidateBorders(list []Border) []Issue {
 			add(w, "duplicate id %q", b.ID)
 		}
 		ids[b.ID] = true
-		if len(b.Window) != 0 && len(b.Window) != 4 {
-			add(w, "window needs 4 numbers (x, y, width, height)")
+		if n := len(b.Window); n != 0 {
+			if n != 4 {
+				add(w, "window needs 4 numbers (x, y, width, height)")
+			} else if x, y, ww, wh := b.Window[0], b.Window[1], b.Window[2], b.Window[3]; ww <= 0 || wh <= 0 || x < 0 || y < 0 || x+ww > 1.0001 || y+wh > 1.0001 {
+				add(w, "the card picture's box must lie inside the card")
+			}
 		}
 		for j, l := range b.Layers {
 			lw := fmt.Sprintf("%s layer %d", w, j+1)

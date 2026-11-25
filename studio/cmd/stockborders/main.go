@@ -31,7 +31,8 @@ const (
 	H = 1048
 )
 
-// The window: the card picture fills it (the same shape as a 63×88 card, so the picture is barely cropped). The rim is as
+// The window: the see-through middle the card picture shows through (the picture covers the whole card under the border).
+// The rim is as
 // thin as the game's own around a full-image picture: the picture is 0.9 × 0.9 of the 900-unit card box (729 × 522) on
 // the 785 × 561.5 vanilla card, 3.5 % each side (it was 4.5 %, a rim the user found too thick, 2026-11-22).
 var window = [4]float64{0.0351, 0.0357, 0.9298, 0.9286}
@@ -79,7 +80,6 @@ func main() {
 		}
 		list = append(list, setfmt.Border{
 			ID: s.id, Name: s.name, Icon: s.file + "_icon.png",
-			Window: []float64{window[0], window[1], window[2], window[3]},
 			Layers: layers,
 		})
 	}

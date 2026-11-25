@@ -1,7 +1,7 @@
 <script lang="ts">
-  // A card with a border, live: the card's picture in the border's window (cropped to fill it, like the mod), then the
-  // border's layers back to front: image layers as pictures, shader layers running (BorderShaderCanvas) on the picture under
-  // them. A clipped shader layer only shows where that picture is (the game clips at its edge; here its soft edges stay soft).
+  // A card with a border, live, like the mod: the card's picture over the whole card (cropped to the card's shape), or that
+  // same picture resized into the border's box, then the border's layers back to front: image layers as pictures, shader
+  // layers running (BorderShaderCanvas) on the picture under them. A clipped shader layer only shows where that picture is (the game clips at its edge; here its soft edges stay soft).
   // rim: show the game's own rim instead of a border (a slot without one): the game's sheet is the card, the picture on top
   // where the mod puts it (THIN_RIM_WINDOW: 729 × 522 of the 785 × 561.5 card at the default FullImageInset, centred on the
   // card); '' = the game draws no rim there (Full Art): the picture is the card.
@@ -11,7 +11,8 @@
   // versions that are switched off.
   // label: the edition label on top, as the mod draws it (EditionLabelOverlay); with label.onmove it can be dragged (the
   // card holds still while it is). The mouse tilts the card.
-  import { CARD_SIZE, THIN_RIM_WINDOW, borderFile, under, windowOf, type Border, type PictureShader } from '../lib/borders';
+  // onwindow: the border's box can be moved (drag inside it) and sized (drag a corner) on the card, which then lies flat.
+  import { CARD_SIZE, MIN_BOX, THIN_RIM_WINDOW, borderFile, clampBox, under, windowOf, type Border, type Box, type PictureShader } from '../lib/borders';
   import { cardFit } from '../lib/cardLooks';
   import { maximizable } from '../lib/maximize';
   import type { CardFacts, ShaderParam } from '../lib/cardShaderView';
@@ -20,9 +21,9 @@
   import type { LabelChoice } from '../lib/editionLabel';
 
   type Shader = { id: string; name: string; code: string; params?: ShaderParam[]; mix?: string; mixStrength?: number };
-  let { border, shaders, art, width = 300, facts = { border: 0, foil: false, rarity: 0, grade: 0 }, rim, picture, label, still = false }: {
+  let { border, shaders, art, width = 300, facts = { border: 0, foil: false, rarity: 0, grade: 0 }, rim, picture, label, still = false, onwindow }: {
     border: Border | null; shaders: Shader[]; art: string; width?: number; facts?: CardFacts; rim?: string; picture?: PictureShader;
-    still?: boolean;
+    still?: boolean; onwindow?: (box: Box) => void;
     label?: { text: string; choice: LabelChoice; onmove?: (x: number, y: number) => void };
   } = $props();
 
@@ -31,7 +32,6 @@
   let screen = $state({ w: window.innerWidth, h: window.innerHeight });
   const shownWidth = $derived(full ? Math.max(200, Math.floor(Math.min(screen.w - 80, ((screen.h - 80) * CARD_SIZE[0]) / CARD_SIZE[1]))) : width);
   const height = $derived(Math.round((shownWidth * CARD_SIZE[1]) / CARD_SIZE[0]));
-  const win = $derived(windowOf(border));
   const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
   let tilt = $state<[number, number]>([0, 0]);
   let hovering = $state(false);
@@ -51,14 +51,45 @@
   let placing = $state(false);
   function onPlacing(on: boolean) { placing = on; if (on) tilt = [0, 0]; }
   function onMove(e: PointerEvent) {
-    if (placing) return;
+    if (placing || editBox) return;
     const r = frame!.getBoundingClientRect();
     const clamp = (v: number) => Math.max(-1, Math.min(1, v));
     const x = clamp(((e.clientX - r.left) / r.width - 0.5) * 2), y = clamp((0.5 - (e.clientY - r.top) / r.height) * 2);
     tilt = [-x * 0.5, -y * 0.5];
   }
-  // The picture's box: inside the game's rim (THIN_RIM_WINDOW), else the border's window.
+  const win = $derived(windowOf(border));
+  // The picture's box: inside the game's rim (THIN_RIM_WINDOW), else the border's box (the whole card without one).
   const box = $derived(rim !== undefined ? (rim ? THIN_RIM_WINDOW : [0, 0, 1, 1]) : win);
+  // The size the picture is drawn at: under a border always the whole card's, then scaled into the box (.fit), so a box
+  // only resizes the picture (stretched to its shape) and never shows another part of it, like the mod.
+  const picBox = $derived(rim !== undefined ? box : [0, 0, 1, 1]);
+
+  // Editing the border's box: the card lies flat while it can be dragged.
+  const editBox = $derived(!!onwindow && rim === undefined && border?.window?.length === 4);
+  $effect(() => { if (editBox) tilt = [0, 0]; });
+  let drag: { part: string; x: number; y: number; start: Box } | null = null;
+  function grab(e: PointerEvent, part: string) {
+    e.preventDefault(); e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    drag = { part, x: e.clientX, y: e.clientY, start: [...win] };
+  }
+  function dragging(e: PointerEvent) {
+    if (!drag || !onwindow) return;
+    const r = frame!.getBoundingClientRect();
+    const dx = (e.clientX - drag.x) / r.width, dy = (e.clientY - drag.y) / r.height;
+    let [x, y, w, h] = drag.start;
+    if (drag.part === 'move') {
+      x = Math.min(1 - w, Math.max(0, x + dx)); y = Math.min(1 - h, Math.max(0, y + dy));
+    } else {
+      // A corner: the opposite corner stays put.
+      let x1 = x + w, y1 = y + h;
+      if (drag.part.includes('w')) x = Math.min(x1 - MIN_BOX, Math.max(0, x + dx)); else x1 = Math.max(x + MIN_BOX, Math.min(1, x1 + dx));
+      if (drag.part.includes('n')) y = Math.min(y1 - MIN_BOX, Math.max(0, y + dy)); else y1 = Math.max(y + MIN_BOX, Math.min(1, y1 + dy));
+      w = x1 - x; h = y1 - y;
+    }
+    onwindow(clampBox([x, y, w, h]));
+  }
+  const drop = () => { drag = null; };
   // Without a border every picture is card-shaped, like in the game (lib/cardLooks cardFit): scans stretched, anything else cropped.
   let wide = $state(false);
   const measure = (e: Event) => { const i = e.currentTarget as HTMLImageElement; wide = cardFit(i.naturalWidth / Math.max(1, i.naturalHeight)) === 'crop'; };
@@ -68,7 +99,7 @@
 {#snippet pic()}
   {#if art && picture}
     <BorderShaderCanvas code={picture.code} params={picture.params ?? []} own={picture.own} mix={picture.mix} mixStrength={picture.mixStrength}
-      draws={picture.draws ?? ''} mask={picture.mask ?? ''} {art} width={Math.round(shownWidth * box[2])} height={Math.round(height * box[3])}
+      draws={picture.draws ?? ''} mask={picture.mask ?? ''} {art} width={Math.round(shownWidth * picBox[2])} height={Math.round(height * picBox[3])}
       {tilt} {facts} {hovering} onproblem={(t) => report(-1, t)} />
   {:else if art}<img src={art} alt="" onload={measure} />{/if}
 {/snippet}
@@ -84,7 +115,7 @@
         <div class="inset" class:wide style:left={pct(box[0])} style:top={pct(box[1])} style:width={pct(box[2])} style:height={pct(box[3])}>{@render pic()}</div>
       {:else}
         <div class="win" style:left={pct(win[0])} style:top={pct(win[1])} style:width={pct(win[2])} style:height={pct(win[3])}>
-          {@render pic()}
+          <div class="fit" style:width="{shownWidth}px" style:height="{height}px" style:transform="scale({win[2]}, {win[3]})">{@render pic()}</div>
         </div>
       {/if}
       {#if border}
@@ -104,6 +135,15 @@
           {/if}
         {/each}
       {/if}
+      {#if editBox}
+        <div class="boxedit" style:left={pct(win[0])} style:top={pct(win[1])} style:width={pct(win[2])} style:height={pct(win[3])}
+          role="presentation" title="Drag to move the card picture's box; drag a corner to size it"
+          onpointerdown={(e) => grab(e, 'move')} onpointermove={dragging} onpointerup={drop} onpointercancel={drop}>
+          {#each ['nw', 'ne', 'sw', 'se'] as c}
+            <span class="handle {c}" role="presentation" onpointerdown={(e) => grab(e, c)} onpointermove={dragging} onpointerup={drop} onpointercancel={drop}></span>
+          {/each}
+        </div>
+      {/if}
       {#if label?.text}<EditionLabelOverlay text={label.text} choice={label.choice} width={shownWidth} {height} onmove={label.onmove} ondrag={onPlacing} />{/if}
     </div>
   </div>
@@ -116,6 +156,15 @@
   .frame { position: relative; }
   .card { position: absolute; inset: 0; transition: transform 0.08s linear; }
   .win { position: absolute; overflow: hidden; background: #3b4256; }
+  .boxedit { position: absolute; outline: 1px dashed rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    cursor: move; touch-action: none; }
+  .handle { position: absolute; width: 12px; height: 12px; background: #fff; border: 1px solid #222; border-radius: 2px;
+    box-sizing: border-box; }
+  .handle.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+  .handle.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+  .handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+  .handle.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+  .fit { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
   .win img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
     mask-size: 100% 100%; -webkit-mask-size: 100% 100%; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat; }

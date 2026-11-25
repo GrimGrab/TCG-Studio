@@ -422,8 +422,8 @@ namespace TCGCustomCards.Core
         [JsonIgnore] public string Label => string.IsNullOrEmpty(Name) ? $"'{Id}'" : $"\"{Name}\" ({Id})";
         [JsonProperty("icon")] public string Icon;
         /// <summary>
-        /// Where the card's picture goes: x, y, width, height as fractions of the border, from its top left. Absent = the
-        /// picture covers the whole card under the border.
+        /// Where the card's picture goes, set by the user in Studio: x, y, width, height as fractions of the border, from its
+        /// top left. Absent = the picture covers the whole card under the border.
         /// </summary>
         [JsonProperty("window")] public float[] Window;
         [JsonProperty("layers")] public List<BorderLayerDef> Layers = new List<BorderLayerDef>();

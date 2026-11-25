@@ -78,9 +78,12 @@ func (a *App) NewBorderID() (string, error) {
 // PickBorderImage lets the player choose a picture for an image layer and copies it into the shared store. Returns its
 // reference, "" when cancelled.
 func (a *App) PickBorderImage() (string, error) {
-	path, err := a.pickImageFile("Choose a border picture (PNG with a see-through middle)")
+	path, err := a.pickPNGFile("Choose a border picture (PNG with a see-through middle)")
 	if err != nil || path == "" {
 		return "", err
+	}
+	if !strings.EqualFold(filepath.Ext(path), ".png") {
+		return "", fmt.Errorf("border pictures must be PNG files: they need transparency for the card picture to show through")
 	}
 	l, err := a.items()
 	if err != nil {

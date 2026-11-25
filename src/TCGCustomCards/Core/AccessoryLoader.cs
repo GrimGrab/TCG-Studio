@@ -129,7 +129,7 @@ namespace TCGCustomCards.Core
                 b.FolderPath = dir;
                 b.Layers = (b.Layers ?? new List<BorderLayerDef>())
                     .Where(l => l != null && (l.Kind == BorderDef.ImageLayer || l.Kind == BorderDef.ShaderLayer)).ToList();
-                if (b.Window != null && b.Window.Length != 4)
+                if (b.Window != null && (b.Window.Length != 4 || b.Window[2] <= 0f || b.Window[3] <= 0f))
                 {
                     Plugin.Log.LogWarning($"Card border {b.Label}: window needs 4 numbers (x, y, width, height): the picture covers the card");
                     b.Window = null;

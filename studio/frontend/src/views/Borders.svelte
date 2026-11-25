@@ -5,7 +5,7 @@
   import { onMount, tick } from 'svelte';
   import { App, ask, errText } from '../lib/api';
   import { projectFile } from '../lib/urls';
-  import { asDataUrl, borderFile, borderIcon, measureWindow, newBorder, templatePng, under, CARD_SIZE, type Border, type BorderLayer } from '../lib/borders';
+  import { asDataUrl, borderFile, borderIcon, hasSeeThrough, newBorder, setBoxSide, templatePng, under, windowOf, CARD_SIZE, DEFAULT_BOX, type Border, type BorderLayer } from '../lib/borders';
   import type { ShaderParam } from '../lib/cardShaderView';
   import SaveBar from './SaveBar.svelte';
   import BorderPreview from './BorderPreview.svelte';
@@ -80,10 +80,7 @@
     }
     saving = true;
     try {
-      for (const b of borders) {
-        b.window = await measureWindow(b);
-        b.icon = (await borderIcon(b)) || undefined;
-      }
+      for (const b of borders) b.icon = (await borderIcon(b)) || undefined;
       const res = await App.SaveBorders(borders as any);
       await load();
       const warns = res.warnings ?? [];
@@ -158,21 +155,20 @@
     l.params = { ...(l.params ?? {}), [p.name]: now };
   }
 
-  // ---- window: where the card picture goes = the first picture's see-through middle, measured whenever that picture changes
-  const firstPicture = $derived(selected?.layers.find((l) => l.kind === 'image' && l.file)?.file ?? '');
+  // ---- transparency: the card's picture lies under every layer, so a picture without see-through parts hides it.
+  // Picture URLs (borderFile) that have none.
+  let opaque = $state<Record<string, boolean>>({});
   $effect(() => {
-    const b = selected, file = firstPicture;
+    const b = selected ?? viewing;
     if (!b) return;
-    let stale = false;
-    measureWindow(b).then((w) => {
-      if (stale || file !== firstPicture) return;
-      if (JSON.stringify(w ?? null) !== JSON.stringify(b.window ?? null)) b.window = w;
-    });
-    return () => { stale = true; };
+    for (const l of b.layers) {
+      const url = l.kind === 'image' ? borderFile(b, l.file) : '';
+      if (url && !(url in opaque)) hasSeeThrough(url).then((yes) => { opaque[url] = !yes; });
+    }
   });
 
-  // Two templates: 'panel' = a framed card (art box over a text panel, or this border's window); 'thin' = a thin rim round
-  // the whole picture, like the game's own rim.
+  // Two templates: 'panel' = a framed card (this border's box, else an art box over a text panel); 'thin' = a thin rim round the whole picture, like
+  // the game's own rim.
   async function exportTemplate(kind: 'panel' | 'thin') {
     try {
       const name = `${(selected?.name || 'border').replace(/[^\w -]/g, '')}_${kind === 'thin' ? 'thin_rim' : 'panel'}_template.png`;
@@ -200,7 +196,9 @@
           {#if !covers.length}<option value={art}>Sample picture</option>{/if}
         </select>
       </label>
-      <BorderPreview border={b} {shaders} {art} {facts} width={280} />
+      <BorderPreview border={b} {shaders} {art} {facts} width={280}
+        onwindow={b.builtIn || !b.window ? undefined : (box) => (b.window = box)} />
+      {#if !b.builtIn && b.window}<p class="muted small">Drag the dashed box to move the card picture, a corner to size it.</p>{/if}
       {#if readsFacts(b)}
         <div class="row small" title="What this border's shaders are told about the card (iBorder, iFoil). Which border a slot's normal and foil versions get is chosen on a set's Card look page.">
           <span class="muted">Shown as</span>
@@ -225,7 +223,6 @@
       {/if}
       <div class="meta">
         <span>{b.layers.length} layer{b.layers.length === 1 ? '' : 's'}</span>
-        <span>{b.window ? `Card picture inside the rim (${Math.round(b.window[2] * 100)}% × ${Math.round(b.window[3] * 100)}%)` : 'Card picture: the whole card'}</span>
         {#if stock}<span>Comes with the mod</span>{:else}<span class="code" title="Fixed id that sets use to name this border. Renaming is safe.">{b.id}</span>{/if}
       </div>
     </div>
@@ -315,6 +312,10 @@
                         </span>
                       </div>
                       <div class="desc layerbody">
+                        {#if l.kind === 'image' && l.file && opaque[borderFile(selected, l.file)]}
+                          <div class="notice warn small">This picture has no see-through parts (a JPG, or a PNG without transparency):
+                            the card's picture can't show through it. Use a PNG with a transparent middle.</div>
+                        {/if}
                         <div class="row small">
                           <span class="muted">Opacity</span>
                           <input type="range" class="grow" min="0" max="1" step="0.01" bind:value={l.opacity} />
@@ -358,7 +359,7 @@
                       {#snippet panel(close)}
                         <div class="ddmenu">
                           <button onclick={() => { close(); exportTemplate('thin'); }} title="A thin edge round the whole card: the picture fills almost all of it, like the game's own rim">Thin rim…</button>
-                          <button onclick={() => { close(); exportTemplate('panel'); }} title="A framed card: an art box at the top and room for a panel below (or this border's own window)">Card panel…</button>
+                          <button onclick={() => { close(); exportTemplate('panel'); }} title="A framed card: an art box at the top and room for a panel below (or this border's own box)">Card panel…</button>
                         </div>
                       {/snippet}
                     </Dropdown>
@@ -369,9 +370,28 @@
                   <div class="bhead"><h2>On the card</h2></div>
                   <div class="entry">
                     <div class="head row"><span class="grow name">Card picture</span>
-                      <span class="control muted small">{selected.window ? `inside the rim (${Math.round(selected.window[2] * 100)}% × ${Math.round(selected.window[3] * 100)}%)` : 'the whole card'}</span></div>
-                    <div class="desc muted small">Fitted by itself to the see-through middle of the first picture layer, so the rim never covers
-                      the card. A picture without a see-through middle (or see-through to its edges) leaves the card picture full size.</div>
+                      <span class="control seg">
+                        <button class:on={!selected.window} onclick={() => (selected.window = undefined)}>Whole card</button>
+                        <button class:on={!!selected.window} onclick={() => { if (!selected.window) selected.window = DEFAULT_BOX(); }}>In a box</button>
+                      </span></div>
+                    <div class="desc">
+                      {#if selected.window}
+                        {@const w = windowOf(selected)}
+                        <p class="muted small">The card's picture is resized into this box (stretched to its shape, nothing cut off), under
+                          every layer. Drag it on the preview, or type it in % of the card.</p>
+                        <div class="row small boxnums">
+                          {#each ['Left', 'Top', 'Width', 'Height'] as name, k}
+                            <label class="field">{name}
+                              <input type="number" min="0" max="100" step="0.1" value={(w[k] * 100).toFixed(1)}
+                                onchange={(e) => (selected.window = setBoxSide(w, k, Number((e.currentTarget as HTMLInputElement).value) / 100))} />
+                            </label>
+                          {/each}
+                        </div>
+                      {:else}
+                        <p class="muted small">The card's picture covers the whole card, under every layer. The pictures' transparency
+                          decides what of it shows: leave see-through wherever the card should show.</p>
+                      {/if}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -431,5 +451,7 @@
   .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; }
   .layerbody { display: flex; flex-direction: column; gap: 6px; }
   .lthumb { height: 40px; border-radius: 4px; background: var(--bg); }
+  .boxnums { flex-wrap: wrap; }
+  .boxnums input { width: 5.5em; }
   .pname { min-width: 90px; font-family: Consolas, monospace; }
 </style>
